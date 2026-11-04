@@ -1,6 +1,7 @@
 "use client";
 
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
+import type { RichDoc } from "@/lib/content";
 import { Badge, Button, Card } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
@@ -13,7 +14,7 @@ interface Session {
   current_question_index: number; question_started_at: string | null;
   settings: { show_leaderboard?: boolean; max_participants?: number };
 }
-interface QRow { id: string; prompt: string; type: string; time_limit_seconds: number | null }
+interface QRow { id: string; prompt: string; prompt_doc?: RichDoc | null; type: string; time_limit_seconds: number | null }
 interface Participant { id: string; display_name: string; participant_ref: string | null; score: number; status: string }
 
 export function HostConsole({
@@ -133,7 +134,7 @@ export function HostConsole({
               <p className="text-sm font-medium text-ink-soft">
                 Question {session.current_question_index + 1} of {questions.length} · {answered}/{admitted.length} answered
               </p>
-              <div className="mt-2 text-lg font-medium text-ink"><MathText text={current.prompt} /></div>
+              <div className="mt-2 text-lg font-medium text-ink"><RichContent doc={current.prompt_doc ?? null} text={current.prompt} /></div>
               <div className="mt-3 h-2 overflow-hidden rounded-full bg-evergreen-100">
                 <div className="h-full bg-gold-500 transition-all" style={{ width: `${admitted.length ? (answered / admitted.length) * 100 : 0}%` }} />
               </div>
@@ -189,7 +190,7 @@ export function HostConsole({
             {questions.map((q, i) => (
               <li key={q.id} className={`flex items-center gap-3 py-2.5 ${i === session.current_question_index && session.status === "live" ? "rounded-lg bg-gold-50 px-2 font-semibold" : ""}`}>
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-evergreen-100 text-xs font-bold text-evergreen-800">{i + 1}</span>
-                <span className="line-clamp-1 flex-1 text-sm"><MathText text={q.prompt} /></span>
+                <span className="line-clamp-1 flex-1 text-sm"><RichContent doc={q.prompt_doc ?? null} text={q.prompt} /></span>
                 <Badge tone="gray">{q.type.replace(/_/g, " ")}</Badge>
               </li>
             ))}

@@ -1,7 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import type { PublicQuestion } from "@/components/QuestionRunner";
 import { mmss } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -86,13 +86,13 @@ export function ProjectorClient({ code }: { code: string }) {
                 )}
               </div>
               <div className="font-display text-3xl leading-snug sm:text-4xl">
-                <MathText text={data.question.prompt} />
+                <RichContent doc={data.question.prompt_doc ?? null} text={data.question.prompt} />
               </div>
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {data.question.options.map((o, i) => (
                   <div key={o.id} className="rounded-2xl border border-white/20 bg-white/10 px-5 py-4 text-xl">
                     <span className="mr-2 font-bold text-gold-400">{String.fromCharCode(65 + i)}.</span>
-                    <MathText text={o.label} />
+                    <RichContent doc={o.content_doc ?? null} text={o.label} />
                   </div>
                 ))}
               </div>

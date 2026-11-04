@@ -1,8 +1,9 @@
+import { QuestionForm, type QuestionSaveFn } from "@/components/QuestionForm";
 import { PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
-import { QuestionEditor } from "../QuestionEditor";
+import { saveQuestion, uploadQuestionImage, type QuestionInput } from "../actions";
 
 export const metadata: Metadata = { title: "New question" };
 
@@ -18,8 +19,13 @@ export default async function NewQuestionPage() {
 
   return (
     <>
-      <PageTitle title="New question" subtitle="Author once, reuse everywhere — quizzes, assessments and examinations." />
-      <QuestionEditor categories={categories ?? []} />
+      <PageTitle title="New question" subtitle="Author once with the full mathematical editor — reuse in quizzes, live competitions and examinations." />
+      <QuestionForm
+        categories={categories ?? []}
+        save={saveQuestion as unknown as QuestionSaveFn}
+        uploadImage={uploadQuestionImage}
+        successHref="/dashboard/questions"
+      />
     </>
   );
 }

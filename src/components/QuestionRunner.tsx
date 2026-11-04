@@ -1,6 +1,8 @@
 "use client";
 
 import { MathText } from "./MathText";
+import { RichContent } from "./RichContent";
+import type { RichDoc } from "@/lib/content";
 import { Button, Input, Textarea } from "./ui";
 import { cn } from "@/lib/utils";
 import { useEffect, useState } from "react";
@@ -10,10 +12,11 @@ export interface PublicQuestion {
   question_id: string;
   type: string;
   prompt: string;
+  prompt_doc?: RichDoc | null;
   points: number;
   media_url: string | null;
   media_type: string | null;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; content_doc?: RichDoc | null }[];
   matching_lefts?: string[];
   matching_rights?: string[];
 }
@@ -75,7 +78,7 @@ export function QuestionRunner({
       )}
 
       <div className="text-lg font-medium leading-relaxed text-ink sm:text-xl">
-        <MathText text={question.prompt} />
+        <RichContent doc={question.prompt_doc ?? null} text={question.prompt} />
       </div>
 
       <div className="mt-5">
@@ -93,7 +96,7 @@ export function QuestionRunner({
                     : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50",
                 )}
               >
-                <MathText text={o.label} />
+                <RichContent doc={o.content_doc ?? null} text={o.label} />
               </button>
             ))}
           </div>
@@ -116,7 +119,7 @@ export function QuestionRunner({
                       : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60",
                   )}
                 >
-                  <MathText text={o.label} />
+                  <RichContent doc={o.content_doc ?? null} text={o.label} />
                 </button>
               ))}
             </div>

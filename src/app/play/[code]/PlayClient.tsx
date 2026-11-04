@@ -2,6 +2,8 @@
 
 import { Logo } from "@/components/Logo";
 import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
+import type { RichDoc } from "@/lib/content";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
 import { Badge, Button, Card, Field, Input } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
@@ -15,6 +17,7 @@ interface LiveState {
   question: PublicQuestion | null;
   my_answer: { is_correct: boolean | null; points_awarded: number } | null;
   explanation: string | null;
+  explanation_doc?: RichDoc | null;
   participant: { display_name: string; score: number; finished: boolean };
   participant_count: number;
   leaderboard: { display_name: string; score: number }[] | null;
@@ -29,7 +32,7 @@ export function PlayClient({ code }: { code: string }) {
   const [error, setError] = useState<string | null>(null);
   const [state, setState] = useState<LiveState | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const [feedback, setFeedback] = useState<{ is_correct: boolean | null; points_awarded: number; explanation?: string | null; needs_marking?: boolean } | null>(null);
+  const [feedback, setFeedback] = useState<{ is_correct: boolean | null; points_awarded: number; explanation?: string | null; explanation_doc?: RichDoc | null; needs_marking?: boolean } | null>(null);
   const [now, setNow] = useState(Date.now());
   const offsetRef = useRef(0); // serverNow - clientNow
 
@@ -55,6 +58,7 @@ export function PlayClient({ code }: { code: string }) {
         is_correct: data.my_answer.is_correct,
         points_awarded: data.my_answer.points_awarded,
         explanation: data.explanation,
+        explanation_doc: data.explanation_doc ?? null,
       });
     } else {
       setFeedback(null);
@@ -114,7 +118,7 @@ export function PlayClient({ code }: { code: string }) {
       fetchState();
       return;
     }
-    setFeedback({ is_correct: data.is_correct, points_awarded: data.points_awarded, explanation: data.explanation, needs_marking: data.needs_marking });
+    setFeedback({ is_correct: data.is_correct, points_awarded: data.points_awarded, explanation: data.explanation, explanation_doc: data.explanation_doc ?? null, needs_marking: data.needs_marking });
     fetchState();
   }
 
@@ -238,7 +242,7 @@ export function PlayClient({ code }: { code: string }) {
           </h2>
           {feedback.explanation && (
             <div className="mx-auto mt-3 max-w-lg rounded-xl bg-evergreen-50 p-4 text-left text-sm text-evergreen-900">
-              <MathText text={feedback.explanation} />
+              <RichContent doc={feedback.explanation_doc ?? null} text={feedback.explanation} />
             </div>
           )}
           <p className="mt-3 text-ink-soft">

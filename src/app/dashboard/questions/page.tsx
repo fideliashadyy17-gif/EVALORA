@@ -1,4 +1,4 @@
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -84,7 +84,7 @@ export default async function QuestionsPage({
                         {q.topic && <Badge tone="gray">{q.topic}</Badge>}
                       </div>
                       <div className="mt-2 line-clamp-2 font-medium text-ink">
-                        <MathText text={q.prompt} />
+                        <RichContent doc={(q as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={q.prompt} />
                       </div>
                       <p className="mt-1 text-xs text-ink-soft">
                         {(q.question_options as unknown[])?.length ?? 0} options

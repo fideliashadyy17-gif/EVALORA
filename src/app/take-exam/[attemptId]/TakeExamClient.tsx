@@ -2,6 +2,8 @@
 
 import { Logo } from "@/components/Logo";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
+import { RichContent } from "@/components/RichContent";
+import type { RichDoc } from "@/lib/content";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
@@ -17,7 +19,7 @@ interface ExamState {
   attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
-    result: { is_correct: boolean | null; points_awarded: number | null; explanation: string | null } | null;
+    result: { is_correct: boolean | null; points_awarded: number | null; explanation: string | null; explanation_doc?: RichDoc | null } | null;
   })[];
 }
 
@@ -262,7 +264,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                       ? "Awaiting manual marking by your examiner."
                       : `${current.result.is_correct ? "Correct" : "Incorrect"} · ${current.result.points_awarded ?? 0} / ${current.points} points`}
                   </p>
-                  {current.result.explanation && <p className="mt-1">{current.result.explanation}</p>}
+                  {(current.result.explanation || current.result.explanation_doc) && (
+                    <div className="mt-1"><RichContent doc={current.result.explanation_doc ?? null} text={current.result.explanation ?? ""} /></div>
+                  )}
                 </div>
               )}
 

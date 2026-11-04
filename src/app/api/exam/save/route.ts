@@ -24,7 +24,7 @@ export async function POST(request: Request) {
   const { attempt, exam } = ctx;
   if (attempt.status !== "in_progress")
     return NextResponse.json({ error: "This attempt is already submitted." }, { status: 409 });
-  if (new Date() > attemptDeadline(exam, attempt.started_at))
+  if (new Date() > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0)))
     return NextResponse.json({ error: "Time has expired." }, { status: 409 });
 
   // The question must belong to this exam's paper.

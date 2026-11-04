@@ -11,6 +11,7 @@ const OptionSchema = z.object({
   id: z.string().optional(),
   label: z.string().min(1),
   is_correct: z.boolean(),
+  content_doc: z.unknown().optional().nullable(),
 });
 
 const QuestionSchema = z.object({
@@ -20,7 +21,9 @@ const QuestionSchema = z.object({
     "numeric", "ordering", "matching", "poll", "open_ended", "slide",
   ]),
   prompt: z.string().min(1),
+  prompt_doc: z.unknown().optional().nullable(),
   explanation: z.string().optional(),
+  explanation_doc: z.unknown().optional().nullable(),
   points: z.number().min(0),
   difficulty: z.enum(["easy", "medium", "hard"]),
   topic: z.string().optional(),
@@ -58,7 +61,9 @@ export async function saveQuestion(raw: QuestionInput) {
     category_id: q.category_id || null,
     type: q.type,
     prompt: q.prompt,
+    prompt_doc: q.prompt_doc ?? null,
     explanation: q.explanation || null,
+    explanation_doc: q.explanation_doc ?? null,
     points: q.points,
     difficulty: q.difficulty,
     topic: q.topic || null,
@@ -84,6 +89,7 @@ export async function saveQuestion(raw: QuestionInput) {
       q.options.map((o, i) => ({
         question_id: questionId!,
         label: o.label,
+        content_doc: o.content_doc ?? null,
         is_correct: o.is_correct,
         position: i,
       })),
@@ -231,4 +237,31 @@ export async function importQuestionsCsv(csv: string) {
 
   revalidatePath("/dashboard/questions");
   return { ok: true, imported, report };
+}
+
+/** Upload a question image/diagram to the org-scoped question-media bucket. */
+export async function uploadQuestionImage(formData: FormData): Promise<{ url?: string; error?: string }> {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to upload media." };
+  const file = formData.get("file");
+  if (!(file instanceof File) || file.size === 0) return { error: "Choose an image file first." };
+  const okTypes: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+  };
+  const ext = okTypes[file.type];
+  if (!ext) return { error: "Use a PNG, JPEG, WebP or GIF image." };
+  if (file.size > 5 * 1024 * 1024) return { error: "Images must be 5 MB or smaller." };
+
+  const supabase = await createClient();
+  const path = `${org.id}/${crypto.randomUUID()}.${ext}`;
+  const { error } = await supabase.storage
+    .from("question-media")
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (error) return { error: error.message };
+  const { data } = supabase.storage.from("question-media").getPublicUrl(path);
+  return { url: data.publicUrl };
 }

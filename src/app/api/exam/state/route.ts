@@ -15,7 +15,7 @@ export async function GET(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404 });
   const { attempt, exam, candidate } = ctx;
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
-  const deadline = attemptDeadline(exam, attempt.started_at);
+  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
 
   // Auto-submit when the server deadline has passed.
   if (attempt.status === "in_progress" && new Date() > deadline) {
@@ -72,7 +72,7 @@ export async function GET(request: Request) {
         // Correctness is only revealed after submission AND publication.
         result:
           submitted && resultsPublished && s
-            ? { is_correct: s.is_correct, points_awarded: s.points_awarded !== null ? Number(s.points_awarded) : null, explanation: row.questions.explanation }
+            ? { is_correct: s.is_correct, points_awarded: s.points_awarded !== null ? Number(s.points_awarded) : null, explanation: row.questions.explanation, explanation_doc: row.questions.explanation_doc ?? null }
             : null,
       };
     }),

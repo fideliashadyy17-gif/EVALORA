@@ -97,7 +97,7 @@ export async function GET(request: Request) {
           })
         : null,
     my_answer: myAnswer,
-    explanation: myAnswer ? (currentRow?.questions.explanation ?? null) : null,
+    explanation: myAnswer ? (currentRow?.questions.explanation ?? null) : null, explanation_doc: myAnswer ? (currentRow?.questions.explanation_doc ?? null) : null,
     participant: {
       display_name: participant.display_name,
       score: Number(participant.score),

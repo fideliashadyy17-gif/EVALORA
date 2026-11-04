@@ -102,7 +102,7 @@ export async function POST(request: Request) {
         duplicate: true,
         is_correct: existing.is_correct,
         points_awarded: Number(existing.points_awarded),
-        explanation: q.explanation,
+        explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
       });
     return NextResponse.json({ error: "Could not record your answer." }, { status: 500 });
   }
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
     ok: true,
     is_correct: scored.isCorrect,
     points_awarded: awarded,
-    explanation: q.explanation,
+    explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
     needs_marking: scored.isCorrect === null && q.type === "open_ended",
   });
 }

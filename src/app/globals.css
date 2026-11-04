@@ -87,3 +87,154 @@ body {
 .live-dot {
   animation: pulse-dot 1.4s ease-in-out infinite;
 }
+
+/* ── Rich structured content (questions, options, explanations) ────────── */
+.rich-content {
+  line-height: 1.65;
+  overflow-wrap: break-word;
+}
+.rich-content p { margin: 0.35em 0; }
+.rich-content p:first-child { margin-top: 0; }
+.rich-content p:last-child { margin-bottom: 0; }
+.rich-content h3, .rich-content h4, .rich-content h5 {
+  font-family: var(--font-display, serif);
+  font-weight: 600;
+  color: var(--color-evergreen-950);
+  margin: 0.6em 0 0.3em;
+}
+.rich-content ul, .rich-content ol { margin: 0.4em 0 0.4em 1.4em; }
+.rich-content ul { list-style: disc; }
+.rich-content ol { list-style: decimal; }
+.rich-content blockquote {
+  border-left: 3px solid var(--color-evergreen-300);
+  padding-left: 0.8em;
+  margin: 0.5em 0;
+  color: var(--color-ink-soft);
+}
+.rich-content a { color: var(--color-evergreen-700); text-decoration: underline; }
+.rich-math-block {
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.4em 0;
+  text-align: center;
+}
+.rich-figure { margin: 0.6em auto; }
+.rich-figure img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 0.6rem;
+  border: 1px solid rgb(6 46 36 / 0.12);
+}
+.rich-figure figcaption {
+  text-align: center;
+  font-size: 0.82rem;
+  color: var(--color-ink-soft);
+  margin-top: 0.3rem;
+}
+.rich-table-wrap { overflow-x: auto; margin: 0.6em 0; }
+.rich-content table { border-collapse: collapse; min-width: 40%; }
+.rich-content th, .rich-content td {
+  border: 1px solid rgb(6 46 36 / 0.25);
+  padding: 0.35em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+.rich-content th { background: rgb(6 46 36 / 0.06); font-weight: 600; }
+.rich-content .katex { font-size: 1.06em; }
+
+/* ── Unified mathematical editor ───────────────────────────────────────── */
+.rce-shell {
+  border: 1px solid rgb(6 46 36 / 0.22);
+  border-radius: 0.9rem;
+  background: #fff;
+  overflow: visible;
+}
+.rce-shell:focus-within {
+  border-color: var(--color-evergreen-600);
+  box-shadow: 0 0 0 3px rgb(16 120 90 / 0.15);
+}
+.rce-editor .tiptap {
+  outline: none;
+  padding: 0.75rem 0.9rem;
+  min-height: 5.5rem;
+  line-height: 1.65;
+  color: var(--color-ink);
+}
+.rce-compact .tiptap { min-height: 2.9rem; padding: 0.5rem 0.7rem; }
+.rce-editor .tiptap p { margin: 0.35em 0; }
+.rce-editor .tiptap p:first-child { margin-top: 0; }
+.rce-editor .tiptap ul { list-style: disc; margin-left: 1.4em; }
+.rce-editor .tiptap ol { list-style: decimal; margin-left: 1.4em; }
+.rce-editor .tiptap table { border-collapse: collapse; margin: 0.6em 0; }
+.rce-editor .tiptap th, .rce-editor .tiptap td {
+  border: 1px solid rgb(6 46 36 / 0.3);
+  padding: 0.35em 0.7em;
+  min-width: 3rem;
+  position: relative;
+}
+.rce-editor .tiptap th { background: rgb(6 46 36 / 0.06); }
+.rce-editor .tiptap .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgb(16 120 90 / 0.14);
+  pointer-events: none;
+}
+.rce-editor .tiptap img.ProseMirror-selectednode {
+  outline: 3px solid var(--color-evergreen-500);
+  outline-offset: 2px;
+}
+.rce-math-node {
+  border-radius: 0.35rem;
+  padding: 0.05em 0.2em;
+  cursor: pointer;
+  background: rgb(16 120 90 / 0.06);
+  border: 1px dashed transparent;
+}
+.rce-math-node:hover { border-color: var(--color-evergreen-400); }
+.rce-math-node.ProseMirror-selectednode, .rce-math-node.is-selected {
+  outline: 2px solid var(--color-evergreen-600);
+  background: rgb(16 120 90 / 0.12);
+}
+.rce-math-block-node {
+  display: block;
+  text-align: center;
+  padding: 0.5em 0.4em;
+  margin: 0.4em 0;
+  border-radius: 0.6rem;
+}
+math-field {
+  display: block;
+  width: 100%;
+  font-size: 1.35rem;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid rgb(6 46 36 / 0.3);
+  border-radius: 0.7rem;
+  background: #fff;
+  --caret-color: var(--color-evergreen-700);
+  --selection-background-color: rgb(16 120 90 / 0.22);
+  --placeholder-color: rgb(6 46 36 / 0.45);
+}
+math-field:focus-within {
+  outline: 3px solid rgb(16 120 90 / 0.25);
+  border-color: var(--color-evergreen-600);
+}
+.rce-kbd-btn {
+  min-width: 2.6rem;
+  min-height: 2.6rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 0.55rem;
+  border: 1px solid rgb(6 46 36 / 0.18);
+  background: #fff;
+  color: var(--color-evergreen-950);
+  font-size: 1.02rem;
+  line-height: 1.2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.rce-kbd-btn:hover { background: rgb(16 120 90 / 0.1); border-color: var(--color-evergreen-500); }
+.rce-kbd-btn:active { background: rgb(16 120 90 / 0.2); }
+.rce-kbd-btn .katex { font-size: 1.02rem; }

@@ -1,4 +1,4 @@
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -40,7 +40,7 @@ export default async function ExamDetailPage({
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
-      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, questions(prompt, points, type))")
+      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, questions(prompt, prompt_doc, points, type))")
       .eq("exam_id", id)
       .order("started_at"),
     supabase
@@ -196,7 +196,7 @@ export default async function ExamDetailPage({
                     <p className="text-xs font-medium text-ink-soft">
                       {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(ans.questions.points)} pts
                     </p>
-                    <div className="mt-1 font-medium"><MathText text={ans.questions.prompt} /></div>
+                    <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
                     <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 text-sm">{ans.answer?.text ?? "(empty)"}</p>
                     <form action={markAnswer} className="mt-3 flex flex-wrap items-end gap-2">
                       <input type="hidden" name="answer_id" value={ans.id} />

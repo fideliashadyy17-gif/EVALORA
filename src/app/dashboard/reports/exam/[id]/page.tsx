@@ -1,4 +1,4 @@
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
@@ -23,7 +23,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
 
   const [{ data: attempts }, { data: qq }, { count: candidateTotal }] = await Promise.all([
     supabase.from("exam_attempts").select("*, exam_candidates(full_name, candidate_ref), exam_answers(question_id, is_correct, points_awarded)").eq("exam_id", id).order("score", { ascending: false, nullsFirst: false }),
-    supabase.from("quiz_questions").select("question_id, questions(prompt, type, topic, difficulty)").eq("quiz_id", exam.quiz_id),
+    supabase.from("quiz_questions").select("question_id, questions(prompt, prompt_doc, type, topic, difficulty)").eq("quiz_id", exam.quiz_id),
     supabase.from("exam_candidates").select("id", { count: "exact", head: true }).eq("exam_id", id),
   ]);
 
@@ -118,7 +118,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
             {qStats.map((q, i) => (
               <div key={i}>
                 <div className="flex items-start justify-between gap-3">
-                  <p className="line-clamp-2 flex-1 text-sm font-medium"><span className="text-ink-soft">Q{i + 1}.</span> <MathText text={q.prompt} /></p>
+                  <p className="line-clamp-2 flex-1 text-sm font-medium"><span className="text-ink-soft">Q{i + 1}.</span> <RichContent doc={(q as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={q.prompt} /></p>
                   {q.pct !== null ? <Badge tone={q.pct >= 70 ? "green" : q.pct >= 40 ? "amber" : "red"}>{q.pct}%</Badge> : <Badge tone="gray">manual</Badge>}
                 </div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-evergreen-100">

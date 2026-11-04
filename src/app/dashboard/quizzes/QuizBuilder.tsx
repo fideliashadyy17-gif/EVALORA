@@ -1,13 +1,14 @@
 "use client";
 
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
+import type { RichDoc } from "@/lib/content";
 import { Badge, Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { saveQuiz } from "./actions";
 
-interface BankQ { id: string; type: string; prompt: string; points: number; status: string; topic: string | null }
+interface BankQ { id: string; type: string; prompt: string; prompt_doc?: RichDoc | null; points: number; status: string; topic: string | null }
 
 export function QuizBuilder({
   initial,
@@ -118,7 +119,7 @@ export function QuizBuilder({
                   <li key={id} className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 bg-cream p-3">
                     <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-evergreen-700 text-xs font-bold text-white">{i + 1}</span>
                     <div className="min-w-0 flex-1">
-                      <div className="line-clamp-2 text-sm font-medium text-ink"><MathText text={q.prompt} /></div>
+                      <div className="line-clamp-2 text-sm font-medium text-ink"><RichContent doc={q.prompt_doc ?? null} text={q.prompt} /></div>
                       <p className="text-xs text-ink-soft">{q.type.replace(/_/g, " ")} · {q.points} pts</p>
                     </div>
                     <div className="flex shrink-0 gap-1">
@@ -144,7 +145,7 @@ export function QuizBuilder({
                 onClick={() => setSelected((p) => [...p, q.id])}
                 className="block w-full rounded-xl border border-evergreen-900/10 bg-white p-3 text-left transition hover:border-evergreen-600/50 hover:shadow-[var(--shadow-card)]"
               >
-                <span className="line-clamp-2 text-sm font-medium text-ink"><MathText text={q.prompt} /></span>
+                <span className="line-clamp-2 text-sm font-medium text-ink"><RichContent doc={q.prompt_doc ?? null} text={q.prompt} /></span>
                 <span className="mt-1 block text-xs text-ink-soft">{q.type.replace(/_/g, " ")} · {q.points} pts{q.topic ? ` · ${q.topic}` : ""} — click to add</span>
               </button>
             ))}
@@ -163,7 +164,7 @@ export function QuizBuilder({
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Preview — first question as participants see it</h2>
           <div className="mt-3 rounded-xl border border-evergreen-900/10 bg-cream p-4 font-medium text-ink">
-            <MathText text={byId.get(selected[0])?.prompt ?? ""} />
+            <RichContent doc={byId.get(selected[0])?.prompt_doc ?? null} text={byId.get(selected[0])?.prompt ?? ""} />
           </div>
         </Card>
       )}

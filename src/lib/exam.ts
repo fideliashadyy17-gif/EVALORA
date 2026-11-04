@@ -2,10 +2,21 @@ import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./liv
 import { scoreAnswer } from "./scoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Absolute server deadline for an attempt. */
-export function attemptDeadline(exam: { duration_minutes: number; ends_at: string | null }, startedAt: string) {
-  const byDuration = new Date(startedAt).getTime() + exam.duration_minutes * 60000;
-  const byWindow = exam.ends_at ? new Date(exam.ends_at).getTime() : Infinity;
+/**
+ * Absolute server deadline for an attempt. An authorized per-candidate
+ * extension (exam_attempts.extension_minutes) shifts BOTH the duration cap
+ * and the exam window end for that candidate, so "extra time" always means
+ * exactly that many additional minutes — enforced here on the server, never
+ * by a frontend countdown.
+ */
+export function attemptDeadline(
+  exam: { duration_minutes: number; ends_at: string | null },
+  startedAt: string,
+  extensionMinutes = 0,
+) {
+  const ext = Math.max(0, Math.floor(extensionMinutes) || 0) * 60000;
+  const byDuration = new Date(startedAt).getTime() + exam.duration_minutes * 60000 + ext;
+  const byWindow = exam.ends_at ? new Date(exam.ends_at).getTime() + ext : Infinity;
   return new Date(Math.min(byDuration, byWindow));
 }
 

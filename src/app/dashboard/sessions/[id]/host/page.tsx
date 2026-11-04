@@ -27,7 +27,7 @@ export default async function HostPage({ params }: { params: Promise<{ id: strin
 
   const { data: qq } = await supabase
     .from("quiz_questions")
-    .select("id, time_limit_seconds, questions(prompt, type)")
+    .select("id, time_limit_seconds, questions(prompt, prompt_doc, type)")
     .eq("quiz_id", session.quiz_id)
     .order("position");
 
@@ -42,6 +42,7 @@ export default async function HostPage({ params }: { params: Promise<{ id: strin
         questions={(qq ?? []).map((r) => ({
           id: r.id,
           prompt: (r.questions as unknown as { prompt: string }).prompt,
+          prompt_doc: (r.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null,
           type: (r.questions as unknown as { type: string }).type,
           time_limit_seconds: r.time_limit_seconds,
         }))}

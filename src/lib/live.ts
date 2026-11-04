@@ -30,10 +30,12 @@ export interface SessionQuestionRow {
     id: string;
     type: string;
     prompt: string;
+    prompt_doc: import("./content").RichDoc | null;
     explanation: string | null;
+    explanation_doc: import("./content").RichDoc | null;
     points: number;
     config: Record<string, unknown> | null;
-    question_options: { id: string; label: string; is_correct: boolean; position: number }[];
+    question_options: { id: string; label: string; content_doc: import("./content").RichDoc | null; is_correct: boolean; position: number }[];
   };
 }
 
@@ -69,7 +71,7 @@ export function publicQuestion(
 ) {
   const q = row.questions;
   const cfg = (q.config ?? {}) as Record<string, unknown>;
-  const baseOptions = q.question_options.map((o) => ({ id: o.id, label: o.label }));
+  const baseOptions = q.question_options.map((o) => ({ id: o.id, label: o.label, content_doc: o.content_doc ?? null }));
   let options = baseOptions;
   if (opts.randomizeOptions && ["single_choice", "multiple_select", "true_false", "poll"].includes(q.type)) {
     options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}`);
@@ -79,6 +81,7 @@ export function publicQuestion(
     question_id: q.id,
     type: q.type,
     prompt: q.prompt,
+    prompt_doc: q.prompt_doc ?? null,
     points: Number(row.points ?? q.points),
     media_url: (cfg.media_url as string) ?? null,
     media_type: (cfg.media_type as string) ?? null,
