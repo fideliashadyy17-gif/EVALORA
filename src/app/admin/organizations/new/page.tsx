@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function NewOrganizationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string }>;
+  searchParams: Promise<{ e?: string; suggest?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -33,15 +33,21 @@ export default async function NewOrganizationPage({
           owner: "Provide the owner's email, or choose “Me (platform owner)”.",
           owner_failed: "Could not create or invite the owner account for that email.",
           failed: "Organization could not be created. Please try again.",
+          subdomain: "That subdomain is reserved or invalid. Try one of the suggestions below.",
+          subdomain_taken: "That subdomain is already used by another school. Try one of the suggestions below.",
         }}
       />
 
+      {sp.suggest && <p className="mb-4 rounded-lg bg-cream px-4 py-3 text-sm text-ink">Available-style alternatives to try: <strong>{sp.suggest}</strong></p>}
       <form action={createOrganization} className="space-y-6">
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Organization profile</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field label="Organization name *" className="sm:col-span-2">
               <Input name="name" required placeholder="e.g. Lycée Classique de Porto-Novo" />
+            </Field>
+            <Field label="School subdomain" hint="Portal address: <subdomain>.<root domain> — leave blank to generate from the name. Lowercase letters, numbers, hyphens.">
+              <Input name="subdomain" placeholder="e.g. greenwood" />
             </Field>
             <Field label="Type">
               <Select name="type" defaultValue="school">

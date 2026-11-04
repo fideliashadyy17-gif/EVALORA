@@ -105,7 +105,7 @@ export async function saveClass(formData: FormData) {
   const id = fstr(formData, "id", 60);
   const name = fstr(formData, "name", 120);
   if (!name) backTo(orgId, "academics", "e=name");
-  const payload = {
+  const payload: Record<string, unknown> = {
     organization_id: orgId,
     name,
     academic_year_id: fstr(formData, "academic_year_id", 60),
@@ -113,9 +113,15 @@ export async function saveClass(formData: FormData) {
     teacher_id: fstr(formData, "teacher_id", 60),
     capacity: fint(formData, "capacity"),
     room: fstr(formData, "room", 60),
+    updated_at: new Date().toISOString(),
   };
+  // Newer class fields (only when the submitting form provides them).
+  if (formData.has("code")) payload.code = fstr(formData, "code", 40);
+  if (formData.has("department_id")) payload.department_id = fstr(formData, "department_id", 60);
+  if (formData.has("description")) payload.description = fstr(formData, "description", 500);
+  if (formData.has("status")) payload.status = String(formData.get("status")) === "archived" ? "archived" : "active";
   if (id) {
-    await admin.from("classes").update(payload).eq("id", id);
+    await admin.from("classes").update(payload).eq("id", id).eq("organization_id", orgId);
     await audit(ctx, "class.updated", "classes", id, orgId);
   } else {
     const { data } = await admin.from("classes").insert(payload).select("id").single();
@@ -130,9 +136,35 @@ export async function deleteClass(formData: FormData) {
   const admin = createAdminClient();
   const orgId = String(formData.get("organization_id"));
   const id = String(formData.get("id"));
-  await admin.from("classes").delete().eq("id", id);
+  const back = fstr(formData, "back", 300);
+  // Safe deletion only: classes with enrollment history are archived.
+  const { count } = await admin.from("student_enrollments")
+    .select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("class_id", id);
+  if ((count ?? 0) > 0) {
+    await admin.from("classes").update({ status: "archived", updated_at: new Date().toISOString() }).eq("id", id).eq("organization_id", orgId);
+    await audit(ctx, "class.archived", "classes", id, orgId, { reason: "delete_blocked_enrollments" });
+    if (back) redirect(`${back}${back.includes("?") ? "&" : "?"}ok=class_archived`);
+    backTo(orgId, "academics", "ok=class_archived");
+  }
+  await admin.from("classes").delete().eq("id", id).eq("organization_id", orgId);
   await audit(ctx, "class.deleted", "classes", id, orgId);
+  if (back) redirect(`${back}${back.includes("?") ? "&" : "?"}ok=class_deleted`);
   backTo(orgId, "academics", "ok=class_deleted");
+}
+
+export async function archiveClass(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const orgId = String(formData.get("organization_id"));
+  const id = String(formData.get("id"));
+  const restore = String(formData.get("op")) === "restore";
+  const back = fstr(formData, "back", 300);
+  await admin.from("classes")
+    .update({ status: restore ? "active" : "archived", updated_at: new Date().toISOString() })
+    .eq("id", id).eq("organization_id", orgId);
+  await audit(ctx, restore ? "class.restored" : "class.archived", "classes", id, orgId);
+  if (back) redirect(`${back}${back.includes("?") ? "&" : "?"}ok=class_updated`);
+  backTo(orgId, "academics", "ok=class_updated");
 }
 
 /* ── Students ───────────────────────────────────────────────────────── */
@@ -190,10 +222,14 @@ export async function saveStudent(formData: FormData) {
 
   const classId = fstr(formData, "class_id", 60);
   if (classId && studentId) {
+    // The class must belong to THIS organization — never trust the form.
+    const { data: cls } = await admin.from("classes")
+      .select("id, academic_year_id, status").eq("id", classId).eq("organization_id", orgId).maybeSingle();
+    if (!cls) fail("class_org");
     await admin.from("student_enrollments").upsert(
       {
         organization_id: orgId, student_id: studentId, class_id: classId,
-        academic_year_id: await currentYearId(admin, orgId), status: "active",
+        academic_year_id: cls!.academic_year_id ?? await currentYearId(admin, orgId), status: "active",
       },
       { onConflict: "student_id,class_id" },
     );

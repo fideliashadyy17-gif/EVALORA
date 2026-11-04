@@ -1,5 +1,6 @@
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ORG_TYPES } from "@/lib/brand";
+import { tenantPortalLabel } from "@/lib/tenant";
 import { setOrgStatus } from "../../../actions";
 import { deleteOrganization, enterOrgWorkspace, updateOrganization } from "../../../actions/orgs";
 import { ConfirmField, Notice, Section } from "../../../ui";
@@ -18,6 +19,8 @@ interface OrgRow {
   contact_phone: string | null;
   logo_url: string | null;
   settings: Record<string, unknown> | null;
+  is_demo?: boolean;
+  portal_enabled?: boolean;
 }
 
 export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: string } }) {
@@ -41,6 +44,10 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
           created: "Organization created — it is fully operational. Open the workspace to start building content.",
           confirm: "Tick the confirmation box to delete.",
           archive_first: "Archive the organization before permanent deletion.",
+          demo_protected: "The EVALORA DEMO organization is protected: its subdomain cannot change and it cannot be deleted.",
+          subdomain: "That subdomain is reserved or invalid.",
+          subdomain_taken: "That subdomain is already used by another school.",
+          save_failed: "The organization could not be saved.",
         }}
       />
 
@@ -86,9 +93,13 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
               <Field label="Replace logo">
                 <Input name="logo" type="file" accept="image/*" />
               </Field>
-              <Field label="Workspace URL slug">
-                <Input value={org.slug} disabled readOnly />
+              <Field label="School subdomain / portal" hint={`Portal: ${tenantPortalLabel(org.slug)} · path: /portal/${org.slug}`}>
+                <Input name="slug" defaultValue={org.slug} disabled={Boolean(org.is_demo)} readOnly={Boolean(org.is_demo)} />
               </Field>
+              <label className="flex items-center gap-2 text-sm text-ink">
+                <input type="checkbox" name="portal_enabled" className="h-4 w-4 accent-evergreen-700" defaultChecked={org.portal_enabled !== false} /> Public school portal enabled
+              </label>
+              {org.is_demo && <p className="text-sm font-semibold text-gold-800 sm:col-span-2">DEMONSTRATION ORGANIZATION — protected from deletion and subdomain changes.</p>}
               <Field label="Internal notes (admins only)" className="sm:col-span-2">
                 <Textarea name="notes" rows={2} defaultValue={notes} />
               </Field>
@@ -134,7 +145,8 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
             </div>
           </div>
 
-          {org.status === "archived" && (
+          {org.is_demo && <p className="border-t border-evergreen-900/10 pt-4 text-sm text-ink">This permanent demonstration school cannot be deleted. Use “Reset DEMO” in the organization tools to restore its sample data.</p>}
+          {org.status === "archived" && !org.is_demo && (
             <form action={deleteOrganization} className="space-y-3 border-t border-red-200 pt-4">
               <input type="hidden" name="id" value={org.id} />
               <p className="font-medium text-red-800">Permanently delete this organization</p>

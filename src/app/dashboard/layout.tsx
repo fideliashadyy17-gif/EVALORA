@@ -13,6 +13,24 @@ export default async function DashboardLayout({
   const org = activeOrg(ctx);
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
 
+  // Wrong-tenant hostname: the signed-in user does not belong to the
+  // school whose subdomain this is. Never fall back to another school.
+  if (ctx.tenantDenied) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-20 text-center">
+        <h1 className="font-display text-2xl font-semibold text-evergreen-950">Different school portal</h1>
+        <p className="mt-2 text-sm text-ink-soft">
+          This address belongs to another school&apos;s private EVALORA portal, and your account
+          is not a member of that school. Sign in with that school&apos;s account, or return to
+          the main EVALORA website to reach your own workspace.
+        </p>
+        <Link href="/" className="mt-4 inline-block font-semibold text-evergreen-800 underline underline-offset-2">
+          Go to the main EVALORA website
+        </Link>
+      </div>
+    );
+  }
+
   // Super admins may use the console without an organization.
   if (!org && !isSuperAdmin) redirect("/onboarding");
   if (!org) redirect("/admin");
@@ -49,6 +67,11 @@ export default async function DashboardLayout({
           </form>
         </div>
       )}
+      {org.is_demo && (
+        <div className="bg-evergreen-950 px-4 py-2 text-center text-sm font-semibold text-gold-300">
+          DEMONSTRATION SCHOOL — all students, results and records in this workspace are fictional sample data.
+        </div>
+      )}
       {org.status !== "active" && isSuperAdmin && (
         <div className="bg-red-700 px-4 py-2 text-center text-sm font-semibold text-white">
           This organization is currently {org.status}. Its members cannot access this workspace.
@@ -56,6 +79,8 @@ export default async function DashboardLayout({
       )}
       <DashboardChrome
         orgName={org.name}
+        orgSlug={org.slug}
+        isDemo={Boolean(org.is_demo)}
         orgRole={org.role}
         userName={ctx.profile.full_name || ctx.profile.email}
         isSuperAdmin={isSuperAdmin}

@@ -57,26 +57,45 @@ export default async function PlatformStatisticsPage() {
     return count ?? 0;
   };
 
+  // The permanent DEMO school is excluded from real platform metrics.
+  const { data: demoOrg } = await admin.from("organizations").select("id").eq("is_demo", true).maybeSingle();
+  const demoId = demoOrg?.id ?? null;
+  const notDemo = (q: never) => (demoId ? (q as unknown as { neq: (c: string, v: string) => never }).neq("organization_id", demoId) : q);
+
   const since30 = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const [
     users, orgs, students, questions, quizzes, competitions, exams,
-    orgRows, memberRows, studentRows, questionRows, quizRows,
-    competitionRows, examRows, attemptRows, subscriptionRows, paymentRows, auditRows,
+    orgRowsRaw, memberRowsRaw, studentRowsRaw, questionRowsRaw, quizRowsRaw,
+    competitionRowsRaw, examRowsRaw, attemptRowsRaw, subscriptionRowsRaw, paymentRowsRaw, auditRows,
   ] = await Promise.all([
-    count("profiles"), count("organizations"), count("students"), count("questions"),
-    count("quizzes"), count("competitions"), count("exams"),
-    admin.from("organizations").select("type, status").limit(10000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("organization_members").select("role, status").limit(20000).then((r) => (r.data ?? []) as Row[]),
+    count("profiles", (q) => (q as unknown as { not: (c: string, op: string, v: string) => unknown }).not("email", "ilike", "%@demo.evalora.example")),
+    count("organizations", (q) => (q as unknown as { eq: (c: string, v: boolean) => unknown }).eq("is_demo", false)),
+    count("students", notDemo as never), count("questions", notDemo as never),
+    count("quizzes", notDemo as never), count("competitions", notDemo as never), count("exams", notDemo as never),
+    admin.from("organizations").select("type, status, is_demo").limit(10000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("organization_members").select("role, status, organization_id").limit(20000).then((r) => (r.data ?? []) as Row[]),
     admin.from("students").select("status, organization_id").limit(20000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("questions").select("type, status, difficulty").limit(20000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("quizzes").select("status").limit(10000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("competitions").select("status, format, results_published").limit(10000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("exams").select("status").limit(10000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("exam_attempts").select("status").limit(20000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("subscriptions").select("status, source, billing_period").limit(10000).then((r) => (r.data ?? []) as Row[]),
-    admin.from("payment_requests").select("status, source, amount_cents, currency").limit(20000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("questions").select("type, status, difficulty, organization_id").limit(20000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("quizzes").select("status, organization_id").limit(10000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("competitions").select("status, format, results_published, organization_id").limit(10000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("exams").select("status, organization_id").limit(10000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("exam_attempts").select("status, exams(organization_id)").limit(20000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("subscriptions").select("status, source, billing_period, organization_id").limit(10000).then((r) => (r.data ?? []) as Row[]),
+    admin.from("payment_requests").select("status, source, amount_cents, currency, organization_id").limit(20000).then((r) => (r.data ?? []) as Row[]),
     admin.from("audit_logs").select("action, created_at").gte("created_at", since30).limit(20000).then((r) => (r.data ?? []) as Row[]),
   ]);
+
+  const withoutDemo = (rows: Row[]) => (demoId ? rows.filter((r) => r.organization_id !== demoId) : rows);
+  const orgRows = orgRowsRaw.filter((r) => r.is_demo !== true);
+  const memberRows = withoutDemo(memberRowsRaw);
+  const studentRows = withoutDemo(studentRowsRaw);
+  const questionRows = withoutDemo(questionRowsRaw);
+  const quizRows = withoutDemo(quizRowsRaw);
+  const competitionRows = withoutDemo(competitionRowsRaw);
+  const examRows = withoutDemo(examRowsRaw);
+  const attemptRows = demoId ? attemptRowsRaw.filter((r) => (r.exams as { organization_id?: string } | null)?.organization_id !== demoId) : attemptRowsRaw;
+  const subscriptionRows = withoutDemo(subscriptionRowsRaw);
+  const paymentRows = withoutDemo(paymentRowsRaw);
 
   const verifiedByCurrency = new Map<string, number>();
   for (const p of paymentRows) {
@@ -113,7 +132,7 @@ export default async function PlatformStatisticsPage() {
     <>
       <PageTitle
         title="Platform statistics"
-        subtitle="Live operational breakdowns across institutions, learning content, assessments and verified commerce."
+        subtitle="Live operational breakdowns across institutions, learning content, assessments and verified commerce. The DEMO school is excluded."
         action={<ExportButton filename="evalora-platform-statistics.csv" csv={toCsv(exportRows)} label="Export statistics" />}
       />
 

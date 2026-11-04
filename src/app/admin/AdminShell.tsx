@@ -30,6 +30,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   Tags,
   TrendingUp,
   Trophy,
@@ -74,6 +75,8 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/organizations/admins", label: "Organization Administrators", icon: UserCog },
       { href: "/admin/subscriptions", label: "Organization Subscriptions", icon: Repeat },
       { href: "/admin/organizations/settings", label: "Organization Settings", icon: Settings },
+      { href: "/admin/classes", label: "Academic Mgmt — Classes", icon: GraduationCap },
+      { href: "/admin/demo", label: "DEMO School & Migration", icon: Sparkles },
     ],
   },
   {

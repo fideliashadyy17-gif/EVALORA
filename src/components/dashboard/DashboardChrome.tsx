@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/Logo";
 import { createClient } from "@/lib/supabase/client";
+import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
@@ -9,6 +10,9 @@ import {
   BookOpenCheck,
   CreditCard,
   FileCheck2,
+  GraduationCap,
+  Layers3,
+  School,
   LayoutDashboard,
   Library,
   LogOut,
@@ -23,16 +27,34 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-const NAV = [
-  { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
-  { href: "/dashboard/quizzes", label: "Quiz Studio", icon: PenSquare },
-  { href: "/dashboard/questions", label: "Question Bank", icon: Library },
-  { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2 },
-  { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
-  { href: "/dashboard/team", label: "Team & Roles", icon: Users },
-  { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard },
-  { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
-  { href: "/dashboard/settings", label: "Settings", icon: Settings },
+const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] }[] = [
+  { items: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true }] },
+  {
+    title: "Academic Management",
+    items: [
+      { href: "/dashboard/academics/classes", label: "Classes", icon: School },
+      { href: "/dashboard/students", label: "Students", icon: GraduationCap },
+      { href: "/dashboard/academics", label: "Academic Structure", icon: Layers3, exact: true },
+    ],
+  },
+  {
+    title: "Assessment",
+    items: [
+      { href: "/dashboard/quizzes", label: "Quiz Studio", icon: PenSquare },
+      { href: "/dashboard/questions", label: "Question Bank", icon: Library },
+      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2 },
+      { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
+    ],
+  },
+  {
+    title: "Administration",
+    items: [
+      { href: "/dashboard/team", label: "Team & Roles", icon: Users },
+      { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard },
+      { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
+      { href: "/dashboard/settings", label: "Settings", icon: Settings },
+    ],
+  },
 ];
 
 const navLink =
@@ -41,12 +63,16 @@ const navIdle = "text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900";
 
 export function DashboardChrome({
   orgName,
+  orgSlug,
+  isDemo,
   orgRole,
   userName,
   isSuperAdmin,
   children,
 }: {
   orgName: string;
+  orgSlug?: string;
+  isDemo?: boolean;
   orgRole?: string;
   userName: string;
   isSuperAdmin?: boolean;
@@ -75,25 +101,34 @@ export function DashboardChrome({
 
   const nav = (
     <nav className="flex flex-col gap-1">
-      {NAV.map((n) => {
-        const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
-        return (
-          <Link
-            key={n.href}
-            href={n.href}
-            onClick={() => setOpen(false)}
-            className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
-          >
-            <n.icon className="h-5 w-5 shrink-0" />
-            {n.label}
-            {n.href === "/dashboard/notifications" && unread > 0 && (
-              <span className="ml-auto rounded-full bg-gold-500 px-2 py-0.5 text-xs font-bold text-evergreen-950">
-                {unread}
-              </span>
-            )}
-          </Link>
-        );
-      })}
+      {NAV_SECTIONS.map((section) => (
+        <div key={section.title ?? "top"} className="flex flex-col gap-1">
+          {section.title && (
+            <p className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-evergreen-700/80">
+              {section.title}
+            </p>
+          )}
+          {section.items.map((n) => {
+            const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+            return (
+              <Link
+                key={n.href + n.label}
+                href={n.href}
+                onClick={() => setOpen(false)}
+                className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
+              >
+                <n.icon className="h-5 w-5 shrink-0" />
+                {n.label}
+                {n.href === "/dashboard/notifications" && unread > 0 && (
+                  <span className="ml-auto rounded-full bg-gold-500 px-2 py-0.5 text-xs font-bold text-evergreen-950">
+                    {unread}
+                  </span>
+                )}
+              </Link>
+            );
+          })}
+        </div>
+      ))}
       {isSuperAdmin && (
         <Link
           href="/admin"
@@ -123,6 +158,8 @@ export function DashboardChrome({
         <div className="mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
           <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
           <p className="text-xs capitalize text-ink-soft">{orgRole ?? "member"}</p>
+          {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
+          {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}
         </div>
         <div className="mt-6 flex-1 overflow-y-auto scroll-slim">{nav}</div>
         <div className="mt-4 border-t border-evergreen-900/10 pt-4">

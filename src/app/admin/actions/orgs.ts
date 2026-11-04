@@ -4,6 +4,7 @@ import { audit, fint, fstr, requireSuperAdmin, uniqueOrgSlug } from "@/lib/admin
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
+import { subdomainSuggestions, validateSubdomain } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -72,7 +73,18 @@ export async function createOrganization(formData: FormData) {
     ownerId = (resolved as { id: string }).id;
   }
 
-  const slug = await uniqueOrgSlug(name!);
+  // Tenant subdomain (organizations.slug): explicit or generated.
+  const requestedSubdomain = fstr(formData, "subdomain", 63);
+  let slug: string;
+  if (requestedSubdomain) {
+    const check = validateSubdomain(requestedSubdomain);
+    if (!check.ok) redirect(`/admin/organizations/new?e=subdomain&suggest=${encodeURIComponent(subdomainSuggestions(requestedSubdomain).join(", "))}`);
+    const { data: taken } = await admin.from("organizations").select("id").eq("slug", check.slug).maybeSingle();
+    if (taken) redirect(`/admin/organizations/new?e=subdomain_taken&suggest=${encodeURIComponent(subdomainSuggestions(check.slug).join(", "))}`);
+    slug = check.slug;
+  } else {
+    slug = await uniqueOrgSlug(name!);
+  }
   const { data: org, error } = await admin
     .from("organizations")
     .insert({
@@ -146,7 +158,7 @@ export async function createOrganization(formData: FormData) {
     }
   }
 
-  await audit(ctx, "organization.created", "organizations", org.id, org.id, { name, type, ownerMode, subMode });
+  await audit(ctx, "organization.created", "organizations", org.id, org.id, { name, type, ownerMode, subMode, slug });
   revalidatePath("/admin/organizations");
   redirect(`/admin/organizations/${org.id}?ok=created`);
 }
@@ -155,13 +167,26 @@ export async function updateOrganization(formData: FormData) {
   const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const id = String(formData.get("id"));
-  const { data: org } = await admin.from("organizations").select("settings").eq("id", id).maybeSingle();
+  const { data: org } = await admin.from("organizations").select("settings, slug, is_demo, portal_enabled").eq("id", id).maybeSingle();
   if (!org) redirect("/admin/organizations");
 
   const typeRaw = String(formData.get("type") ?? "school");
   const notes = fstr(formData, "notes", 2000);
   const settings = { ...((org!.settings as Record<string, unknown>) ?? {}), notes: notes ?? undefined };
   if (!notes) delete settings.notes;
+
+  // Subdomain administration (Super Admin). The DEMO organization's
+  // subdomain is protected in the database and here.
+  const requestedSlugRaw = fstr(formData, "slug", 63);
+  let slugPatch: string | undefined;
+  if (requestedSlugRaw && requestedSlugRaw.toLowerCase() !== org!.slug) {
+    if (org!.is_demo) redirect(`/admin/organizations/${id}?e=demo_protected`);
+    const check = validateSubdomain(requestedSlugRaw);
+    if (!check.ok) redirect(`/admin/organizations/${id}?e=subdomain`);
+    const { data: taken } = await admin.from("organizations").select("id").eq("slug", check.slug).neq("id", id).maybeSingle();
+    if (taken) redirect(`/admin/organizations/${id}?e=subdomain_taken`);
+    slugPatch = check.slug;
+  }
 
   const patch: Record<string, unknown> = {
     name: fstr(formData, "name", 160),
@@ -174,12 +199,16 @@ export async function updateOrganization(formData: FormData) {
     contact_phone: fstr(formData, "contact_phone", 60),
     settings,
   };
+  if (slugPatch) patch.slug = slugPatch;
+  patch.portal_enabled = formData.get("portal_enabled") === "on";
   const logoUrl = await uploadLogo(id, formData.get("logo") as File | null);
   if (logoUrl) patch.logo_url = logoUrl;
   if (formData.get("remove_logo") === "on") patch.logo_url = null;
 
-  await admin.from("organizations").update(patch).eq("id", id);
-  await audit(ctx, "organization.updated", "organizations", id, id);
+  const { error: updateError } = await admin.from("organizations").update(patch).eq("id", id);
+  if (updateError) redirect(`/admin/organizations/${id}?e=${org!.is_demo ? "demo_protected" : "save_failed"}`);
+  await audit(ctx, slugPatch ? "organization.subdomain_changed" : "organization.updated", "organizations", id, id,
+    slugPatch ? { from: org!.slug, to: slugPatch } : { portal_enabled: patch.portal_enabled });
   revalidatePath(`/admin/organizations/${id}`);
   redirect(`/admin/organizations/${id}?ok=saved`);
 }
@@ -189,8 +218,9 @@ export async function deleteOrganization(formData: FormData) {
   const admin = createAdminClient();
   const id = String(formData.get("id"));
   if (formData.get("confirm") !== "on") redirect(`/admin/organizations/${id}?e=confirm`);
-  const { data: org } = await admin.from("organizations").select("name, status").eq("id", id).maybeSingle();
+  const { data: org } = await admin.from("organizations").select("name, status, is_demo").eq("id", id).maybeSingle();
   if (!org) redirect("/admin/organizations");
+  if (org!.is_demo) redirect(`/admin/organizations/${id}?e=demo_protected`);
   if (org!.status !== "archived") redirect(`/admin/organizations/${id}?e=archive_first`);
   await audit(ctx, "organization.deleted", "organizations", id, null, { name: org!.name });
   await admin.from("organizations").delete().eq("id", id);

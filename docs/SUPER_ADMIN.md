@@ -249,3 +249,18 @@ and are written to the audit log with previous/new values, reason and computed d
   Deployment Protection may remain enabled. Authenticated browser click-through therefore
   still requires the owner to sign in after deployment; database, API-contract, unit and
   production-build verification are automated in the repository.
+
+## School portals, classes, imports & DEMO (added 2026-11-04)
+
+See `docs/SCHOOL_PORTALS_AND_IMPORTS.md` for the full guide. In short:
+**/admin/classes** manages classes across schools; organization subdomains
+(`organizations.slug`, reserved-label checked, changes audit-logged) drive
+server-side tenant resolution in middleware/`getSessionContext`; the
+advanced student-import wizard (CSV/XLS/XLSX/PDF/DOC/DOCX + browser OCR)
+runs through `/api/students/import` with `import_batches` logging and
+per-school SHA-256 idempotency; **/admin/demo** controls the protected
+EVALORA DEMO ACADEMY (one-time DEMO logins, activity reset scoped to the
+demo org) and the source-question migration ledger. Production school
+subdomains still require the owner's custom root domain + wildcard on
+Vercel and `NEXT_PUBLIC_ROOT_DOMAIN` — only `*.vercel.app` is attached
+today, so portals currently live at `/portal/<slug>`.

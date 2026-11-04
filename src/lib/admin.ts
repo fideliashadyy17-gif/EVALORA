@@ -1,5 +1,6 @@
 import { requireSuperAdmin, type SessionContext } from "./auth";
 import { createAdminClient } from "./supabase/server";
+import { validateSubdomain } from "./tenant";
 import { slugify } from "./utils";
 
 /**
@@ -56,17 +57,22 @@ export const fday = (fd: FormData, key: string) => {
   return /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null;
 };
 
-/** Unique organization slug (name + short suffix on collision). */
-export async function uniqueOrgSlug(name: string): Promise<string> {
+/**
+ * Unique organization slug = tenant subdomain. Reserved/invalid base
+ * names fall back to "<base>-school"; collisions get a short suffix.
+ */
+export async function uniqueOrgSlug(name: string, requested?: string | null): Promise<string> {
   const admin = createAdminClient();
-  const base = slugify(name) || "organization";
+  let base = requested ? slugify(requested) : slugify(name);
+  if (!base || !validateSubdomain(base).ok) base = `${base || slugify(name) || "organization"}-school`;
+  base = base.slice(0, 63).replace(/-+$/g, "");
   let slug = base;
   for (let i = 0; i < 6; i++) {
     const { data } = await admin.from("organizations").select("id").eq("slug", slug).maybeSingle();
     if (!data) return slug;
-    slug = `${base}-${Math.random().toString(36).slice(2, 6)}`;
+    slug = `${base.slice(0, 55)}-${Math.random().toString(36).slice(2, 6)}`;
   }
-  return `${base}-${Date.now().toString(36)}`;
+  return `${base.slice(0, 50)}-${Date.now().toString(36)}`;
 }
 
 export interface PaymentConfig {

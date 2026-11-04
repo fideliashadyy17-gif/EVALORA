@@ -21,7 +21,7 @@ export default async function AdminStudents({
   const head = { count: "exact" as const, head: true };
   const [{ data: orgs }, schoolCount, studentTotal, classTotal] = await Promise.all([
     admin.from("organizations").select("id, name, type").order("name").limit(500),
-    admin.from("organizations").select("id", head).eq("type", "school").then((r) => r.count ?? 0),
+    admin.from("organizations").select("id", head).eq("type", "school").eq("is_demo", false).then((r) => r.count ?? 0),
     admin.from("students").select("id", head).eq("status", "active").then((r) => r.count ?? 0),
     admin.from("classes").select("id", head).then((r) => r.count ?? 0),
   ]);

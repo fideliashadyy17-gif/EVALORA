@@ -1,7 +1,8 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 import type { OrgRole } from "./brand";
+import { getTenantSlugFromHost } from "./tenant";
 
 /** Cookie that puts the Super Admin inside a chosen organization workspace. */
 export const ADMIN_ORG_COOKIE = "evalora_admin_org";
@@ -19,7 +20,7 @@ export interface SessionContext {
   memberships: {
     organization_id: string;
     role: OrgRole;
-    organizations: { id: string; name: string; slug: string; status: string } | null;
+    organizations: { id: string; name: string; slug: string; status: string; is_demo?: boolean } | null;
   }[];
   /**
    * Set when the Super Admin is operating inside an organization via
@@ -29,6 +30,15 @@ export interface SessionContext {
    * are written to the audit log.
    */
   adminOrgContext?: { id: string; name: string } | null;
+  /**
+   * Tenant (school subdomain) resolution. `tenantSlug` comes from the
+   * request hostname (set by middleware, re-derived from Host here).
+   * It only *selects* among the user's verified memberships: when the
+   * user is not a member of that tenant, `tenantDenied` is true and
+   * activeOrg() returns null — another school's data can never load.
+   */
+  tenantSlug?: string | null;
+  tenantDenied?: boolean;
 }
 
 /** Full session context or null. Server components / actions only. */
@@ -48,12 +58,52 @@ export async function getSessionContext(): Promise<SessionContext | null> {
 
   const { data: memberships } = await supabase
     .from("organization_members")
-    .select("organization_id, role, organizations(id, name, slug, status)")
+    .select("organization_id, role, organizations(id, name, slug, status, is_demo)")
     .eq("user_id", user.id)
     .eq("status", "active");
 
   const list = (memberships ?? []) as unknown as SessionContext["memberships"];
   let adminOrgContext: SessionContext["adminOrgContext"] = null;
+  let tenantSlug: string | null = null;
+  let tenantDenied = false;
+
+  // ── Tenant resolution from the hostname (school subdomain portals) ──
+  // The slug never grants access by itself: it must match one of the
+  // user's verified organization memberships. Super Admins may enter
+  // any tenant in audited administrative mode.
+  try {
+    const hdrs = await headers();
+    tenantSlug = hdrs.get("x-evalora-tenant-slug") || getTenantSlugFromHost(hdrs.get("host"));
+  } catch {
+    tenantSlug = null;
+  }
+  if (tenantSlug) {
+    const idx = list.findIndex((m) => m.organizations?.slug === tenantSlug);
+    if (idx > 0) {
+      const [m] = list.splice(idx, 1);
+      list.unshift(m);
+    } else if (idx === -1) {
+      if (profile.platform_role === "super_admin") {
+        const { data: org } = await supabase
+          .from("organizations")
+          .select("id, name, slug, status")
+          .eq("slug", tenantSlug)
+          .maybeSingle();
+        if (org) {
+          list.unshift({
+            organization_id: org.id,
+            role: "owner",
+            organizations: org,
+          } as SessionContext["memberships"][number]);
+          adminOrgContext = { id: org.id, name: org.name };
+        } else {
+          tenantDenied = true;
+        }
+      } else {
+        tenantDenied = true;
+      }
+    }
+  }
 
   // Administrative workspace mode (Super Admin only). The cookie alone
   // grants nothing: the profile must be an active super_admin, and the
@@ -89,6 +139,8 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     profile,
     memberships: list,
     adminOrgContext,
+    tenantSlug,
+    tenantDenied,
   };
 }
 
@@ -107,6 +159,8 @@ export async function requireSuperAdmin() {
 
 /** The user's active organization (first membership). Multi-org switcher-ready. */
 export function activeOrg(ctx: SessionContext) {
+  // Wrong-tenant hostname: never fall back to another school's workspace.
+  if (ctx.tenantDenied) return null;
   const m = ctx.memberships[0];
   if (!m?.organizations) return null;
   return { ...m.organizations, role: m.role };

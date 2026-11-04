@@ -34,12 +34,17 @@
     "livekit-client": "^2.23.0",
     "livekit-server-sdk": "^2.19.2",
     "lucide-react": "^1.68.0",
+    "mammoth": "^1.13.0",
     "mathlive": "^0.104.2",
     "next": "15.5.29",
+    "pdfjs-dist": "^6.5.438",
     "qrcode": "^1.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tailwind-merge": "^3.7.0",
+    "tesseract.js": "^7.0.0",
+    "word-extractor": "^1.0.4",
+    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {

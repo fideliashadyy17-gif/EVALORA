@@ -1,5 +1,7 @@
 import { Button, Card, EmptyState, Field, Input, Select, Textarea } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
+import { StudentImportWizard } from "@/components/StudentImportWizard";
+import { identityKey } from "@/lib/studentImport";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate, toCsv } from "@/lib/utils";
 import Link from "next/link";
@@ -36,6 +38,7 @@ const MESSAGES: Record<string, string> = {
   status: "Invalid status.",
   confirm: "Tick the confirmation box to proceed.",
   class: "Choose a class first.",
+  class_org: "That class does not belong to this organization.",
   none_selected: "Select at least one student for the bulk operation.",
   empty_csv: "No CSV rows found.",
   too_many: "Import is limited to 1,000 rows per file.",
@@ -58,9 +61,21 @@ export async function StudentsPanel({
 
   const { data: classes } = await admin
     .from("classes")
-    .select("id, name, education_levels(name)")
+    .select("id, name, code, academic_year_id, status, education_levels(name), academic_years(name)")
     .eq("organization_id", organizationId)
     .order("name");
+  const activeClasses = (classes ?? []).filter((c) => c.status === "active");
+  const classLabel = (c: NonNullable<typeof classes>[number]) => {
+    const yr = (c.academic_years as unknown as { name: string } | null)?.name;
+    return `${c.name}${c.code ? ` (${c.code})` : ""}${yr ? ` · ${yr}` : ""}`;
+  };
+  const { data: years } = await admin.from("academic_years").select("id, name, is_current").eq("organization_id", organizationId).order("created_at", { ascending: false });
+  const { data: identityRows } = await admin.from("students").select("full_name, email, student_ref, date_of_birth").eq("organization_id", organizationId).limit(20000);
+  const wizardExisting = {
+    refs: (identityRows ?? []).map((x) => x.student_ref?.trim().toLowerCase()).filter(Boolean) as string[],
+    emails: (identityRows ?? []).map((x) => x.email?.trim().toLowerCase()).filter(Boolean) as string[],
+    nameDob: (identityRows ?? []).map((x) => identityKey(x.full_name, x.date_of_birth)),
+  };
 
   let query = admin
     .from("students")
@@ -144,8 +159,8 @@ export async function StudentsPanel({
       <Field label={student ? "Also enroll in class" : "Enroll in class"}>
         <Select name="class_id" defaultValue="">
           <option value="">— No class —</option>
-          {(classes ?? []).map((c) => (
-            <option key={c.id} value={c.id}>{c.name}</option>
+          {activeClasses.map((c) => (
+            <option key={c.id} value={c.id}>{classLabel(c)}</option>
           ))}
         </Select>
       </Field>
@@ -158,9 +173,13 @@ export async function StudentsPanel({
       <Flash />
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-5">
+      <Card className="p-5">
           <h3 className="font-display text-base font-semibold text-evergreen-950">Register a student</h3>
+          {activeClasses.length === 0 && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+              This school has no active classes yet. <Link className="font-semibold underline" href={`/admin/classes?org=${organizationId}`}>Create a class</Link> so students can be enrolled during registration.
+            </p>
+          )}
           <form action={saveStudent} className="mt-3 space-y-3">
             <input type="hidden" name="organization_id" value={organizationId} />
             <input type="hidden" name="back" value={back} />
@@ -168,9 +187,21 @@ export async function StudentsPanel({
             <Button type="submit" variant="gold">Register student</Button>
           </form>
         </Card>
-        <Card className="p-5">
-          <h3 className="font-display text-base font-semibold text-evergreen-950">Import students (CSV)</h3>
+
+      <Card className="mt-4 p-5">
+          <h3 className="font-display text-base font-semibold text-evergreen-950">Import students — CSV, Excel, PDF or Word</h3>
+          <p className="mt-1 text-sm text-ink-soft">Advanced wizard: extraction, column mapping, editable validated preview, explicit confirmation and a downloadable report. Classes and duplicates are checked against this school only.</p>
           <div className="mt-3">
+            <StudentImportWizard
+              organizationId={organizationId}
+              classes={activeClasses.map((c) => ({ id: c.id, name: c.name, code: c.code, academic_year_id: c.academic_year_id, status: c.status }))}
+              years={(years ?? []).map((y) => ({ id: y.id, name: y.name, is_current: y.is_current }))}
+              existing={wizardExisting}
+            />
+          </div>
+          <details className="mt-5 border-t border-evergreen-900/10 pt-3">
+            <summary className="cursor-pointer text-sm font-medium text-evergreen-900">Quick CSV paste (simple imports)</summary>
+            <div className="mt-3">
             <CsvImport
               action={importStudents}
               label="Student roster CSV"
@@ -181,15 +212,15 @@ export async function StudentsPanel({
               <Field label="Enroll imported students into class (optional)">
                 <Select name="class_id" defaultValue="">
                   <option value="">— No class —</option>
-                  {(classes ?? []).map((c) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                  {activeClasses.map((c) => (
+                    <option key={c.id} value={c.id}>{classLabel(c)}</option>
                   ))}
                 </Select>
               </Field>
             </CsvImport>
-          </div>
+            </div>
+          </details>
         </Card>
-      </div>
 
       {editing && (
         <Card className="mt-6 p-5 ring-2 ring-gold-500/60">
