@@ -1,4 +1,7 @@
-import { Badge, Button, Card, Input, PageTitle } from "@/components/ui";
+import { Badge, Button, Card, Input, PageTitle, Select } from "@/components/ui";
+import { ExportButton } from "@/components/ExportTools";
+import { toCsv } from "@/lib/utils";
+import { enterOrgWorkspace } from "../actions/orgs";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
@@ -14,7 +17,7 @@ const tone = (s: string) =>
 export default async function AdminQuestions({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; saved?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -27,7 +30,18 @@ export default async function AdminQuestions({
     .limit(100);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
-  const { data: questions } = await query;
+  if (sp.org) query = query.eq("organization_id", sp.org);
+  const [{ data: questions }, { data: orgList }] = await Promise.all([
+    query,
+    admin.from("organizations").select("id, name").order("name").limit(500),
+  ]);
+  const exportCsv = toCsv([
+    ["Prompt", "Type", "Difficulty", "Points", "Status", "Organization", "Topic", "Tags"],
+    ...(questions ?? []).map((q) => [
+      q.prompt, q.type, q.difficulty, Number(q.points), q.status,
+      (q.organizations as { name?: string } | null)?.name ?? "", q.topic ?? "", (q.tags as string[] | null)?.join("; ") ?? "",
+    ]),
+  ]);
   const { count: pendingCount } = await admin
     .from("questions")
     .select("id", { count: "exact", head: true })
@@ -37,7 +51,21 @@ export default async function AdminQuestions({
     <>
       <PageTitle
         title="Question bank (platform-wide)"
-        subtitle={`Every organization's questions. ${pendingCount ?? 0} currently pending review. Status changes here override the owner's workflow — use for moderation.`}
+        subtitle={`Author, import and moderate questions in any workspace. ${pendingCount ?? 0} currently pending review.`}
+        action={
+          <div className="flex flex-wrap items-end gap-2">
+            <form action={enterOrgWorkspace} className="flex items-end gap-2">
+              <input type="hidden" name="next" value="/dashboard/questions/new" />
+              <Select name="organization_id" className="w-52" aria-label="Organization for new question">
+                {(orgList ?? []).map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </Select>
+              <Button type="submit" variant="gold">+ Add question</Button>
+            </form>
+            <ExportButton filename="questions.csv" csv={exportCsv} label="Export listed" />
+          </div>
+        }
       />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
       {sp.e === "confirm" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Tick the confirmation box before deleting.</p>}
@@ -50,6 +78,12 @@ export default async function AdminQuestions({
           <option value="pending_review">Pending review</option>
           <option value="draft">Draft</option>
           <option value="archived">Archived</option>
+        </select>
+        <select name="org" defaultValue={sp.org ?? ""} className="rounded-lg border border-evergreen-900/55 bg-white px-3 py-2.5 text-sm">
+          <option value="">All organizations</option>
+          {(orgList ?? []).map((o) => (
+            <option key={o.id} value={o.id}>{o.name}</option>
+          ))}
         </select>
         <Button type="submit" variant="outline">Filter</Button>
       </form>
@@ -74,6 +108,11 @@ export default async function AdminQuestions({
                 <td className="max-w-xs px-4 py-2.5">
                   <span className="line-clamp-2 font-medium" title={q.prompt}>{q.prompt}</span>
                   {q.topic && <span className="block text-xs text-ink-soft">{q.topic}</span>}
+                  <form action={enterOrgWorkspace} className="mt-1">
+                    <input type="hidden" name="organization_id" value={q.organization_id} />
+                    <input type="hidden" name="next" value={`/dashboard/questions/${q.id}`} />
+                    <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Open / edit / duplicate →</button>
+                  </form>
                 </td>
                 <td className="px-4 py-2.5 text-ink-soft">{(q.organizations as { name?: string } | null)?.name ?? "—"}</td>
                 <td className="px-4 py-2.5 text-ink-soft">{String(q.type).replace(/_/g, " ")}</td>

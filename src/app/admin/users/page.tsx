@@ -1,9 +1,11 @@
-import { Badge, Card, Input, PageTitle, Button } from "@/components/ui";
+import { Badge, Button, ButtonLink, Input, PageTitle, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { setUserStatus } from "../actions";
+import { Notice, StatusBadge, Table } from "../ui";
 
 export const metadata: Metadata = { title: "Users" };
 export const dynamic = "force-dynamic";
@@ -11,71 +13,105 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsers({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; role?: string; status?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
   const admin = createAdminClient();
 
-  let query = admin.from("profiles").select("*, organization_members(organization_id, role, organizations(name))").order("created_at", { ascending: false }).limit(100);
+  let query = admin
+    .from("profiles")
+    .select("*, organization_members(role, organizations(name))")
+    .order("created_at", { ascending: false })
+    .limit(200);
   if (sp.q) query = query.or(`email.ilike.%${sp.q}%,full_name.ilike.%${sp.q}%`);
+  if (sp.role === "super_admin") query = query.eq("platform_role", "super_admin");
+  if (sp.role === "user") query = query.eq("platform_role", "user");
+  if (sp.status) query = query.eq("status", sp.status);
   const { data: users } = await query;
 
   return (
     <>
-      <PageTitle title="Users" subtitle="Every registered account. Suspending blocks sign-in immediately (enforced server-side). The Primary Super Admin account is protected and can never be suspended here." />
-      {sp.e === "primary" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The Primary Super Admin account is protected — it cannot be suspended or demoted.</p>}
-      {sp.e === "self" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">You cannot suspend your own account.</p>}
-      {sp.e === "admin" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Only the Primary Super Admin can suspend another Super Admin.</p>}
-      <form method="get" className="mb-4 flex gap-2">
-        <Input name="q" defaultValue={sp.q} placeholder="Search name or email…" className="max-w-sm" />
-        <Button type="submit" variant="outline">Search</Button>
+      <PageTitle
+        title="Users"
+        subtitle="Every platform account. Create users, manage memberships and roles, reset access and administer platform administrators."
+        action={<ButtonLink href="/admin/users/new" variant="gold">+ Create user</ButtonLink>}
+      />
+      <Notice
+        ok={sp.ok}
+        e={sp.e}
+        messages={{
+          user_deleted: "User account deleted.",
+          primary: "The Primary Super Admin account is protected — it cannot be suspended or demoted.",
+          self: "You cannot suspend your own account.",
+          admin: "Only the Primary Super Admin can suspend another Super Admin.",
+          primary_only: "Only the Primary Super Admin can manage administrator privileges.",
+        }}
+      />
+
+      <form method="get" className="mb-5 flex flex-wrap items-end gap-2">
+        <div className="min-w-[220px] flex-1">
+          <Input name="q" defaultValue={sp.q} placeholder="Search name or email…" aria-label="Search users" />
+        </div>
+        <Select name="role" defaultValue={sp.role ?? ""} className="w-48" aria-label="Filter by role">
+          <option value="">All roles</option>
+          <option value="super_admin">Administrators</option>
+          <option value="user">Standard users</option>
+        </Select>
+        <Select name="status" defaultValue={sp.status ?? ""} className="w-40" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+        </Select>
+        <Button type="submit" variant="outline">Filter</Button>
       </form>
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">User</th>
-              <th className="px-4 py-3 font-semibold">Platform role</th>
-              <th className="px-4 py-3 font-semibold">Organizations</th>
-              <th className="px-4 py-3 font-semibold">Joined</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {(users ?? []).map((u) => (
-              <tr key={u.id} className="border-b border-evergreen-900/5">
-                <td className="px-4 py-2.5">
-                  <span className="font-medium">{u.full_name || "—"}</span>
-                  <span className="block text-xs text-ink-soft">{u.email}</span>
-                </td>
-                <td className="px-4 py-2.5">
-                  {u.platform_role === "super_admin" ? <Badge tone="gold">{u.is_primary ? "Primary Super Admin" : "Super Admin"}</Badge> : <Badge tone="gray">User</Badge>}
-                </td>
-                <td className="px-4 py-2.5 text-ink-soft">
-                  {((u.organization_members as { role: string; organizations: { name: string } | null }[]) ?? [])
-                    .map((m) => `${m.organizations?.name ?? "Org"} (${m.role})`)
-                    .join(", ") || "—"}
-                </td>
-                <td className="px-4 py-2.5 text-ink-soft">{fmtDate(u.created_at)}</td>
-                <td className="px-4 py-2.5"><Badge tone={u.status === "active" ? "green" : "red"}>{u.status}</Badge></td>
-                <td className="px-4 py-2.5">
-                  {u.platform_role !== "super_admin" && (
+
+      {(users ?? []).length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">
+          No users match. <Link href="/admin/users/new" className="font-semibold text-evergreen-700 underline underline-offset-2">Create a user</Link>.
+        </p>
+      ) : (
+        <Table head={["User", "Platform role", "Organizations", "Joined", "Status", "Actions"]}>
+          {(users ?? []).map((u) => (
+            <tr key={u.id}>
+              <td>
+                <Link href={`/admin/users/${u.id}`} className="font-medium text-evergreen-900 hover:underline">
+                  {u.full_name || "—"}
+                </Link>
+                <span className="block text-xs text-ink-soft">{u.email}</span>
+              </td>
+              <td>
+                {u.platform_role === "super_admin" ? (
+                  <Badge tone="gold">{u.is_primary ? "Primary Super Admin" : "Super Admin"}</Badge>
+                ) : (
+                  <Badge tone="gray">User</Badge>
+                )}
+              </td>
+              <td className="max-w-[260px] truncate text-ink-soft">
+                {((u.organization_members as { role: string; organizations: { name: string } | null }[]) ?? [])
+                  .map((m) => `${m.organizations?.name ?? "Org"} (${m.role})`)
+                  .join(", ") || "—"}
+              </td>
+              <td className="text-ink-soft">{fmtDate(u.created_at)}</td>
+              <td><StatusBadge status={u.status} /></td>
+              <td>
+                <div className="flex gap-3">
+                  <Link href={`/admin/users/${u.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Manage</Link>
+                  {!u.is_primary && (
                     <form action={setUserStatus}>
                       <input type="hidden" name="id" value={u.id} />
                       <input type="hidden" name="status" value={u.status === "active" ? "suspended" : "active"} />
-                      <button className={`text-sm font-medium underline-offset-2 hover:underline ${u.status === "active" ? "text-red-700" : "text-evergreen-700"}`}>
+                      <button className={`font-medium underline-offset-2 hover:underline ${u.status === "active" ? "text-red-700" : "text-evergreen-700"}`}>
                         {u.status === "active" ? "Suspend" : "Reactivate"}
                       </button>
                     </form>
                   )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </>
   );
 }

@@ -39,7 +39,7 @@ export default async function TeamPage({
     .eq("organization_id", org.id)
     .order("created_at", { ascending: false });
 
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (

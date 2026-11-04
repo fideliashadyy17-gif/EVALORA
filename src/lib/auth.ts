@@ -1,6 +1,10 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
 import type { OrgRole } from "./brand";
+
+/** Cookie that puts the Super Admin inside a chosen organization workspace. */
+export const ADMIN_ORG_COOKIE = "evalora_admin_org";
 
 export interface SessionContext {
   user: { id: string; email: string };
@@ -17,6 +21,14 @@ export interface SessionContext {
     role: OrgRole;
     organizations: { id: string; name: string; slug: string; status: string } | null;
   }[];
+  /**
+   * Set when the Super Admin is operating inside an organization via
+   * "Open workspace" (administrative access mode). The synthetic owner
+   * membership below makes activeOrg() — and therefore the whole
+   * tenant dashboard — operate on that organization. Entry and exit
+   * are written to the audit log.
+   */
+  adminOrgContext?: { id: string; name: string } | null;
 }
 
 /** Full session context or null. Server components / actions only. */
@@ -40,10 +52,43 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     .eq("user_id", user.id)
     .eq("status", "active");
 
+  const list = (memberships ?? []) as unknown as SessionContext["memberships"];
+  let adminOrgContext: SessionContext["adminOrgContext"] = null;
+
+  // Administrative workspace mode (Super Admin only). The cookie alone
+  // grants nothing: the profile must be an active super_admin, and the
+  // organization must exist (readable via the super-admin RLS path).
+  if (profile.platform_role === "super_admin") {
+    const cookieStore = await cookies();
+    const targetOrgId = cookieStore.get(ADMIN_ORG_COOKIE)?.value;
+    const own = targetOrgId ? list.findIndex((m) => m.organization_id === targetOrgId) : -1;
+    if (own > 0) {
+      // Already a real member — just make it the active workspace.
+      const [m] = list.splice(own, 1);
+      list.unshift(m);
+      adminOrgContext = { id: m.organization_id, name: m.organizations?.name ?? "Organization" };
+    } else if (targetOrgId && own === -1) {
+      const { data: org } = await supabase
+        .from("organizations")
+        .select("id, name, slug, status")
+        .eq("id", targetOrgId)
+        .maybeSingle();
+      if (org) {
+        list.unshift({
+          organization_id: org.id,
+          role: "owner",
+          organizations: org,
+        } as SessionContext["memberships"][number]);
+        adminOrgContext = { id: org.id, name: org.name };
+      }
+    }
+  }
+
   return {
     user: { id: user.id, email: user.email ?? profile.email },
     profile,
-    memberships: (memberships ?? []) as unknown as SessionContext["memberships"],
+    memberships: list,
+    adminOrgContext,
   };
 }
 

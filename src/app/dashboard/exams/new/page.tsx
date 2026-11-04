@@ -18,7 +18,7 @@ export default async function NewExamPage() {
     .eq("organization_id", org.id)
     .eq("status", "published")
     .order("title");
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
 
   return (
     <>

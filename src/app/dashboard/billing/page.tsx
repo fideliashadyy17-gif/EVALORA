@@ -29,7 +29,7 @@ export default async function BillingPage({
     supabase.from("plans").select("*").eq("is_active", true).order("sort"),
     supabase.from("payment_requests").select("*, plans(name)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("platform_settings").select("value").eq("key", "payment_instructions").maybeSingle(),
-    getEntitlement(supabase, org.id),
+    getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" }),
     Promise.all([
       supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
       supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),

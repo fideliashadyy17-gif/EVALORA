@@ -15,7 +15,7 @@ export async function createExam(formData: FormData) {
   if (!(await isFeatureEnabled("examinations"))) redirect("/dashboard/exams?e=module");
 
   const supabase = await createClient();
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
   const { count } = await supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
   if (!withinLimit(ent.limits.max_exams, count ?? 0))
     redirect("/dashboard/exams?e=limit");

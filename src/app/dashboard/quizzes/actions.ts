@@ -30,7 +30,7 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   const supabase = await createClient();
 
   if (!q.id) {
-    const ent = await getEntitlement(supabase, org.id);
+    const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
     const { count } = await supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     if (!withinLimit(ent.limits.max_quizzes, count ?? 0))
       return { error: `Your ${ent.planName} plan allows ${ent.limits.max_quizzes} quizzes. Upgrade in Billing.` };
@@ -142,7 +142,7 @@ export async function startSession(formData: FormData) {
   const { count: qCount } = await supabase.from("quiz_questions").select("id", { count: "exact", head: true }).eq("quiz_id", quizId);
   if (!qCount) redirect(`/dashboard/quizzes/${quizId}?e=noquestions`);
 
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
   const maxP = ent.limits.max_participants_per_session;
 
   let session: { id: string } | null = null;

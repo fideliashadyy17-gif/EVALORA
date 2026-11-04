@@ -132,14 +132,15 @@ export async function setOrgStatus(formData: FormData) {
   await requireSuperAdmin();
   const admin = createAdminClient();
   const id = String(formData.get("id"));
-  const status = String(formData.get("status")) === "suspended" ? "suspended" : "active";
+  const rawStatus = String(formData.get("status"));
+  const status = rawStatus === "suspended" ? "suspended" : rawStatus === "archived" ? "archived" : "active";
   await admin.from("organizations").update({ status }).eq("id", id);
   await audit(`organization.${status}`, "organizations", id, id);
   revalidatePath("/admin/organizations");
 }
 
 export async function grantSubscription(formData: FormData) {
-  await requireSuperAdmin();
+  const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const orgId = String(formData.get("organization_id"));
   const planId = String(formData.get("plan_id"));
@@ -149,6 +150,8 @@ export async function grantSubscription(formData: FormData) {
   end.setMonth(end.getMonth() + months);
   await admin.from("subscriptions").insert({
     organization_id: orgId, plan_id: planId, status: "active", billing_period: "one_time",
+    source: "admin_grant", granted_by: ctx.user.id,
+    notes: "Administrative grant — no payment recorded.",
     current_period_start: new Date().toISOString(), current_period_end: end.toISOString(),
   });
   await audit("subscription.granted", "subscriptions", orgId, orgId, { months });
@@ -327,4 +330,42 @@ export async function saveFeatures(formData: FormData) {
   await audit("features.updated", "platform_settings", "features", null, value as Record<string, unknown>);
   revalidatePath("/admin/modules");
   redirect("/admin/modules?saved=1");
+}
+
+/* ─── Targeted notifications (organization admins / one user) ─────── */
+export async function sendTargetedNotification(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 160);
+  const body = String(formData.get("body") ?? "").trim().slice(0, 1000) || null;
+  const link = String(formData.get("link") ?? "/dashboard").trim() || "/dashboard";
+  const audience = String(formData.get("audience") ?? "org");
+  if (!title) redirect("/admin/notifications?e=title");
+
+  let userIds: string[] = [];
+  let orgId: string | null = null;
+  if (audience === "org") {
+    orgId = String(formData.get("organization_id") ?? "");
+    const { data: members } = await admin
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", orgId)
+      .eq("status", "active");
+    userIds = [...new Set((members ?? []).map((m) => m.user_id))];
+  } else {
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const { data: prof } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+    if (!prof) redirect("/admin/notifications?e=user");
+    userIds = [prof!.id];
+  }
+  if (userIds.length === 0) redirect("/admin/notifications?e=empty");
+
+  await admin.from("notifications").insert(
+    userIds.map((user_id) => ({ user_id, type: "system", title, body, link })),
+  );
+  await audit("notification.targeted_sent", "notifications", orgId ?? userIds[0], orgId, {
+    recipients: userIds.length, title, audience,
+  });
+  void ctx;
+  redirect(`/admin/notifications?sent=${userIds.length}`);
 }

@@ -34,6 +34,30 @@ export const ORG_ROLES = [
   { value: "participant", label: "Participant" },
   { value: "candidate", label: "Examination Candidate" },
   { value: "parent", label: "Parent / Guardian" },
+  { value: "student", label: "Student" },
+] as const;
+
+export const ORG_TYPES = [
+  { value: "school", label: "School" },
+  { value: "university", label: "University" },
+  { value: "exam_board", label: "Examination center / board" },
+  { value: "training_center", label: "Training center" },
+  { value: "educational_institution", label: "Educational institution" },
+  { value: "independent", label: "Independent organization" },
+  { value: "other", label: "Other" },
+] as const;
+
+export const COMPETITION_FORMATS = [
+  { value: "live_synchronous", label: "Live synchronous competition" },
+  { value: "scheduled_individual", label: "Scheduled individual competition" },
+  { value: "online_examination", label: "Online examination competition" },
+  { value: "school_vs_school", label: "School-versus-school competition" },
+  { value: "individual_ranking", label: "Individual ranking competition" },
+  { value: "team", label: "Team competition" },
+] as const;
+
+export const COMPETITION_STATUSES = [
+  "draft", "published", "scheduled", "live", "paused", "ended", "cancelled", "archived",
 ] as const;
 
 export type OrgRole = (typeof ORG_ROLES)[number]["value"];

@@ -18,7 +18,7 @@ export async function inviteMember(formData: FormData) {
     redirect("/dashboard/team?e=invalid");
 
   const supabase = await createClient();
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
   const { count } = await supabase
     .from("organization_members")
     .select("id", { count: "exact", head: true })

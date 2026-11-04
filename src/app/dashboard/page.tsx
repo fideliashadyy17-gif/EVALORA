@@ -26,7 +26,7 @@ export default async function DashboardPage() {
       supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
     ]);
 
-  const entitlement = await getEntitlement(supabase, org.id);
+  const entitlement = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
 
   return (
     <>

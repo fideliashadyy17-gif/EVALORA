@@ -59,10 +59,15 @@ export async function POST(request: Request) {
     canPublish = true;
 
     // Proctoring is a Premium entitlement — enforce server-side.
-    const supabase = await createClient();
-    const ent = await getEntitlement(admin, exam.organization_id).catch(async () =>
-      getEntitlement(supabase, exam.organization_id),
-    );
+    // Platform-owned organizations (operated by the Super Admin) are
+    // covered by the platform-owner bypass instead of a paid plan.
+    const { data: orgRow } = await admin
+      .from("organizations")
+      .select("settings")
+      .eq("id", exam.organization_id)
+      .maybeSingle();
+    const platformOwned = Boolean((orgRow?.settings as Record<string, unknown> | null)?.platform_owned);
+    const ent = await getEntitlement(admin, exam.organization_id, { ownerBypass: platformOwned });
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   } else {
