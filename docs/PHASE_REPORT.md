@@ -74,6 +74,21 @@ Vercel GitHub App for `fideliashadyy17-gif`) so merges to `main` auto-deploy —
 the API-created deployment works, but Git integration needs repo admin access
 your Vercel GitHub identity didn't have.
 
+### Deployment verification (final, 4 Nov 2026)
+- Deployment `dpl_AsBF1i7sV6MhRLSEsa6qMvsQfMY3` from sha `0655024`:
+  **READY / PROMOTED** on Vercel (verified via API). Aliases:
+  `evalora-starboyboy2017-cells-projects.vercel.app` (canonical),
+  `evalora-six.vercel.app`, branch alias.
+- All 8 env vars present in build + runtime, incl. `NEXT_PUBLIC_APP_URL`
+  (added after the first deployment, so a redeploy was performed).
+- Supabase Auth verified: site URL = production domain; redirect allow-list
+  covers production, `evalora-six.vercel.app`, preview wildcards, localhost.
+- Public page rendering could not be verified from the build environment
+  because of the Vercel SSO wall above; local production build passes
+  (34/34 pages) and scoring-engine unit tests pass. Verify in a browser
+  after disabling Deployment Protection, then run the acceptance script
+  in `TESTING.md`.
+
 ## Known limitations / next steps
 1. Email: Supabase built-in SMTP is heavily rate-limited — add custom SMTP.
 2. Recording egress: configure S3 target + retention before enabling.
