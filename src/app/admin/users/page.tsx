@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsers({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string }>;
+  searchParams: Promise<{ q?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -23,7 +23,10 @@ export default async function AdminUsers({
 
   return (
     <>
-      <PageTitle title="Users" subtitle="Every registered account. Suspending blocks sign-in immediately (enforced server-side)." />
+      <PageTitle title="Users" subtitle="Every registered account. Suspending blocks sign-in immediately (enforced server-side). The Primary Super Admin account is protected and can never be suspended here." />
+      {sp.e === "primary" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The Primary Super Admin account is protected — it cannot be suspended or demoted.</p>}
+      {sp.e === "self" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">You cannot suspend your own account.</p>}
+      {sp.e === "admin" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Only the Primary Super Admin can suspend another Super Admin.</p>}
       <form method="get" className="mb-4 flex gap-2">
         <Input name="q" defaultValue={sp.q} placeholder="Search name or email…" className="max-w-sm" />
         <Button type="submit" variant="outline">Search</Button>
@@ -48,7 +51,7 @@ export default async function AdminUsers({
                   <span className="block text-xs text-ink-soft">{u.email}</span>
                 </td>
                 <td className="px-4 py-2.5">
-                  {u.platform_role === "super_admin" ? <Badge tone="gold">Super Admin</Badge> : <Badge tone="gray">User</Badge>}
+                  {u.platform_role === "super_admin" ? <Badge tone="gold">{u.is_primary ? "Primary Super Admin" : "Super Admin"}</Badge> : <Badge tone="gray">User</Badge>}
                 </td>
                 <td className="px-4 py-2.5 text-ink-soft">
                   {((u.organization_members as { role: string; organizations: { name: string } | null }[]) ?? [])

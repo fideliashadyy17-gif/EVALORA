@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { isFeatureEnabled } from "@/lib/platform";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -11,6 +12,7 @@ export async function createExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!(await isFeatureEnabled("examinations"))) redirect("/dashboard/exams?e=module");
 
   const supabase = await createClient();
   const ent = await getEntitlement(supabase, org.id);

@@ -34,7 +34,8 @@ export default async function AdminSettings({
                 <Button type="submit" variant="gold">Save</Button>
               </div>
               <p className="mt-1 text-xs text-ink-soft">
-                {s.key === "super_admin" && "The account with this email becomes Super Admin when it registers. Changing it does not demote existing admins."}
+                {s.key === "super_admin" && "Identifies the Primary Super Admin (platform owner) account. Informational only: admin rights are granted explicitly at the database level and are never assigned by registration."}
+                {s.key === "features" && "Platform module switches — managed more comfortably in Modules & Features; this is the raw stored value."}
                 {s.key === "payment_instructions" && "Shown on every organization's Billing page. Structure: { methods: [{name, details}], note }."}
                 {s.key === "trial_days" && "Default Premium trial length (days) granted to newly created organizations."}
                 {s.key === "support_email" && "Public support address."}

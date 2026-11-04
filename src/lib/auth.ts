@@ -9,6 +9,7 @@ export interface SessionContext {
     email: string;
     full_name: string | null;
     platform_role: string;
+    is_primary?: boolean;
     status: string;
   };
   memberships: {

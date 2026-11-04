@@ -37,6 +37,11 @@ export default async function ExamsPage({
           Your current plan has reached its examination limit. See <Link className="font-semibold underline" href="/dashboard/billing">Billing</Link> to upgrade.
         </p>
       )}
+      {sp.e === "module" && (
+        <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          The Examinations module is temporarily disabled platform-wide by the administrator. Existing examinations are unaffected.
+        </p>
+      )}
       {sp.e === "proctoring" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Video proctoring is a Premium feature. Start a trial or upgrade in <Link className="font-semibold underline" href="/dashboard/billing">Billing</Link>.

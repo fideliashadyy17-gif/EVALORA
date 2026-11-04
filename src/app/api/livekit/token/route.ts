@@ -1,5 +1,6 @@
 import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
 import { getEntitlement } from "@/lib/entitlements";
+import { isFeatureEnabled } from "@/lib/platform";
 import { loadAttemptContext } from "@/lib/exam";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { AccessToken } from "livekit-server-sdk";
@@ -27,6 +28,9 @@ export async function POST(request: Request) {
   const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
   if (!apiKey || !apiSecret || !serverUrl)
     return NextResponse.json({ error: "Video proctoring is not configured on this deployment." }, { status: 503 });
+
+  if (!(await isFeatureEnabled("proctoring")))
+    return NextResponse.json({ error: "Video proctoring is temporarily disabled platform-wide by the administrator." }, { status: 503 });
 
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });

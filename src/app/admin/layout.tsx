@@ -10,7 +10,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
         <Logo href="/admin" />
         <p className="mt-3 inline-flex w-fit rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-evergreen-950">
-          Super Admin
+          {ctx.profile.is_primary ? "Primary Super Admin" : "Super Admin"}
         </p>
         <div className="mt-6 flex-1">
           <AdminNav />
@@ -23,7 +23,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       <div className="min-w-0">
         <header className="sticky top-0 z-40 flex items-center justify-between border-b border-evergreen-900/15 bg-paper px-4 py-3 lg:hidden">
           <Logo href="/admin" />
-          <span className="rounded-full bg-gold-500 px-3 py-1 text-xs font-bold text-evergreen-950">SUPER ADMIN</span>
+          <span className="rounded-full bg-gold-500 px-3 py-1 text-xs font-bold text-evergreen-950">{ctx.profile.is_primary ? "PRIMARY SUPER ADMIN" : "SUPER ADMIN"}</span>
         </header>
         <div className="border-b border-evergreen-900/15 bg-paper px-4 py-3 lg:hidden">
           <AdminNav horizontal />

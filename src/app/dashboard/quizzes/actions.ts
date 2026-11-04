@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { isFeatureEnabled } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -131,6 +132,7 @@ export async function startSession(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
+  if (!(await isFeatureEnabled("live_quizzes"))) redirect("/dashboard/quizzes?e=module");
   const quizId = String(formData.get("quiz_id"));
   const mode = String(formData.get("mode") ?? "synchronized");
   const supabase = await createClient();
