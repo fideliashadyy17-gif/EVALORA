@@ -67,24 +67,17 @@ export default async function HomePage() {
     <div className="min-h-screen">
       <SiteHeader />
 
-      {/* Hero */}
-      <section className="relative overflow-hidden bg-evergreen-950 text-white">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.13]"
-          style={{
-            backgroundImage:
-              "radial-gradient(circle at 85% 15%, #c9a227 0, transparent 32%), radial-gradient(circle at 10% 90%, #14663f 0, transparent 40%)",
-          }}
-        />
-        <div className="relative mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:py-28">
+      {/* Hero — clean light surface; no gradients or imagery behind text */}
+      <section className="border-b border-evergreen-900/10 bg-paper">
+        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:py-28">
           <div className="max-w-3xl">
             <Badge tone="gold" className="mb-5">Interactive quizzes · Examinations · Online proctoring</Badge>
-            <h1 className="font-display text-4xl font-semibold leading-[1.08] sm:text-6xl">
-              Where learning is <em className="text-gold-400">assessed</em>,{" "}
-              <em className="text-gold-400">examined</em> and{" "}
-              <em className="text-gold-400">excelled</em>.
+            <h1 className="font-display text-4xl font-semibold leading-[1.08] text-evergreen-950 sm:text-6xl">
+              Where learning is <em className="text-gold-700">assessed</em>,{" "}
+              <em className="text-gold-700">examined</em> and{" "}
+              <em className="text-gold-700">excelled</em>.
             </h1>
-            <p className="mt-6 max-w-2xl text-lg text-evergreen-100/85">
+            <p className="mt-6 max-w-2xl text-lg text-ink-soft">
               {BRAND.name} unites live interactive quizzes, academic assessments,
               formal examinations and real-time video proctoring in one secure
               platform — with server-side fair timing and results you can trust.
@@ -93,14 +86,14 @@ export default async function HomePage() {
               <ButtonLink href="/register" variant="gold" className="px-6 py-3 text-base">
                 Start free — create your organization
               </ButtonLink>
-              <ButtonLink href="/join" variant="outline" className="border-white/30 bg-transparent px-6 py-3 text-base text-white hover:bg-white/10">
+              <ButtonLink href="/join" variant="outline" className="px-6 py-3 text-base">
                 Join a live quiz
               </ButtonLink>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-evergreen-100/75">
+            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-soft">
               {["Server-side fair timing", "Live leaderboards", "Human-reviewed proctoring", "No account needed to participate"].map((t) => (
                 <span key={t} className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="h-4 w-4 text-gold-400" /> {t}
+                  <CheckCircle2 className="h-4 w-4 text-evergreen-600" /> {t}
                 </span>
               ))}
             </div>
@@ -111,7 +104,7 @@ export default async function HomePage() {
       {/* Pillars */}
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
         <div className="max-w-2xl">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold-600">One platform, four engines</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-evergreen-700">One platform, four engines</p>
           <h2 className="mt-2 font-display text-3xl font-semibold text-evergreen-950 sm:text-4xl">
             Everything assessment, under one roof
           </h2>
@@ -139,7 +132,7 @@ export default async function HomePage() {
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold-600">How it works</p>
+              <p className="text-sm font-semibold uppercase tracking-[0.18em] text-evergreen-700">How it works</p>
               <h2 className="mt-2 font-display text-3xl font-semibold text-evergreen-950">
                 From question bank to published results
               </h2>
@@ -153,7 +146,7 @@ export default async function HomePage() {
               { n: 3, t: "Run it live", b: "Host synchronized rounds, watch progress, and supervise video-proctored exams in real time." },
               { n: 4, t: "Mark & publish", b: "Objective questions mark themselves; written answers go to correctors. Publish results when ready." },
             ].map((s) => (
-              <li key={s.n} className="rounded-2xl border border-evergreen-900/10 bg-cream p-6">
+              <li key={s.n} className="rounded-2xl border border-evergreen-900/15 bg-cream p-6">
                 <span className="flex h-9 w-9 items-center justify-center rounded-full bg-gold-500 font-display text-lg font-bold text-evergreen-950">{s.n}</span>
                 <h3 className="mt-3 font-display text-lg font-semibold text-evergreen-950">{s.t}</h3>
                 <p className="mt-1 text-sm text-ink-soft">{s.b}</p>
@@ -167,7 +160,7 @@ export default async function HomePage() {
       <section className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {FEATURES.map((f) => (
-            <div key={f.title} className="rounded-2xl border border-evergreen-900/10 bg-paper p-6 shadow-[var(--shadow-card)]">
+            <div key={f.title} className="rounded-2xl border border-evergreen-900/15 bg-paper p-6 shadow-[var(--shadow-card)]">
               <f.icon className="h-6 w-6 text-evergreen-700" />
               <h3 className="mt-3 font-semibold text-evergreen-950">{f.title}</h3>
               <p className="mt-1 text-sm text-ink-soft">{f.body}</p>
@@ -182,10 +175,12 @@ export default async function HomePage() {
             { icon: Trophy, title: "Competitions & training centers", body: "Championship-style rounds with real-time leaderboards on the hall screen and fair, server-kept clocks." },
             { icon: Award, title: "Universities & exam boards", body: "High-stakes examinations with candidate admission, randomized papers and supervised video proctoring." },
           ].map((u) => (
-            <div key={u.title} className="rounded-2xl bg-evergreen-900 p-7 text-white">
-              <u.icon className="h-7 w-7 text-gold-400" />
-              <h3 className="mt-3 font-display text-xl font-semibold">{u.title}</h3>
-              <p className="mt-2 text-sm text-evergreen-100/85">{u.body}</p>
+            <div key={u.title} className="rounded-2xl border border-evergreen-900/15 bg-paper p-7 shadow-[var(--shadow-card)]">
+              <div className="inline-flex rounded-xl bg-evergreen-700 p-3 text-white">
+                <u.icon className="h-6 w-6" />
+              </div>
+              <h3 className="mt-3 font-display text-xl font-semibold text-evergreen-950">{u.title}</h3>
+              <p className="mt-2 text-sm text-ink-soft">{u.body}</p>
             </div>
           ))}
         </div>
@@ -195,7 +190,7 @@ export default async function HomePage() {
       <section className="border-t border-evergreen-900/10 bg-paper">
         <div className="mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:py-24">
           <div className="text-center">
-            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold-600">Pricing</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-evergreen-700">Pricing</p>
             <h2 className="mt-2 font-display text-3xl font-semibold text-evergreen-950 sm:text-4xl">
               Start free. Grow when you do.
             </h2>
@@ -239,19 +234,19 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* CTA */}
+      {/* CTA — the single deep-green band; solid white/evergreen-100 text only */}
       <section className="bg-evergreen-950 text-white">
         <div className="mx-auto max-w-7xl px-4 py-16 text-center sm:px-6">
           <h2 className="font-display text-3xl font-semibold sm:text-4xl">
             Your next assessment is one join code away.
           </h2>
-          <p className="mx-auto mt-3 max-w-xl text-evergreen-100/80">
+          <p className="mx-auto mt-3 max-w-xl text-evergreen-100">
             Create your organization in minutes, publish your first quiz today,
             and run your first proctored examination this week.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <ButtonLink href="/register" variant="gold" className="px-6 py-3 text-base">Create free account</ButtonLink>
-            <ButtonLink href="/contact" variant="outline" className="border-white/30 bg-transparent px-6 py-3 text-base text-white hover:bg-white/10">Talk to our team</ButtonLink>
+            <ButtonLink href="/contact" variant="outline" className="border-white/50 bg-transparent px-6 py-3 text-base text-white hover:bg-white/10">Talk to our team</ButtonLink>
           </div>
         </div>
       </section>

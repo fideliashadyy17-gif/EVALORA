@@ -29,7 +29,7 @@ export function SiteHeader() {
   }, []);
 
   return (
-    <header className="sticky top-0 z-40 border-b border-evergreen-900/10 bg-cream/90 backdrop-blur">
+    <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper/95 backdrop-blur">
       <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         <Logo />
         <nav className="hidden items-center gap-1 lg:flex">
@@ -37,7 +37,7 @@ export function SiteHeader() {
             <Link
               key={n.href}
               href={n.href}
-              className="rounded-lg px-3 py-2 text-sm font-medium text-evergreen-900/80 transition hover:bg-evergreen-50 hover:text-evergreen-900"
+              className="rounded-lg px-3 py-2 text-sm font-medium text-evergreen-900 transition hover:bg-evergreen-50"
             >
               {n.label}
             </Link>
@@ -134,11 +134,11 @@ export function SiteFooter() {
         <div className="grid gap-10 md:grid-cols-[1.4fr_repeat(4,1fr)]">
           <div>
             <Logo variant="light" />
-            <p className="mt-4 max-w-xs text-sm text-evergreen-200/80">
+            <p className="mt-4 max-w-xs text-sm text-evergreen-100">
               {BRAND.tagline}. One secure platform for schools, universities,
               training centers and examination organizations.
             </p>
-            <p className="mt-4 text-sm text-evergreen-200/80">{BRAND.supportEmail}</p>
+            <p className="mt-4 text-sm text-evergreen-100">{BRAND.supportEmail}</p>
           </div>
           {cols.map((c) => (
             <div key={c.title}>
@@ -146,7 +146,7 @@ export function SiteFooter() {
               <ul className="mt-3 space-y-2">
                 {c.links.map((l) => (
                   <li key={l.href}>
-                    <Link href={l.href} className="text-sm text-evergreen-100/80 transition hover:text-white">
+                    <Link href={l.href} className="text-sm text-evergreen-100 transition hover:text-white hover:underline hover:underline-offset-2">
                       {l.label}
                     </Link>
                   </li>
@@ -155,7 +155,7 @@ export function SiteFooter() {
             </div>
           ))}
         </div>
-        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-evergreen-200/60">
+        <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/15 pt-6 text-xs text-evergreen-200">
           <span>© {new Date().getFullYear()} {BRAND.name}. All rights reserved.</span>
           <span>Server-authoritative timing · Tenant-isolated data · Human-reviewed proctoring</span>
         </div>

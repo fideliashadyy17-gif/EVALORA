@@ -90,7 +90,7 @@ export function QuestionRunner({
                   "rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                   selected.includes(o.id)
                     ? "border-evergreen-700 bg-evergreen-700 text-white shadow"
-                    : "border-evergreen-900/15 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50",
+                    : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50",
                 )}
               >
                 <MathText text={o.label} />
@@ -113,7 +113,7 @@ export function QuestionRunner({
                     "rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                     selected.includes(o.id)
                       ? "border-evergreen-700 bg-evergreen-100 text-evergreen-950"
-                      : "border-evergreen-900/15 bg-white hover:border-evergreen-600/60",
+                      : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60",
                   )}
                 >
                   <MathText text={o.label} />
@@ -145,7 +145,7 @@ export function QuestionRunner({
             <p className="mb-2 text-sm text-ink-soft">Use the arrows to put the items in the correct order.</p>
             <ol className="space-y-2">
               {order.map((label, i) => (
-                <li key={`${label}-${i}`} className="flex items-center gap-2 rounded-xl border border-evergreen-900/15 bg-white px-4 py-3">
+                <li key={`${label}-${i}`} className="flex items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-evergreen-100 text-xs font-bold text-evergreen-800">{i + 1}</span>
                   <span className="flex-1 font-medium"><MathText text={label} /></span>
                   <button disabled={disabled || i === 0} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => setOrder((p) => { const n = [...p]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })}>↑</button>
@@ -161,14 +161,14 @@ export function QuestionRunner({
           <div>
             <div className="space-y-2">
               {(question.matching_lefts ?? []).map((left) => (
-                <div key={left} className="flex flex-wrap items-center gap-2 rounded-xl border border-evergreen-900/15 bg-white px-4 py-3">
+                <div key={left} className="flex flex-wrap items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3">
                   <span className="min-w-32 flex-1 font-medium"><MathText text={left} /></span>
                   <span className="text-ink-soft">→</span>
                   <select
                     disabled={disabled}
                     value={pairs[left] ?? ""}
                     onChange={(e) => setPairs((p) => ({ ...p, [left]: e.target.value }))}
-                    className="rounded-lg border border-evergreen-900/15 bg-white px-3 py-2 text-sm"
+                    className="rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm"
                   >
                     <option value="">Choose a match…</option>
                     {(question.matching_rights ?? []).map((r) => (

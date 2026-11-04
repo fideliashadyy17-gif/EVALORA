@@ -109,18 +109,18 @@ export function HostConsole({
           </div>
 
           {session.status !== "ended" && (
-            <div className="mt-5 rounded-xl bg-evergreen-950 p-5 text-white">
+            <div className="mt-5 rounded-xl border border-evergreen-700/25 bg-evergreen-50 p-5">
               <div className="flex flex-wrap items-center gap-5">
                 {qr && (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={qr} alt="QR code to join" className="h-28 w-28 rounded-lg bg-white p-1" />
+                  <img src={qr} alt="QR code to join" className="h-28 w-28 rounded-lg border border-evergreen-900/15 bg-white p-1" />
                 )}
                 <div>
-                  <p className="text-sm text-evergreen-100/75">Participants join at</p>
-                  <p className="font-mono text-sm">{joinUrl}</p>
-                  <p className="mt-2 text-sm text-evergreen-100/75">or with code</p>
-                  <p className="font-display text-4xl font-bold tracking-[0.2em] text-gold-400">{session.join_code}</p>
-                  <a href={`/live/${session.join_code}`} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-gold-400 underline underline-offset-2">
+                  <p className="text-sm text-ink-soft">Participants join at</p>
+                  <p className="font-mono text-sm text-ink">{joinUrl}</p>
+                  <p className="mt-2 text-sm text-ink-soft">or with code</p>
+                  <p className="font-display text-4xl font-bold tracking-[0.2em] text-evergreen-800">{session.join_code}</p>
+                  <a href={`/live/${session.join_code}`} target="_blank" rel="noreferrer" className="mt-2 inline-block text-sm font-semibold text-evergreen-700 underline underline-offset-2">
                     Open projector screen ↗
                   </a>
                 </div>
@@ -185,7 +185,7 @@ export function HostConsole({
 
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Questions in this session</h2>
-          <ol className="mt-3 divide-y divide-evergreen-900/5">
+          <ol className="mt-3 divide-y divide-evergreen-900/10">
             {questions.map((q, i) => (
               <li key={q.id} className={`flex items-center gap-3 py-2.5 ${i === session.current_question_index && session.status === "live" ? "rounded-lg bg-gold-50 px-2 font-semibold" : ""}`}>
                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-evergreen-100 text-xs font-bold text-evergreen-800">{i + 1}</span>

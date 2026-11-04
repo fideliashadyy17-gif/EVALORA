@@ -260,7 +260,7 @@ export function PlayClient({ code }: { code: string }) {
           {state.leaderboard && (
             <div className="mx-auto mt-6 max-w-md text-left">
               <h3 className="mb-2 font-display text-lg font-semibold text-evergreen-950">Leaderboard</h3>
-              <ol className="divide-y divide-evergreen-900/5 rounded-2xl border border-evergreen-900/10 bg-paper">
+              <ol className="divide-y divide-evergreen-900/10 rounded-2xl border border-evergreen-900/10 bg-paper">
                 {state.leaderboard.map((p, i) => (
                   <li key={i} className={`flex items-center justify-between px-4 py-2.5 ${p.display_name === participant.display_name ? "bg-gold-50 font-semibold" : ""}`}>
                     <span>{i + 1}. {p.display_name}</span>
@@ -278,10 +278,10 @@ export function PlayClient({ code }: { code: string }) {
 
 function Shell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col items-center bg-evergreen-950 px-4 py-8">
-      <Logo variant="light" className="mb-6" />
+    <div className="flex min-h-screen flex-col items-center bg-cream px-4 py-8">
+      <Logo className="mb-6" />
       <Card className={`w-full ${wide ? "max-w-3xl" : "max-w-md"} p-6 sm:p-8`}>{children}</Card>
-      <p className="mt-5 text-center text-xs text-evergreen-100/60">Fair play guaranteed — timing &amp; scoring run on the server.</p>
+      <p className="mt-5 text-center text-xs text-ink-soft">Fair play guaranteed — timing &amp; scoring run on the server.</p>
     </div>
   );
 }

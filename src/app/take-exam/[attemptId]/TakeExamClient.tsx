@@ -24,7 +24,7 @@ interface ExamState {
 function LocalCamera() {
   const tracks = useTracks([Track.Source.Camera]);
   const local = tracks.find((t) => t.participant.isLocal);
-  if (!local) return <div className="flex h-28 items-center justify-center rounded-xl bg-evergreen-950 text-xs text-white/70">Starting camera…</div>;
+  if (!local) return <div className="flex h-28 items-center justify-center rounded-xl bg-evergreen-950 text-xs text-white">Starting camera…</div>;
   return (
     <div className="overflow-hidden rounded-xl border-2 border-gold-500">
       <VideoTrack trackRef={local} className="h-28 w-full object-cover" />
@@ -150,16 +150,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const examBody = (
     <div className="min-h-screen bg-cream">
-      <header className="sticky top-0 z-40 border-b border-evergreen-900/10 bg-evergreen-950 text-white">
+      <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <Logo variant="light" href={null} iconOnly />
+          <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-lg font-semibold">{exam.title}</p>
-            <p className="text-xs text-evergreen-100/70">{state.candidate.name}{state.candidate.ref ? ` · ${state.candidate.ref}` : ""}</p>
+            <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
+            <p className="text-xs text-ink-soft">{state.candidate.name}{state.candidate.ref ? ` · ${state.candidate.ref}` : ""}</p>
           </div>
           {!submitted && (
-            <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700" : "bg-white/10"}`}>
-              <p className="text-[10px] uppercase tracking-wider text-evergreen-100/70">Time remaining</p>
+            <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
+              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>Time remaining</p>
               <p className="font-display text-2xl font-bold tabular-nums leading-none">{mmss(Math.ceil(remaining))}</p>
             </div>
           )}

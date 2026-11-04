@@ -7,25 +7,25 @@ export default async function AdminLayout({ children }: { children: ReactNode })
   const ctx = await requireSuperAdmin();
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col bg-stone-950 p-5 text-white lg:flex">
-        <Logo variant="light" href="/admin" />
+      <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
+        <Logo href="/admin" />
         <p className="mt-3 inline-flex w-fit rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-evergreen-950">
           Super Admin
         </p>
         <div className="mt-6 flex-1">
           <AdminNav />
         </div>
-        <p className="border-t border-white/10 pt-4 text-xs text-stone-400">
+        <p className="border-t border-evergreen-900/10 pt-4 text-xs text-ink-soft">
           {ctx.profile.email}
           <span className="block">Every action here is written to the audit log.</span>
         </p>
       </aside>
       <div className="min-w-0">
-        <header className="sticky top-0 z-40 flex items-center justify-between bg-stone-950 px-4 py-3 lg:hidden">
-          <Logo variant="light" href="/admin" />
+        <header className="sticky top-0 z-40 flex items-center justify-between border-b border-evergreen-900/15 bg-paper px-4 py-3 lg:hidden">
+          <Logo href="/admin" />
           <span className="rounded-full bg-gold-500 px-3 py-1 text-xs font-bold text-evergreen-950">SUPER ADMIN</span>
         </header>
-        <div className="border-b border-evergreen-900/10 bg-stone-950 px-4 py-3 lg:hidden">
+        <div className="border-b border-evergreen-900/15 bg-paper px-4 py-3 lg:hidden">
           <AdminNav horizontal />
         </div>
         <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">{children}</main>

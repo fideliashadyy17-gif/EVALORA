@@ -17,11 +17,11 @@ export function StaticPage({
   return (
     <div className="min-h-screen">
       <SiteHeader />
-      <section className="bg-evergreen-950 text-white">
+      <section className="border-b border-evergreen-900/10 bg-paper">
         <div className="mx-auto max-w-7xl px-4 py-14 sm:px-6">
-          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-gold-400">{eyebrow}</p>
-          <h1 className="mt-2 max-w-3xl font-display text-4xl font-semibold sm:text-5xl">{title}</h1>
-          {intro && <p className="mt-4 max-w-2xl text-evergreen-100/85">{intro}</p>}
+          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-evergreen-700">{eyebrow}</p>
+          <h1 className="mt-2 max-w-3xl font-display text-4xl font-semibold text-evergreen-950 sm:text-5xl">{title}</h1>
+          {intro && <p className="mt-4 max-w-2xl text-ink-soft">{intro}</p>}
         </div>
       </section>
       <main className={`mx-auto px-4 py-12 sm:px-6 ${wide ? "max-w-7xl" : "max-w-4xl"}`}>{children}</main>

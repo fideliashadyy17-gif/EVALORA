@@ -4,6 +4,14 @@
  * EVALORA design tokens — derived from the Oak Competition Platform
  * reference identity: deep academic evergreen, heritage gold, warm
  * cream paper, serif display type. No generic blue/purple SaaS palette.
+ *
+ * Readability system (WCAG 2.2 AA — verified by scripts/check-contrast.mjs):
+ * - Light-first surfaces: `cream` is the app canvas, `paper` (pure white)
+ *   is the card/modal/form surface, so sections never need decoration
+ *   behind text. Brand green/gold appear as accents, buttons and short
+ *   bands (footer, projector) — never as low-contrast text containers.
+ * - Text: `ink` ≈ 16:1 and `ink-soft` ≈ 7.8:1 on white. Gold text on
+ *   light backgrounds must be gold-700+ (gold-500/600 are fills/accents).
  */
 @theme {
   --color-evergreen-50: #eef7f1;
@@ -16,7 +24,7 @@
   --color-evergreen-700: #0a5c36;
   --color-evergreen-800: #08472a;
   --color-evergreen-900: #06351f;
-  --color-evergreen-950: #04231516;
+  --color-evergreen-950: #042315;
 
   --color-gold-50: #fbf7e8;
   --color-gold-100: #f5ecc8;
@@ -26,9 +34,10 @@
   --color-gold-500: #c9a227;
   --color-gold-600: #a9861c;
   --color-gold-700: #856816;
+  --color-gold-800: #6e5710;
 
-  --color-cream: #faf7f0;
-  --color-paper: #fffdf8;
+  --color-cream: #f5f3ec;
+  --color-paper: #ffffff;
   --color-ink: #16241c;
   --color-ink-soft: #46564c;
 
@@ -67,7 +76,7 @@ body {
   height: 6px;
 }
 .scroll-slim::-webkit-scrollbar-thumb {
-  background: var(--color-evergreen-200);
+  background: var(--color-evergreen-300);
   border-radius: 999px;
 }
 

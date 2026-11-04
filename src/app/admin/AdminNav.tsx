@@ -28,7 +28,7 @@ export function AdminNav({ horizontal = false }: { horizontal?: boolean }) {
             href={n.href}
             className={cn(
               "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
-              active ? "bg-gold-500 text-evergreen-950" : "text-stone-300 hover:bg-white/10 hover:text-white",
+              active ? "bg-gold-500 text-evergreen-950" : "text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900",
             )}
           >
             <n.icon className="h-5 w-5 shrink-0" />
@@ -36,7 +36,7 @@ export function AdminNav({ horizontal = false }: { horizontal?: boolean }) {
           </Link>
         );
       })}
-      <Link href="/dashboard" className="mt-3 flex items-center gap-3 rounded-lg border border-white/15 px-3 py-2.5 text-sm font-medium text-stone-200 hover:bg-white/10">
+      <Link href="/dashboard" className="mt-3 flex items-center gap-3 rounded-lg border border-evergreen-900/25 px-3 py-2.5 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50">
         ← My organization dashboard
       </Link>
     </nav>

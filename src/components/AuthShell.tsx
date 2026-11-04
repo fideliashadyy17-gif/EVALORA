@@ -23,7 +23,7 @@ export function AuthShell({
         <div className="mt-6">{children}</div>
       </Card>
       {footer && <div className="mt-5 text-sm text-ink-soft">{footer}</div>}
-      <p className="mt-8 text-xs text-ink-soft/70">
+      <p className="mt-8 text-xs text-ink-soft">
         Protected by server-side authorization · <Link href="/privacy" className="underline underline-offset-2">Privacy</Link>
       </p>
     </div>

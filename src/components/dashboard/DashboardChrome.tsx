@@ -35,6 +35,10 @@ const NAV = [
   { href: "/dashboard/settings", label: "Settings", icon: Settings },
 ];
 
+const navLink =
+  "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition";
+const navIdle = "text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900";
+
 export function DashboardChrome({
   orgName,
   orgRole,
@@ -78,12 +82,7 @@ export function DashboardChrome({
             key={n.href}
             href={n.href}
             onClick={() => setOpen(false)}
-            className={cn(
-              "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
-              active
-                ? "bg-evergreen-700 text-white shadow-sm"
-                : "text-evergreen-100/85 hover:bg-white/10 hover:text-white",
-            )}
+            className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
           >
             <n.icon className="h-5 w-5 shrink-0" />
             {n.label}
@@ -100,15 +99,16 @@ export function DashboardChrome({
           href="/admin"
           onClick={() => setOpen(false)}
           className={cn(
-            "mt-3 flex items-center gap-3 rounded-lg border border-gold-500/40 px-3 py-2.5 text-sm font-medium transition",
-            pathname.startsWith("/admin") ? "bg-gold-500 text-evergreen-950" : "text-gold-400 hover:bg-gold-500/10",
+            navLink,
+            "mt-3 border border-gold-600/60",
+            pathname.startsWith("/admin") ? "bg-gold-500 text-evergreen-950" : "text-gold-800 hover:bg-gold-50",
           )}
         >
           <ShieldCheck className="h-5 w-5 shrink-0" />
           Super Admin Console
         </Link>
       )}
-      <Link href="/" className="mt-3 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-evergreen-100/85 hover:bg-white/10 hover:text-white">
+      <Link href="/" className={cn(navLink, "mt-3", navIdle)}>
         <BookOpenCheck className="h-5 w-5 shrink-0" />
         Public website
       </Link>
@@ -118,16 +118,16 @@ export function DashboardChrome({
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
       {/* Sidebar — desktop */}
-      <aside className="sticky top-0 hidden h-screen flex-col bg-evergreen-950 p-5 text-white lg:flex">
-        <Logo variant="light" href="/dashboard" />
-        <div className="mt-6 rounded-xl bg-white/5 p-3">
-          <p className="truncate text-sm font-semibold">{orgName}</p>
-          <p className="text-xs capitalize text-evergreen-200/70">{orgRole ?? "member"}</p>
+      <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
+        <Logo href="/dashboard" />
+        <div className="mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
+          <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
+          <p className="text-xs capitalize text-ink-soft">{orgRole ?? "member"}</p>
         </div>
         <div className="mt-6 flex-1 overflow-y-auto scroll-slim">{nav}</div>
-        <div className="mt-4 border-t border-white/10 pt-4">
-          <p className="truncate px-1 text-sm font-medium">{userName}</p>
-          <button onClick={signOut} className="mt-2 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-evergreen-100/85 hover:bg-white/10 hover:text-white">
+        <div className="mt-4 border-t border-evergreen-900/10 pt-4">
+          <p className="truncate px-1 text-sm font-medium text-ink">{userName}</p>
+          <button onClick={signOut} className={cn(navLink, "mt-2 w-full", navIdle)}>
             <LogOut className="h-5 w-5" /> Sign out
           </button>
         </div>
@@ -135,17 +135,17 @@ export function DashboardChrome({
 
       <div className="min-w-0">
         {/* Topbar — mobile */}
-        <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/10 bg-cream/95 px-4 backdrop-blur lg:hidden">
+        <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
           <Logo href="/dashboard" />
           <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu">
             {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
           </button>
         </header>
         {open && (
-          <div className="border-b border-evergreen-900/10 bg-evergreen-950 p-4 text-white lg:hidden">
-            <p className="mb-2 px-3 text-xs text-evergreen-200/70">{orgName} · <span className="capitalize">{orgRole}</span></p>
+          <div className="border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
+            <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
             {nav}
-            <button onClick={signOut} className="mt-3 flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-evergreen-100/85 hover:bg-white/10">
+            <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
               <LogOut className="h-5 w-5" /> Sign out
             </button>
           </div>
