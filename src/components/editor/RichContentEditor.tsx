@@ -18,7 +18,7 @@ import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
-import { MATH_CATEGORIES, stripPlaceholders, type MathKey } from "./mathKeyboard";
+import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
 
 type Mode = "text" | "math" | "latex";
@@ -181,7 +181,10 @@ export function RichContentEditor({
   }
 
   function commitMath(latex: string, display: boolean) {
-    const clean = latex.trim();
+    // Remaining MathLive placeholders are editing slots, not final content.
+    // Remove only empty placeholders so the stored LaTeX remains valid for
+    // KaTeX and all participant-facing renderers.
+    const clean = latex.trim().replace(/\\placeholder\{\}/g, "");
     if (!clean) return;
     if (!applyMathNode(clean)) insertMathNode(clean, display);
   }
@@ -238,12 +241,13 @@ export function RichContentEditor({
       });
       return;
     }
-    // Text mode: insert at the document cursor, then open it for visual editing.
+    // Text mode: insert valid fallback LaTeX at the document cursor, then
+    // open the same structure with real MathLive placeholders for editing.
     const latex = stripPlaceholders(key.i);
     const before = ed.state.selection.from;
     insertMathNode(latex, false);
     const pos = Math.max(0, Math.min(before, ed.state.doc.content.size - 1));
-    openMathEditor(pos, latex, false);
+    openMathEditor(pos, templateToPlaceholderLatex(key.i), false);
   }
 
   async function onFileChosen(file: File | null) {
@@ -450,6 +454,7 @@ export function RichContentEditor({
             onReady={(h) => {
               mfRef.current = h;
               if (mathDraft && h.getValue() !== mathDraft) h.setValue(mathDraft, false);
+              if (mathDraft.includes("\\placeholder{}")) h.selectFirstPlaceholder();
             }}
             ariaLabel="Visual mathematics editor"
           />
@@ -540,9 +545,14 @@ export function RichContentEditor({
         <EditorContent editor={editor} />
       </div>
 
-      {/* Permanent mathematical keyboard */}
-      {showKeyboard && (
-        <div className="border-t border-evergreen-900/10 bg-cream/70 px-3 py-2">
+      {/*
+        Permanent mathematical keyboard.
+        Keep this panel mounted and toggle it with `hidden`: Tiptap's
+        BubbleMenu/Tippy moves its DOM node to <body>, so conditionally
+        inserting a previous sibling makes React try to insert before a node
+        that is no longer a child of this shell (NotFoundError).
+      */}
+      <div className="border-t border-evergreen-900/10 bg-cream/70 px-3 py-2" hidden={!showKeyboard}>
           <div className="scroll-slim flex gap-1 overflow-x-auto pb-2" role="tablist" aria-label="Symbol categories">
             {MATH_CATEGORIES.map((c) => (
               <button
@@ -578,8 +588,14 @@ export function RichContentEditor({
                 ? "Symbols insert LaTeX at the text cursor; the caret lands inside the first empty group."
                 : "Symbols insert a real equation at the document cursor and open it in Math mode so you can fill every slot."}
           </p>
-        </div>
-      )}
+      </div>
+
+      {/*
+        Stable host-node anchor before the BubbleMenus. Tippy detaches/moves
+        BubbleMenu roots, so they must never be React's insertion anchor for
+        preceding conditional siblings.
+      */}
+      <div aria-hidden="true" data-rce-bubble-menu-anchor="" />
 
       {/* Bubble menus */}
       <BubbleMenu

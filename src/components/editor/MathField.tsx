@@ -17,6 +17,7 @@ export interface MathFieldHandle {
   getValue: () => string;
   setValue: (latex: string, focus?: boolean) => void;
   insert: (template: string) => void;
+  selectFirstPlaceholder: () => void;
   toggleKeyboard: () => void;
 }
 
@@ -93,6 +94,12 @@ export function MathField({
             el.executeCommand(["insert", template]);
           }
           onInputRef.current(el.value);
+        },
+        selectFirstPlaceholder: () => {
+          if (!el) return;
+          el.focus();
+          el.executeCommand("moveToMathfieldStart");
+          el.executeCommand("moveToNextPlaceholder");
         },
         toggleKeyboard: () => {
           el?.executeCommand("toggleVirtualKeyboard");

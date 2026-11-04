@@ -279,3 +279,13 @@ export const MATH_CATEGORIES: MathCategory[] = [
 export function stripPlaceholders(template: string): string {
   return template.replace(/#\d/g, "").replace(/#@/g, "");
 }
+
+/**
+ * Convert insertion-template markers (`#0`, `#1`, …) to MathLive
+ * `\placeholder{}` commands. This is used when a structure chosen from Text
+ * mode is opened in the visual editor: MathLive can then select/tab through
+ * the real editable slots instead of placing the caret after the structure.
+ */
+export function templateToPlaceholderLatex(template: string): string {
+  return template.replace(/#(?:\d|@)/g, "\\placeholder{}");
+}

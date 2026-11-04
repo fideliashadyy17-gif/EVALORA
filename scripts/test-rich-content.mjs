@@ -28,7 +28,7 @@ const {
 const { attemptDeadline } = require(`${outDir}/lib/exam.js`);
 const { publicQuestion } = require(`${outDir}/lib/live.js`);
 const { questionPublishIssues } = require(`${outDir}/lib/questionValidation.js`);
-const { MATH_CATEGORIES } = require(`${outDir}/components/editor/mathKeyboard.js`);
+const { MATH_CATEGORIES, templateToPlaceholderLatex } = require(`${outDir}/components/editor/mathKeyboard.js`);
 
 let passed = 0;
 const ok = (name, condition) => {
@@ -121,6 +121,15 @@ for (const [name, token] of [
   ["piecewise structure", "\\begin{cases}"],
 ]) ok(name, templates.includes(token));
 ok("keyboard button faces use rendered LaTeX rather than English structure words", MATH_CATEGORIES.every((c) => c.keys.every((k) => k.d.trim().length > 0 && !/^(fraction|integral|square root|summation|derivative)$/i.test(k.d.trim()))));
+ok(
+  "text-mode structures preserve MathLive placeholders",
+  templateToPlaceholderLatex("\\frac{#0}{#1}") === "\\frac{\\placeholder{}}{\\placeholder{}}",
+);
+const richEditorSource = readFileSync("src/components/editor/RichContentEditor.tsx", "utf8");
+const mathFieldSource = readFileSync("src/components/editor/MathField.tsx", "utf8");
+ok("mathematical keyboard stays mounted to avoid React/Tippy insertBefore crashes", richEditorSource.includes("hidden={!showKeyboard}"));
+ok("BubbleMenus have a stable React insertion anchor", richEditorSource.includes("data-rce-bubble-menu-anchor"));
+ok("MathField can select the first structured placeholder", mathFieldSource.includes("moveToNextPlaceholder"));
 
 /* ─── Candidate-safe rich question payload ───────────────────────── */
 const row = {
