@@ -1,0 +1,220 @@
+"use server";
+
+import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { genCode } from "@/lib/utils";
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+
+export async function createExam(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+
+  const supabase = await createClient();
+  const ent = await getEntitlement(supabase, org.id);
+  const { count } = await supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
+  if (!withinLimit(ent.limits.max_exams, count ?? 0))
+    redirect("/dashboard/exams?e=limit");
+
+  const proctoringWanted = formData.get("proctoring") === "on";
+  if (proctoringWanted && !ent.limits.proctoring) redirect("/dashboard/exams?e=proctoring");
+
+  const title = String(formData.get("title") ?? "").trim().slice(0, 160);
+  const quizId = String(formData.get("quiz_id") ?? "");
+  if (!title || !quizId) redirect("/dashboard/exams/new?e=fields");
+
+  let exam: { id: string } | null = null;
+  for (let i = 0; i < 5 && !exam; i++) {
+    const { data, error } = await supabase
+      .from("exams")
+      .insert({
+        organization_id: org.id,
+        quiz_id: quizId,
+        title,
+        description: String(formData.get("description") ?? "").slice(0, 1000) || null,
+        instructions: String(formData.get("instructions") ?? "").slice(0, 4000) || null,
+        duration_minutes: Math.max(1, Math.min(24 * 60, parseInt(String(formData.get("duration_minutes") ?? "60")) || 60)),
+        starts_at: formData.get("starts_at") ? new Date(String(formData.get("starts_at"))).toISOString() : null,
+        ends_at: formData.get("ends_at") ? new Date(String(formData.get("ends_at"))).toISOString() : null,
+        status: "draft",
+        access_code: genCode(8),
+        settings: {
+          proctoring: proctoringWanted,
+          require_screen_share: formData.get("require_screen_share") === "on",
+          randomize_questions: formData.get("randomize_questions") === "on",
+          randomize_options: formData.get("randomize_options") === "on",
+          pass_mark_percent: Math.max(0, Math.min(100, parseInt(String(formData.get("pass_mark_percent") ?? "50")) || 50)),
+          results_published: false,
+        },
+        created_by: ctx.user.id,
+      })
+      .select("id")
+      .single();
+    if (!error && data) exam = data;
+  }
+  if (!exam) redirect("/dashboard/exams/new?e=create");
+
+  if (proctoringWanted) {
+    const admin = createAdminClient();
+    await admin.from("proctoring_rooms").insert({
+      exam_id: exam.id,
+      room_name: `exam-${exam.id}`,
+    });
+  }
+
+  revalidatePath("/dashboard/exams");
+  redirect(`/dashboard/exams/${exam.id}`);
+}
+
+export async function setExamStatus(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const supabase = await createClient();
+  await supabase
+    .from("exams")
+    .update({ status: String(formData.get("status")) })
+    .eq("id", String(formData.get("id")))
+    .eq("organization_id", org.id);
+  revalidatePath("/dashboard/exams");
+  revalidatePath(`/dashboard/exams/${String(formData.get("id"))}`);
+}
+
+export async function deleteExam(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const supabase = await createClient();
+  await supabase.from("exams").delete().eq("id", String(formData.get("id"))).eq("organization_id", org.id);
+  revalidatePath("/dashboard/exams");
+  redirect("/dashboard/exams");
+}
+
+export async function addCandidate(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id"));
+  const supabase = await createClient();
+  // Verify exam belongs to org (RLS check via select)
+  const { data: exam } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (!exam) redirect("/dashboard/exams");
+
+  await supabase.from("exam_candidates").insert({
+    exam_id: examId,
+    full_name: String(formData.get("full_name") ?? "").trim().slice(0, 120),
+    email: String(formData.get("email") ?? "").trim().slice(0, 160) || null,
+    candidate_ref: String(formData.get("candidate_ref") ?? "").trim().slice(0, 60) || null,
+    access_code: genCode(8),
+  });
+  revalidatePath(`/dashboard/exams/${examId}`);
+}
+
+/** Bulk candidates: one per line "Full Name, email, ref". Returns a report via redirect params. */
+export async function addCandidatesBulk(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id"));
+  const supabase = await createClient();
+  const { data: exam } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (!exam) redirect("/dashboard/exams");
+
+  const lines = String(formData.get("bulk") ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean).slice(0, 500);
+  const rows = lines.map((line) => {
+    const [full_name, email, candidate_ref] = line.split(",").map((s) => (s ?? "").trim());
+    return {
+      exam_id: examId,
+      full_name: (full_name || "Candidate").slice(0, 120),
+      email: email?.includes("@") ? email.slice(0, 160) : null,
+      candidate_ref: candidate_ref?.slice(0, 60) || null,
+      access_code: genCode(8) + Math.random().toString(36).slice(2, 4).toUpperCase(),
+    };
+  });
+  if (rows.length) await supabase.from("exam_candidates").insert(rows);
+  revalidatePath(`/dashboard/exams/${examId}`);
+  redirect(`/dashboard/exams/${examId}?added=${rows.length}`);
+}
+
+export async function removeCandidate(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const supabase = await createClient();
+  await supabase.from("exam_candidates").delete().eq("id", String(formData.get("id")));
+  revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}`);
+}
+
+/** Manual marking of a written answer; recomputes the attempt total. */
+export async function markAnswer(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const answerId = String(formData.get("answer_id"));
+  const attemptId = String(formData.get("attempt_id"));
+  const examId = String(formData.get("exam_id"));
+  const points = Math.max(0, parseFloat(String(formData.get("points") ?? "0")) || 0);
+  const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+
+  const supabase = await createClient();
+  await supabase
+    .from("exam_answers")
+    .update({ points_awarded: points, is_correct: points > 0, marked_by: ctx.user.id, marker_note: note })
+    .eq("id", answerId);
+
+  const { data: answers } = await supabase.from("exam_answers").select("points_awarded, is_correct").eq("attempt_id", attemptId);
+  const total = (answers ?? []).reduce((s, a) => s + Number(a.points_awarded ?? 0), 0);
+  const allMarked = (answers ?? []).every((a) => a.is_correct !== null);
+  await supabase
+    .from("exam_attempts")
+    .update({ score: total, status: allMarked ? "marked" : undefined })
+    .eq("id", attemptId);
+
+  revalidatePath(`/dashboard/exams/${examId}`);
+}
+
+export async function publishResults(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id"));
+  const supabase = await createClient();
+  const { data: exam } = await supabase.from("exams").select("settings").eq("id", examId).eq("organization_id", org.id).single();
+  const settings = { ...((exam?.settings as object) ?? {}), results_published: formData.get("publish") === "1" };
+  await supabase.from("exams").update({ settings }).eq("id", examId);
+  revalidatePath(`/dashboard/exams/${examId}`);
+}
+
+/** Supervisor incident logging & review. */
+export async function logIncident(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id"));
+  const supabase = await createClient();
+  await supabase.from("proctoring_incidents").insert({
+    exam_id: examId,
+    candidate_id: String(formData.get("candidate_id") ?? "") || null,
+    type: String(formData.get("type") ?? "observation").slice(0, 60),
+    severity: String(formData.get("severity") ?? "medium"),
+    note: String(formData.get("note") ?? "").slice(0, 1000) || null,
+    reported_by: ctx.user.id,
+  });
+  revalidatePath(`/dashboard/exams/${examId}/proctor`);
+  revalidatePath(`/dashboard/exams/${examId}`);
+}
+
+export async function reviewIncident(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard/exams");
+  const supabase = await createClient();
+  await supabase
+    .from("proctoring_incidents")
+    .update({ status: String(formData.get("status")), reviewed_by: ctx.user.id })
+    .eq("id", String(formData.get("id")));
+  revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}`);
+  revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}/proctor`);
+}
