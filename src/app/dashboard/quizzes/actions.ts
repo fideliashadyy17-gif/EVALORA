@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { defaultLiveSessionSettings } from "@/lib/live";
 import { isFeatureEnabled } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -157,7 +158,10 @@ export async function startSession(formData: FormData) {
         title: quiz.title,
         mode,
         status: "lobby",
-        settings: { show_leaderboard: true, max_participants: maxP === -1 ? 1000 : maxP },
+        phase: "waiting",
+        admission_open: true,
+        require_approval: false,
+        settings: defaultLiveSessionSettings(maxP === -1 ? 1000 : maxP),
       })
       .select("id").single();
     if (!error && data) session = data;

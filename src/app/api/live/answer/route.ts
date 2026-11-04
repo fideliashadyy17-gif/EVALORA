@@ -1,4 +1,10 @@
-import { loadQuizQuestions, seededShuffle } from "@/lib/live";
+import {
+  effectivePhase,
+  loadQuizQuestions,
+  questionDeadlineAt,
+  questionDurationSeconds,
+  seededShuffle,
+} from "@/lib/live";
 import { scoreAnswer, type AnswerPayload } from "@/lib/scoring";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -32,8 +38,10 @@ export async function POST(request: Request) {
     .eq("id", participant_id)
     .eq("access_token", token)
     .maybeSingle();
-  if (!participant || participant.status === "rejected")
+  if (!participant || ["rejected", "blocked"].includes(participant.status))
     return NextResponse.json({ error: "Participant not found." }, { status: 404 });
+  if (["pending", "joined"].includes(participant.status))
+    return NextResponse.json({ error: "Your entry is waiting for organizer approval." }, { status: 403 });
 
   const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", participant.session_id).single();
   if (session.status !== "live")
@@ -53,15 +61,25 @@ export async function POST(request: Request) {
   if (!row || row.id !== quiz_question_id)
     return NextResponse.json({ error: "That question is no longer active." }, { status: 409 });
 
-  const timeLimit = Number(row.time_limit_seconds ?? quizSettings.time_per_question_seconds ?? 30);
+  const timeLimit = questionDurationSeconds(row, quizSettings);
   const now = Date.now();
   let responseMs: number | null = null;
   let speedFactor = 1;
 
   if (session.mode === "synchronized") {
+    const phase = effectivePhase(session, row, quizSettings, new Date(now));
+    if (phase === "countdown")
+      return NextResponse.json({ error: "This question has not opened yet." }, { status: 409 });
+    if (phase !== "question")
+      return NextResponse.json({ error: "Answers are closed for this question." }, { status: 409 });
+
     const started = session.question_started_at ? new Date(session.question_started_at).getTime() : now;
     responseMs = now - started;
-    if (responseMs > timeLimit * 1000 + GRACE_MS)
+    if (responseMs < 0)
+      return NextResponse.json({ error: "This question has not opened yet." }, { status: 409 });
+    const deadlineValue = questionDeadlineAt(session, row, quizSettings);
+    const deadline = deadlineValue ? new Date(deadlineValue).getTime() : started + timeLimit * 1000;
+    if (now > deadline + GRACE_MS)
       return NextResponse.json({ error: "Time expired for this question." }, { status: 409 });
     // Faster correct answers earn more: 100% → 50% of the points across the window.
     speedFactor = 1 - 0.5 * Math.min(1, Math.max(0, responseMs / (timeLimit * 1000)));
@@ -96,14 +114,19 @@ export async function POST(request: Request) {
       .eq("participant_id", participant.id)
       .eq("quiz_question_id", row.id)
       .maybeSingle();
-    if (existing)
+    if (existing) {
+      if (session.mode === "synchronized") {
+        return NextResponse.json({ ok: true, duplicate: true, submitted: true });
+      }
       return NextResponse.json({
         ok: true,
         duplicate: true,
+        submitted: true,
         is_correct: existing.is_correct,
         points_awarded: Number(existing.points_awarded),
         explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
       });
+    }
     return NextResponse.json({ error: "Could not record your answer." }, { status: 500 });
   }
 
@@ -118,8 +141,15 @@ export async function POST(request: Request) {
   }
   await admin.from("session_participants").update(patch).eq("id", participant.id);
 
+  if (session.mode === "synchronized") {
+    // Correctness, earned points and the explanation are released by
+    // the organizer in answer-reveal phase, not at submission time.
+    return NextResponse.json({ ok: true, submitted: true, response_ms: responseMs });
+  }
+
   return NextResponse.json({
     ok: true,
+    submitted: true,
     is_correct: scored.isCorrect,
     points_awarded: awarded,
     explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,

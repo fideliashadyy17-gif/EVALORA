@@ -1,3 +1,4 @@
+import { AVATAR_KEYS } from "@/lib/avatars";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -6,6 +7,7 @@ const Body = z.object({
   code: z.string().min(4).max(12),
   display_name: z.string().min(1).max(60),
   participant_ref: z.string().max(60).optional(),
+  avatar_key: z.enum(AVATAR_KEYS).optional().default("owl"),
 });
 
 type Admin = ReturnType<typeof createAdminClient>;
@@ -16,6 +18,8 @@ interface JoinTarget {
     status: string;
     title: string | null;
     settings: Record<string, unknown> | null;
+    admission_open?: boolean | null;
+    require_approval?: boolean | null;
   };
   competition?: {
     id: string;
@@ -38,7 +42,7 @@ async function resolveCode(
 ): Promise<{ target: JoinTarget } | { error: string; status: number }> {
   const { data: session } = await admin
     .from("quiz_sessions")
-    .select("id, status, title, settings")
+    .select("id, status, title, settings, admission_open, require_approval")
     .eq("join_code", code)
     .maybeSingle();
   if (session) {
@@ -92,7 +96,7 @@ async function resolveCode(
 
   const { data: compSession } = await admin
     .from("quiz_sessions")
-    .select("id, status, title, settings")
+    .select("id, status, title, settings, admission_open, require_approval")
     .eq("id", comp.session_id)
     .maybeSingle();
   if (!compSession) return { error: "This competition session is unavailable.", status: 409 };
@@ -112,7 +116,7 @@ async function resolveCode(
 export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-  const { code, display_name, participant_ref } = parsed.data;
+  const { code, display_name, participant_ref, avatar_key } = parsed.data;
 
   const admin = createAdminClient();
   const resolved = await resolveCode(admin, code.trim().toUpperCase());
@@ -121,20 +125,32 @@ export async function POST(request: Request) {
 
   if (session.status === "ended")
     return NextResponse.json({ error: "This session has already ended." }, { status: 410 });
+  if (session.admission_open === false)
+    return NextResponse.json(
+      { error: "Admission is closed for this competition. Ask the organizer to reopen it." },
+      { status: 403 },
+    );
 
+  const participantStatus = session.require_approval ? "pending" : "admitted";
   const maxP = Number((session.settings as Record<string, unknown> | null)?.max_participants ?? 200);
   const { count } = await admin
     .from("session_participants")
     .select("id", { count: "exact", head: true })
     .eq("session_id", session.id)
-    .neq("status", "rejected");
+    .not("status", "in", '("rejected","blocked")');
   if ((count ?? 0) >= maxP)
     return NextResponse.json({ error: "This session is full." }, { status: 403 });
 
   const { data: participant, error } = await admin
     .from("session_participants")
-    .insert({ session_id: session.id, display_name, participant_ref: participant_ref || null })
-    .select("id, access_token")
+    .insert({
+      session_id: session.id,
+      display_name,
+      participant_ref: participant_ref || null,
+      avatar_key,
+      status: participantStatus,
+    })
+    .select("id, access_token, avatar_key, status")
     .single();
   if (error || !participant)
     return NextResponse.json({ error: "Could not join the session." }, { status: 500 });
@@ -150,7 +166,7 @@ export async function POST(request: Request) {
       class_id: restrictionClassId ?? null,
       full_name: display_name,
       participant_ref: participant_ref || null,
-      status: "admitted",
+      status: participantStatus === "pending" ? "registered" : "admitted",
       source: "code_join",
     });
   }
@@ -160,5 +176,8 @@ export async function POST(request: Request) {
     access_token: participant.access_token,
     session_id: session.id,
     title: competition?.title ?? session.title,
+    avatar_key: participant.avatar_key,
+    status: participant.status,
+    requires_approval: participant.status === "pending",
   });
 }

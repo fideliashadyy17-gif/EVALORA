@@ -54,11 +54,17 @@ invalid / investigating, always human-reviewed), `proctoring_recordings`
 - **RLS everywhere.** Helper functions (`is_super_admin`, `org_role`,
   `can_manage_org`, `can_create_content`) are `SECURITY DEFINER` to avoid
   policy recursion. No anonymous table access at all.
-- **Answer keys never leave the server.** `publicQuestion()` in
-  `src/lib/live.ts` strips `is_correct`, accepted answers, numeric solutions
-  and pair mappings before anything reaches a device.
-- **Server-authoritative time.** Live questions enforce
-  `question_started_at + limit` (2 s grace); exam deadlines are
+- **Answer keys never leave the server before an authorized reveal.**
+  `publicQuestion()` in `src/lib/live.ts` strips `is_correct`, accepted
+  answers, numeric solutions and pair mappings before anything reaches a
+  device. `revealedQuestion()` is called only for the organizer-selected
+  `answer_reveal` phase (or authorized staff views).
+- **Three scoped live APIs.** Host state, participant state and public-screen
+  state are separate endpoints with separate authorization and payload
+  construction; see `docs/LIVE_COMPETITION_INTERFACES.md`.
+- **Server-authoritative time.** Live questions enforce the stored
+  `question_deadline_at` (with a legacy started-at fallback and 2 s grace);
+  exam deadlines are
   `started_at + duration` (capped by the exam window close). Browser clocks
   are only used for display, using a server-time offset.
 - **Server-side scoring** in `src/lib/scoring.ts` for all objective types;

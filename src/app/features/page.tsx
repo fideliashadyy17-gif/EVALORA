@@ -26,8 +26,9 @@ export default function FeaturesPage() {
           <li>Join by 6-character code or QR code — participants never need an account.</li>
           <li>Synchronized mode (host releases each question) or self-paced mode.</li>
           <li>Server-authoritative countdowns, scoring and leaderboards.</li>
-          <li>Host console with lobby management, pause, next-question control and live answer statistics.</li>
-          <li>Read-only projector screen for classrooms and halls.</li>
+          <li>Three genuinely separate live interfaces: private Host Control Screen, secure Public Live Screen, and mobile-first Student Answer Screen with illustrated avatars.</li>
+          <li>Host controls for admission/approval, pause/resume, answer reveals, rankings, final podium, presentation animations and projector sound.</li>
+          <li>Read-only, token-protected projector screen for classrooms and halls — a participant join code alone never opens it.</li>
           <li>Session recovery: a dropped connection never loses a submitted answer.</li>
         </ul>
 

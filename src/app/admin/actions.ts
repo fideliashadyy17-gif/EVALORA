@@ -187,7 +187,7 @@ export async function adminEndSession(formData: FormData) {
   if (formData.get("confirm") !== "on") redirect("/admin/competitions?e=confirm");
   const { data: s } = await admin.from("quiz_sessions").select("id, organization_id, status, join_code").eq("id", id).maybeSingle();
   if (s && s.status !== "ended") {
-    await admin.from("quiz_sessions").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", id);
+    await admin.from("quiz_sessions").update({ status: "ended", phase: "completed", phase_started_at: new Date().toISOString(), question_deadline_at: null, ended_at: new Date().toISOString() }).eq("id", id);
     await audit("session.ended_by_admin", "quiz_sessions", id, s.organization_id, { join_code: s.join_code, was: s.status });
   }
   revalidatePath("/admin/competitions");

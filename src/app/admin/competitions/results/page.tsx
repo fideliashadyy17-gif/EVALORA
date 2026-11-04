@@ -49,7 +49,7 @@ export default async function CompetitionResultsPage({
 
   const sessionIds = comps.map((c) => c.session_id).filter((v): v is string => Boolean(v));
   const { data: participants } = sessionIds.length
-    ? await admin.from("session_participants").select("session_id, score, status").in("session_id", sessionIds).neq("status", "rejected").limit(20000)
+    ? await admin.from("session_participants").select("session_id, score, status").in("session_id", sessionIds).not("status", "in", '("rejected","blocked")').limit(20000)
     : { data: [] };
   const bySession = new Map<string, { count: number; total: number; top: number; finished: number }>();
   for (const p of participants ?? []) {

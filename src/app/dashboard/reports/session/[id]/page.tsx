@@ -25,7 +25,7 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
     supabase.from("quiz_questions").select("id, position, questions(prompt, prompt_doc, type, topic, difficulty, points)").eq("quiz_id", session.quiz_id).order("position"),
   ]);
 
-  const parts = (participants ?? []).filter((p) => p.status !== "rejected");
+  const parts = (participants ?? []).filter((p) => !["rejected", "blocked"].includes(p.status));
   const allAnswers = answers ?? [];
   const avg = parts.length ? parts.reduce((s, p) => s + Number(p.score), 0) / parts.length : 0;
   const correctCount = allAnswers.filter((a) => a.is_correct === true).length;

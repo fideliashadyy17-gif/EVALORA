@@ -62,14 +62,14 @@ export async function resetDemoActivity(formData: FormData) {
   const { data: sample } = await admin.from("quiz_sessions").insert({
     quiz_id: quiz!.id, organization_id: orgId, host_id: ctx.user.id,
     join_code: `DEMO${suffix}`, title: "DEMO sample completed session (fictional results)",
-    mode: "synchronized", status: "ended", current_question_index: Math.max(0, (quizQuestions ?? []).length - 1),
+    mode: "synchronized", status: "ended", phase: "podium", current_question_index: Math.max(0, (quizQuestions ?? []).length - 1),
     settings: { show_leaderboard: true, max_participants: 200, demo: true, sample: true },
     ended_at: new Date().toISOString(),
   }).select("id").single();
   const { data: lobby } = await admin.from("quiz_sessions").insert({
     quiz_id: quiz!.id, organization_id: orgId, host_id: ctx.user.id,
     join_code: `LIVE${suffix}`, title: "DEMO live competition — lobby (ready to launch)",
-    mode: "synchronized", status: "lobby", current_question_index: -1,
+    mode: "synchronized", status: "lobby", phase: "waiting", admission_open: true, require_approval: false, current_question_index: -1,
     settings: { show_leaderboard: true, max_participants: 200, demo: true },
   }).select("id").single();
 
@@ -80,6 +80,7 @@ export async function resetDemoActivity(formData: FormData) {
       const { data: participant } = await admin.from("session_participants").insert({
         session_id: sample.id, display_name: `${student.full_name} (DEMO)`,
         participant_ref: student.student_ref, user_id: student.user_id,
+        avatar_key: ["owl", "fox", "panda", "lion", "frog", "cat"][idx % 6],
         score: 0, status: "finished", current_index: (quizQuestions ?? []).length,
       }).select("id").single();
       if (!participant) continue;

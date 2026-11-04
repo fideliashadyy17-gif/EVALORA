@@ -19,6 +19,17 @@ export interface PublicQuestion {
   options: { id: string; label: string; content_doc?: RichDoc | null }[];
   matching_lefts?: string[];
   matching_rights?: string[];
+  reveal?: {
+    correct_option_ids: string[];
+    accepted_answers: string[];
+    numeric_answer: number | null;
+    tolerance: number | null;
+    correct_order: string[];
+    matching_pairs: { left: string; right: string }[];
+    summary: string[];
+  } | null;
+  explanation?: string | null;
+  explanation_doc?: RichDoc | null;
 }
 
 /**
@@ -84,19 +95,20 @@ export function QuestionRunner({
       <div className="mt-5">
         {(t === "single_choice" || t === "true_false" || t === "poll") && (
           <div className="grid gap-2.5 sm:grid-cols-2">
-            {question.options.map((o) => (
+            {question.options.map((o, i) => (
               <button
                 key={o.id}
                 disabled={disabled}
                 onClick={() => { setSelected([o.id]); onAnswer({ option_id: o.id }); }}
                 className={cn(
-                  "rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
+                  "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                   selected.includes(o.id)
                     ? "border-evergreen-700 bg-evergreen-700 text-white shadow"
                     : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50",
                 )}
               >
-                <RichContent doc={o.content_doc ?? null} text={o.label} />
+                <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-extrabold", selected.includes(o.id) ? "bg-white text-evergreen-800" : "bg-gold-400 text-evergreen-950")}>{String.fromCharCode(65 + i)}</span>
+                <span className="min-w-0 flex-1"><RichContent doc={o.content_doc ?? null} text={o.label} /></span>
               </button>
             ))}
           </div>
@@ -105,7 +117,7 @@ export function QuestionRunner({
         {t === "multiple_select" && (
           <div>
             <div className="grid gap-2.5 sm:grid-cols-2">
-              {question.options.map((o) => (
+              {question.options.map((o, i) => (
                 <button
                   key={o.id}
                   disabled={disabled}
@@ -113,13 +125,14 @@ export function QuestionRunner({
                     setSelected((prev) => (prev.includes(o.id) ? prev.filter((x) => x !== o.id) : [...prev, o.id]))
                   }
                   className={cn(
-                    "rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
+                    "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                     selected.includes(o.id)
                       ? "border-evergreen-700 bg-evergreen-100 text-evergreen-950"
                       : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60",
                   )}
                 >
-                  <RichContent doc={o.content_doc ?? null} text={o.label} />
+                  <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-extrabold", selected.includes(o.id) ? "bg-evergreen-700 text-white" : "bg-gold-400 text-evergreen-950")}>{String.fromCharCode(65 + i)}</span>
+                  <span className="min-w-0 flex-1"><RichContent doc={o.content_doc ?? null} text={o.label} /></span>
                 </button>
               ))}
             </div>

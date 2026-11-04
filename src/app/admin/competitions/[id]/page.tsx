@@ -1,6 +1,7 @@
 import { Badge, Button, Card } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
+import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -54,7 +55,7 @@ export default async function CompetitionDetailPage({
   const quiz = comp.quizzes as unknown as { id: string; title: string; status: string } | null;
 
   let monitor: {
-    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; created_at: string } | null;
+    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; display_token_version?: number; created_at: string } | null;
     participants: number;
     connected: number;
     finished: number;
@@ -66,11 +67,11 @@ export default async function CompetitionDetailPage({
   {
     const head = { count: "exact" as const, head: true };
     const sessionRes = comp.session_id
-      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, created_at").eq("id", comp.session_id).maybeSingle()
+      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at").eq("id", comp.session_id).maybeSingle()
       : { data: null };
     const session = sessionRes.data;
     const [participants, finished, answers, questions, registrations, codes, connectedRes] = await Promise.all([
-      session ? admin.from("session_participants").select("id", head).eq("session_id", session.id).neq("status", "rejected").then((r) => r.count ?? 0) : Promise.resolve(0),
+      session ? admin.from("session_participants").select("id", head).eq("session_id", session.id).not("status", "in", '("rejected","blocked")').then((r) => r.count ?? 0) : Promise.resolve(0),
       session ? admin.from("session_participants").select("id", head).eq("session_id", session.id).eq("status", "finished").then((r) => r.count ?? 0) : Promise.resolve(0),
       session ? admin.from("participant_answers").select("id", head).eq("session_id", session.id).then((r) => r.count ?? 0) : Promise.resolve(0),
       comp.quiz_id ? admin.from("quiz_questions").select("id", head).eq("quiz_id", comp.quiz_id).then((r) => r.count ?? 0) : Promise.resolve(0),
@@ -202,8 +203,8 @@ export default async function CompetitionDetailPage({
                         <input type="hidden" name="id" value={id} />
                         <Button type="submit" variant="gold">Open host console →</Button>
                       </form>
-                      <Link href={`/live/${monitor.session.join_code}`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
-                        Projector view
+                      <Link href={publicScreenPath(id, monitor.session.id, monitor.session.display_token_version ?? 1)} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
+                        Secure Public Live Screen
                       </Link>
                       <Link href={`/join?code=${monitor.session.join_code}`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
                         Participant join page

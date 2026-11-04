@@ -4,6 +4,7 @@ import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { parseCsvRecords } from "@/lib/csv";
+import { defaultLiveSessionSettings } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -135,7 +136,7 @@ export async function setCompetitionStatus(formData: FormData) {
   // Keep the linked live session coherent with competition lifecycle.
   if (comp!.session_id) {
     if (status === "ended" || status === "cancelled" || status === "archived") {
-      await admin.from("quiz_sessions").update({ status: "ended", ended_at: new Date().toISOString() }).eq("id", comp!.session_id).neq("status", "ended");
+      await admin.from("quiz_sessions").update({ status: "ended", phase: "completed", phase_started_at: new Date().toISOString(), question_deadline_at: null, ended_at: new Date().toISOString() }).eq("id", comp!.session_id).neq("status", "ended");
     } else if (status === "paused") {
       await admin.from("quiz_sessions").update({ status: "paused" }).eq("id", comp!.session_id).eq("status", "live");
     } else if (status === "live") {
@@ -233,9 +234,14 @@ export async function startCompetitionSession(formData: FormData) {
           title: comp!.title,
           mode,
           status: "lobby",
+          phase: "waiting",
+          admission_open: true,
+          require_approval: Boolean((comp!.settings as Record<string, unknown>)?.require_approval),
           settings: {
-            show_leaderboard: (comp!.scoring as Record<string, unknown>)?.show_leaderboard !== false,
-            max_participants: comp!.max_participants ?? 1000,
+            ...defaultLiveSessionSettings(comp!.max_participants ?? 1000, {
+              showLeaderboard: (comp!.scoring as Record<string, unknown>)?.show_leaderboard === true,
+            }),
+            public_instructions: comp!.instructions ?? undefined,
           },
         })
         .select("id")

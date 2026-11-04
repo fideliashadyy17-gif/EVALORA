@@ -19,8 +19,14 @@
 3. Questions → create one of each type (include `$x^2$` math) → publish.
 4. Import the CSV template → rows land in *Pending review* with a report → publish.
 5. Quizzes → build a quiz → publish → **Go live (synchronized)**.
-6. On a phone: join with the code → answer → host advances → leaderboard updates;
-   projector at `/live/{code}` mirrors the round.
+6. Use three separate screens: (a) signed-in Host Control
+   Screen, (b) projector/TV using only the **secure Public Live Screen link**
+   from the host screen (`/live/{competitionId}/screen?token=…`), and
+   (c) two phones/tablets at `/play/{code}`. Join with different avatars,
+   test approval/admission close, explicitly start, submit different answers,
+   verify the host-only answer counts/distribution, reveal the answer, show
+   intermediate rankings, pause/resume, refresh/reconnect each screen, finish,
+   then display the final podium. The old `/live/{code}` URL must stay locked.
 7. End session → Reports → session report → export CSV.
 8. Exams → create from the quiz (proctoring on) → add 2 candidates → Open exam.
 9. `/exam-access` as candidate 1 → allow camera → answer → autosave indicator;

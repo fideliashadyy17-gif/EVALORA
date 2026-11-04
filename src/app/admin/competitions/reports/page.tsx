@@ -79,7 +79,7 @@ export default async function CompetitionReportsPage({
 
   const [{ data: participants }, { data: answers }] = await Promise.all([
     sessionIds.length
-      ? admin.from("session_participants").select("session_id, score, status").in("session_id", sessionIds).neq("status", "rejected").limit(20000)
+      ? admin.from("session_participants").select("session_id, score, status").in("session_id", sessionIds).not("status", "in", '("rejected","blocked")').limit(20000)
       : Promise.resolve({ data: [] }),
     sessionIds.length
       ? admin.from("participant_answers").select("session_id, is_correct").in("session_id", sessionIds).limit(20000)

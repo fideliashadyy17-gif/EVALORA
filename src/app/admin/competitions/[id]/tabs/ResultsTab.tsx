@@ -35,7 +35,7 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
       .from("session_participants")
       .select("id, display_name, participant_ref, score, status")
       .eq("session_id", comp.session_id)
-      .neq("status", "rejected")
+      .not("status", "in", '("rejected","blocked")')
       .order("score", { ascending: false })
       .limit(500),
     admin
