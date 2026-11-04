@@ -1,20 +1,9 @@
 import { BRAND } from "@/lib/brand";
+import "@fontsource-variable/fraunces";
+import "@fontsource-variable/public-sans";
 import "katex/dist/katex.min.css";
 import type { Metadata } from "next";
-import { Fraunces, Public_Sans } from "next/font/google";
 import "./globals.css";
-
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-});
-
-const publicSans = Public_Sans({
-  variable: "--font-public-sans",
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-});
 
 export const metadata: Metadata = {
   title: {
@@ -37,7 +26,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${publicSans.variable}`}>
+    <html lang="en">
       <body>{children}</body>
     </html>
   );
