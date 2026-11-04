@@ -131,8 +131,121 @@ the owner's own home for creating content without a customer org.
 - Authenticated UI flows could not be click-tested by the operator: the owner's password is
   deliberately unknown (set via Forgot password), and the deployment is behind Vercel SSO.
   Everything above was verified at the DB/action-contract/build level instead.
-- No per-candidate exam time extension: `exam_attempts` has no extension column and the
-  deadline is server-computed (`started_at + duration`). Extend the exam window by editing
-  `ends_at` in the workspace.
+- Per-candidate exam extensions were added later by migration 0005; see the unified
+  Super Admin / mathematical-editor section below.
 - The admin competition monitor is a server-rendered snapshot (refresh link); live
   "connected" = `last_seen_at` within 90 s.
+
+
+---
+
+# Complete A–H Super Admin modules & unified mathematical editor (2026-11-04)
+
+## Navigation and route map
+
+The Owner Control Center sidebar is now organized into eight explicit, collapsible groups.
+Every entry below is a real route backed by server-side Super Admin authorization and the
+existing Supabase data model; there are no decorative module labels or duplicate parallel
+implementations. Existing organization workspaces are still used where the full builder is
+tenant-scoped (notably Quiz Builder ordering and LiveKit proctor rooms), while question and
+examination administration now also have direct platform-level workflows.
+
+| Group | Working routes |
+|---|---|
+| **A. Overview** | `/admin` · `/admin/statistics` · `/admin/audit` · `/admin/activity` |
+| **B. Organizations & Schools** | `/admin/organizations` · `/admin/organizations/new` · `/admin/organizations/admins` · `/admin/subscriptions` · `/admin/organizations/settings` |
+| **C. Students & Users** | `/admin/students` · `/admin/users/teachers` · `/admin/users/school-admins` · `/admin/users` · `/admin/users/roles` · `/admin/students/new` · `/admin/students/bulk` · `/admin/students/access` |
+| **D. Live Competition** | `/admin/competitions` · `/admin/competitions/new` · `/admin/competitions/configuration` · `/admin/competitions/participants` · `/admin/competitions/register` · `/admin/competitions/codes` · `/admin/competitions/questions` · `/admin/competitions/live` · `/admin/competitions/results` · `/admin/competitions/reports` |
+| **E. Quiz & Questions** | `/admin/quizzes` · `/admin/quizzes/new` · `/admin/questions` · `/admin/questions/new` · `/admin/questions/categories` · `/admin/questions/types` · `/admin/questions/solutions` · `/admin/quizzes/assignments` · `/admin/quizzes/results` |
+| **F. Examinations** | `/admin/examinations` · `/admin/examinations/new` · `/admin/examinations/questions` · `/admin/examinations/candidates` · `/admin/examinations/register` · `/admin/examinations/codes` · `/admin/examinations/schedule` · `/admin/examinations/time-limits` · `/admin/examinations/monitoring` · `/admin/examinations/marking` · `/admin/examinations/results` · `/admin/examinations/reports` · `/admin/proctoring` |
+| **G. Payments & Subscriptions** | `/admin/payments` · `/admin/payments/new` · `/admin/subscriptions` · `/admin/plans` · `/admin/subscriptions#assign` · `/admin/revenue` |
+| **H. Platform Administration** | `/admin/users?role=super_admin` · `/admin/users/roles` · `/admin/settings` · `/admin/modules` · `/admin/audit` · `/admin/system` · `/admin/notifications` · `/admin/support` |
+
+## One editor everywhere
+
+`QuestionForm` is the shared authoring surface for organization workspaces and direct
+Super Admin question creation/editing (`/admin/questions/new`, `/admin/questions/[id]`).
+The same `RichContent` renderer and structured documents are used by the Question Bank,
+quiz builder/preview, live participant and host/projector views, examinations, marking,
+reports, answer feedback and worked solutions.
+
+- **Text mode (Tiptap/ProseMirror):** headings and paragraphs; bold, italic, underline and
+  strike; font family and size; text/highlight colour; alignment; bullet/numbered lists;
+  links; tables with row/column controls; clipboard editing; undo/redo.
+- **Math mode (MathLive):** a visual mathematical surface for the selected equation.
+  Authors can click inside fractions, radicals, scripts, integrals and matrices, use
+  keyboard movement/selection/deletion and fill structured placeholders.
+- **LaTeX mode:** raw LaTeX with validation and rendered preview. Invalid source is never
+  silently rewritten; visual switching is blocked until it parses, while the source stays
+  exactly as typed.
+- **Mathematical keyboard:** categorized, cursor-aware and reopenable. Button faces are
+  rendered mathematics, and structural keys insert placeholders rather than English words.
+  Categories cover basics, fractions/roots, powers, relations, algebra, geometry,
+  trigonometry, functions, limits, derivatives, integrals, sums/products, matrices, Greek,
+  sets/logic, statistics/probability, vectors and other structures.
+- **Images/diagrams:** upload or URL insertion, width presets, alt text, caption/title,
+  replacement by editing the node, and deletion. Prompt, each choice option and worked
+  solution each have independent rich content. Uploads use the Supabase Storage
+  `question-media` bucket; the database stores the public URL and accessibility metadata,
+  never base64 file payloads.
+
+Supported question storage/rendering remains aligned for single choice, multiple select,
+true/false, short answer with accepted alternatives, numeric tolerance, ordering, matching,
+poll, open-ended structured responses and slides. Exact-match answer identities (accepted
+short answers, ordering labels and matching pair labels) intentionally remain canonical
+text for deterministic scoring, while their prompts/options/explanations can be rich. Drafts may
+remain incomplete, but server actions refuse to publish a question whose answer key,
+accepted answers, numeric answer/tolerance, pairs/items or marking criteria are not ready.
+
+## Structured storage and security
+
+Migration `0005_rich_content.sql` added JSONB documents without deleting legacy columns:
+
+- `questions.prompt_doc`
+- `questions.explanation_doc`
+- `question_options.content_doc`
+- `exam_attempts.extension_minutes` (0–1440)
+
+Math nodes preserve their LaTeX in node attributes. Plain-text prompt/explanation/label
+projections are retained for compatibility and search. Candidate/participant payloads are
+built through `publicQuestion()`, which carries prompt and option documents but strips
+correctness, accepted answers, explanations and marking criteria. Examination explanations
+are returned only after submission **and** result publication. Super Admin mutations use
+`requireSuperAdmin()`, service-role server actions and `audit_logs`; RLS remains in force
+for ordinary authenticated traffic.
+
+## Examination time enforcement
+
+An attempt deadline is always calculated on the server by `attemptDeadline()`:
+
+`min(started_at + duration_minutes + extension_minutes, ends_at + extension_minutes)`
+
+Access, state, save and submit all use this calculation. Autosave after the deadline is
+rejected. A direct submit request that arrives late grades only previously autosaved
+answers and is recorded as `auto_submitted` with `submitted_at` equal to the deadline,
+not the later request time. Authorized extensions are granted from **Examinations →
+Duration & Time Limits**, can add minutes or set a total, require an in-progress attempt,
+and are written to the audit log with previous/new values, reason and computed deadline.
+
+## Verification
+
+- `node scripts/test-admin-utils.mjs` — CSV/import/code/export checks.
+- `node scripts/test-rich-content.mjs` — structured mixed-content samples covering
+  radicals, stacked fractions, super/subscripts, matrices, summation, integrals, limits,
+  derivatives, image metadata, LaTeX round-trip/validation/rendering, keyboard templates,
+  candidate-safe payloads, deadline/extension calculations, late-submit source contract
+  and existence of every A–H navigation route.
+- `node scripts/check-contrast.mjs` — WCAG 2.2 AA token checks.
+- `npm run build` — Next.js production compilation, lint and type checking.
+
+### Honest formats and remaining boundaries
+
+- Exports labelled “CSV / Excel” are UTF-8 CSV files that open directly in Excel; EVALORA
+  does not currently generate native `.xlsx` workbooks. PDF output uses the browser's
+  print-to-PDF flow.
+- Spreadsheet imports accept CSV (including an Excel sheet saved/exported as CSV), not a
+  binary `.xlsx` upload.
+- The production owner password is intentionally known only to the owner, and Vercel
+  Deployment Protection may remain enabled. Authenticated browser click-through therefore
+  still requires the owner to sign in after deployment; database, API-contract, unit and
+  production-build verification are automated in the repository.

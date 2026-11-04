@@ -1,4 +1,6 @@
-import { Badge, Button, Card, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select } from "@/components/ui";
+import { RichContent } from "@/components/RichContent";
+import type { RichDoc } from "@/lib/content";
 import { ExportButton } from "@/components/ExportTools";
 import { toCsv } from "@/lib/utils";
 import { enterOrgWorkspace } from "../actions/orgs";
@@ -7,6 +9,8 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import { adminDeleteQuestion, adminSetQuestionStatus } from "../actions";
+import { duplicateQuestionAsAdmin } from "./actions";
+import { Notice } from "../ui";
 
 export const metadata: Metadata = { title: "Question Bank" };
 export const dynamic = "force-dynamic";
@@ -17,7 +21,7 @@ const tone = (s: string) =>
 export default async function AdminQuestions({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string; ok?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -51,9 +55,10 @@ export default async function AdminQuestions({
     <>
       <PageTitle
         title="Question bank (platform-wide)"
-        subtitle={`Author, import and moderate questions in any workspace. ${pendingCount ?? 0} currently pending review.`}
+        subtitle={`Author with the unified mathematical editor, import, moderate and reuse questions platform-wide. ${pendingCount ?? 0} currently pending review.`}
         action={
           <div className="flex flex-wrap items-end gap-2">
+            <ButtonLink href={sp.org ? `/admin/questions/new?org=${sp.org}` : "/admin/questions/new"} variant="gold">+ Create question</ButtonLink>
             <form action={enterOrgWorkspace} className="flex items-end gap-2">
               <input type="hidden" name="next" value="/dashboard/questions/new" />
               <Select name="organization_id" className="w-52" aria-label="Organization for new question">
@@ -61,12 +66,13 @@ export default async function AdminQuestions({
                   <option key={o.id} value={o.id}>{o.name}</option>
                 ))}
               </Select>
-              <Button type="submit" variant="gold">+ Add question</Button>
+              <Button type="submit" variant="outline">Add in workspace</Button>
             </form>
             <ExportButton filename="questions.csv" csv={exportCsv} label="Export listed" />
           </div>
         }
       />
+      <Notice ok={sp.ok} e={sp.e} messages={{ duplicated: "Question duplicated as a draft.", duplicate_failed: "The question could not be duplicated.", confirm: "Tick the confirmation box before deleting.", not_ready: "That question cannot be published yet — open Answers & Solutions to see what is missing.", not_found: "That question no longer exists." }} />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
       {sp.e === "confirm" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Tick the confirmation box before deleting.</p>}
 
@@ -106,13 +112,21 @@ export default async function AdminQuestions({
             {(questions ?? []).map((q) => (
               <tr key={q.id} className="border-b border-evergreen-900/10">
                 <td className="max-w-xs px-4 py-2.5">
-                  <span className="line-clamp-2 font-medium" title={q.prompt}>{q.prompt}</span>
+                  <div className="line-clamp-3 font-medium" title={q.prompt}><RichContent doc={(q.prompt_doc as RichDoc | null) ?? null} text={q.prompt} /></div>
                   {q.topic && <span className="block text-xs text-ink-soft">{q.topic}</span>}
-                  <form action={enterOrgWorkspace} className="mt-1">
-                    <input type="hidden" name="organization_id" value={q.organization_id} />
-                    <input type="hidden" name="next" value={`/dashboard/questions/${q.id}`} />
-                    <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Open / edit / duplicate →</button>
-                  </form>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+                    <a href={`/admin/questions/${q.id}`} className="font-semibold text-evergreen-700 underline-offset-2 hover:underline">Edit with math editor →</a>
+                    <form action={duplicateQuestionAsAdmin} className="inline">
+                      <input type="hidden" name="id" value={q.id} />
+                      <input type="hidden" name="back" value="/admin/questions" />
+                      <button className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Duplicate</button>
+                    </form>
+                    <form action={enterOrgWorkspace} className="inline">
+                      <input type="hidden" name="organization_id" value={q.organization_id} />
+                      <input type="hidden" name="next" value={`/dashboard/questions/${q.id}`} />
+                      <button className="font-medium text-gold-800 underline-offset-2 hover:underline">Workspace</button>
+                    </form>
+                  </div>
                 </td>
                 <td className="px-4 py-2.5 text-ink-soft">{(q.organizations as { name?: string } | null)?.name ?? "—"}</td>
                 <td className="px-4 py-2.5 text-ink-soft">{String(q.type).replace(/_/g, " ")}</td>

@@ -16,6 +16,7 @@ export interface QuestionFormOption {
 
 export interface QuestionFormValues {
   id?: string;
+  organization_id?: string;
   type: string;
   prompt: string;
   prompt_doc?: RichDoc | null;
@@ -177,6 +178,7 @@ export function QuestionForm({
 
     const res = await save({
       id: initial?.id,
+      organization_id: organizationId,
       type,
       prompt: prompt || docToLabel(promptDoc),
       prompt_doc: promptDoc,

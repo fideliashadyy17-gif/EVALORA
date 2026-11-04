@@ -8,10 +8,14 @@ import {
   Bell,
   Blocks,
   Building2,
+  CalendarClock,
   ChevronDown,
+  ClipboardList,
+  Clock3,
   CreditCard,
   FileCheck2,
   GraduationCap,
+  KeyRound,
   LayoutDashboard,
   Library,
   LifeBuoy,
@@ -29,6 +33,7 @@ import {
   Tags,
   TrendingUp,
   Trophy,
+  Upload,
   UserCog,
   Users,
   Video,
@@ -53,45 +58,107 @@ interface NavGroup {
 
 const GROUPS: NavGroup[] = [
   {
-    title: "Overview",
-    items: [{ href: "/admin", label: "Platform Overview", icon: LayoutDashboard, exact: true }],
-  },
-  {
-    title: "People & Institutions",
+    title: "A. Overview",
     items: [
-      { href: "/admin/users", label: "Users", icon: Users },
-      { href: "/admin/organizations", label: "Organizations", icon: Building2 },
-      { href: "/admin/students", label: "Schools & Students", icon: GraduationCap },
+      { href: "/admin", label: "Global Dashboard", icon: LayoutDashboard, exact: true },
+      { href: "/admin/statistics", label: "Platform Statistics", icon: TrendingUp },
+      { href: "/admin/audit", label: "Activity Monitoring", icon: Activity },
+      { href: "/admin/activity", label: "Recent Operations", icon: ScrollText },
     ],
   },
   {
-    title: "Content & Events",
+    title: "B. Organizations & Schools",
     items: [
-      { href: "/admin/competitions", label: "Competitions", icon: Trophy },
-      { href: "/admin/quizzes", label: "Quiz Management", icon: PenSquare },
+      { href: "/admin/organizations", label: "All Organizations", icon: Building2 },
+      { href: "/admin/organizations/new", label: "Create Organization", icon: Plus },
+      { href: "/admin/organizations/admins", label: "Organization Administrators", icon: UserCog },
+      { href: "/admin/subscriptions", label: "Organization Subscriptions", icon: Repeat },
+      { href: "/admin/organizations/settings", label: "Organization Settings", icon: Settings },
+    ],
+  },
+  {
+    title: "C. Students & Users",
+    items: [
+      { href: "/admin/students", label: "All Students", icon: GraduationCap },
+      { href: "/admin/users/teachers", label: "Teachers", icon: Users },
+      { href: "/admin/users/school-admins", label: "School Administrators", icon: UserCog },
+      { href: "/admin/users", label: "Platform Users", icon: Users },
+      { href: "/admin/users/roles", label: "Roles & Permissions", icon: ShieldCheck },
+      { href: "/admin/students/new", label: "Individual Student Registration", icon: Plus },
+      { href: "/admin/students/bulk", label: "Bulk Student Registration", icon: Upload },
+      { href: "/admin/students/bulk?mode=import-export", label: "Student Import & Export", icon: Upload },
+      { href: "/admin/students/access", label: "Student Access Management", icon: KeyRound },
+    ],
+  },
+  {
+    title: "D. Live Competition",
+    items: [
+      { href: "/admin/competitions", label: "All Competitions", icon: Trophy },
+      { href: "/admin/competitions/new", label: "Create Competition", icon: Plus },
+      { href: "/admin/competitions/configuration", label: "Competition Configuration", icon: Settings },
+      { href: "/admin/competitions/participants", label: "Participants", icon: Users },
+      { href: "/admin/competitions/register", label: "Participant Registration", icon: UserCog },
+      { href: "/admin/competitions/codes", label: "Access Codes", icon: KeyRound },
+      { href: "/admin/competitions/questions", label: "Competition Questions", icon: Library },
+      { href: "/admin/competitions/live", label: "Live Monitoring", icon: Activity },
+      { href: "/admin/competitions/results", label: "Rankings & Results", icon: Trophy },
+      { href: "/admin/competitions/reports", label: "Competition Reports", icon: TrendingUp },
+    ],
+  },
+  {
+    title: "E. Quiz & Questions",
+    items: [
+      { href: "/admin/quizzes", label: "Quiz Dashboard / Manage Quizzes", icon: PenSquare },
+      { href: "/admin/quizzes/new", label: "Create Quiz", icon: Plus },
       { href: "/admin/questions", label: "Question Bank", icon: Library },
-      { href: "/admin/examinations", label: "Examinations", icon: FileCheck2 },
-      { href: "/admin/proctoring", label: "Proctoring", icon: Video, badgeKey: "incidents" },
+      { href: "/admin/questions/new", label: "Create Question", icon: Plus },
+      { href: "/admin/questions/categories", label: "Question Categories", icon: Tags },
+      { href: "/admin/questions/types", label: "Question Types", icon: ClipboardList },
+      { href: "/admin/questions/solutions", label: "Answers & Solutions", icon: FileCheck2 },
+      { href: "/admin/quizzes/assignments", label: "Quiz Assignments", icon: Users },
+      { href: "/admin/quizzes/results", label: "Quiz Results", icon: TrendingUp },
     ],
   },
   {
-    title: "Commerce",
+    title: "F. Examinations",
     items: [
-      { href: "/admin/subscriptions", label: "Subscriptions", icon: Repeat },
-      { href: "/admin/plans", label: "Pricing & Plans", icon: Tags },
+      { href: "/admin/examinations", label: "Examination Dashboard / Manage", icon: FileCheck2 },
+      { href: "/admin/examinations/new", label: "Create Examination", icon: Plus },
+      { href: "/admin/examinations/questions", label: "Examination Questions", icon: Library },
+      { href: "/admin/examinations/candidates", label: "Examination Candidates", icon: Users },
+      { href: "/admin/examinations/register", label: "Candidate Registration", icon: UserCog },
+      { href: "/admin/examinations/codes", label: "Candidate Access Codes", icon: KeyRound },
+      { href: "/admin/examinations/schedule", label: "Schedule", icon: CalendarClock },
+      { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", icon: Clock3 },
+      { href: "/admin/examinations/monitoring", label: "Monitoring", icon: Activity },
+      { href: "/admin/examinations/marking", label: "Marking & Grading", icon: ClipboardList },
+      { href: "/admin/examinations/results", label: "Examination Results", icon: TrendingUp },
+      { href: "/admin/examinations/reports", label: "Reports & Exports", icon: ScrollText },
+      { href: "/admin/proctoring", label: "Proctoring Oversight", icon: Video, badgeKey: "incidents" },
+    ],
+  },
+  {
+    title: "G. Payments & Subscriptions",
+    items: [
       { href: "/admin/payments", label: "Payments", icon: CreditCard, badgeKey: "payments" },
-      { href: "/admin/revenue", label: "Revenue & Reports", icon: TrendingUp },
+      { href: "/admin/payments/new", label: "Manual Payment Management", icon: Plus },
+      { href: "/admin/subscriptions", label: "Subscriptions", icon: Repeat },
+      { href: "/admin/plans", label: "Subscription Plans", icon: Tags },
+      { href: "/admin/subscriptions#assign", label: "Subscription Overrides", icon: Settings },
+      { href: "/admin/revenue", label: "Billing History & Revenue", icon: TrendingUp },
     ],
   },
   {
-    title: "Platform",
+    title: "H. Platform Administration",
     items: [
-      { href: "/admin/notifications", label: "Notifications", icon: Bell, badgeKey: "unread" },
-      { href: "/admin/modules", label: "Modules & Features", icon: Blocks },
+      { href: "/admin/users?role=super_admin", label: "Super Admin Users", icon: ShieldCheck },
+      { href: "/admin/users/roles", label: "Roles & Permissions", icon: ShieldCheck },
       { href: "/admin/settings", label: "Platform Settings", icon: Settings },
+      { href: "/admin/modules", label: "Modules & Features", icon: Blocks },
+      { href: "/admin/audit", label: "Audit Logs", icon: ScrollText },
+      { href: "/admin/system", label: "System Health", icon: Activity },
+      { href: "/admin/notifications", label: "Notifications", icon: Bell, badgeKey: "unread" },
       { href: "/admin/support", label: "Support Tickets", icon: LifeBuoy, badgeKey: "tickets" },
-      { href: "/admin/audit", label: "Security & Audit Logs", icon: ScrollText },
-      { href: "/admin/system", label: "Technical Monitoring", icon: Activity },
     ],
   },
 ];
@@ -142,6 +209,9 @@ export function AdminShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    () => Object.fromEntries(GROUPS.map((g) => [g.title, true])),
+  );
   const quick = useDismiss<HTMLDivElement>();
   const profile = useDismiss<HTMLDivElement>();
 
@@ -176,12 +246,36 @@ export function AdminShell({
     </form>
   );
 
-  const navLink = (n: NavItem, iconOnly: boolean) => {
-    const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+  const navPath = (href: string) => href.split(/[?#]/)[0];
+  const navMatches = (n: NavItem) => {
+    const base = navPath(n.href);
+    return n.exact ? pathname === base : pathname === base || pathname.startsWith(`${base}/`);
+  };
+  const longestNavMatch = Math.max(
+    0,
+    ...GROUPS.flatMap((g) => g.items).filter(navMatches).map((n) => navPath(n.href).length),
+  );
+
+  useEffect(() => {
+    setOpenGroups((current) => {
+      const next = { ...current };
+      for (const group of GROUPS) {
+        if (group.items.some((item) => navMatches(item) && navPath(item.href).length === longestNavMatch)) {
+          next[group.title] = true;
+        }
+      }
+      return next;
+    });
+    // navMatches is intentionally derived from pathname for this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname, longestNavMatch]);
+
+  const navLink = (n: NavItem, iconOnly: boolean, groupTitle: string) => {
+    const active = navMatches(n) && navPath(n.href).length === longestNavMatch;
     const badge = n.badgeKey ? counts[n.badgeKey as keyof ShellCounts] : 0;
     return (
       <Link
-        key={n.href}
+        key={`${groupTitle}-${n.label}-${n.href}`}
         href={n.href}
         title={iconOnly ? n.label : undefined}
         onClick={() => setMobileOpen(false)}
@@ -203,20 +297,31 @@ export function AdminShell({
   };
 
   const renderNav = (iconOnly: boolean) => (
-    <nav className="flex flex-col gap-5">
-      {GROUPS.map((g) => (
-        <div key={g.title}>
-          {!iconOnly && (
-            <p className="mb-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft">{g.title}</p>
-          )}
-          <div className="flex flex-col gap-1">{g.items.map((n) => navLink(n, iconOnly))}</div>
-        </div>
-      ))}
+    <nav className="flex flex-col gap-4" aria-label="Super Admin modules">
+      {GROUPS.map((g) => {
+        const open = iconOnly || openGroups[g.title] !== false;
+        return (
+          <div key={g.title}>
+            {!iconOnly && (
+              <button
+                type="button"
+                onClick={() => setOpenGroups((current) => ({ ...current, [g.title]: !open }))}
+                aria-expanded={open}
+                className="mb-1.5 flex w-full items-center justify-between rounded-md px-3 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900"
+              >
+                <span>{g.title}</span>
+                <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
+              </button>
+            )}
+            {open && <div className="flex flex-col gap-1">{g.items.map((n) => navLink(n, iconOnly, g.title))}</div>}
+          </div>
+        );
+      })}
     </nav>
   );
 
   return (
-    <div className={cn("min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[264px_1fr]")}>
+    <div className={cn("min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[292px_1fr]")}>
       {/* ─── Sidebar (desktop) ─── */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-4 lg:flex">
         <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
@@ -302,6 +407,10 @@ export function AdminShell({
                     { href: "/admin/organizations/new", label: "Create organization", icon: Building2 },
                     { href: "/admin/students/new", label: "Register a student", icon: GraduationCap },
                     { href: "/admin/competitions/new", label: "Create competition", icon: Trophy },
+                    { href: "/admin/questions/new", label: "Create mathematical question", icon: Library },
+                    { href: "/admin/quizzes/new", label: "Create quiz", icon: PenSquare },
+                    { href: "/admin/examinations/new", label: "Create examination", icon: FileCheck2 },
+                    { href: "/admin/examinations/register", label: "Register exam candidates", icon: Users },
                     { href: "/admin/payments/new", label: "Add a payment", icon: CreditCard },
                     { href: "/admin/subscriptions#assign", label: "Assign a subscription", icon: Repeat },
                     { href: "/admin/users/new", label: "Create user / invite admin", icon: UserCog },
@@ -321,8 +430,8 @@ export function AdminShell({
                         In EVALORA Platform workspace
                       </p>
                       {workspaceForm("/dashboard/quizzes/new", "Create a live quiz", PenSquare)}
-                      {workspaceForm("/dashboard/questions/new", "Add questions", Library)}
-                      {workspaceForm("/dashboard/exams/new", "Create an examination", FileCheck2)}
+                      {workspaceForm("/dashboard/questions/new", "Add questions in workspace", Library)}
+                      {workspaceForm("/dashboard/exams/new", "Create examination in workspace", FileCheck2)}
                     </>
                   )}
                 </div>

@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { questionPublishError } from "@/lib/questionValidation";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -43,6 +44,10 @@ export async function saveQuestion(raw: QuestionInput) {
   const parsed = QuestionSchema.safeParse(raw);
   if (!parsed.success) return { error: "Please check the form — some fields are invalid." };
   const q = parsed.data;
+  if (q.status === "published") {
+    const publishError = questionPublishError(q);
+    if (publishError) return { error: publishError };
+  }
 
   const supabase = await createClient();
 
@@ -118,6 +123,20 @@ export async function setQuestionStatus(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   const supabase = await createClient();
+  if (status === "published") {
+    const { data: question } = await supabase
+      .from("questions")
+      .select("*, question_options(label, is_correct)")
+      .eq("id", id)
+      .eq("organization_id", org.id)
+      .maybeSingle();
+    if (!question) redirect("/dashboard/questions?e=not_found");
+    const publishError = questionPublishError({
+      ...question!,
+      options: (question!.question_options as { label: string; is_correct: boolean }[]) ?? [],
+    });
+    if (publishError) redirect("/dashboard/questions?e=not_ready");
+  }
   await supabase.from("questions").update({ status }).eq("id", id).eq("organization_id", org.id);
   revalidatePath("/dashboard/questions");
 }

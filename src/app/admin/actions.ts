@@ -2,6 +2,7 @@
 
 import { requireSuperAdmin } from "@/lib/auth";
 import { FEATURE_DEFAULTS, type FeatureKey } from "@/lib/platform";
+import { questionPublishError } from "@/lib/questionValidation";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -225,7 +226,19 @@ export async function adminSetQuestionStatus(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   if (!["draft", "pending_review", "published", "archived"].includes(status)) redirect("/admin/questions");
-  const { data: q } = await admin.from("questions").select("id, organization_id").eq("id", id).maybeSingle();
+  const { data: q } = await admin
+    .from("questions")
+    .select("*, question_options(label, is_correct)")
+    .eq("id", id)
+    .maybeSingle();
+  if (status === "published") {
+    if (!q) redirect("/admin/questions?e=not_found");
+    const publishError = questionPublishError({
+      ...q!,
+      options: (q!.question_options as { label: string; is_correct: boolean }[]) ?? [],
+    });
+    if (publishError) redirect("/admin/questions?e=not_ready");
+  }
   await admin.from("questions").update({ status }).eq("id", id);
   await audit(`question.status_${status}`, "questions", id, q?.organization_id ?? null);
   revalidatePath("/admin/questions");
