@@ -8,7 +8,7 @@ import { ExamSaveQueue, type ExamQueueState } from "@/lib/examSaveQueue";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
-import { LiveKitRoom, VideoTrack, useLocalParticipant, useTracks } from "@livekit/components-react";
+import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { Flag } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -36,26 +36,41 @@ function LocalCamera() {
 }
 
 function ScreenShareButton() {
-  const { localParticipant } = useLocalParticipant();
-  const [sharing, setSharing] = useState(false);
+  const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   async function toggle() {
+    setBusy(true);
     try {
-      await localParticipant.setScreenShareEnabled(!sharing);
-      setSharing(!sharing);
+      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
       setErr(null);
     } catch {
-      setErr("Screen sharing was not granted.");
-    }
+      setErr("Screen sharing could not be changed. Contact your invigilator if it is required.");
+    } finally { setBusy(false); }
   }
   return (
     <div>
-      <Button variant="outline" className="w-full text-xs" onClick={toggle}>
-        {sharing ? "Stop sharing screen" : "Share my screen"}
+      <Button variant="outline" className="w-full text-xs" disabled={busy} onClick={toggle}>
+        {isScreenShareEnabled ? "Stop sharing screen" : "Share my screen"}
       </Button>
-      {err && <p className="mt-1 text-xs text-red-700">{err}</p>}
+      {err && <p role="alert" className="mt-1 text-xs text-red-700">{err}</p>}
     </div>
   );
+}
+
+function CandidateVideoStatus({ onRetry, mediaError }: { onRetry: () => void; mediaError: string | null }) {
+  const connection = useConnectionState();
+  const { isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
+  const connected = connection === "connected";
+  const status = connected ? "Video room connected" : connection === "reconnecting" || connection === "signalReconnecting"
+    ? "Video room reconnecting" : connection === "connecting" ? "Connecting to video room" : "Video room disconnected";
+  return <div className="space-y-2" aria-live="polite">
+    <p className="text-xs font-semibold text-evergreen-900">{status}</p>
+    {connected && <p className="text-xs text-ink-soft">Camera {isCameraEnabled ? "enabled" : "not enabled"} · Microphone {isMicrophoneEnabled ? "enabled" : "not enabled"} on this device.</p>}
+    {mediaError && <p role="alert" className="text-xs text-red-700">{mediaError}</p>}
+    {(connection === "disconnected" || mediaError) && <Button variant="outline" className="w-full text-xs" onClick={onRetry}>Retry video connection</Button>}
+    <LocalCamera />
+  </div>;
 }
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
@@ -82,6 +97,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
+  const [videoError, setVideoError] = useState<string | null>(null);
+  const [mediaError, setMediaError] = useState<string | null>(null);
+  const [videoRetry, setVideoRetry] = useState(0);
+  const retryVideo = useCallback(() => {
+    setLk(null); setVideoError(null); setMediaError(null); setVideoRetry((n) => n + 1);
+  }, []);
   const offset = useRef(0);
 
   useEffect(() => {
@@ -166,18 +187,26 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   }, []);
   useEffect(() => () => { queueRef.current?.dispose(); queueRef.current = null; }, []);
 
-  // LiveKit candidate connection
+  // A token is not a connection. Report failures and allow an explicit retry.
   useEffect(() => {
     if (!state?.exam.proctoring || !token || state.attempt.status !== "in_progress") return;
+    let cancelled = false;
+    setVideoError(null);
     fetch("/api/livekit/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ exam_id: state.exam.id, attempt_id: attemptId, token, role: "candidate" }),
-    })
-      .then((r) => r.json())
-      .then((d) => { if (d.token) setLk({ token: d.token, serverUrl: d.serverUrl }); })
-      .catch(() => {});
-  }, [state?.exam.proctoring, state?.exam.id, state?.attempt.status, token, attemptId]);
+    }).then(async (r) => {
+      const d: unknown = await r.json().catch(() => null);
+      if (!r.ok || !d || typeof d !== "object" || !("token" in d) || !("serverUrl" in d) ||
+          typeof d.token !== "string" || !d.token || typeof d.serverUrl !== "string" || !d.serverUrl)
+        throw new Error("Video access unavailable");
+      if (!cancelled) setLk({ token: d.token, serverUrl: d.serverUrl });
+    }).catch(() => {
+      if (!cancelled) setVideoError("Could not connect to video supervision. Retry or contact your invigilator.");
+    });
+    return () => { cancelled = true; };
+  }, [state?.exam.proctoring, state?.exam.id, state?.attempt.status, token, attemptId, videoRetry]);
 
   function save(questionId: string, quizQuestionId: string, payload: Record<string, unknown>, newFlagged = flagged) {
     const queue = queueRef.current;
@@ -277,11 +306,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         <aside className="space-y-4 lg:sticky lg:top-24 lg:h-fit">
           {exam.proctoring && !submitted && (
             <Card className="space-y-2 p-3">
-              <p className="flex items-center gap-2 text-xs font-semibold text-evergreen-900">
-                <span className="live-dot inline-block h-2 w-2 rounded-full bg-red-600" /> Live supervision active
-              </p>
-              {lk ? <LocalCamera /> : <p className="text-xs text-ink-soft">Connecting camera… if prompted, please allow camera &amp; microphone access.</p>}
-              {exam.require_screen_share && lk && <ScreenShareButton />}
+              <p className="text-xs font-semibold text-evergreen-900">Video supervision</p>
+              {lk ? <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video audio data-lk-theme="default"
+                onError={() => setMediaError("Video connection failed. Retry or contact your invigilator.")}
+                onMediaDeviceFailure={() => setMediaError("Camera or microphone could not be enabled. Check permissions and contact your invigilator.")}>
+                <CandidateVideoStatus onRetry={retryVideo} mediaError={mediaError} />
+                {exam.require_screen_share && <ScreenShareButton />}
+              </LiveKitRoom> : videoError ? <>
+                <p role="alert" className="text-xs text-red-700">{videoError}</p>
+                <Button variant="outline" className="w-full text-xs" onClick={retryVideo}>Retry video connection</Button>
+              </> : <p className="text-xs text-ink-soft">Requesting video access…</p>}
             </Card>
           )}
           <Card className="p-4">
@@ -421,13 +455,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     </div>
   );
 
-  if (exam.proctoring && lk && !submitted) {
-    return (
-      <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video audio data-lk-theme="default">
-        {examBody}
-      </LiveKitRoom>
-    );
-  }
   return examBody;
 }
 

@@ -2,14 +2,15 @@
 
 import { Badge, Button, Card, Field, Input, Select } from "@/components/ui";
 import "@livekit/components-styles";
-import { LiveKitRoom, ParticipantTile, useParticipants, useTracks } from "@livekit/components-react";
+import { LiveKitRoom, ParticipantTile, useConnectionState, useParticipants, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import { useEffect, useMemo, useState } from "react";
 import { logIncident } from "../../actions";
 
 const PAGE_SIZE = 12;
 
-function Grid({ candidates, examId }: { candidates: { id: string; full_name: string }[]; examId: string }) {
+function Grid({ candidates, onRetry, connectionError }: { candidates: { id: string; full_name: string }[]; onRetry: () => void; connectionError: string | null }) {
+  const connection = useConnectionState();
   const participants = useParticipants();
   const tracks = useTracks([Track.Source.Camera, Track.Source.ScreenShare]);
   const [page, setPage] = useState(0);
@@ -33,8 +34,9 @@ function Grid({ candidates, examId }: { candidates: { id: string; full_name: str
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-        <Badge tone="amber"><span className="live-dot mr-1 inline-block h-2 w-2 rounded-full bg-red-600" /> Live</Badge>
-        <span>{participants.filter((p) => p.identity.startsWith("candidate-")).length} candidate(s) connected · {candidateTracks.length} video feed(s)</span>
+        <Badge tone="amber">{connection === "connected" ? "Video room connected" : connection === "connecting" ? "Connecting" : connection === "reconnecting" || connection === "signalReconnecting" ? "Reconnecting" : "Disconnected"}</Badge>
+        {connection === "connected" && <span>{participants.filter((p) => p.identity.startsWith("candidate-")).length} candidate(s) connected · {candidateTracks.length} video feed(s)</span>}
+        {(connection === "disconnected" || connectionError) && <Button variant="outline" onClick={onRetry}>Retry video connection</Button>}
         {!focus && pages > 1 && (
           <span className="ml-auto flex items-center gap-2">
             <Button variant="outline" disabled={page === 0} onClick={() => setPage(page - 1)}>←</Button>
@@ -45,7 +47,10 @@ function Grid({ candidates, examId }: { candidates: { id: string; full_name: str
         {focus && <Button variant="outline" className="ml-auto" onClick={() => setFocus(null)}>← Back to grid</Button>}
       </div>
 
-      {candidateTracks.length === 0 ? (
+      {connectionError && <p role="alert" className="mb-3 text-sm text-red-700">{connectionError}</p>}
+      {connection !== "connected" ? (
+        <p role="status" className="rounded-xl bg-cream p-6 text-center text-sm text-ink-soft">Candidate feeds cannot be verified while the room is not connected. Retry if necessary.</p>
+      ) : candidateTracks.length === 0 ? (
         <p className="rounded-xl bg-cream p-6 text-center text-sm text-ink-soft">
           No candidate cameras yet. Feeds appear automatically when candidates enter the examination with proctoring enabled.
         </p>
@@ -70,6 +75,12 @@ function Grid({ candidates, examId }: { candidates: { id: string; full_name: str
         </div>
       )}
 
+    </div>
+  );
+}
+
+function IncidentForm({ examId, candidates }: { examId: string; candidates: { id: string; full_name: string }[] }) {
+  return (
       <Card className="mt-6 p-5">
         <h3 className="font-display text-lg font-semibold text-evergreen-950">Log an observation</h3>
         <p className="mt-1 text-xs text-ink-soft">
@@ -112,15 +123,19 @@ function Grid({ candidates, examId }: { candidates: { id: string; full_name: str
           </div>
         </form>
       </Card>
-    </div>
   );
 }
 
 export function ProctorRoom({ examId, candidates }: { examId: string; candidates: { id: string; full_name: string }[] }) {
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [retry, setRetry] = useState(0);
+  function retryConnection() { setLk(null); setError(null); setConnectionError(null); setRetry((n) => n + 1); }
 
   useEffect(() => {
+    let cancelled = false;
+    setError(null);
     fetch("/api/livekit/token", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -128,18 +143,22 @@ export function ProctorRoom({ examId, candidates }: { examId: string; candidates
     })
       .then(async (r) => {
         const d = await r.json().catch(() => null);
-        if (!r.ok) setError(d?.error ?? "Could not join the proctoring room.");
-        else setLk({ token: d.token, serverUrl: d.serverUrl });
+        if (!r.ok || typeof d?.token !== "string" || !d.token || typeof d?.serverUrl !== "string" || !d.serverUrl)
+          throw new Error("Video access unavailable");
+        if (!cancelled) setLk({ token: d.token, serverUrl: d.serverUrl });
       })
-      .catch(() => setError("Could not reach the video service."));
-  }, [examId]);
+      .catch(() => { if (!cancelled) setError("Could not request video access. Retry or contact your administrator."); });
+    return () => { cancelled = true; };
+  }, [examId, retry]);
 
-  if (error) return <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>;
-  if (!lk) return <p className="text-ink-soft">Connecting to the proctoring room (you join as a silent observer — your camera stays off)…</p>;
-
-  return (
-    <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video={false} audio={false} data-lk-theme="default">
-      <Grid candidates={candidates} examId={examId} />
-    </LiveKitRoom>
-  );
+  return <>
+    {lk ? <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video={false} audio={false} data-lk-theme="default"
+      onError={() => setConnectionError("Video connection failed. Retry or contact your administrator.")}
+      onConnected={() => setConnectionError(null)}>
+      <Grid candidates={candidates} onRetry={retryConnection} connectionError={connectionError} />
+    </LiveKitRoom> : error ? <div role="alert" className="space-y-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+      <p>{error}</p><Button variant="outline" onClick={retryConnection}>Retry video connection</Button>
+    </div> : <p className="text-ink-soft">Requesting video access (you join as a silent observer — your camera stays off)…</p>}
+    <IncidentForm examId={examId} candidates={candidates} />
+  </>;
 }
