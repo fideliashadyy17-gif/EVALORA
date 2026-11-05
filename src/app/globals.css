@@ -259,3 +259,18 @@ math-field:focus-within {
 .rce-kbd-btn:hover { background: rgb(16 120 90 / 0.1); border-color: var(--color-evergreen-500); }
 .rce-kbd-btn:active { background: rgb(16 120 90 / 0.2); }
 .rce-kbd-btn .katex { font-size: 1.02rem; }
+
+/* A printable assessment uses the existing dashboard route and authorization,
+   but must not print navigation or the administrative context banner. */
+@media print {
+  body:has(.paper-print) { background: white !important; color: black !important; }
+  body:has(.paper-print) aside, body:has(.paper-print) > div:not(:has(.paper-print)),
+  body:has(.paper-print) header:not(.paper-cover) { display: none !important; }
+  body:has(.paper-print) .dashboard-chrome { display: block !important; }
+  body:has(.paper-print) .paper-print { width: 100%; }
+  body:has(.paper-print) main { max-width: none !important; padding: 0 !important; }
+  body:has(.paper-print) main > .paper-print { margin: 0; }
+  .paper-question { break-inside: avoid; }
+  .paper-cover { break-after: page; }
+  @page { margin: 16mm; @bottom-center { content: "Page " counter(page); } }
+}

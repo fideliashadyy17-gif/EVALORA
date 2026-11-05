@@ -151,7 +151,7 @@ export function DashboardChrome({
   );
 
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
+    <div className="dashboard-chrome min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
       {/* Sidebar — desktop */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
         <Logo href="/dashboard" />

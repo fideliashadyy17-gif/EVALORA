@@ -104,6 +104,11 @@ export default async function AdminExaminations({
                       <a className="font-medium text-gold-800 underline-offset-2 hover:underline" href={`/admin/examinations/invitations?exam=${e.id}`}>Access link & code</a>
                       <form action={enterOrgWorkspace} className="inline">
                         <input type="hidden" name="organization_id" value={e.organization_id} />
+                        <input type="hidden" name="next" value={`/dashboard/exams/${e.id}/paper`} />
+                        <button className="font-medium text-gold-800 underline-offset-2 hover:underline">Print paper</button>
+                      </form>
+                      <form action={enterOrgWorkspace} className="inline">
+                        <input type="hidden" name="organization_id" value={e.organization_id} />
                         <input type="hidden" name="next" value={`/dashboard/reports/exam/${e.id}`} />
                         <button className="font-medium text-gold-800 underline-offset-2 hover:underline">Results</button>
                       </form>
