@@ -2,7 +2,7 @@
 
 **Branch:** `arena/21f3ffe0-evalora`  
 **Date:** 2026-11-05 (Africa/Lagos)  
-**Status:** Implemented and statically/transactionally verified; **not deployed to production**. Authenticated browser testing, DB-backed live API integration, production-env validation and production deployment remain outstanding.
+**Status:** Implemented, statically/transactionally verified, committed as `da0d0794078d8c1fcf3d6854fb10ba2ee89beee4` and pushed to `arena/21f3ffe0-evalora`; **not deployed to production**. Authenticated browser testing, DB-backed live API integration, production-env validation and production deployment remain outstanding.
 
 ---
 
@@ -207,7 +207,7 @@ Three migrations were applied live through `supabase__create_migration`; all ret
 - `20261105093835 super_admin_operational_rls`
 - `20261105093845 exam_access_identity`
 
-The earlier 22 migrations, including `official_event_identity` through `shared_link_identity_integrity`, remain applied. `ROLLBACK_0012_0019.sql` still exists for the earlier Oak work and was not executed.
+The earlier 22 migrations, including `official_event_identity` through `shared_link_identity_integrity`, remain applied. `ROLLBACK_0012_0019.sql` still exists for the earlier Oak work and was not executed. The additional-requirements source/docs/tests were committed and pushed as `da0d0794078d8c1fcf3d6854fb10ba2ee89beee4`; the auto-started Vercel preview `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc` was canceled.
 
 ---
 
@@ -299,7 +299,7 @@ Earlier Oak work on this branch had SQL **36/36** inside `BEGIN … ROLLBACK`, s
 - No `.env*`, Chromium/Chrome/Playwright, authenticated browser harness, production credentials, or production deployment were present. No authenticated browser test was performed for Super Admin, Free, Premium, Institutional, registered student, shared-link guest, qualified/unqualified candidate, desktop or mobile.
 - No DB-backed live API integration test was run for `/api/exam/link-access`, `/exam/join/[token]`, `/take-exam/[attemptId]`, `/api/exam/access`, `/api/exam/save`, `/api/exam/state`, `/api/exam/submit`, read-only re-entry, refresh persistence, separate browser sessions, attempt recording, answers, timing, autosave, proctoring or results.
 - Vercel env still lacks `LIVE_DISPLAY_TOKEN_SECRET` and `NEXT_PUBLIC_ROOT_DOMAIN`; secret values are redacted and were not decrypted. No production-env validation was performed.
-- The existing Vercel production deployment remains `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` (READY/PROMOTED from `7845fa6`). Three auto-started previews from earlier pushes were canceled; the third (`dpl_CjsT3C5fi8kcdt8mZFe2YhuGzADm`) was canceled but not recorded in the older docs. No new production deployment, promotion or alias change has been made.
+- The existing Vercel production deployment remains `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` (READY/PROMOTED from `7845fa6`). Four auto-started previews from pushes on this branch were canceled; the third (`dpl_CjsT3C5fi8kcdt8mZFe2YhuGzADm`) and the fourth (`dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc`, commit `da0d079`) are both recorded here. No new production deployment, promotion or alias change has been made.
 
 ---
 
@@ -344,7 +344,7 @@ Earlier Oak work on this branch had SQL **36/36** inside `BEGIN … ROLLBACK`, s
 ## 10. Immediate next steps before deployment
 
 1. **Done:** reran `./node_modules/.bin/tsc --noEmit`, `npm run lint`, dummy-env `npm run build` and `git diff --check` after the final LiveKit edit; all exited 0 (13 pre-existing non-blocking lint warnings).
-2. Commit and push to `arena/21f3ffe0-evalora`; cancel any auto-started Vercel preview; do **not** deploy to production.
+2. **Done:** committed and pushed as `da0d0794078d8c1fcf3d6854fb10ba2ee89beee4`; canceled the auto-started Vercel preview `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc`; did **not** deploy to production.
 3. Provision a staging/preview environment with real Supabase/Vercel env, an authenticated test harness and separate browser sessions for Super Admin, Free, Premium, Institutional, registered student, shared-link guest, qualified and unqualified candidates.
 4. Run DB-backed API integration for link-access/join/exam state/submit/take-exam/legacy access/read-only re-entry, plus wrong-code, expired/closed, unauthorized-ID, ineligible, cross-exam, refresh-persistence and duplicate/conflicting-attempt negative cases.
 5. Verify autosave, timing, scoring, results, proctoring and audit logs are unchanged.
