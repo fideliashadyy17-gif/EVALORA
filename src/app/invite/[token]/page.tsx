@@ -12,6 +12,7 @@ async function accept(formData: FormData) {
   const token = String(formData.get("token"));
   const ctx = await getSessionContext();
   if (!ctx) redirect(`/login?next=/invite/${token}`);
+  if (ctx.profile.status !== "active") redirect("/login?error=suspended");
   const admin = createAdminClient();
   const { data: inv } = await admin
     .from("invitations")
@@ -34,7 +35,7 @@ async function accept(formData: FormData) {
     body: "You joined a new organization workspace.",
     link: "/dashboard",
   });
-  redirect("/dashboard");
+  redirect("/auth/resolve");
 }
 
 export default async function InvitePage({

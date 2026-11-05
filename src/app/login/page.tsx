@@ -4,17 +4,17 @@ import { AuthError, AuthNotice, AuthShell } from "@/components/AuthShell";
 import { Button, Field, Input } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
 function LoginForm() {
-  const router = useRouter();
   const sp = useSearchParams();
-  const next = sp.get("next") ?? "/dashboard";
+  const next = sp.get("next");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(
-    sp.get("error") === "suspended" ? "This account has been suspended. Contact support." : null,
+    sp.get("error") === "suspended" ? "This account has been suspended. Contact support." :
+    sp.get("error") === "profile" ? "Your account or membership details could not be loaded. Try again or contact support." : null,
   );
   const [busy, setBusy] = useState(false);
 
@@ -33,8 +33,11 @@ function LoginForm() {
       );
       return;
     }
-    router.push(next);
-    router.refresh();
+    // Full navigation ensures the server reads the newly established session
+    // and chooses the destination from verified role and membership data.
+    const destination = new URL("/auth/resolve", window.location.origin);
+    if (next) destination.searchParams.set("next", next);
+    window.location.assign(destination.pathname + destination.search);
   }
 
   return (

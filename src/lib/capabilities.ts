@@ -31,7 +31,7 @@ export async function getCapabilities(
     getEntitlementFor(supabase, ctx, organizationId),
     getFeatureFlags(),
   ]);
-  const isSuperAdmin = ctx.profile.platform_role === "super_admin";
+  const isSuperAdmin = ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin";
   const capabilities = resolveCapabilities({
     isSuperAdmin,
     planSlug: entitlement.planSlug,

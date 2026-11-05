@@ -1,4 +1,4 @@
-import { CopyInvitation } from "@/app/admin/examinations/invitations/CopyInvitation";
+import { CopyInvitation } from "@/components/CopyInvitation";
 import { Badge, ButtonLink, Card, Input } from "@/components/ui";
 import {
   buildInvitationText,

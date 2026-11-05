@@ -55,17 +55,23 @@ export async function middleware(request: NextRequest) {
     return rewrite;
   }
 
-  const isPrivate = path.startsWith("/dashboard") || path.startsWith("/admin") || path.startsWith("/onboarding");
+  const isPrivate = path.startsWith("/dashboard") || path.startsWith("/admin") || path.startsWith("/onboarding") || path.startsWith("/student") || path.startsWith("/workspaces");
   if (isPrivate && !user) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("next", path);
-    return NextResponse.redirect(url);
+    url.search = "";
+    url.searchParams.set("next", path + request.nextUrl.search);
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
   }
-  if (user && (path === "/login" || path === "/register")) {
+  if (user && (path === "/login" || path === "/register") &&
+      !(path === "/login" && ["suspended", "profile"].includes(request.nextUrl.searchParams.get("error") ?? ""))) {
     const url = request.nextUrl.clone();
-    url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    url.pathname = "/auth/resolve";
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
   }
 
   return response;

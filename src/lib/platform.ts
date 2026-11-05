@@ -50,6 +50,6 @@ export async function isFeatureEnabledFor(
   key: FeatureKey,
 ): Promise<boolean> {
   return isFeatureEnabled(key, {
-    ownerBypass: ctx.profile.platform_role === "super_admin",
+    ownerBypass: ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin",
   });
 }

@@ -19,7 +19,6 @@ import {
   Menu,
   PenSquare,
   Settings,
-  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
@@ -66,16 +65,16 @@ export function DashboardChrome({
   orgSlug,
   isDemo,
   orgRole,
+  canSwitchWorkspace,
   userName,
-  isSuperAdmin,
   children,
 }: {
   orgName: string;
   orgSlug?: string;
   isDemo?: boolean;
   orgRole?: string;
+  canSwitchWorkspace?: boolean;
   userName: string;
-  isSuperAdmin?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -129,20 +128,8 @@ export function DashboardChrome({
           })}
         </div>
       ))}
-      {isSuperAdmin && (
-        <Link
-          href="/admin"
-          onClick={() => setOpen(false)}
-          className={cn(
-            navLink,
-            "mt-3 border border-gold-600/60",
-            pathname.startsWith("/admin") ? "bg-gold-500 text-evergreen-950" : "text-gold-800 hover:bg-gold-50",
-          )}
-        >
-          <ShieldCheck className="h-5 w-5 shrink-0" />
-          Super Admin Console
-        </Link>
-      )}
+
+      {canSwitchWorkspace && <Link href="/workspaces" className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
       <Link href="/" className={cn(navLink, "mt-3", navIdle)}>
         <BookOpenCheck className="h-5 w-5 shrink-0" />
         Public website

@@ -28,11 +28,12 @@ export async function GET(request: Request) {
 
   const ctx = await getSessionContext();
   if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  if (ctx.profile.status !== "active") return NextResponse.json({ error: "Account is not active." }, { status: 403 });
 
   const admin = createAdminClient();
   const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
-  if (!can(ctx, session.organization_id, CREATOR_ROLES) && session.host_id !== ctx.user.id) {
+  if (!can(ctx, session.organization_id, CREATOR_ROLES)) {
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
   }
 

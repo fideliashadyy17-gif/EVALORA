@@ -33,7 +33,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       isPrimary={Boolean(ctx.profile.is_primary)}
       counts={counts}
       platformOrgId={platformOrg.data?.id ?? null}
-      adminContextName={ctx.adminOrgContext?.name ?? null}
     >
       {children}
     </AdminShell>

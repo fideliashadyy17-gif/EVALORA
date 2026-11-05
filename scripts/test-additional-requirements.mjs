@@ -76,7 +76,7 @@ const premiumEnt = await getEntitlement(fakeSupabase(subscription(premiumPlan), 
 const institutionEnt = await getEntitlement(fakeSupabase(subscription(institutionPlan), freePlan), "org-institution");
 const ownerEnt = await getEntitlementFor(
   { from() { throw new Error("owner bypass must not query subscriptions"); } },
-  { profile: { platform_role: "super_admin" } },
+  { profile: { platform_role: "super_admin", status: "active" } },
   "org-owner",
 );
 

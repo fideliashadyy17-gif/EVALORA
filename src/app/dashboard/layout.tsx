@@ -1,6 +1,7 @@
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { activeOrg, requireUser } from "@/lib/auth";
 import Link from "next/link";
+import { isLearnerRole } from "@/lib/roleRouting";
 import { redirect } from "next/navigation";
 import { exitOrgWorkspace } from "../admin/actions/orgs";
 
@@ -32,8 +33,10 @@ export default async function DashboardLayout({
   }
 
   // Super admins may use the console without an organization.
-  if (!org && !isSuperAdmin) redirect("/onboarding");
+  if (!org && !isSuperAdmin) redirect(ctx.memberships.length ? "/workspaces" : "/onboarding");
   if (!org) redirect("/admin");
+  if (!isSuperAdmin && ctx.memberships.length > 1 && !ctx.workspaceSelected) redirect("/workspaces");
+  if (!isSuperAdmin && isLearnerRole(org.role)) redirect("/student");
 
   // Suspended/archived workspaces are closed to their members — but the
   // platform owner can still enter to inspect or repair them.
@@ -82,8 +85,8 @@ export default async function DashboardLayout({
         orgSlug={org.slug}
         isDemo={Boolean(org.is_demo)}
         orgRole={org.role}
+        canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
         userName={ctx.profile.full_name || ctx.profile.email}
-        isSuperAdmin={isSuperAdmin}
       >
         {children}
       </DashboardChrome>

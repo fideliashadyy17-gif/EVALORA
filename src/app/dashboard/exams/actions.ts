@@ -253,3 +253,36 @@ export async function reviewIncident(formData: FormData) {
   revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}`);
   revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}/proctor`);
 }
+
+/** Limited organizer invitation controls. Other advanced settings remain in the global console. */
+export async function updateWorkspaceExamAccess(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const id = String(formData.get("exam_id") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams");
+  const back = `/dashboard/exams/${id}`;
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const action = String(formData.get("access_action") ?? "");
+  const patch: Record<string, unknown> = {};
+  if (action === "enable") patch.shared_link_enabled = true;
+  else if (action === "disable") patch.shared_link_enabled = false;
+  else if (action === "new_code") patch.access_code = genCode(8);
+  else if (action === "new_link") patch.invite_token = crypto.randomUUID();
+  else redirect(`${back}?access_error=invalid`);
+
+  const supabase = await createClient();
+  const { data: updated, error } = await supabase.from("exams").update(patch)
+    .eq("id", id).eq("organization_id", org.id).select("id").maybeSingle();
+  if (error || !updated) redirect(`${back}?access_error=failed`);
+  // Separate write: never claim the audit succeeded if its insert fails. Do not
+  // log the new link or access code. Existing links/codes may already have rotated.
+  let auditFailed = false;
+  try {
+    const admin = createAdminClient();
+    const result = await admin.from("audit_logs").insert({ actor_id: ctx.user.id, organization_id: org.id, action: `exam.invitation.${action}`, entity: "exams", entity_id: id, metadata: { action, source: "workspace" } });
+    auditFailed = Boolean(result.error);
+  } catch { auditFailed = true; }
+  revalidatePath(back);
+  if (auditFailed) redirect(`${back}?access_error=audit`);
+  redirect(`${back}?access_ok=1`);
+}

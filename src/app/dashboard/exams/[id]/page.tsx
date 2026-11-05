@@ -1,7 +1,7 @@
 import { RichContent } from "@/components/RichContent";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
-import { activeOrg, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -9,7 +9,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   addCandidate, addCandidatesBulk, deleteExam, markAnswer, publishResults,
-  removeCandidate, reviewIncident, setExamStatus,
+  removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -93,6 +93,8 @@ export default async function ExamDetailPage({
         }
       />
 
+      {sp.access_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination access updated.</p>}
+      {sp.access_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.access_error === "audit" ? "Access changed, but the audit entry could not be confirmed. Do not retry a rotation until you check the current link and code; contact an administrator." : "Access could not be updated. Check your permissions and retry."}</p>}
       {sp.publish_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
@@ -126,7 +128,12 @@ export default async function ExamDetailPage({
               Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
               <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
             </p>
-            <ButtonLink href={`/admin/examinations/invitations?exam=${id}`} variant="outline">Invitation settings</ButtonLink>
+            {can(ctx, org.id, CREATOR_ROLES) && <div className="mt-4 flex flex-wrap gap-2">
+              <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value={exam.shared_link_enabled ? "disable" : "enable"} /><Button type="submit" variant="outline">{exam.shared_link_enabled ? "Disable shared link" : "Enable shared link"}</Button></form>
+              <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_link" /><Button type="submit" variant="outline">Regenerate link</Button></form>
+              <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_code" /><Button type="submit" variant="outline">Regenerate code</Button></form>
+              <p className="w-full text-xs text-ink-soft">Regenerating immediately invalidates the previous link or code. Advanced eligibility and identity settings are not yet available in this workspace.</p>
+            </div>}
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
             {exam.status !== "open" ? (

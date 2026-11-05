@@ -163,7 +163,7 @@ export async function getEntitlementFor(
   organizationId: string,
 ): Promise<Entitlement> {
   return getEntitlement(supabase, organizationId, {
-    ownerBypass: ctx.profile.platform_role === "super_admin",
+    ownerBypass: ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin",
   });
 }
 

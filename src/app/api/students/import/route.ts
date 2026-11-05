@@ -41,6 +41,7 @@ interface RowReport {
 export async function POST(request: Request) {
   const ctx = await getSessionContext();
   if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  if (ctx.profile.status !== "active") return NextResponse.json({ error: "Account is not active." }, { status: 403 });
 
   let body: ImportPayload;
   try {

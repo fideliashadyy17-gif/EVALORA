@@ -46,7 +46,7 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, type ComponentType, type ReactNode } from "react";
-import { enterOrgWorkspace, exitOrgWorkspace } from "./actions/orgs";
+import { enterOrgWorkspace } from "./actions/orgs";
 
 interface NavItem {
   href: string;
@@ -212,14 +212,12 @@ export function AdminShell({
   isPrimary,
   counts,
   platformOrgId,
-  adminContextName,
   children,
 }: {
   email: string;
   isPrimary: boolean;
   counts: ShellCounts;
   platformOrgId: string | null;
-  adminContextName: string | null;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -506,19 +504,6 @@ export function AdminShell({
             </div>
           </div>
 
-          {/* Administrative workspace-mode banner */}
-          {adminContextName && (
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-gold-600/40 bg-gold-50 px-4 py-2 text-sm text-evergreen-950 sm:px-6">
-              <span>
-                <strong>Workspace mode:</strong> organization tools are operating on <strong>{adminContextName}</strong>.
-              </span>
-              <form action={exitOrgWorkspace}>
-                <button type="submit" className="font-semibold underline underline-offset-2 hover:text-evergreen-800">
-                  Exit workspace mode
-                </button>
-              </form>
-            </div>
-          )}
         </header>
 
         {/* Mobile nav */}
