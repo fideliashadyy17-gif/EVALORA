@@ -42,7 +42,7 @@ export function QuestionRunner({
   question,
   onAnswer,
   onDirtyChange,
-  disabled = false,
+  disabled: initiallyDisabled = false,
   initial,
   submitLabel = "Submit answer",
 }: {
@@ -54,26 +54,38 @@ export function QuestionRunner({
   initial?: Record<string, unknown> | null;
   submitLabel?: string;
 }) {
-  const [selected, setSelected] = useState<string[]>(
-    ((initial?.option_ids as string[]) ?? (initial?.option_id ? [initial.option_id as string] : [])),
+  const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
+  const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.left === "string" && typeof item.right === "string") && new Set(value.map((item) => item.left)).size === value.length;
+  const selectedFromSaved = () => isStringArray(initial?.option_ids) ? initial.option_ids : typeof initial?.option_id === "string" ? [initial.option_id] : [];
+  const orderFromSaved = () => isStringArray(initial?.order) ? initial.order : question.options.map((o) => o.label);
+  const pairsFromSaved = () => Object.fromEntries((isPairs(initial?.pairs) ? initial.pairs : []).map((pair) => [pair.left, pair.right]));
+  // Do not silently replace malformed persisted data with a blank answer. The
+  // candidate can continue to other questions, but must ask for help before
+  // overwriting this one. Validate only the fields used by this question type.
+  const present = (value: unknown) => value !== null && value !== undefined;
+  const t = question.type;
+  const invalidSavedAnswer = present(initial) && (
+    typeof initial !== "object" || Array.isArray(initial) ||
+    ((t === "single_choice" || t === "true_false" || t === "poll") && present(initial?.option_id) && typeof initial?.option_id !== "string") ||
+    (t === "multiple_select" && present(initial?.option_ids) && !isStringArray(initial?.option_ids)) ||
+    (t === "ordering" && present(initial?.order) && !isStringArray(initial?.order)) ||
+    (t === "matching" && present(initial?.pairs) && !isPairs(initial?.pairs)) ||
+    ((t === "short_answer" || t === "open_ended") && present(initial?.text) && typeof initial?.text !== "string") ||
+    (t === "numeric" && present(initial?.value) && (typeof initial?.value !== "string" && typeof initial?.value !== "number" || String(initial.value).trim() === "" || !Number.isFinite(Number(initial.value))))
   );
-  const [text, setText] = useState(String(initial?.text ?? ""));
-  const [num, setNum] = useState(String(initial?.value ?? ""));
-  const [order, setOrder] = useState<string[]>(
-    ((initial?.order as string[]) ?? question.options.map((o) => o.label)),
-  );
-  const [pairs, setPairs] = useState<Record<string, string>>(() => {
-    const init = (initial?.pairs as { left: string; right: string }[]) ?? [];
-    return Object.fromEntries(init.map((p) => [p.left, p.right]));
-  });
+  const disabled = initiallyDisabled || invalidSavedAnswer;
+  const [selected, setSelected] = useState<string[]>(selectedFromSaved);
+  const [text, setText] = useState(typeof initial?.text === "string" ? initial.text : "");
+  const [num, setNum] = useState(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
+  const [order, setOrder] = useState<string[]>(orderFromSaved);
+  const [pairs, setPairs] = useState<Record<string, string>>(pairsFromSaved);
 
   useEffect(() => {
-    setSelected((initial?.option_ids as string[]) ?? (initial?.option_id ? [initial.option_id as string] : []));
-    setText(String(initial?.text ?? ""));
-    setNum(String(initial?.value ?? ""));
-    setOrder((initial?.order as string[]) ?? question.options.map((o) => o.label));
-    const init = (initial?.pairs as { left: string; right: string }[]) ?? [];
-    setPairs(Object.fromEntries(init.map((p) => [p.left, p.right])));
+    setSelected(selectedFromSaved());
+    setText(typeof initial?.text === "string" ? initial.text : "");
+    setNum(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
+    setOrder(orderFromSaved());
+    setPairs(pairsFromSaved());
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
@@ -95,10 +107,9 @@ export function QuestionRunner({
     }
   }
 
-  const t = question.type;
-
   return (
     <div>
+      {invalidSavedAnswer && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">Your saved answer for this question could not be displayed safely. It has not been changed. Please contact the organizer before answering this question again.</p>}
       {question.media_url && question.media_type === "image" && (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={question.media_url} alt="" className="mb-4 max-h-72 w-full rounded-xl object-contain" />

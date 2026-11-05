@@ -64,4 +64,29 @@ await test('live session without draft tracking still sends tap and typed answer
   tree=await render('short_answer', (a) => answers.push(a)); await act(() => tree.root.findByType('input').props.onChange({target:{value:'live'}})); await click(saveButton(tree));
   assert.deepEqual(answers,[{option_id:'a'},{text:'live'}]); await act(() => tree.unmount());
 });
+await test('malformed persisted answers show a warning and disable editing instead of crashing or overwriting', async () => {
+  for (const [type, initial] of [
+    ['single_choice',{option_id:{id:'a'}}], ['single_choice','invalid'], ['short_answer',[]], ['multiple_select',{option_ids:{a:true}}],
+    ['ordering',{order:'not-an-array'}], ['ordering',{order:['A',null]}],
+    ['matching',{pairs:'not-an-array'}], ['matching',{pairs:[null]}], ['matching',{pairs:[{left:'L',right:3}]}], ['matching',{pairs:[{left:'L',right:'R'},{left:'L',right:'Q'}]}],
+    ['short_answer',{text:{}}], ['numeric',{value:{}}], ['numeric',{value:'abc'}], ['open_ended',{text:[]}],
+  ]) {
+    let tree; const answers=[];
+    await act(() => {tree=TestRenderer.create(React.createElement(QuestionRunner,{question:question(type),initial,onAnswer:a=>answers.push(a)}));});
+    assert.equal(tree.root.findAllByProps({role:'alert'}).length,1,type);
+    for (const tag of ['button','input','textarea','select']) for (const control of tree.root.findAllByType(tag)) assert.equal(control.props.disabled,true,`${type} ${tag}`);
+    assert.equal(answers.length,0);await act(()=>tree.unmount());
+  }
+});
+await test('valid previously saved answers are restored without a warning', async () => {
+  for(const [type,initial] of [['multiple_select',{option_ids:['a']}],['ordering',{order:['B','A']}],['matching',{pairs:[{left:'L',right:'R'}]}],['short_answer',{text:'saved'}],['numeric',{value:2.5}]]){
+    let tree;await act(()=>{tree=TestRenderer.create(React.createElement(QuestionRunner,{question:question(type),initial,onAnswer:()=>{}}));});
+    assert.equal(tree.root.findAllByProps({role:'alert'}).length,0,type);
+    if(type==='matching')assert.equal(tree.root.findByType('select').props.value,'R');
+    if(type==='short_answer')assert.equal(tree.root.findByType('input').props.value,'saved');
+    if(type==='numeric')assert.equal(tree.root.findByType('input').props.value,'2.5');
+    if(type==='multiple_select')assert.equal(saveButton(tree).props.disabled,false);
+    await act(()=>tree.unmount());
+  }
+});
 console.log(`\n${count} QuestionRunner interaction checks passed (React test renderer; no browser).`);
