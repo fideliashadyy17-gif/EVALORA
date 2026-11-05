@@ -86,6 +86,8 @@ check("Premium entitlement resolves Premium plan", premiumEnt.planSlug === "prem
 check("Institutional entitlement resolves Institution plan", institutionEnt.planSlug === "institution");
 check("Super Admin owner entitlement is distinct from Institutional plan", ownerEnt.planSlug === "owner" && ownerEnt.status === "owner");
 check("Super Admin owner limits are unlimited", withinLimit(ownerEnt.limits.max_exams, 9999) && ownerEnt.limits.proctoring);
+check("Super Admin owner includes every institutional feature", ownerEnt.limits.institutional && ownerEnt.limits.central_asset_management && ownerEnt.limits.configurable_limits && ownerEnt.limits.multi_class_operations);
+check("Super Admin owner quotas are unlimited", [ownerEnt.limits.max_quizzes, ownerEnt.limits.max_participants_per_session, ownerEnt.limits.max_exams, ownerEnt.limits.max_members, ownerEnt.limits.max_questions, ownerEnt.limits.storage_mb, ownerEnt.limits.max_classes, ownerEnt.limits.max_students].every((limit) => limit === -1));
 check("Free plan keeps commercial restrictions", freeEnt.limits.max_exams === 2 && !freeEnt.limits.proctoring && !freeEnt.limits.advanced_reports);
 check("Institution plan includes institutional capability keys", institutionEnt.limits.institutional && institutionEnt.limits.central_asset_management && institutionEnt.limits.configurable_limits);
 

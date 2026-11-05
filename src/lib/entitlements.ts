@@ -72,12 +72,12 @@ export const UNLIMITED_LIMITS: PlanLimits = {
   proctoring: true,
   advanced_reports: true,
   storage_mb: -1,
-  institutional: false,
+  institutional: true,
   max_classes: -1,
   max_students: -1,
   multi_class_operations: true,
-  central_asset_management: false,
-  configurable_limits: false,
+  central_asset_management: true,
+  configurable_limits: true,
 };
 
 /**
