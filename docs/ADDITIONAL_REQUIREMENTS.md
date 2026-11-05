@@ -350,3 +350,7 @@ Earlier Oak work on this branch had SQL **36/36** inside `BEGIN … ROLLBACK`, s
 5. Verify autosave, timing, scoring, results, proctoring and audit logs are unchanged.
 6. Decide whether an absolute canonical URL column and a safe no-class general-exam workflow are required; implement and test them separately if so.
 7. Only after all of the above pass and the owner explicitly authorizes deployment, promote to production.
+
+## 11. Final deployment note (post-push)
+
+Every Vercel preview automatically started by a push on this branch was canceled through the Vercel API. This includes the three earlier Oak previews, `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc` (implementation commit `da0d0794078d8c1fcf3d6854fb10ba2ee89beee4`), and `dpl_BPdUNLRjxxy6cJuNcR9ZSujmpAPf` (verification-docs commit `06fa6cc8988991170c2e2b0864728cbab004dcf7`). Any preview started by the push carrying this final note is likewise canceled; see the Vercel deployment history for exact IDs. The existing production deployment `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` remains untouched. **No production deployment, promotion, alias change, production-env validation or production-secret decryption was performed.**
