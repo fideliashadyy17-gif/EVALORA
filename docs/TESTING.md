@@ -98,3 +98,7 @@ infrastructures with different ceilings.
 ## Final deployment note
 
 All auto-started Vercel previews from pushes on `arena/21f3ffe0-evalora` were canceled, including `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc` (`da0d079`) and `dpl_BPdUNLRjxxy6cJuNcR9ZSujmpAPf` (`06fa6cc`). Any preview started by the final docs push is also canceled; exact IDs are in Vercel deployment history. Production deployment `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` remains the only promoted deployment and was not changed.
+
+## Production deployment — user override
+
+On explicit owner request, the current branch was deployed to production. `NEXT_PUBLIC_ROOT_DOMAIN` and a sensitive `LIVE_DISPLAY_TOKEN_SECRET` were added; deployment `dpl_8s8pF9K485z11sh4kseHnUuGzvDE` from `518c44e` is **READY/PROMOTED** with aliases `evalora-six.vercel.app` and `evalora-starboyboy2017-cells-projects.vercel.app`. Vercel build compiled in 55 s and generated 37/37 pages with the same 13 non-blocking warnings. Anonymous fetches are blocked by Vercel SSO; sign in with the Vercel account, then use the app's Super Admin session for `/admin`. This is a build/deploy result only — authenticated browser, DB-backed API, negative/regression and production-secret tests are still not run. Any preview auto-started by the final docs push is canceled; exact IDs are in Vercel deployment history.

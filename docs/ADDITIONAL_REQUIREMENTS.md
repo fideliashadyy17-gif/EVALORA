@@ -354,3 +354,15 @@ Earlier Oak work on this branch had SQL **36/36** inside `BEGIN … ROLLBACK`, s
 ## 11. Final deployment note (post-push)
 
 Every Vercel preview automatically started by a push on this branch was canceled through the Vercel API. This includes the three earlier Oak previews, `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc` (implementation commit `da0d0794078d8c1fcf3d6854fb10ba2ee89beee4`), and `dpl_BPdUNLRjxxy6cJuNcR9ZSujmpAPf` (verification-docs commit `06fa6cc8988991170c2e2b0864728cbab004dcf7`). Any preview started by the push carrying this final note is likewise canceled; see the Vercel deployment history for exact IDs. The existing production deployment `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` remains untouched. **No production deployment, promotion, alias change, production-env validation or production-secret decryption was performed.**
+
+## 12. Production deployment — user override (2026-11-05)
+
+The owner explicitly overrode the earlier "no deployment until all tests/browser verification" constraint and asked to push and deploy on Vercel. This section supersedes the deployment-status statements above.
+
+- GitHub: `arena/21f3ffe0-evalora` remains at `518c44ed292179c444f93c6f390294c35d400a28`; `git push origin arena/21f3ffe0-evalora` reported up to date.
+- Vercel env: added `NEXT_PUBLIC_ROOT_DOMAIN=evalora-six.vercel.app` (plain) and `LIVE_DISPLAY_TOKEN_SECRET` (sensitive; generated value not recorded here) for production, preview and development. The existing `NEXT_PUBLIC_APP_URL`, Supabase, LiveKit and `SUPER_ADMIN_EMAIL` variables remain. No secret values were copied into source or reports.
+- Production deployment: `dpl_8s8pF9K485z11sh4kseHnUuGzvDE` created from Git source `type=github`, `repoId=1445403108`, `ref=arena/21f3ffe0-evalora`, `sha=518c44ed292179c444f93c6f390294c35d400a28`, `target=production`. Build events show clone, cache restore, `npm run build`, **compiled successfully in 55 s**, 37/37 static pages, deployment completed. Final state **READY / PROMOTED**, `aliasAssigned=true`.
+- Aliases now include `evalora-six.vercel.app`, `evalora-starboyboy2017-cells-projects.vercel.app` and the branch alias. The previous production deployment `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` is no longer the promoted target.
+- Access note: anonymous requests to the production hostname are intercepted by Vercel SSO protection (`ssoProtection.deploymentType = all_except_custom_domains`) and redirect to a Vercel login. Sign in with the Vercel account first; `/admin` additionally requires the app's verified Super Admin Supabase session. The URL is `/admin`, not `/admim`.
+- Verification caveat: this is a successful production **build/deploy**, not proof of authenticated browser behavior or DB-backed API integration. No role-separated browser tests, wrong-code/expired/closed/ineligible/cross-exam/refresh/separate-session cases, autosave/timing/scoring/results/proctoring regression, or production-secret decryption were performed. Those remain outstanding even though the app is now live.
+- Any preview automatically started by the docs push carrying this section is canceled; see Vercel deployment history for exact IDs.
