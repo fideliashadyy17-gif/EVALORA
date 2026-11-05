@@ -122,7 +122,11 @@ export async function saveQuestion(raw: QuestionInput) {
   if (questionId) {
     const { error } = await supabase.from("questions").update(payload).eq("id", questionId).eq("organization_id", org.id);
     if (error) return { error: error.message };
-    await supabase.from("question_options").delete().eq("question_id", questionId);
+    const { error: deleteError } = await supabase.from("question_options").delete().eq("question_id", questionId);
+    // The question update was a separate write; never report success or append
+    // replacements if deleting the old options failed. Atomic editing remains
+    // a separate, necessary migration and must not be implied by this check.
+    if (deleteError) return { error: "Question details were saved, but existing options could not be replaced. Please reload and contact an administrator." };
   } else {
     const { data, error } = await supabase.from("questions").insert(payload).select().single();
     if (error || !data) return { error: error?.message ?? "Could not save the question." };

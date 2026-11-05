@@ -2,6 +2,7 @@
 
 import { Button, Field, Input, Select } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { toCsv } from "@/lib/utils";
 import {
   STUDENT_IMPORT_FIELDS, guessFieldForHeader, looksLikeHeader, resolveClass, rowsToRecords,
   sha256Hex, validateImportRecord,
@@ -181,10 +182,10 @@ export function StudentImportWizard({
   async function downloadTemplate(kind: "csv" | "xlsx") {
     const sample = [TEMPLATE_HEADER, ["Ada Example", "STU-001", "ada@example.com", "female", "2012-05-14", "+229 90 00 00 00", "Mary Example", "+229 91 00 00 00", activeClasses[0]?.name ?? "Class name", years.find((y) => y.is_current)?.name ?? "2025/2026"]];
     if (kind === "csv") {
-      const csv = sample.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+      const csv = toCsv(sample);
       downloadBlob(new Blob([csv], { type: "text/csv" }), "evalora-student-import-template.csv");
     } else {
-      const XLSX = await import("xlsx");
+      const XLSX = await import("@e965/xlsx");
       const ws = XLSX.utils.aoa_to_sheet(sample);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Students");
@@ -205,9 +206,10 @@ export function StudentImportWizard({
       status: !r.include ? "excluded" : validations[i].errors.length ? "invalid" : validations[i].duplicate ? "duplicate" : "valid",
       errors: validations[i].errors, warnings: validations[i].warnings,
     }));
-    const csv = ["row,student,status,errors,warnings", ...rowsOut.map((r) =>
-      [r.row, `"${r.name.replace(/"/g, '""')}"`, r.status, `"${r.errors.join(" · ").replace(/"/g, '""')}"`, `"${r.warnings.join(" · ").replace(/"/g, '""')}"`].join(","),
-    )].join("\n");
+    const csv = toCsv([
+      ["row", "student", "status", "errors", "warnings"],
+      ...rowsOut.map((r) => [r.row, r.name, r.status, r.errors.join(" · "), r.warnings.join(" · ")]),
+    ]);
     downloadBlob(new Blob([csv], { type: "text/csv" }), "evalora-student-import-report.csv");
   }
 

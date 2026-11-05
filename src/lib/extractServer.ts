@@ -58,7 +58,7 @@ function decodeHtml(html: string): string {
 }
 
 async function extractSpreadsheet(buffer: Buffer): Promise<ExtractResult> {
-  const XLSX = await import("xlsx");
+  const XLSX = await import("@e965/xlsx");
   const wb = XLSX.read(buffer, { type: "buffer", cellDates: true });
   const warnings: string[] = [];
   let best: string[][] = [];

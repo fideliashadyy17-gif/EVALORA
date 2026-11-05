@@ -7,7 +7,7 @@ import ts from 'typescript';
 function compile(source, target){const file=path.resolve(target);const m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync(source,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}
 const csv=compile('src/lib/csv.ts','scripts/__virtual_csv.cjs');
 const file=path.resolve('scripts/__virtual_extract.cjs');const original=Module._load;let spreadsheetLoaded=false;
-Module._load=function(request,parent){if(parent?.filename===file&&request==='./csv')return csv;if(parent?.filename===file&&request==='xlsx'){spreadsheetLoaded=true;throw Error('CSV must not invoke spreadsheet parser');}return original.apply(this,arguments);};
+Module._load=function(request,parent){if(parent?.filename===file&&request==='./csv')return csv;if(parent?.filename===file&&request==='@e965/xlsx'){spreadsheetLoaded=true;throw Error('CSV must not invoke spreadsheet parser');}return original.apply(this,arguments);};
 const {extractStudentRows}=compile('src/lib/extractServer.ts','scripts/__virtual_extract.cjs');
 let checks=0;
 async function test(name,fn){await fn();checks++;console.log(`  ✓ ${name}`);}

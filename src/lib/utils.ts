@@ -74,8 +74,12 @@ export function toCsv(rows: (string | number | null | undefined)[][]) {
     .map((r) =>
       r
         .map((c) => {
-          const v = c == null ? "" : String(c);
-          return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+          // CSV quoting alone does not stop spreadsheet applications from interpreting
+          // untrusted text as formulas. Preserve numeric values as numbers, but
+          // force dangerous text (including whitespace/control prefixes) to text.
+          let v = c == null ? "" : String(c);
+          if (typeof c === "string" && (/^[\t\r\n]/.test(v) || /^[\s\uFEFF]*[=+\-@]/.test(v))) v = `'${v}`;
+          return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
         })
         .join(","),
     )

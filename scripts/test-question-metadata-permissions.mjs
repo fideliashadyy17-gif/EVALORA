@@ -5,12 +5,12 @@ import {Module} from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
 const file=path.resolve('scripts/__virtual_question_action.cjs');
-let org={id:'org-a',role:'teacher'}, canEdit=true, category={id:'cat-a'}, categoryError=null, writes=[];
+let org={id:'org-a',role:'teacher'}, canEdit=true, category={id:'cat-a'}, categoryError=null, optionDeleteError=null, writes=[];
 const db={from(table){const query={filters:[],select(){return this;},eq(key,value){this.filters.push([key,value]);return this;},maybeSingle:async()=>{
  if(table==='questions') return {data:{prompt_hash:null},error:null};
  if(table==='question_categories') { assert.ok(query.filters.some(([k,v])=>k==='organization_id'&&v==='org-a')); return {data:category,error:categoryError}; }
  throw Error('unexpected query '+table);
-},update(payload){writes.push({table,payload});return this;},delete(){writes.push({table,delete:true});return this;},then(resolve){return Promise.resolve({error:null}).then(resolve);}};return query;}};
+},update(payload){writes.push({table,payload});return this;},delete(){writes.push({table,delete:true});this.deleting=true;return this;},then(resolve){return Promise.resolve({error:table==='question_options'&&this.deleting?optionDeleteError:null}).then(resolve);}};return query;}};
 const original=Module._load;
 Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/auth')return {requireUser:async()=>({user:{id:'user'}}),activeOrg:()=>org,can:()=>canEdit,CREATOR_ROLES:['owner','admin','teacher','organizer']};
@@ -31,4 +31,5 @@ await test('foreign or missing category denied before modifying question',async(
 await test('category query failure fails closed',async()=>{category={id:'cat-a'};categoryError={message:'database unavailable'};writes=[];assert.match((await saveQuestion(question)).error,/category/);assert.equal(writes.length,0);categoryError=null;});
 await test('same-tenant category remains usable',async()=>{writes=[];assert.equal((await saveQuestion(question)).ok,true);assert.equal(writes[0].payload.category_id,'cat-a');});
 await test('question without category remains usable',async()=>{writes=[];assert.equal((await saveQuestion({...question,category_id:null})).ok,true);assert.equal(writes[0].payload.category_id,null);});
+await test('option delete failure reports partial update rather than success',async()=>{optionDeleteError={message:'write failed'};writes=[];const result=await saveQuestion(question);assert.match(result.error,/details were saved.*options could not be replaced/i);assert.equal(writes.length,2);optionDeleteError=null;});
 console.log(`\n${checks} question metadata permission checks passed (mocked auth/database).`);

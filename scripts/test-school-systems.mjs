@@ -76,7 +76,7 @@ ok("class resolved by code", imp.resolveClass({ class_id: "", class_name: "j1a" 
 const csv = await extract.extractStudentRows("roster.csv", Buffer.from("full_name;email;class\nAda Lovelace;ada@example.com;JSS 1A\n"));
 ok("semicolon CSV extracted", csv.rows.length === 2 && csv.rows[1][0] === "Ada Lovelace");
 
-const XLSX = require("xlsx");
+const XLSX = require("@e965/xlsx");
 const wb = XLSX.utils.book_new();
 XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), "Students");
 const xlsxBuf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });

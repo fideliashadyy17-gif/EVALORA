@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@e965/xlsx": "0.20.3",
     "@fontsource-variable/fraunces": "^5.3.0",
     "@fontsource-variable/public-sans": "^5.3.0",
     "@livekit/components-react": "^2.9.24",
@@ -44,7 +45,6 @@
     "tailwind-merge": "^3.7.0",
     "tesseract.js": "^7.0.0",
     "word-extractor": "^1.0.4",
-    "xlsx": "^0.18.5",
     "zod": "^4.6.7"
   },
   "devDependencies": {
