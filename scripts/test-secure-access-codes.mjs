@@ -1,0 +1,6 @@
+// Exercise the real access-code generator with controlled Web Crypto bytes.
+import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
+const file=path.resolve('scripts/__secure_codes.cjs');const m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync('src/lib/utils.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);
+const realCrypto=globalThis.crypto, oldRandom=Math.random;try{let used=0;Object.defineProperty(globalThis,'crypto',{configurable:true,value:{getRandomValues:bytes=>{used++;bytes.set([0,31,32,255].slice(0,bytes.length));return bytes}}});Math.random=()=>{throw Error('insecure random is prohibited')};assert.equal(m.exports.genCode(4),'A9A9');assert.equal(used,1);assert.throws(()=>m.exports.genCode(0),/Invalid/);assert.throws(()=>m.exports.genCode(129),/Invalid/);}finally{Object.defineProperty(globalThis,'crypto',{configurable:true,value:realCrypto});Math.random=oldRandom}
+const sample=m.exports.genCode(10);assert.match(sample,/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{10}$/);
+console.log('PASS: access code generator uses uniform Web Crypto bytes and rejects invalid lengths.');

@@ -1,0 +1,17 @@
+// Actual tenant-link trigger migration in isolated PGlite (no customer data).
+import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {PGlite} from '@electric-sql/pglite';
+const db=new PGlite();let n=0;const test=async(name,fn)=>{await fn();n++;console.log('  ✓ '+name)};
+try{
+ await db.exec(`create table quizzes(id uuid primary key,organization_id uuid not null); create table questions(id uuid primary key,organization_id uuid not null); create table exams(id uuid primary key,organization_id uuid not null,quiz_id uuid references quizzes(id) on delete set null); create table quiz_questions(quiz_id uuid not null references quizzes(id),question_id uuid not null references questions(id),unique(quiz_id,question_id));
+ insert into quizzes values ('00000000-0000-4000-8000-000000000011','00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000012','00000000-0000-4000-8000-000000000002');
+ insert into questions values ('00000000-0000-4000-8000-000000000021','00000000-0000-4000-8000-000000000001'),('00000000-0000-4000-8000-000000000022','00000000-0000-4000-8000-000000000002');`);
+ await db.exec(readFileSync('supabase/migrations/0031_guard_exam_paper_tenant_links.sql','utf8'));
+ const A='00000000-0000-4000-8000-000000000001',B='00000000-0000-4000-8000-000000000002',qA='00000000-0000-4000-8000-000000000011',qB='00000000-0000-4000-8000-000000000012',itemA='00000000-0000-4000-8000-000000000021',itemB='00000000-0000-4000-8000-000000000022',exam='00000000-0000-4000-8000-000000000031';
+ await test('same-tenant paper and question are accepted',async()=>{await db.exec(`insert into exams values ('${exam}','${A}','${qA}'); insert into quiz_questions values ('${qA}','${itemA}');`)});
+ await test('cross-tenant or missing exam paper is rejected',async()=>{await assert.rejects(()=>db.exec(`insert into exams values ('00000000-0000-4000-8000-000000000032','${A}','${qB}')`),/same organization/);await assert.rejects(()=>db.exec(`update exams set quiz_id='${qB}' where id='${exam}'`),/same organization/);});
+ await test('cross-tenant or missing question is rejected',async()=>{await assert.rejects(()=>db.exec(`insert into quiz_questions values ('${qA}','${itemB}')`),/same organization/);await assert.rejects(()=>db.exec(`update quiz_questions set question_id='${itemB}' where quiz_id='${qA}'`),/same organization/)});
+ await test('moving a referenced paper or question cannot break the links',async()=>{await assert.rejects(()=>db.exec(`update quizzes set organization_id='${B}' where id='${qA}'`),/Cannot move a paper/);await assert.rejects(()=>db.exec(`update questions set organization_id='${B}' where id='${itemA}'`),/Cannot move a question/)});
+ await test('updating unrelated fields and nullable exam paper stays supported',async()=>{await db.exec(`update exams set quiz_id=null where id='${exam}'; update quizzes set organization_id=organization_id where id='${qA}'`);assert.equal((await db.query(`select quiz_id from exams where id='${exam}'`)).rows[0].quiz_id,null)});
+ await test('parent may move once linked rows have been explicitly removed',async()=>{await db.exec(`delete from quiz_questions where quiz_id='${qA}'; update quizzes set organization_id='${B}' where id='${qA}';`);assert.equal((await db.query(`select organization_id from quizzes where id='${qA}'`)).rows[0].organization_id,B)});
+ console.log(`\n${n} exam-paper tenant invariant checks passed (actual SQL; isolated PGlite).`);
+}finally{await db.close()}

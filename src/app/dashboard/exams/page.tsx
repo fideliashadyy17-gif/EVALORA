@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function ExamsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string }>;
+  searchParams: Promise<{ e?: string; ok?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -32,6 +32,8 @@ export default async function ExamsPage({
         subtitle="Formal, server-timed examinations with candidate admission, autosave and optional video proctoring."
         action={<ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>}
       />
+      {sp.ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{sp.ok === "deleted" ? "Examination removed." : "Examination status updated."}</p>}
+      {(sp.e === "delete" || sp.e === "status" || sp.e === "candidate") && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.e === "delete" ? "The examination could not be removed. Examinations with recorded attempts are protected from deletion." : "The requested change could not be confirmed. Check your workspace and permissions."}</p>}
       {sp.e === "limit" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Your current plan has reached its examination limit. See <Link className="font-semibold underline" href="/dashboard/billing">Billing</Link> to upgrade.

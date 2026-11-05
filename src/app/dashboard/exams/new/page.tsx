@@ -8,7 +8,8 @@ import { createExam } from "../actions";
 
 export const metadata: Metadata = { title: "New examination" };
 
-export default async function NewExamPage() {
+export default async function NewExamPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+  const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -23,6 +24,13 @@ export default async function NewExamPage() {
   return (
     <>
       <PageTitle title="New examination" subtitle="A formal paper built from one of your published quizzes." />
+      {sp.e && <p role="alert" className="mb-4 max-w-3xl rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{{
+        fields: "Check the title, published paper, duration and pass mark.",
+        paper: "This paper is unavailable, empty, invalid or not in your organization. Review the published quiz before continuing.",
+        window: "Enter valid opening and closing times, with closing after opening.",
+        availability: "The current examination usage could not be confirmed. Please try again later.",
+        create: "The examination could not be confirmed. Check the examination list before retrying to avoid a duplicate.",
+      }[sp.e] ?? "The examination could not be created. Please try again."}</p>}
       <Card className="max-w-3xl p-6">
         {(quizzes ?? []).length === 0 ? (
           <p className="text-sm text-ink-soft">

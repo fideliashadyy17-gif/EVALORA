@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -93,6 +93,8 @@ export default async function ExamDetailPage({
         }
       />
 
+      {sp.candidate_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Candidate removed.</p>}
+      {sp.candidate_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The candidate could not be removed. Candidates with recorded attempts are protected; check permissions and try again only if appropriate.</p>}
       {sp.access_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination access updated.</p>}
       {sp.access_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.access_error === "audit" ? "Access changed, but the audit entry could not be confirmed. Do not retry a rotation until you check the current link and code; contact an administrator." : "Access could not be updated. Check your permissions and retry."}</p>}
       {sp.publish_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
@@ -100,6 +102,7 @@ export default async function ExamDetailPage({
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
       {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Mark saved and attempt total recalculated.</p>}
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
+      {sp.room_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The examination was created, but its proctoring room could not be confirmed. Contact an administrator before opening it.</p>}
       {sp.ok === "created" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination created. Its unique link and access code are stored with the exam and shown below.</p>}
 
       <div className="mb-6">
@@ -183,11 +186,11 @@ export default async function ExamDetailPage({
                     <td className="py-2 pr-2 font-mono font-semibold text-evergreen-800">{c.access_code}</td>
                     <td className="py-2 pr-2"><Badge tone={c.status === "submitted" ? "green" : c.status === "in_progress" ? "amber" : "gray"}>{c.status.replace(/_/g, " ")}</Badge></td>
                     <td className="py-2">
-                      <form action={removeCandidate}>
+                      {can(ctx, org.id, CREATOR_ROLES) && c.status === "registered" && <form action={removeCandidate}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="exam_id" value={id} />
                         <button className="text-xs text-red-700 underline-offset-2 hover:underline">Remove</button>
-                      </form>
+                      </form>}
                     </td>
                   </tr>
                 ))}

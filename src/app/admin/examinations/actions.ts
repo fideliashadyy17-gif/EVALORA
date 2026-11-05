@@ -28,7 +28,7 @@ async function uniqueExamCode(admin: Admin, exceptExamId?: string) {
     const { data } = await admin.from("exams").select("id").eq("access_code", code).maybeSingle();
     if (!data || data.id === exceptExamId) return code;
   }
-  return `${genCode(8)}${Date.now().toString(36).slice(-2).toUpperCase()}`;
+  return genCode(10);
 }
 
 async function uniqueCandidateCode(
@@ -51,7 +51,7 @@ async function uniqueCandidateCode(
       return code;
     }
   }
-  const code = `${genCode(8)}${Math.random().toString(36).slice(2, 4).toUpperCase()}`;
+  const code = genCode(10);
   reserved.add(code);
   return code;
 }

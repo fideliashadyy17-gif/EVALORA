@@ -193,9 +193,9 @@ check("Candidate client requires identity fields and registered-account notice",
 check("Invitation admin configures identity and class eligibility", sources.invitations.includes("identity_fields") && sources.invitations.includes("eligible_class_ids"));
 check(
   "Exam creation relies on DB-generated code and persists link",
-  sources.dashboardCreate.includes("status: \"draft\",\n        settings:")
+  /status:\s*"draft",\s*settings:/.test(sources.dashboardCreate)
     && sources.dashboardCreate.includes('.select("id, access_code, invite_token, access_link")')
-    && !sources.dashboardCreate.includes("status: \"draft\",\n        access_code:")
+    && !/status:\s*"draft",\s*access_code:/.test(sources.dashboardCreate)
     && sources.adminCreate.includes("status,\n      settings:")
     && sources.adminCreate.includes('.select("id, access_code, invite_token, access_link")')
     && !sources.adminCreate.includes("status,\n      access_code:"),

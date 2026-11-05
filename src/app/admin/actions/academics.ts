@@ -460,7 +460,7 @@ export async function registerClassForExam(formData: FormData) {
       full_name: s.full_name,
       email: s.email,
       candidate_ref: s.student_ref,
-      access_code: genCode(8) + Math.random().toString(36).slice(2, 4).toUpperCase(),
+      access_code: genCode(10),
     }));
 
   if (toAdd.length > 0) await admin.from("exam_candidates").insert(toAdd);
