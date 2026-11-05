@@ -1,6 +1,6 @@
 import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Library, PenSquare, Radio, Users } from "lucide-react";
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
       supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
     ]);
 
-  const entitlement = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
+  const entitlement = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
     <>

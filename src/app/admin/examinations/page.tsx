@@ -101,6 +101,7 @@ export default async function AdminExaminations({
                         <input type="hidden" name="next" value={`/dashboard/exams/${e.id}`} />
                         <button className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Manage / candidates / marking →</button>
                       </form>
+                      <a className="font-medium text-gold-800 underline-offset-2 hover:underline" href={`/admin/examinations/invitations?exam=${e.id}`}>Access link & code</a>
                       <form action={enterOrgWorkspace} className="inline">
                         <input type="hidden" name="organization_id" value={e.organization_id} />
                         <input type="hidden" name="next" value={`/dashboard/reports/exam/${e.id}`} />

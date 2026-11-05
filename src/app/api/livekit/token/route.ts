@@ -1,5 +1,5 @@
 import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/platform";
 import { loadAttemptContext } from "@/lib/exam";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -29,7 +29,9 @@ export async function POST(request: Request) {
   if (!apiKey || !apiSecret || !serverUrl)
     return NextResponse.json({ error: "Video proctoring is not configured on this deployment." }, { status: 503 });
 
-  if (!(await isFeatureEnabled("proctoring")))
+  // The verified Super Admin is never blocked by a customer module toggle.
+  const sessionCtx = await getSessionContext();
+  if (!(await isFeatureEnabled("proctoring", { ownerBypass: sessionCtx?.profile.platform_role === "super_admin" })))
     return NextResponse.json({ error: "Video proctoring is temporarily disabled platform-wide by the administrator." }, { status: 503 });
 
   const parsed = Body.safeParse(await request.json().catch(() => null));
@@ -59,19 +61,20 @@ export async function POST(request: Request) {
     canPublish = true;
 
     // Proctoring is a Premium entitlement — enforce server-side.
-    // Platform-owned organizations (operated by the Super Admin) are
-    // covered by the platform-owner bypass instead of a paid plan.
+    // The verified platform owner and platform-owned organizations bypass
+    // commercial metering; ordinary customers still require a paid plan.
     const { data: orgRow } = await admin
       .from("organizations")
       .select("settings")
       .eq("id", exam.organization_id)
       .maybeSingle();
     const platformOwned = Boolean((orgRow?.settings as Record<string, unknown> | null)?.platform_owned);
-    const ent = await getEntitlement(admin, exam.organization_id, { ownerBypass: platformOwned });
+    const ownerBypass = platformOwned || sessionCtx?.profile.platform_role === "super_admin";
+    const ent = await getEntitlement(admin, exam.organization_id, { ownerBypass });
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   } else {
-    const ctx = await getSessionContext();
+    const ctx = sessionCtx;
     if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
     const org = activeOrg(ctx);
     if (!org || org.id !== exam.organization_id || !can(ctx, exam.organization_id, PROCTOR_ROLES))
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
     canPublish = false;
 
     const supabase = await createClient();
-    const ent = await getEntitlement(supabase, exam.organization_id);
+    const ent = await getEntitlementFor(supabase, ctx, exam.organization_id);
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   }

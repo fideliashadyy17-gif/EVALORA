@@ -26,6 +26,12 @@ export default async function PricingPage() {
     { label: "Team members", key: "max_members" },
     { label: "Video proctoring (LiveKit)", key: "proctoring" },
     { label: "Advanced reports", key: "advanced_reports" },
+    { label: "Institutional / Enterprise", key: "institutional" },
+    { label: "Multi-class operations", key: "multi_class_operations" },
+    { label: "Centralized resources", key: "central_asset_management" },
+    { label: "Configurable limits / quotas", key: "configurable_limits" },
+    { label: "Classes", key: "max_classes" },
+    { label: "Students", key: "max_students" },
     { label: "Storage", key: "storage_mb", suffix: " MB" },
   ];
 

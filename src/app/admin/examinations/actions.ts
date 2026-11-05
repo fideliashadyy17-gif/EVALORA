@@ -3,7 +3,7 @@
 import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib/admin";
 import { isEmail, parseCsv } from "@/lib/csv";
 import { attemptDeadline } from "@/lib/exam";
-import { isFeatureEnabled } from "@/lib/platform";
+import { isFeatureEnabledFor } from "@/lib/platform";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -70,10 +70,10 @@ export async function createExamAsAdmin(formData: FormData) {
   const quizId = fstr(formData, "quiz_id", 60);
   const title = fstr(formData, "title", 180);
   if (!organizationId || !quizId || !title) go(back, "e=fields");
-  if (!(await isFeatureEnabled("examinations"))) go(back, "e=module");
+  if (!(await isFeatureEnabledFor(ctx, "examinations"))) go(back, "e=module");
 
   const proctoring = formData.get("proctoring") === "on";
-  if (proctoring && !(await isFeatureEnabled("proctoring"))) go(back, "e=proctoring_module");
+  if (proctoring && !(await isFeatureEnabledFor(ctx, "proctoring"))) go(back, "e=proctoring_module");
 
   const [{ data: org }, { data: quiz }, { count: questionCount }] = await Promise.all([
     admin.from("organizations").select("id").eq("id", organizationId!).maybeSingle(),
@@ -106,7 +106,6 @@ export async function createExamAsAdmin(formData: FormData) {
       starts_at: startsAt,
       ends_at: endsAt,
       status,
-      access_code: await uniqueExamCode(admin),
       settings: {
         proctoring,
         require_screen_share: proctoring && formData.get("require_screen_share") === "on",
@@ -114,10 +113,14 @@ export async function createExamAsAdmin(formData: FormData) {
         randomize_options: formData.get("randomize_options") === "on",
         pass_mark_percent: passMark,
         results_published: false,
+        access_mode: "shared_link",
+        identity_fields: [],
+        eligible_class_ids: [],
+        attempt_policy: "single_resume",
       },
       created_by: ctx.user.id,
     })
-    .select("id, access_code")
+    .select("id, access_code, invite_token, access_link")
     .single();
   if (error || !exam) go(back, "e=failed");
 
@@ -127,11 +130,13 @@ export async function createExamAsAdmin(formData: FormData) {
   await audit(ctx, "exam.created_by_admin", "exams", exam!.id, organizationId, {
     title,
     access_code: exam!.access_code,
+    access_link: exam!.access_link,
     status,
     duration_minutes: duration,
   });
   revalidatePath("/admin/examinations");
-  redirect(`/admin/examinations/register?exam=${exam!.id}&ok=created`);
+  revalidatePath("/admin/examinations/invitations");
+  redirect(`/admin/examinations/invitations?exam=${exam!.id}&ok=created`);
 }
 
 export async function updateExamScheduleAsAdmin(formData: FormData) {

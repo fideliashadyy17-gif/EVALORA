@@ -15,7 +15,13 @@ const LIMIT_HINT = `{
   "max_questions": -1,
   "proctoring": true,
   "advanced_reports": true,
-  "storage_mb": 5120
+  "storage_mb": 5120,
+  "institutional": false,
+  "max_classes": -1,
+  "max_students": -1,
+  "multi_class_operations": true,
+  "central_asset_management": false,
+  "configurable_limits": false
 }`;
 
 export default async function AdminPlans() {

@@ -2,6 +2,8 @@
 
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
+import type { AccessMode, IdentityField } from "@/lib/exam-access";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
@@ -17,6 +19,9 @@ export function ExamJoinClient({
   verifiedClassId,
   verifiedStudentName,
   initialCode,
+  accessMode,
+  identityFields,
+  requiresAccount,
 }: {
   token: string;
   title: string;
@@ -27,12 +32,16 @@ export function ExamJoinClient({
   verifiedClassId: string | null;
   verifiedStudentName: string | null;
   initialCode: string;
+  accessMode: AccessMode;
+  identityFields: IdentityField[];
+  requiresAccount: boolean;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [classId, setClassId] = useState(defaultClassId ?? verifiedClassId ?? "");
+  const [identity, setIdentity] = useState<Record<string, string>>({});
   const [consent, setConsent] = useState(false);
   const [guestKey, setGuestKey] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +63,8 @@ export function ExamJoinClient({
     if (!firstName.trim() || !lastName.trim()) return setError("Both first name and last name are required.");
     if (!classId) return setError("Select your class.");
     if (!guestKey) return setError("Your browser could not create a secure candidate key.");
+    if (identityFields.some((f) => f.required && !(identity[f.key] ?? "").trim()))
+      return setError("Complete every required identification field.");
     setBusy(true);
     setError(null);
     const res = await fetch("/api/exam/link-access", {
@@ -66,6 +77,7 @@ export function ExamJoinClient({
         last_name: lastName.trim(),
         class_id: classId,
         guest_key: guestKey,
+        identity,
         consent: true,
       }),
     });
@@ -92,12 +104,19 @@ export function ExamJoinClient({
         {description && <p className="mt-2 text-sm text-ink-soft">{description}</p>}
         {instructions && <div className="mt-3 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{instructions}</div>}
         <p className="mt-3 text-sm text-ink-soft">
-          No EVALORA account is required. The examination clock is server-authoritative, answers are autosaved,
-          and re-entry resumes the same attempt within its original deadline.
+          {accessMode === "shared_link"
+            ? "No EVALORA account is required. The examination clock is server-authoritative, answers are autosaved, and re-entry resumes the same attempt within its original deadline."
+            : "This examination is restricted to registered students. Sign in with your institutional account; a valid link and code alone are not sufficient."}
         </p>
         {verifiedStudentName && (
           <p className="mt-3 rounded-lg border border-evergreen-700/30 bg-evergreen-50 px-4 py-2 text-sm text-evergreen-900">
             Verified student: <strong>{verifiedStudentName}</strong>. Your registered class is used automatically.
+          </p>
+        )}
+        {requiresAccount && (
+          <p className="mt-3 rounded-lg border border-amber-600/30 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            A verified institutional student account is required.{" "}
+            <Link className="font-semibold underline" href={`/login?next=${encodeURIComponent(`/exam/join/${token}`)}`}>Sign in</Link>, then reopen this link.
           </p>
         )}
         <form onSubmit={submit} className="mt-5 space-y-4">
@@ -106,6 +125,17 @@ export function ExamJoinClient({
             <Field label="First name *"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="given-name" /></Field>
             <Field label="Last name *"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="family-name" /></Field>
           </div>
+          {identityFields.map((field) => (
+            <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} hint="Required by this examination's organizer.">
+              <Input
+                type={field.type === "number" ? "number" : field.type === "email" ? "email" : "text"}
+                value={identity[field.key] ?? ""}
+                onChange={(e) => setIdentity((prev) => ({ ...prev, [field.key]: e.target.value }))}
+                required={field.required}
+                autoComplete="off"
+              />
+            </Field>
+          ))}
           <Field label="Examination access code" hint="Use the code provided with this link; it is verified on the server.">
             <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" />
           </Field>
@@ -119,11 +149,11 @@ export function ExamJoinClient({
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 accent-evergreen-700" required />
             <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
           </label>
-          <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey}>
+          <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || requiresAccount}>
             {busy ? "Verifying…" : "Verify & begin examination"}
           </Button>
           <p className="text-center text-xs text-ink-soft">
-            Returning after a disconnection? Use the same link, code, name and class on this browser to resume your saved answers.
+            Returning after a disconnection? Use the same link, code, name, identification fields and class on this browser to resume your saved answers.
           </p>
         </form>
       </Card>

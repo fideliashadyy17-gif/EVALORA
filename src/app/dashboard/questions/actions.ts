@@ -1,7 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -52,7 +52,7 @@ export async function saveQuestion(raw: QuestionInput) {
   const supabase = await createClient();
 
   if (!q.id) {
-    const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
+    const ent = await getEntitlementFor(supabase, ctx, org.id);
     const { count } = await supabase
       .from("questions")
       .select("id", { count: "exact", head: true })
@@ -190,7 +190,7 @@ export async function importQuestionsCsv(csv: string) {
   const validTypes = ["single_choice", "multiple_select", "true_false", "short_answer", "numeric", "ordering", "poll", "open_ended"];
   const supabase = await createClient();
 
-  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
+  const ent = await getEntitlementFor(supabase, ctx, org.id);
   const { count: existing } = await supabase
     .from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
   let budget = ent.limits.max_questions === -1 ? Infinity : ent.limits.max_questions - (existing ?? 0);

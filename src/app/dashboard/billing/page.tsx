@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime, money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
@@ -29,7 +29,7 @@ export default async function BillingPage({
     supabase.from("plans").select("*").eq("is_active", true).order("sort"),
     supabase.from("payment_requests").select("*, plans(name)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("platform_settings").select("value").eq("key", "payment_instructions").maybeSingle(),
-    getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" }),
+    getEntitlementFor(supabase, ctx, org.id),
     Promise.all([
       supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
       supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
@@ -76,6 +76,9 @@ export default async function BillingPage({
         </div>
         <p className="mt-3 text-sm text-ink-soft">
           Video proctoring: {ent.limits.proctoring ? "included" : "not included"} · Advanced reports: {ent.limits.advanced_reports ? "included" : "not included"} · Up to {ent.limits.max_participants_per_session === -1 ? "unlimited" : ent.limits.max_participants_per_session} participants per live session
+        </p>
+        <p className="mt-1 text-xs text-ink-soft">
+          Institutional / Enterprise: {ent.limits.institutional ? "included" : "not included"} · Multi-class operations: {ent.limits.multi_class_operations ? "included" : "restricted"} · Centralized resources: {ent.limits.central_asset_management ? "included" : "restricted"} · Configurable limits: {ent.limits.configurable_limits ? "included" : "restricted"} · Classes: {ent.limits.max_classes === -1 ? "unlimited" : ent.limits.max_classes} · Students: {ent.limits.max_students === -1 ? "unlimited" : ent.limits.max_students}
         </p>
       </Card>
 

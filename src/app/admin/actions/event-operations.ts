@@ -10,6 +10,7 @@
  */
 
 import { audit, fint, FLASH_COOKIE, requireSuperAdmin } from "@/lib/admin";
+import { normalizeIdentityFields, normalizeUuidList } from "@/lib/exam-access";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -32,7 +33,9 @@ function go(path: string, ok?: string, e?: string, pool?: string): never {
   if (ok) q.set("ok", ok);
   if (e) q.set("e", e);
   if (pool) q.set("pool", pool);
-  redirect(q.toString() ? `${path}?${q.toString()}` : path);
+  if (!q.toString()) redirect(path);
+  const sep = path.includes("?") ? "&" : "?";
+  redirect(`${path}${sep}${q.toString()}`);
 }
 
 async function flash(message: string) {
@@ -347,10 +350,11 @@ export async function updateExamInvitation(formData: FormData) {
   const examId = val(formData, "exam_id", 60);
   const { data: exam } = await admin
     .from("exams")
-    .select("id,organization_id,title,access_code,invite_token,status,settings")
+    .select("id,organization_id,title,access_code,invite_token,access_link,status,settings")
     .eq("id", examId)
     .maybeSingle();
-  if (!exam) go(INVITATIONS, undefined, "not_found");
+  const invitationBack = `${INVITATIONS}?exam=${examId}`;
+  if (!exam) go(invitationBack, undefined, "not_found");
   const action = val(formData, "action", 30);
   const patch: Record<string, unknown> = {};
   if (action === "new_code") patch.access_code = genCode(8);
@@ -360,13 +364,30 @@ export async function updateExamInvitation(formData: FormData) {
     const expires = val(formData, "invite_expires_at", 40);
     patch.invite_expires_at = expires ? new Date(expires).toISOString() : null;
     const settings = { ...((exam.settings ?? {}) as Record<string, unknown>) };
-    const policy = val(formData, "attempt_policy", 30);
-    settings.attempt_policy = policy === "read_only_reentry" ? "read_only_reentry" : "single_resume";
+    settings.attempt_policy = val(formData, "attempt_policy", 30) === "read_only_reentry"
+      ? "read_only_reentry"
+      : "single_resume";
+    settings.access_mode = val(formData, "access_mode", 30) === "registered_students_only"
+      ? "registered_students_only"
+      : "shared_link";
+    const rawIdentity = val(formData, "identity_fields", 4000);
+    let parsedIdentity: unknown = [];
+    if (rawIdentity) {
+      try { parsedIdentity = JSON.parse(rawIdentity); }
+      catch { go(invitationBack, undefined, "json"); }
+    }
+    settings.identity_fields = normalizeIdentityFields(parsedIdentity);
+    settings.eligible_class_ids = normalizeUuidList(
+      formData.getAll("eligible_class_ids").map((value) => String(value).trim()).filter(Boolean),
+    );
     patch.settings = settings;
   }
   const { error } = await admin.from("exams").update(patch).eq("id", exam.id);
-  if (error) go(INVITATIONS, undefined, "update_failed");
-  await audit(ctx, `exam.invitation.${action}`, "exams", exam.id, exam.organization_id);
+  if (error) go(invitationBack, undefined, "update_failed");
+  await audit(ctx, `exam.invitation.${action}`, "exams", exam.id, exam.organization_id, {
+    action,
+    access_link: exam.access_link ?? null,
+  });
   revalidatePath(INVITATIONS);
-  go(INVITATIONS, "updated");
+  go(invitationBack, "updated");
 }

@@ -1,3 +1,4 @@
+import type { SessionContext } from "./auth";
 import { createAdminClient } from "./supabase/server";
 
 /**
@@ -6,6 +7,10 @@ import { createAdminClient } from "./supabase/server";
  * with the service role so enforcement works for every caller, and
  * enforced at the choke points that start live sessions, create
  * examinations, and mint proctoring tokens.
+ *
+ * `isFeatureEnabledFor()` gives the verified Super Admin unrestricted
+ * operational access. Ordinary customers — including Institutional ones —
+ * remain subject to global module toggles and their plan entitlements.
  */
 export type FeatureKey = "live_quizzes" | "examinations" | "proctoring";
 
@@ -30,7 +35,21 @@ export async function getFeatureFlags(): Promise<Record<FeatureKey, boolean>> {
   }
 }
 
-export async function isFeatureEnabled(key: FeatureKey): Promise<boolean> {
+export async function isFeatureEnabled(
+  key: FeatureKey,
+  opts?: { ownerBypass?: boolean },
+): Promise<boolean> {
+  if (opts?.ownerBypass) return true;
   const flags = await getFeatureFlags();
   return flags[key] !== false;
+}
+
+/** Session-aware centralized feature check for server actions and APIs. */
+export async function isFeatureEnabledFor(
+  ctx: Pick<SessionContext, "profile">,
+  key: FeatureKey,
+): Promise<boolean> {
+  return isFeatureEnabled(key, {
+    ownerBypass: ctx.profile.platform_role === "super_admin",
+  });
 }

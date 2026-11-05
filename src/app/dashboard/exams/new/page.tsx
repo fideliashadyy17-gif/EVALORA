@@ -1,6 +1,6 @@
 import { Button, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -18,7 +18,7 @@ export default async function NewExamPage() {
     .eq("organization_id", org.id)
     .eq("status", "published")
     .order("title");
-  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
+  const ent = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
     <>

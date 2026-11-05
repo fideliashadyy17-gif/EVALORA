@@ -171,6 +171,14 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/support", label: "Support Tickets", icon: LifeBuoy, badgeKey: "tickets" },
     ],
   },
+  {
+    title: "I. Operational Workspace",
+    items: [
+      { href: "/admin/operations", label: "Full Customer Workspace Access", icon: LayoutDashboard },
+      { href: "/admin/classes", label: "Class Management (direct)", icon: GraduationCap },
+      { href: "/admin/examinations/invitations", label: "Exam Links & Codes", icon: Link2 },
+    ],
+  },
 ];
 
 export interface ShellCounts {

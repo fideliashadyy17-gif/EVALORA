@@ -1,10 +1,17 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { SessionContext } from "./auth";
 
 /**
  * Plan entitlements are resolved and enforced on the SERVER.
  * Limits use -1 for "unlimited". The active entitlement comes from the
  * organization's latest active/trialing subscription; if none (or the
  * trial/subscription has lapsed) the Free plan applies.
+ *
+ * `getEntitlementFor()` is the single centralized wrapper used by EVALORA
+ * server actions/pages: it derives the platform-owner bypass from the
+ * verified session profile rather than trusting a caller-supplied flag.
+ * The underlying `getEntitlement()` is retained for explicit customer-facing
+ * plan inspection (e.g. an organization's Subscription tab).
  */
 
 export interface PlanLimits {
@@ -16,6 +23,12 @@ export interface PlanLimits {
   proctoring: boolean;
   advanced_reports: boolean;
   storage_mb: number;
+  institutional: boolean;
+  max_classes: number;
+  max_students: number;
+  multi_class_operations: boolean;
+  central_asset_management: boolean;
+  configurable_limits: boolean;
 }
 
 export const FREE_LIMITS: PlanLimits = {
@@ -27,6 +40,12 @@ export const FREE_LIMITS: PlanLimits = {
   proctoring: false,
   advanced_reports: false,
   storage_mb: 100,
+  institutional: false,
+  max_classes: -1,
+  max_students: -1,
+  multi_class_operations: true,
+  central_asset_management: false,
+  configurable_limits: false,
 };
 
 export interface Entitlement {
@@ -39,7 +58,11 @@ export interface Entitlement {
   trialEndsAt: string | null;
 }
 
-/** The platform owner is never metered: unlimited everything. */
+/**
+ * The platform owner is never metered: unlimited everything. Owner privileges
+ * are represented by a distinct `owner` plan identity, NOT by the customer
+ * Institutional plan; authorization rules make that distinction explicit.
+ */
 export const UNLIMITED_LIMITS: PlanLimits = {
   max_quizzes: -1,
   max_participants_per_session: -1,
@@ -49,6 +72,12 @@ export const UNLIMITED_LIMITS: PlanLimits = {
   proctoring: true,
   advanced_reports: true,
   storage_mb: -1,
+  institutional: false,
+  max_classes: -1,
+  max_students: -1,
+  multi_class_operations: true,
+  central_asset_management: false,
+  configurable_limits: false,
 };
 
 /**
@@ -56,8 +85,8 @@ export const UNLIMITED_LIMITS: PlanLimits = {
  *
  * `ownerBypass` implements the platform-owner privilege SERVER-SIDE:
  * when the acting user is the Super Admin (verified from the session
- * profile by the caller), commercial limits do not apply — the owner
- * never has to buy a plan to operate the platform. This bypasses
+ * profile by `getEntitlementFor`), commercial limits do not apply — the
+ * owner never has to buy a plan to operate the platform. This bypasses
  * commerce only; RLS, audit logging and role checks still apply.
  *
  * A subscription's `limits_override` (set by the Super Admin from the
@@ -125,6 +154,17 @@ export async function getEntitlement(
     currentPeriodEnd: null,
     trialEndsAt: null,
   };
+}
+
+/** Centralized session-aware entitlement resolver for server-side access. */
+export async function getEntitlementFor(
+  supabase: SupabaseClient,
+  ctx: SessionContext,
+  organizationId: string,
+): Promise<Entitlement> {
+  return getEntitlement(supabase, organizationId, {
+    ownerBypass: ctx.profile.platform_role === "super_admin",
+  });
 }
 
 export function withinLimit(limit: number, current: number) {

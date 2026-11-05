@@ -1,4 +1,11 @@
 import { attemptDeadline } from "@/lib/exam";
+import {
+  examAccessAvailability,
+  identityDataEqual,
+  mergeEligibleClassIds,
+  parseExamAccessSettings,
+  sanitizeIdentityData,
+} from "@/lib/exam-access";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -13,6 +20,7 @@ const Body = z.object({
   last_name: z.string().trim().min(1).max(80),
   class_id: z.string().uuid().optional(),
   guest_key: z.string().min(16).max(120),
+  identity: z.record(z.string(), z.unknown()).optional(),
   consent: z.literal(true),
 });
 
@@ -25,40 +33,54 @@ function normalizeCode(value: string) {
 }
 
 /**
- * Shared-link examination admission. The link token identifies ONE existing
- * examination; the separately-distributed access code is compared against a
- * server-stored SHA-256 hash. First and last name are mandatory. A verified
- * logged-in student is associated only through students.user_id — never by
- * matching a duplicated name. Guest identity is a browser key whose hash
- * prevents duplicate/conflicting attempts.
+ * Shared-link examination admission. The persisted link token identifies ONE
+ * existing examination; the separately-distributed access code is compared
+ * against that exam's server-stored SHA-256 hash. First and last name are
+ * mandatory. A verified logged-in student is associated only through
+ * students.user_id — never by matching a duplicated name. Guest identity is
+ * a browser key whose hash prevents duplicate/conflicting attempts.
  */
 export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
-  if (!parsed.success) return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
-  const { invite_token, access_code, first_name, last_name, guest_key, class_id } = parsed.data;
+  if (!parsed.success)
+    return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
+  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity } = parsed.data;
   const admin = createAdminClient();
+  const supabase = await createClient();
 
   const { data: exam } = await admin
     .from("exams")
     .select("*")
     .eq("invite_token", invite_token)
     .maybeSingle();
-  if (!exam) return NextResponse.json({ error: "This examination link is invalid or has been regenerated." }, { status: 404 });
-  if (!exam.shared_link_enabled) return NextResponse.json({ error: "This examination link is currently closed." }, { status: 403 });
-  if (exam.invite_expires_at && new Date(exam.invite_expires_at) < new Date()) return NextResponse.json({ error: "This examination link has expired." }, { status: 403 });
-  if (exam.status !== "open") return NextResponse.json({ error: "This examination is not open." }, { status: 403 });
-  const now = new Date();
-  if (exam.starts_at && new Date(exam.starts_at) > now) return NextResponse.json({ error: `This examination opens at ${new Date(exam.starts_at).toLocaleString()}.` }, { status: 403 });
-  if (exam.ends_at && new Date(exam.ends_at) < now) return NextResponse.json({ error: "This examination window has closed." }, { status: 403 });
+  if (!exam)
+    return NextResponse.json({ error: "This examination link is invalid or has been regenerated." }, { status: 404 });
+
+  const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const access = parseExamAccessSettings(examSettings);
+  const availability = examAccessAvailability({
+    status: exam.status,
+    starts_at: exam.starts_at,
+    ends_at: exam.ends_at,
+    shared_link_enabled: exam.shared_link_enabled,
+    invite_expires_at: exam.invite_expires_at,
+  });
+  if (!availability.ok)
+    return NextResponse.json({ error: availability.error }, { status: 403 });
   if (exam.access_code_hash !== sha256(normalizeCode(access_code)))
     return NextResponse.json({ error: "That access code is not correct for this examination." }, { status: 403 });
 
-  // Eligible classes are restricted to this exam's own class, direct phase-class
-  // links, and unassigned links for the same stage only. Later-phase links with
-  // no exam_id must not make another class's examination available here.
-  const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const identityResult = sanitizeIdentityData(access.identityFields, identity);
+  if (!identityResult.ok)
+    return NextResponse.json({ error: identityResult.error }, { status: 400 });
+  const identityData = identityResult.data;
+
+  // Eligible classes are restricted to this exam's own class, direct
+  // phase-class links, unassigned links for the same stage only, and any
+  // explicit allowlist configured for this examination. Later-phase links
+  // with no exam_id must not make another class's examination available here.
   const stage = typeof examSettings.stage === "string" ? examSettings.stage : "elimination";
-  const attemptPolicy = typeof examSettings.attempt_policy === "string" ? examSettings.attempt_policy : "single_resume";
+  const attemptPolicy = access.attemptPolicy;
   const linkRows: { class_id: string | null; exam_id: string | null }[] = [];
   if (exam.event_id) {
     const { data: phases } = await admin
@@ -81,12 +103,14 @@ export async function POST(request: Request) {
     .select("class_id,exam_id")
     .eq("exam_id", exam.id);
   linkRows.push(...((directLinks ?? []) as { class_id: string | null; exam_id: string | null }[]));
-  const eligibleClasses = new Set<string>();
+  const baseEligibleClasses = new Set<string>();
   for (const row of linkRows) {
-    if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) eligibleClasses.add(row.class_id);
+    if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClasses.add(row.class_id);
   }
-  if (exam.class_id) eligibleClasses.add(exam.class_id);
-  if (eligibleClasses.size === 0) return NextResponse.json({ error: "No eligible class is configured for this examination." }, { status: 409 });
+  if (exam.class_id) baseEligibleClasses.add(exam.class_id);
+  const eligibleClasses = new Set(mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds));
+  if (eligibleClasses.size === 0)
+    return NextResponse.json({ error: "No eligible class is configured for this examination." }, { status: 409 });
 
   const selectedClassId = class_id ?? (eligibleClasses.size === 1 ? [...eligibleClasses][0] : null);
   if (!selectedClassId || !eligibleClasses.has(selectedClassId))
@@ -100,10 +124,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That class does not belong to this examination." }, { status: 403 });
 
   // Reliable identity: only an authenticated user with a student record in
-  // this organization may be linked to the student roster.
+  // this organization may be linked to the student roster. Names are never
+  // used to merge two candidates or student records.
   let studentId: string | null = null;
   let verifiedClassId: string | null = null;
-  const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
   if (auth.user) {
     const { data: student } = await admin
@@ -126,6 +150,14 @@ export async function POST(request: Request) {
     }
   }
 
+  // Registered-student-only examinations keep the institutional restriction:
+  // a valid link and code alone are not sufficient authorization.
+  if (access.accessMode === "registered_students_only" && (!auth.user || !studentId || verifiedClassId !== selectedClassId))
+    return NextResponse.json(
+      { error: "This examination requires a verified student account in an eligible class. Sign in with your institutional account." },
+      { status: 401 },
+    );
+
   const guestKeyHash = sha256(guest_key);
   const { data: existingCandidate } = await admin
     .from("exam_candidates")
@@ -142,7 +174,22 @@ export async function POST(request: Request) {
   }
 
   let candidate = existingCandidate;
-  if (!candidate) {
+  if (candidate) {
+    const storedIdentity = (candidate.identity_data ?? {}) as Record<string, unknown>;
+    if (!identityDataEqual(storedIdentity, identityData)) {
+      if (Object.keys(storedIdentity).length === 0) {
+        const { data: updated } = await admin
+          .from("exam_candidates")
+          .update({ identity_data: identityData })
+          .eq("id", candidate.id)
+          .select("*")
+          .single();
+        if (updated) candidate = updated;
+      } else {
+        return NextResponse.json({ error: "This browser already has an attempt under different identity details. Ask the organizer for help." }, { status: 409 });
+      }
+    }
+  } else {
     const { data, error } = await admin
       .from("exam_candidates")
       .insert({
@@ -157,6 +204,7 @@ export async function POST(request: Request) {
         guest_key_hash: guestKeyHash,
         invite_token,
         source: "shared_link",
+        identity_data: identityData,
       })
       .select("*")
       .single();
@@ -173,6 +221,15 @@ export async function POST(request: Request) {
   let attempt = existingAttempt;
   if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
     return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
+  if (attempt && !identityDataEqual(attempt.identity_data ?? {}, identityData)) {
+    const { data: updatedAttempt } = await admin
+      .from("exam_attempts")
+      .update({ identity_data: identityData })
+      .eq("id", attempt.id)
+      .select("*")
+      .single();
+    if (updatedAttempt) attempt = updatedAttempt;
+  }
   if (!attempt) {
     const rows = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const settings = (exam.settings ?? {}) as Record<string, unknown>;
@@ -189,6 +246,7 @@ export async function POST(request: Request) {
         student_id: studentId,
         guest_key_hash: guestKeyHash,
         invite_token,
+        identity_data: identityData,
       })
       .select("*")
       .single();
@@ -209,6 +267,6 @@ export async function POST(request: Request) {
     class_id: selectedClassId,
     status: attempt.status,
     deadline: deadline.toISOString(),
-    proctoring: Boolean((exam.settings as Record<string, unknown>)?.proctoring),
+    proctoring: Boolean(examSettings.proctoring),
   });
 }

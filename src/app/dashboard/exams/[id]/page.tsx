@@ -1,5 +1,5 @@
 import { RichContent } from "@/components/RichContent";
-import { CopyInvitation } from "@/app/admin/examinations/invitations/CopyInvitation";
+import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -40,6 +40,11 @@ export default async function ExamDetailPage({
   if (!exam) notFound();
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  const accessLink = String(
+    (exam as Record<string, unknown>).access_link
+      ?? `/exam/join/${String((exam as Record<string, unknown>).invite_token ?? "")}`,
+  );
+  const shareUrl = `${origin}${accessLink}`;
 
   const [{ data: candidates }, { data: attempts }, { data: incidents }] = await Promise.all([
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
@@ -77,6 +82,25 @@ export default async function ExamDetailPage({
       />
 
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
+      {sp.ok === "created" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination created. Its unique link and access code are stored with the exam and shown below.</p>}
+
+      <div className="mb-6">
+        <ExaminationAccessCard
+          examTitle={exam.title}
+          organizationName={org.name}
+          shareUrl={shareUrl}
+          accessLink={accessLink}
+          accessCode={exam.access_code}
+          exam={{
+            status: exam.status,
+            starts_at: exam.starts_at,
+            ends_at: exam.ends_at,
+            shared_link_enabled: exam.shared_link_enabled,
+            invite_expires_at: exam.invite_expires_at,
+          }}
+          settings={settings}
+        />
+      </div>
 
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
@@ -86,15 +110,7 @@ export default async function ExamDetailPage({
               Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
               <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
             </p>
-            {exam.shared_link_enabled !== false && exam.invite_token && (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Shareable link + code</span>
-                <code className="max-w-full truncate rounded bg-cream px-2 py-1 text-xs text-evergreen-900">{`${origin}/exam/join/${exam.invite_token}`}</code>
-                <CopyInvitation text={`${origin}/exam/join/${exam.invite_token}`} label="Copy link" />
-                <CopyInvitation text={exam.access_code} label="Copy code" />
-                <ButtonLink href={`/admin/examinations/invitations?exam=${id}`} variant="outline">Invitation settings</ButtonLink>
-              </div>
-            )}
+            <ButtonLink href={`/admin/examinations/invitations?exam=${id}`} variant="outline">Invitation settings</ButtonLink>
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
             {exam.status !== "open" ? (

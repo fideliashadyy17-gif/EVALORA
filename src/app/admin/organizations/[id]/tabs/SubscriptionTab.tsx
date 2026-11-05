@@ -1,5 +1,7 @@
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { getEntitlement } from "@/lib/entitlements";
+import { resolveCapabilities, CAPABILITY_LABELS } from "@/lib/capability-rules";
+import { getFeatureFlags } from "@/lib/platform";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import { adminCancelSubscription } from "../../../actions";
@@ -42,6 +44,25 @@ export async function SubscriptionTab({
     ["Proctoring", ent.limits.proctoring ? "Included" : "Not included"],
     ["Advanced reports", ent.limits.advanced_reports ? "Included" : "Not included"],
   ];
+
+  // This is the customer's entitlement, not the owner's. It is resolved from
+  // the same centralized rules used by server actions and the workspace page.
+  const featureFlags = await getFeatureFlags();
+  const customerCapabilities = resolveCapabilities({
+    isSuperAdmin: false,
+    planSlug: ent.planSlug,
+    limits: ent.limits,
+    featureFlags,
+  });
+  const institutionalRows = [
+    "institutional_administration",
+    "multi_class_operations",
+    "central_asset_management",
+    "configurable_limits",
+    "imports_exports",
+    "reports_analytics",
+    "proctoring",
+  ] as const;
 
   return (
     <>
@@ -86,6 +107,31 @@ export async function SubscriptionTab({
         </div>
         <p className="mt-3 text-xs text-ink-soft">
           When you operate this workspace yourself, your platform-owner access is unlimited regardless of these customer limits.
+        </p>
+      </Card>
+
+      <Card className="p-6">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">Institutional / Enterprise capabilities</h2>
+            <p className="mt-0.5 text-sm text-ink-soft">
+              Customer-side capabilities for the effective <strong>{ent.planName}</strong> entitlement. These are distinct from Super Admin owner privileges.
+            </p>
+          </div>
+          <StatusBadge status={customerCapabilities.institutional_administration ? "active" : "inactive"} />
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {institutionalRows.map((key) => (
+            <div key={key} className="rounded-xl border border-evergreen-900/10 bg-cream p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{CAPABILITY_LABELS[key]}</p>
+              <p className={`mt-0.5 font-display text-base font-semibold ${customerCapabilities[key] ? "text-evergreen-800" : "text-red-700"}`}>
+                {customerCapabilities[key] ? "Included" : "Restricted"}
+              </p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-xs text-ink-soft">
+          Super Admin inspection and management of these entitlements is always available and audit-logged. Assign the Institution plan or a custom limits override above to enable the full institutional feature set for this customer.
         </p>
       </Card>
 

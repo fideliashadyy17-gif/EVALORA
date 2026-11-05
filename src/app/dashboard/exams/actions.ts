@@ -1,8 +1,8 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlement, withinLimit } from "@/lib/entitlements";
-import { isFeatureEnabled } from "@/lib/platform";
+import { withinLimit } from "@/lib/entitlements";
+import { getCapabilities } from "@/lib/capabilities";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -12,16 +12,16 @@ export async function createExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
-  if (!(await isFeatureEnabled("examinations"))) redirect("/dashboard/exams?e=module");
-
   const supabase = await createClient();
-  const ent = await getEntitlement(supabase, org.id, { ownerBypass: ctx.profile.platform_role === "super_admin" });
+  const { entitlement: ent, capabilities } = await getCapabilities(supabase, ctx, org.id);
+  if (!capabilities.examinations) redirect("/dashboard/exams?e=module");
+
   const { count } = await supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
   if (!withinLimit(ent.limits.max_exams, count ?? 0))
     redirect("/dashboard/exams?e=limit");
 
   const proctoringWanted = formData.get("proctoring") === "on";
-  if (proctoringWanted && !ent.limits.proctoring) redirect("/dashboard/exams?e=proctoring");
+  if (proctoringWanted && !capabilities.proctoring) redirect("/dashboard/exams?e=proctoring");
 
   const title = String(formData.get("title") ?? "").trim().slice(0, 160);
   const quizId = String(formData.get("quiz_id") ?? "");
@@ -41,7 +41,6 @@ export async function createExam(formData: FormData) {
         starts_at: formData.get("starts_at") ? new Date(String(formData.get("starts_at"))).toISOString() : null,
         ends_at: formData.get("ends_at") ? new Date(String(formData.get("ends_at"))).toISOString() : null,
         status: "draft",
-        access_code: genCode(8),
         settings: {
           proctoring: proctoringWanted,
           require_screen_share: formData.get("require_screen_share") === "on",
@@ -49,10 +48,14 @@ export async function createExam(formData: FormData) {
           randomize_options: formData.get("randomize_options") === "on",
           pass_mark_percent: Math.max(0, Math.min(100, parseInt(String(formData.get("pass_mark_percent") ?? "50")) || 50)),
           results_published: false,
+          access_mode: "shared_link",
+          identity_fields: [],
+          eligible_class_ids: [],
+          attempt_policy: "single_resume",
         },
         created_by: ctx.user.id,
       })
-      .select("id")
+      .select("id, access_code, invite_token, access_link")
       .single();
     if (!error && data) exam = data;
   }
@@ -67,7 +70,7 @@ export async function createExam(formData: FormData) {
   }
 
   revalidatePath("/dashboard/exams");
-  redirect(`/dashboard/exams/${exam.id}`);
+  redirect(`/dashboard/exams/${exam.id}?ok=created`);
 }
 
 export async function setExamStatus(formData: FormData) {
