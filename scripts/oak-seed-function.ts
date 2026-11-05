@@ -10,6 +10,7 @@
  * The key placeholder below is replaced only in the deployed bundle —
  * no secret is committed to the repository.
  */
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-nocheck - Deno runtime globals
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { generateQuestions, normalizePrompt } from "../src/lib/questionGeneration";
@@ -70,7 +71,7 @@ Deno.serve(async (req: Request) => {
 
         // The generator de-duplicates within one call.  Seeding needs a
         // stronger guarantee: no prompt may repeat across any Oak class,
-        // curriculum or Matamat stage.  Try deterministic seed variants
+        // curriculum or Mental Math stage.  Try deterministic seed variants
         // until this exact pool is full; fail before inserting anything
         // if a pool cannot be filled without a duplicate.
         for (let variant = 0; variant < 50 && collected.length < count; variant++) {
@@ -113,7 +114,7 @@ Deno.serve(async (req: Request) => {
             difficulty,
             topic: q.topic,
             subtopic: q.subtopic,
-            tags: ["oak-matamat-2026", `stage:${stage}`],
+            tags: ["oak-mental-math-2026", `stage:${stage}`],
             curriculum,
             curriculum_course: course,
             status: "published",

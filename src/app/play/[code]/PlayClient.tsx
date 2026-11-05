@@ -53,6 +53,7 @@ export function PlayClient({ code }: { code: string }) {
   const [identity, setIdentity] = useState<{ participant_id: string; access_token: string; session_id: string } | null>(null);
   const [name, setName] = useState("");
   const [refValue, setRefValue] = useState("");
+  const [qualificationToken, setQualificationToken] = useState("");
   const [avatar, setAvatar] = useState<AvatarKey>("owl");
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -141,6 +142,7 @@ export function PlayClient({ code }: { code: string }) {
           code,
           display_name: name.trim(),
           participant_ref: refValue.trim() || undefined,
+          qualification_token: qualificationToken.trim() || undefined,
           avatar_key: avatar,
         }),
       });
@@ -290,6 +292,9 @@ export function PlayClient({ code }: { code: string }) {
           </Field>
           <Field label="Class / reference (optional)">
             <Input value={refValue} onChange={(e) => setRefValue(e.target.value)} placeholder="e.g. Grade 7B" />
+          </Field>
+          <Field label="Qualification admission token (required for Semi-Final / Grand Final)" hint="If you qualified, paste the one-time token issued by the organizer. It is verified on the server on every request.">
+            <Input value={qualificationToken} onChange={(e) => setQualificationToken(e.target.value)} placeholder="One-time approved qualification token" autoComplete="off" />
           </Field>
 
           <fieldset>

@@ -66,8 +66,8 @@ export default async function ExaminationCodesPage({
     <>
       <PageTitle
         title="Examination access codes"
-        subtitle="EVALORA uses two credentials: one examination code identifies the paper and window; a unique personal candidate code identifies the candidate and their single attempt. Both are verified together on the server."
-        action={<div className="flex flex-wrap gap-2"><ExportButton filename="exam-candidate-codes.csv" csv={csv} label="Export candidate codes" /><ButtonLink href="/admin/examinations/register" variant="gold">Register candidates</ButtonLink></div>}
+        subtitle="Two supported flows: the legacy two-credential exam code + personal candidate code, and the general shareable link + server-verified access code with mandatory first/last name and class validation. Both are verified on the server."
+        action={<div className="flex flex-wrap gap-2"><ExportButton filename="exam-candidate-codes.csv" csv={csv} label="Export candidate codes" /><ButtonLink href="/admin/examinations/invitations" variant="outline">Share links & codes</ButtonLink><ButtonLink href="/admin/examinations/register" variant="gold">Register candidates</ButtonLink></div>}
       />
 
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />

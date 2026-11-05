@@ -1,5 +1,6 @@
 import { AVATAR_KEYS } from "@/lib/avatars";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -7,6 +8,7 @@ const Body = z.object({
   code: z.string().min(4).max(12),
   display_name: z.string().min(1).max(60),
   participant_ref: z.string().max(60).optional(),
+  qualification_token: z.string().max(100).optional(),
   avatar_key: z.enum(AVATAR_KEYS).optional().default("owl"),
 });
 
@@ -116,9 +118,12 @@ async function resolveCode(
 export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
-  const { code, display_name, participant_ref, avatar_key } = parsed.data;
+  const { code, display_name, participant_ref, qualification_token, avatar_key } = parsed.data;
 
   const admin = createAdminClient();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const authUserId = auth.user?.id ?? null;
   const resolved = await resolveCode(admin, code.trim().toUpperCase());
   if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   const { session, competition, accessCodeId, restrictionOrgId, restrictionClassId } = resolved.target;
@@ -141,12 +146,32 @@ export async function POST(request: Request) {
   if ((count ?? 0) >= maxP)
     return NextResponse.json({ error: "This session is full." }, { status: 403 });
 
+  // Server-side phase admission. Hidden UI, localStorage, URL or Realtime
+  // channel manipulation cannot substitute for an approved qualification.
+  let tokenHash: string | null = null;
+  if (competition?.id) {
+    const { data: verdict, error: admissionError } = await admin.rpc("verify_phase_admission", {
+      p_competition_id: competition.id,
+      p_token: qualification_token?.trim() ?? null,
+      p_user_id: authUserId,
+      p_participant_ref: participant_ref ?? null,
+      p_student_id: null,
+    });
+    const admission = (verdict ?? null) as { allowed?: boolean; reason?: string } | null;
+    if (admissionError || !admission?.allowed)
+      return NextResponse.json({ error: admission?.reason ?? "Admission is restricted to approved, qualified candidates." }, { status: 403 });
+    if (qualification_token?.trim())
+      tokenHash = createHash("sha256").update(qualification_token.trim(), "utf8").digest("hex");
+  }
+
   const { data: participant, error } = await admin
     .from("session_participants")
     .insert({
       session_id: session.id,
       display_name,
       participant_ref: participant_ref || null,
+      user_id: authUserId,
+      qualification_token_hash: tokenHash,
       avatar_key,
       status: participantStatus,
     })

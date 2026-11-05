@@ -40,6 +40,14 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!participant || ["rejected", "blocked"].includes(participant.status))
     return NextResponse.json({ error: "Participant not found." }, { status: 404 });
+
+  // Re-check approved qualification / organization / event / phase / class on
+  // every submission as well as every state poll. This is a backend gate.
+  const { data: verdict } = await admin.rpc("verify_participant_phase_admission", { p_participant_id: participant.id });
+  const admission = (verdict ?? null) as { allowed?: boolean; reason?: string } | null;
+  if (!admission?.allowed)
+    return NextResponse.json({ error: admission?.reason ?? "Admission is restricted to approved candidates." }, { status: 403 });
+
   if (["pending", "joined"].includes(participant.status))
     return NextResponse.json({ error: "Your entry is waiting for organizer approval." }, { status: 403 });
 

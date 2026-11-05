@@ -39,6 +39,7 @@ export default function ExamAccessPage() {
         <h1 className="font-display text-2xl font-semibold text-evergreen-950">Enter your examination</h1>
         <p className="mt-1 text-sm text-ink-soft">
           You need two codes from your institution: the examination code and your personal candidate code.
+          If your institution sent a shareable examination link, open that link instead — no personal candidate code is required there.
         </p>
         <form onSubmit={submit} className="mt-5 space-y-4">
           {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}

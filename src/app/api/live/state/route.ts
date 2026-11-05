@@ -35,6 +35,13 @@ export async function GET(request: Request) {
     .maybeSingle();
   if (!participant) return NextResponse.json({ error: "Participant not found." }, { status: 404 });
 
+  // Re-verify phase admission on every state poll. A token, URL, localStorage
+  // or Realtime channel alone cannot expose a protected phase's questions.
+  const { data: verdict } = await admin.rpc("verify_participant_phase_admission", { p_participant_id: participant.id });
+  const admission = (verdict ?? null) as { allowed?: boolean; reason?: string } | null;
+  if (!admission?.allowed)
+    return NextResponse.json({ error: admission?.reason ?? "Admission is restricted to approved candidates." }, { status: 403 });
+
   const participantStatus = participant.status === "joined" ? "pending" : participant.status;
   if (["rejected", "blocked"].includes(participantStatus))
     return NextResponse.json(

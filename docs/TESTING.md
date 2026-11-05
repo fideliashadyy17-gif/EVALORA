@@ -10,7 +10,24 @@
   these with `tsx` or your preferred runner.
 - **Database**: migration applied cleanly to the production Supabase project;
   RLS enabled on all 26 tables; seed plans/settings present.
-- **Deployment**: production build READY on Vercel from the arena branch.
+- **Deployment**: the existing Vercel production deployment is READY. No new production deployment was made for the Oak event work below.
+
+## Current verification — 2026-11-05 (working branch `arena/21f3ffe0-evalora`)
+
+- `npx tsc --noEmit`: exit 0.
+- `npm run lint`: exit 0, 13 non-blocking warnings.
+- `npm run build` with dummy non-secret build-time env: exit 0, 37/37 static pages generated. This is not a production-env or runtime test.
+- `node scripts/test-admin-utils.mjs`: 11/11 passed.
+- `node scripts/test-live-three-interfaces.mjs`: 49/49 passed.
+- `node scripts/test-rich-content.mjs`: 146/146 passed.
+- `node scripts/test-school-systems.mjs`: 29/29 passed.
+- `node scripts/check-contrast.mjs`: all WCAG 2.2 AA pairs passed.
+- `node scripts/test-event-operations.mjs`: 45/45 static event-operations checks passed.
+- Post-migration schema validation: 18 event/pool/admission functions, 5 new tables, 16 policies on new/private tables, both shared-link identity CHECK constraints, 5 guards/usage/code-hash triggers, the invite/guest/participant indexes, the canonical event name and all three exact phase titles were confirmed present.
+- **Transactional pool / qualification / exam-link tests**: `scripts/test-event-operations.sql` ran end-to-end against the Supabase project inside `BEGIN … ROLLBACK`; 36/36 assertions passed. B1–B9 (pool generation, validation, shuffle, replace, manual selection, shortfall workflow, approved-only guard, single-class guard, unresolved-count publish block) passed; C1–C15 (per-class ranking, unqualified/direct-URL/invalid-token/unapproved denial, organizer approval, class isolation, participant recheck, forged hash, documented override, unchanged source score, anonymous RLS) passed; D1–D11 plus D4b (code hash, wrong code, expired link, class isolation, later-phase class exclusion, mandatory names, duplicate guest, identity/score persistence, duplicate attempt, name-only student merge, anonymous result/answer protection) passed. The revised RLS harness records `SET LOCAL ROLE anon` results after restoring the privileged role, so the earlier temp-table permission false positive is eliminated. No test rows were committed.
+- Database migration history was rechecked: 22 applied migrations include `official_event_identity`, `question_pools`, `question_pool_validate_curriculum_counts_fix`, `qualification_schema_part_a`, `compute_phase_qualification_function`, `qualification_admission_functions_policies`, `exam_shared_links`, `participant_admission_recheck`, `pool_manual_selection`, `participant_admission_verified_student`, and `shared_link_identity_integrity`.
+- Vercel environment review: required public Supabase/LiveKit URL keys and an encrypted anon key are present; service-role and LiveKit secret values are redacted/sensitive. `LIVE_DISPLAY_TOKEN_SECRET` and `NEXT_PUBLIC_ROOT_DOMAIN` are referenced in source but are not configured as Vercel project env vars. No secret values were copied into source or reports.
+- **Not yet run**: authenticated browser testing (Super Admin, org admin, organizer, registered student, shared-link candidate, qualified/unqualified candidate, desktop/mobile), live API integration tests against a running app, production-env validation, or a new production deployment. Do not claim E/F browser or deployment success from the build or SQL results above.
 
 ## Manual acceptance script (15 minutes, do this on the live URL)
 

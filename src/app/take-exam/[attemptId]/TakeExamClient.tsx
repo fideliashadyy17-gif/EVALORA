@@ -15,7 +15,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number };
-  candidate: { name: string; ref: string | null };
+  candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
@@ -157,7 +157,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
             <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
-            <p className="text-xs text-ink-soft">{state.candidate.name}{state.candidate.ref ? ` · ${state.candidate.ref}` : ""}</p>
+            <p className="text-xs text-ink-soft">
+              {state.candidate.first_name || state.candidate.last_name
+                ? `${state.candidate.first_name ?? ""} ${state.candidate.last_name ?? ""}`.trim()
+                : state.candidate.name}
+              {state.candidate.ref ? ` · ${state.candidate.ref}` : ""}
+            </p>
           </div>
           {!submitted && (
             <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>

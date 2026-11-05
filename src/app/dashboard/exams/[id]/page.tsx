@@ -1,9 +1,11 @@
 import { RichContent } from "@/components/RichContent";
+import { CopyInvitation } from "@/app/admin/examinations/invitations/CopyInvitation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import {
   addCandidate, addCandidatesBulk, deleteExam, markAnswer, publishResults,
@@ -22,6 +24,9 @@ export default async function ExamDetailPage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "evalora-six.vercel.app";
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -76,10 +81,21 @@ export default async function ExamDetailPage({
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone={exam.status === "open" ? "amber" : "gray"}>{exam.status}</Badge>
-          <p className="text-sm text-ink-soft">
-            Candidates enter at <strong>/exam-access</strong> with exam code{" "}
-            <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus their personal code.
-          </p>
+          <div className="min-w-[280px] flex-1">
+            <p className="text-sm text-ink-soft">
+              Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
+              <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
+            </p>
+            {exam.shared_link_enabled !== false && exam.invite_token && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Shareable link + code</span>
+                <code className="max-w-full truncate rounded bg-cream px-2 py-1 text-xs text-evergreen-900">{`${origin}/exam/join/${exam.invite_token}`}</code>
+                <CopyInvitation text={`${origin}/exam/join/${exam.invite_token}`} label="Copy link" />
+                <CopyInvitation text={exam.access_code} label="Copy code" />
+                <ButtonLink href={`/admin/examinations/invitations?exam=${id}`} variant="outline">Invitation settings</ButtonLink>
+              </div>
+            )}
+          </div>
           <div className="ml-auto flex flex-wrap gap-2">
             {exam.status !== "open" ? (
               <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="open" /><Button type="submit">Open examination</Button></form>

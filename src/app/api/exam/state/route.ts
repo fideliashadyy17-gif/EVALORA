@@ -49,7 +49,13 @@ export async function GET(request: Request) {
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
     },
-    candidate: { name: candidate.full_name, ref: candidate.candidate_ref },
+    candidate: {
+      name: candidate.full_name,
+      ref: candidate.candidate_ref,
+      first_name: candidate.first_name ?? null,
+      last_name: candidate.last_name ?? null,
+      class_id: candidate.class_id ?? null,
+    },
     attempt: {
       id: attempt.id,
       status: attempt.status,
