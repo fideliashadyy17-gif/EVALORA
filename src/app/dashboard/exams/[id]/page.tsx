@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -92,6 +92,8 @@ export default async function ExamDetailPage({
         }
       />
 
+      {sp.publish_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
+      {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
       {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Mark saved and attempt total recalculated.</p>}
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}

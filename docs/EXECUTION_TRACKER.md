@@ -4,7 +4,7 @@ Updated 2026-11-05. This is an evidence ledger, not a completion claim.
 
 ## Source and baseline
 
-The original master prompt is not present in the checked-out files or this conversation's retained context. The current instruction and `PHASE_0_ASSESSMENT_PLATFORM_AUDIT.md`, `IMPLEMENTATION_PHASE_STATUS.md`, `ADDITIONAL_REQUIREMENTS.md`, and `RELEASE_READINESS_2026-11-05.md` are the available requirement sources. The checklist below covers the phases and modules explicitly retained there; it cannot certify that no detail from the missing original prompt has been omitted. Preserve earlier work and reconcile additional original requirements if recovered.
+The complete EVALORA master prompt was supplied by the owner on 5 November 2026 and is now the authoritative roadmap, together with subsequent approved requirements. `MASTER_REQUIREMENTS_MATRIX.md` maps its module sections and acceptance criteria to current evidence and open work. The phase audit and release documents record earlier technical findings.
 
 On recovery, `arena/b5f2778e-evalora` was clean at `cc9e64ea2ae047aac27922a487ac18d3e210bb44`, matching origin and open PR #2. Production Vercel project `evalora` was READY/PROMOTED for that commit (`dpl_7EzGmEvDBUtxMr65WVicPJAAyb6J`), serving the requested admin hostname. Vercel's configured production branch is `main`; the established workflow explicitly creates production deployments from the pushed session branch. Preview and production share the production database, so previews are not isolated staging.
 

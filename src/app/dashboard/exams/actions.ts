@@ -202,14 +202,24 @@ export async function markAnswer(formData: FormData) {
 
 export async function publishResults(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
-  const examId = String(formData.get("exam_id"));
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id") ?? "");
+  // Avoid using an untrusted path segment in redirects or database queries.
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
+  const back = `/dashboard/exams/${examId}`;
+  const value = String(formData.get("publish") ?? "");
+  if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
   const supabase = await createClient();
-  const { data: exam } = await supabase.from("exams").select("settings").eq("id", examId).eq("organization_id", org.id).single();
-  const settings = { ...((exam?.settings as object) ?? {}), results_published: formData.get("publish") === "1" };
-  await supabase.from("exams").update({ settings }).eq("id", examId);
-  revalidatePath(`/dashboard/exams/${examId}`);
+  const { data: exam, error: readError } = await supabase.from("exams").select("settings")
+    .eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`${back}?publish_error=1`);
+  const settings = { ...((exam.settings as object) ?? {}), results_published: value === "1" };
+  const { data: updated, error: updateError } = await supabase.from("exams").update({ settings })
+    .eq("id", examId).eq("organization_id", org.id).select("id").maybeSingle();
+  if (updateError || !updated) redirect(`${back}?publish_error=1`);
+  revalidatePath(back);
+  redirect(`${back}?publish_ok=1`);
 }
 
 /** Supervisor incident logging & review. */
