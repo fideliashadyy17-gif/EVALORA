@@ -3,6 +3,8 @@
 import type { QuestionFormValues } from "@/components/QuestionForm";
 import { audit, fstr, requireSuperAdmin } from "@/lib/admin";
 import { questionPublishError } from "@/lib/questionValidation";
+import { normalizePrompt } from "@/lib/questionGeneration";
+import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -36,10 +38,17 @@ const QuestionSchema = z.object({
   explanation: z.string().max(100000).optional(),
   explanation_doc: z.unknown().optional().nullable(),
   points: z.number().min(0).max(10000),
-  difficulty: z.enum(["easy", "medium", "hard"]),
+  difficulty: z.enum(["easy", "medium", "hard", "competition"]),
   topic: z.string().max(200).optional(),
   status: z.enum(["draft", "pending_review", "published", "archived"]),
   category_id: z.string().uuid().nullable().optional(),
+  class_id: z.string().uuid().nullable().optional(),
+  subject_id: z.string().uuid().nullable().optional(),
+  curriculum: z.string().max(80).nullable().optional(),
+  curriculum_course: z.string().max(160).nullable().optional(),
+  subtopic: z.string().max(200).nullable().optional(),
+  source_reference: z.string().max(1000).nullable().optional(),
+  source_url: z.string().url().max(2000).refine((url) => /^https?:\/\//i.test(url)).nullable().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   options: z.array(OptionSchema).max(50).default([]),
 });
@@ -66,11 +75,12 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
   const admin = createAdminClient();
 
   let organizationId = q.organization_id ?? null;
+  let hadPromptHash = false;
 
   if (q.id) {
     const { data: existing } = await admin
       .from("questions")
-      .select("id, organization_id")
+      .select("id, organization_id, prompt_hash")
       .eq("id", q.id)
       .maybeSingle();
     if (!existing) return { error: "That question no longer exists." };
@@ -78,6 +88,7 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
       return { error: "A question cannot be moved to another organization because existing quiz links belong to its original organization." };
     }
     organizationId = existing.organization_id;
+    hadPromptHash = Boolean(existing.prompt_hash);
   }
 
   if (!organizationId) return { error: "Choose the organization that owns this question." };
@@ -100,9 +111,28 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
     if (!category) return { error: "The selected category does not belong to this organization." };
   }
 
+  const classId: string | null = q.class_id ?? null;
+  if (classId) {
+    const { data: cls } = await admin.from("classes").select("id").eq("id", classId).eq("organization_id", organizationId).maybeSingle();
+    if (!cls) return { error: "The selected class does not belong to this organization." };
+  }
+
+  if (q.subject_id) {
+    const { data: subject } = await admin.from("subjects").select("id").eq("id", q.subject_id).eq("organization_id", organizationId).maybeSingle();
+    if (!subject) return { error: "The selected subject does not belong to this organization." };
+  }
+
   const payload = {
     organization_id: organizationId,
+    ...(hadPromptHash ? { prompt_hash: createHash("sha256").update(normalizePrompt(q.prompt)).digest("hex") } : {}),
     category_id: categoryId,
+    class_id: classId,
+    subject_id: q.subject_id || null,
+    curriculum: q.curriculum?.trim() || null,
+    curriculum_course: q.curriculum_course?.trim() || null,
+    subtopic: q.subtopic?.trim() || null,
+    source_reference: q.source_reference?.trim() || null,
+    source_url: q.source_url?.trim() || null,
     type: q.type,
     prompt: q.prompt,
     prompt_doc: adminJson(q.prompt_doc),
@@ -321,4 +351,50 @@ export async function deleteQuestionCategoryAsAdmin(formData: FormData) {
   await audit(ctx, "question_category.deleted", "question_categories", id!, organizationId);
   revalidatePath("/admin/questions/categories");
   categoryDest(formData, "ok=category_deleted");
+}
+
+/**
+ * Review workflow for (AI-generated or manual) questions.
+ * Draft → Reviewed → Approved (publishes) / Rejected / Archived.
+ * Only approved questions should be attached to finalized competitions.
+ */
+export async function setQuestionReview(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = fstr(formData, "id", 60);
+  const review = String(formData.get("review") ?? "");
+  const back = fstr(formData, "back", 300) ?? "/admin/questions";
+  if (!id || !["draft", "reviewed", "approved", "rejected", "archived"].includes(review)) redirect(`${back}${back.includes("?") ? "&" : "?"}e=not_ready`);
+
+  const { data: q, error: readError } = await admin
+    .from("questions")
+    .select("id, organization_id, type, prompt, points, config, question_options(label, is_correct)")
+    .eq("id", id!)
+    .maybeSingle();
+  if (readError || !q) redirect("/admin/questions?e=not_found");
+
+  if (review === "approved" && (!Array.isArray(q!.question_options) || questionPublishError({
+    type: q!.type,
+    prompt: q!.prompt,
+    points: q!.points,
+    config: q!.config as Record<string, unknown> | null,
+    options: q!.question_options as { label: string; is_correct: boolean }[],
+  }))) redirect(`${back}${back.includes("?") ? "&" : "?"}e=not_ready`);
+
+  const patch: Record<string, unknown> = {
+    review_status: review,
+    reviewed_by: ctx.user.id,
+    reviewed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  if (review === "approved") patch.status = "published";
+  if (review === "archived") patch.status = "archived";
+  if (review === "rejected" || review === "draft") patch.status = "draft";
+  if (review === "reviewed") patch.status = "pending_review";
+
+  const { error } = await admin.from("questions").update(patch).eq("id", id!);
+  if (error) redirect(`${back}${back.includes("?") ? "&" : "?"}e=not_ready`);
+  await audit(ctx, `question.review_${review}`, "questions", id!, q!.organization_id, { review });
+  revalidatePath("/admin/questions");
+  redirect(`${back}${back.includes("?") ? "&" : "?"}ok=review_${review}`);
 }

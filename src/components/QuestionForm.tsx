@@ -27,6 +27,13 @@ export interface QuestionFormValues {
   topic?: string;
   status: string;
   category_id?: string | null;
+  class_id?: string | null;
+  subject_id?: string | null;
+  curriculum?: string | null;
+  curriculum_course?: string | null;
+  subtopic?: string | null;
+  source_reference?: string | null;
+  source_url?: string | null;
   config?: Record<string, unknown>;
   options: QuestionFormOption[];
 }
@@ -58,6 +65,9 @@ export function QuestionForm({
   uploadImage,
   successHref,
   organizationId,
+  classOptions,
+  subjectOptions,
+  curriculumOptions,
 }: {
   initial?: Partial<QuestionFormValues> & { id?: string };
   categories: { id: string; name: string }[];
@@ -65,6 +75,9 @@ export function QuestionForm({
   uploadImage?: (formData: FormData) => Promise<UploadResult>;
   successHref: string;
   organizationId?: string;
+  classOptions?: { id: string; name: string }[];
+  subjectOptions?: { id: string; name: string }[];
+  curriculumOptions?: { key: string; name: string }[];
 }) {
   const router = useRouter();
   const [type, setType] = useState<string>(initial?.type ?? "single_choice");
@@ -79,6 +92,13 @@ export function QuestionForm({
   const [topic, setTopic] = useState(initial?.topic ?? "");
   const [status, setStatus] = useState<string>(initial?.status ?? "draft");
   const [categoryId, setCategoryId] = useState(initial?.category_id ?? "");
+  const [classId, setClassId] = useState(initial?.class_id ?? "");
+  const [subjectId, setSubjectId] = useState(initial?.subject_id ?? "");
+  const [curriculum, setCurriculum] = useState(initial?.curriculum ?? "");
+  const [curriculumCourse, setCurriculumCourse] = useState(initial?.curriculum_course ?? "");
+  const [subtopic, setSubtopic] = useState(initial?.subtopic ?? "");
+  const [sourceReference, setSourceReference] = useState(initial?.source_reference ?? "");
+  const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? "");
   const cfg = (initial?.config ?? {}) as Record<string, unknown>;
   const [numericAnswer, setNumericAnswer] = useState(String(cfg.numeric_answer ?? ""));
   const [tolerance, setTolerance] = useState(String(cfg.tolerance ?? "0"));
@@ -189,6 +209,13 @@ export function QuestionForm({
       topic,
       status,
       category_id: categoryId || null,
+      class_id: classId || null,
+      subject_id: subjectId || null,
+      curriculum: curriculum || null,
+      curriculum_course: curriculumCourse || null,
+      subtopic: subtopic || null,
+      source_reference: sourceReference || null,
+      source_url: sourceUrl || null,
       config,
       options: finalOptions,
     });
@@ -356,6 +383,7 @@ export function QuestionForm({
               <option value="easy">Easy</option>
               <option value="medium">Medium</option>
               <option value="hard">Hard</option>
+              <option value="competition">Competition</option>
             </Select>
           </Field>
           <Field label="Topic">
@@ -370,6 +398,53 @@ export function QuestionForm({
             </Select>
           </Field>
         </div>
+
+        {(classOptions || subjectOptions || curriculumOptions) && (
+          <div className="grid gap-4 rounded-xl border border-evergreen-900/15 bg-cream p-4 sm:grid-cols-4">
+            {classOptions && (
+              <Field label="Class (Question Bank)">
+                <Select value={classId ?? ""} onChange={(e) => setClassId(e.target.value)}>
+                  <option value="">No class</option>
+                  {classOptions.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            {subjectOptions && (
+              <Field label="Subject">
+                <Select value={subjectId ?? ""} onChange={(e) => setSubjectId(e.target.value)}>
+                  <option value="">Not specified</option>
+                  {subjectOptions.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            {curriculumOptions && (
+              <Field label="Curriculum">
+                <Select value={curriculum ?? ""} onChange={(e) => setCurriculum(e.target.value)}>
+                  <option value="">Not specified</option>
+                  {curriculumOptions.map((c) => (
+                    <option key={c.key} value={c.key}>{c.name}</option>
+                  ))}
+                </Select>
+              </Field>
+            )}
+            <Field label="Curriculum course">
+              <Input value={curriculumCourse} onChange={(e) => setCurriculumCourse(e.target.value)} placeholder="MYP 3 Mathematics" />
+            </Field>
+            <Field label="Subtopic">
+              <Input value={subtopic} onChange={(e) => setSubtopic(e.target.value)} placeholder="Fraction of a quantity" />
+            </Field>
+            <Field label="Source / reference">
+              <Input value={sourceReference} onChange={(e) => setSourceReference(e.target.value)} placeholder="Original — guided by MYP mathematics framework" />
+            </Field>
+            <Field label="Source URL">
+              <Input type="url" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder="https://example.org/reference" />
+            </Field>
+          </div>
+        )}
 
         <div className="flex gap-3">
           <Button onClick={submit} disabled={busy} variant="gold" className="px-6">

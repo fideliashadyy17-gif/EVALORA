@@ -3,6 +3,8 @@
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
+import { normalizePrompt } from "@/lib/questionGeneration";
+import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -26,10 +28,17 @@ const QuestionSchema = z.object({
   explanation: z.string().optional(),
   explanation_doc: z.unknown().optional().nullable(),
   points: z.number().min(0),
-  difficulty: z.enum(["easy", "medium", "hard"]),
+  difficulty: z.enum(["easy", "medium", "hard", "competition"]),
   topic: z.string().optional(),
   status: z.enum(["draft", "pending_review", "published", "archived"]),
   category_id: z.string().nullable().optional(),
+  class_id: z.string().nullable().optional(),
+  subject_id: z.string().uuid().nullable().optional(),
+  curriculum: z.string().nullable().optional(),
+  curriculum_course: z.string().nullable().optional(),
+  subtopic: z.string().nullable().optional(),
+  source_reference: z.string().nullable().optional(),
+  source_url: z.string().url().max(2000).refine((url) => /^https?:\/\//i.test(url)).nullable().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   options: z.array(OptionSchema).default([]),
 });
@@ -38,8 +47,8 @@ export type QuestionInput = z.infer<typeof QuestionSchema>;
 
 export async function saveQuestion(raw: QuestionInput) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to edit questions." };
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to edit questions." };
 
   const parsed = QuestionSchema.safeParse(raw);
   if (!parsed.success) return { error: "Please check the form — some fields are invalid." };
@@ -61,9 +70,40 @@ export async function saveQuestion(raw: QuestionInput) {
       return { error: `Your ${ent.planName} plan allows ${ent.limits.max_questions} questions. Upgrade in Billing to add more.` };
   }
 
+  let hadPromptHash = false;
+  if (q.id) {
+    const { data: existing, error } = await supabase.from("questions").select("prompt_hash").eq("id", q.id).eq("organization_id", org.id).maybeSingle();
+    if (error || !existing) return { error: "That question could not be loaded." };
+    hadPromptHash = Boolean(existing.prompt_hash);
+  }
+
+  // Linked metadata must belong to this organization, not just be a valid ID.
+  if (q.category_id) {
+    const { data: category, error } = await supabase.from("question_categories").select("id").eq("id", q.category_id).eq("organization_id", org.id).maybeSingle();
+    if (error || !category) return { error: "The selected category does not belong to this organization." };
+  }
+  const classId: string | null = q.class_id || null;
+  if (classId) {
+    const { data: cls } = await supabase.from("classes").select("id").eq("id", classId).eq("organization_id", org.id).maybeSingle();
+    if (!cls) return { error: "The selected class does not belong to this organization." };
+  }
+
+  if (q.subject_id) {
+    const { data: subject } = await supabase.from("subjects").select("id").eq("id", q.subject_id).eq("organization_id", org.id).maybeSingle();
+    if (!subject) return { error: "The selected subject does not belong to this organization." };
+  }
+
   const payload = {
     organization_id: org.id,
+    ...(hadPromptHash ? { prompt_hash: createHash("sha256").update(normalizePrompt(q.prompt)).digest("hex") } : {}),
     category_id: q.category_id || null,
+    class_id: classId,
+    subject_id: q.subject_id || null,
+    curriculum: q.curriculum?.trim() || null,
+    curriculum_course: q.curriculum_course?.trim() || null,
+    subtopic: q.subtopic?.trim() || null,
+    source_reference: q.source_reference?.trim() || null,
+    source_url: q.source_url?.trim() || null,
     type: q.type,
     prompt: q.prompt,
     prompt_doc: q.prompt_doc ?? null,

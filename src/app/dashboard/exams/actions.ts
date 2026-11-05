@@ -155,29 +155,49 @@ export async function removeCandidate(formData: FormData) {
 /** Manual marking of a written answer; recomputes the attempt total. */
 export async function markAnswer(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
-  const answerId = String(formData.get("answer_id"));
-  const attemptId = String(formData.get("attempt_id"));
-  const examId = String(formData.get("exam_id"));
-  const points = Math.max(0, parseFloat(String(formData.get("points") ?? "0")) || 0);
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const examId = String(formData.get("exam_id") ?? "");
+  const rawPoints = String(formData.get("points") ?? "").trim();
+  const points = rawPoints ? Number(rawPoints) : NaN;
   const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?mark_error=${code}`);
+  if (!answerId || !attemptId || !examId) return fail("invalid");
+  if (!Number.isFinite(points) || points < 0) return fail("points");
 
   const supabase = await createClient();
-  await supabase
-    .from("exam_answers")
-    .update({ points_awarded: points, is_correct: points > 0, marked_by: ctx.user.id, marker_note: note })
-    .eq("id", answerId);
+  const { data: exam, error: examError } = await supabase.from("exams").select("id, quiz_id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (examError || !exam?.quiz_id) return fail("invalid");
+  const { data: attempt, error: attemptError } = await supabase.from("exam_attempts").select("id, exam_id, status").eq("id", attemptId).eq("exam_id", exam.id).maybeSingle();
+  if (attemptError || !attempt) return fail("invalid");
+  if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) return fail("in_progress");
+  const { data: answer, error: answerError } = await supabase.from("exam_answers").select("id, attempt_id, question_id, quiz_question_id, questions(organization_id, points, type)").eq("id", answerId).eq("attempt_id", attempt.id).maybeSingle();
+  if (answerError || !answer) return fail("invalid");
+  const question = answer.questions as unknown as { organization_id: string; points: number; type: string } | null;
+  if (!question || question.organization_id !== org.id || question.type !== "open_ended") return fail("invalid");
+  const { data: quizQuestion, error: quizError } = await supabase.from("quiz_questions").select("id, points").eq("quiz_id", exam.quiz_id).eq("question_id", answer.question_id).maybeSingle();
+  if (quizError || !quizQuestion || (answer.quiz_question_id && answer.quiz_question_id !== quizQuestion.id)) return fail("invalid");
+  const maxPoints = Number(quizQuestion.points ?? question.points);
+  if (!Number.isFinite(maxPoints) || maxPoints < 0 || points > maxPoints) return fail("points");
 
-  const { data: answers } = await supabase.from("exam_answers").select("points_awarded, is_correct").eq("attempt_id", attemptId);
-  const total = (answers ?? []).reduce((s, a) => s + Number(a.points_awarded ?? 0), 0);
-  const allMarked = (answers ?? []).every((a) => a.is_correct !== null);
-  await supabase
-    .from("exam_attempts")
-    .update({ score: total, status: allMarked ? "marked" : undefined })
-    .eq("id", attemptId);
+  const { data: updated, error: updateError } = await supabase.from("exam_answers")
+    .update({ points_awarded: points, is_correct: points > 0, marked_by: ctx.user.id, marker_note: note, updated_at: new Date().toISOString() })
+    .eq("id", answerId).eq("attempt_id", attempt.id).select("id").maybeSingle();
+  if (updateError || !updated) return fail("failed");
 
-  revalidatePath(`/dashboard/exams/${examId}`);
+  const { data: answers, error: answersError } = await supabase.from("exam_answers").select("points_awarded, is_correct").eq("attempt_id", attempt.id);
+  if (answersError || !answers) return fail("partial");
+  const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
+  const { data: updatedAttempt, error: totalError } = await supabase.from("exam_attempts")
+    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) }).eq("id", attempt.id).eq("exam_id", exam.id)
+    .in("status", ["submitted", "auto_submitted", "marked"]).select("id").maybeSingle();
+  if (totalError || !updatedAttempt) return fail("partial");
+  revalidatePath(back);
+  redirect(`${back}?mark_ok=1`);
 }
 
 export async function publishResults(formData: FormData) {

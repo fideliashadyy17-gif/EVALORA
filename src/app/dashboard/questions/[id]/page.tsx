@@ -31,6 +31,11 @@ export default async function EditQuestionPage({
     .select("id, name")
     .eq("organization_id", org.id)
     .order("name");
+  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }] = await Promise.all([
+    supabase.from("classes").select("id, name").eq("organization_id", org.id).order("grade_order").order("name"),
+    supabase.from("curriculum_programmes").select("key, name").eq("organization_id", org.id).order("name"),
+    supabase.from("subjects").select("id, name").eq("organization_id", org.id).order("name"),
+  ]);
 
   const opts = [...((q.question_options as { label: string; is_correct: boolean; position: number; content_doc: unknown }[]) ?? [])]
     .sort((a, b) => a.position - b.position);
@@ -47,6 +52,13 @@ export default async function EditQuestionPage({
     topic: q.topic ?? "",
     status: q.status as QuestionInput["status"],
     category_id: q.category_id,
+    class_id: q.class_id,
+    subject_id: q.subject_id,
+    curriculum: q.curriculum,
+    curriculum_course: q.curriculum_course,
+    subtopic: q.subtopic,
+    source_reference: q.source_reference,
+    source_url: q.source_url,
     config: (q.config as Record<string, unknown>) ?? {},
     options: opts.map((o) => ({
       label: o.label,
@@ -57,12 +69,15 @@ export default async function EditQuestionPage({
 
   return (
     <>
-      <PageTitle title="Edit question" subtitle="Changes apply to future sessions; past results keep their recorded answers." />
+      <PageTitle title="Edit question" subtitle="Changes affect linked papers and can affect existing attempts or grading. Use a copy when preserving past questions." />
       <QuestionForm
         initial={initial}
         categories={categories ?? []}
         save={saveQuestion as unknown as QuestionSaveFn}
         uploadImage={uploadQuestionImage}
+        subjectOptions={subjectOptions ?? []}
+        classOptions={classOptions ?? []}
+        curriculumOptions={programmes ?? []}
         successHref="/dashboard/questions"
       />
     </>

@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -46,7 +46,7 @@ export default async function ExamDetailPage({
   );
   const shareUrl = `${origin}${accessLink}`;
 
-  const [{ data: candidates }, { data: attempts }, { data: incidents }] = await Promise.all([
+  const [{ data: candidates }, { data: attempts }, { data: incidents }, { data: paperQuestions }] = await Promise.all([
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
@@ -58,10 +58,21 @@ export default async function ExamDetailPage({
       .select("*, exam_candidates(full_name)")
       .eq("exam_id", id)
       .order("created_at", { ascending: false }),
+    exam.quiz_id
+      ? supabase.from("quiz_questions").select("question_id, points").eq("quiz_id", exam.quiz_id)
+      : Promise.resolve({ data: [] }),
   ]);
+  const paperPoints = new Map((paperQuestions ?? []).map((q) => [q.question_id, q.points]));
+  const markErrors: Record<string, string> = {
+    invalid: "The answer, examination or paper could not be verified. No mark was saved.",
+    in_progress: "A mark cannot be recorded while the attempt is in progress.",
+    points: "Enter a valid mark between zero and the paper’s maximum for this question.",
+    failed: "The mark could not be saved. Please retry.",
+    partial: "The answer mark may have been saved, but the attempt total could not be confirmed. Contact an administrator to check the mark and total.",
+  };
 
   const awaitingMarking = (attempts ?? []).flatMap((a) =>
-    ((a.exam_answers as { id: string; is_correct: boolean | null; answer: { text?: string }; questions: { prompt: string; points: number; type: string } }[]) ?? [])
+    ((a.exam_answers as { id: string; question_id: string; is_correct: boolean | null; answer: { text?: string }; questions: { prompt: string; points: number; type: string } }[]) ?? [])
       .filter((ans) => ans.is_correct === null && ans.questions.type === "open_ended" && a.status !== "in_progress")
       .map((ans) => ({ attempt: a, ans })),
   );
@@ -81,6 +92,8 @@ export default async function ExamDetailPage({
         }
       />
 
+      {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
+      {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Mark saved and attempt total recalculated.</p>}
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
       {sp.ok === "created" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination created. Its unique link and access code are stored with the exam and shown below.</p>}
 
@@ -226,7 +239,7 @@ export default async function ExamDetailPage({
                 {awaitingMarking.map(({ attempt, ans }) => (
                   <div key={ans.id} className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
                     <p className="text-xs font-medium text-ink-soft">
-                      {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(ans.questions.points)} pts
+                      {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} pts
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
                     <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 text-sm">{ans.answer?.text ?? "(empty)"}</p>
@@ -235,7 +248,7 @@ export default async function ExamDetailPage({
                       <input type="hidden" name="attempt_id" value={attempt.id} />
                       <input type="hidden" name="exam_id" value={id} />
                       <Field label="Points">
-                        <Input name="points" type="number" step="0.5" min={0} max={Number(ans.questions.points)} required className="w-24" />
+                        <Input name="points" type="number" step="0.5" min={0} max={Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} required className="w-24" />
                       </Field>
                       <Field label="Marker note">
                         <Input name="note" placeholder="Feedback…" className="w-56" />

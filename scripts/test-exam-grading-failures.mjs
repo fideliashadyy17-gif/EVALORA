@@ -1,0 +1,27 @@
+// Real exam grading functions with in-memory Supabase boundary; not transaction/E2E tests.
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {Module} from 'node:module';
+import path from 'node:path';
+import ts from 'typescript';
+function compile(src,name,deps={}){const file=path.resolve(name),m=new Module(file),old=Module._load;m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));Module._load=function(id,parent){if(parent?.filename===file&&id in deps)return deps[id];return old.apply(this,arguments)};try{m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports}finally{Module._load=old}}
+const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs');
+const scoring=compile('src/lib/scoring.ts','scripts/__virtual_scoring_grading.cjs');
+const {attemptRows,gradeAttempt}=compile('src/lib/exam.ts','scripts/__virtual_exam_grading.cjs',{'./live':live,'./scoring':scoring});
+const q=(id)=>({id:'qq'+id,question_id:id,quiz_id:'quiz',position:1,points:2,questions:{id,type:'single_choice',points:3,config:{},question_options:[{id:'correct',label:'yes',is_correct:true,position:0}]}});
+let tables,fail,gradeWrites;
+function setup(){tables={quiz_questions:[q('q')],exam_answers:[{id:'answer',attempt_id:'attempt',question_id:'q',answer:{option_id:'correct'},marked_by:null}]};fail={};gradeWrites=[]}
+const db={from(table){const filters=[];let patch=null;const query={select(){return query},eq(k,v){filters.push((r)=>r[k]===v);return query},is(k,v){filters.push((r)=>(r[k]??null)===v);return query},order(){return query},update(data){patch=data;return query},async maybeSingle(){if(fail.update)return {data:null,error:{message:'failure'}};const row=tables[table].find((r)=>filters.every((f)=>f(r)));if(!row)return {data:null,error:null};Object.assign(row,patch);gradeWrites.push({...patch});return {data:{id:row.id},error:null}},then(resolve,reject){return Promise.resolve(fail[table]?{data:null,error:{message:'failure'}}:{data:tables[table].filter((r)=>filters.every((f)=>f(r))),error:null}).then(resolve,reject)}};return query}};
+const exam={quiz_id:'quiz',settings:{}};const attempt={id:'attempt',question_order:['qqq']};let count=0;
+async function test(name,fn){setup();await fn();count++;console.log(`  ✓ ${name}`)}
+await test('strict exam paper read fails on database error while legacy live read is unchanged',async()=>{fail.quiz_questions=true;assert.deepEqual(await live.loadQuizQuestions(db,'quiz'),[]);await assert.rejects(()=>attemptRows(db,exam,attempt),/Could not load/)});
+await test('missing or empty paper fails closed',async()=>{await assert.rejects(()=>attemptRows(db,{quiz_id:null,settings:{}},attempt),/unavailable/);tables.quiz_questions=[];await assert.rejects(()=>attemptRows(db,exam,attempt),/empty/)});
+await test('missing and duplicate stored order entries fail closed',async()=>{await assert.rejects(()=>attemptRows(db,exam,{...attempt,question_order:['missing']}),/no longer matches/);await assert.rejects(()=>attemptRows(db,exam,{...attempt,question_order:['qqq','qqq']}),/no longer matches/)});
+await test('answer read failure cannot become a zero total',async()=>{const rows=await attemptRows(db,exam,attempt);fail.exam_answers=true;await assert.rejects(()=>gradeAttempt(db,'attempt',rows),/load examination answers/);assert.equal(gradeWrites.length,0)});
+await test('failed grade write does not confirm a total',async()=>{const rows=await attemptRows(db,exam,attempt);fail.update=true;await assert.rejects(()=>gradeAttempt(db,'attempt',rows),/persist examination grading/)});
+await test('concurrent human mark is not overwritten',async()=>{const rows=await attemptRows(db,exam,attempt);const oldFrom=db.from;db.from=function(table){const result=oldFrom.call(db,table);if(table==='exam_answers'){const orig=result.update;result.update=function(p){tables.exam_answers[0].marked_by='teacher';return orig.call(result,p)}}return result};try{await assert.rejects(()=>gradeAttempt(db,'attempt',rows),/persist examination grading/);assert.equal(gradeWrites.length,0)}finally{db.from=oldFrom}});
+await test('existing human mark is preserved and contributes to total',async()=>{tables.exam_answers[0].marked_by='teacher';tables.exam_answers[0].points_awarded=1.5;const result=await gradeAttempt(db,'attempt',await attemptRows(db,exam,attempt));assert.deepEqual(result,{score:1.5,max:2});assert.equal(gradeWrites.length,0)});
+await test('objective answer is graded using paper allocation',async()=>{const result=await gradeAttempt(db,'attempt',await attemptRows(db,exam,attempt));assert.deepEqual(result,{score:2,max:2});assert.equal(gradeWrites[0].points_awarded,2)});
+await test('legitimate unanswered question contributes max but not score',async()=>{tables.exam_answers=[];assert.deepEqual(await gradeAttempt(db,'attempt',await attemptRows(db,exam,attempt)),{score:0,max:2})});
+await test('invalid paper point allocation fails',async()=>{tables.quiz_questions[0].points=-1;const rows=await attemptRows(db,exam,attempt);await assert.rejects(()=>gradeAttempt(db,'attempt',rows),/Invalid examination question points/)});
+console.log(`\n${count} exam grading checks passed (real grading logic; mocked DB).`);

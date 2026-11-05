@@ -5,7 +5,7 @@ import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
 import { Button, Input, Textarea } from "./ui";
 import { cn } from "@/lib/utils";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface PublicQuestion {
   quiz_question_id: string;
@@ -41,12 +41,15 @@ export interface PublicQuestion {
 export function QuestionRunner({
   question,
   onAnswer,
+  onDirtyChange,
   disabled = false,
   initial,
   submitLabel = "Submit answer",
 }: {
   question: PublicQuestion;
-  onAnswer: (payload: Record<string, unknown>) => void | Promise<void>;
+  onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
+  /** Optional exam-only signal: changes have not yet been handed to onAnswer. */
+  onDirtyChange?: (dirty: boolean) => void;
   disabled?: boolean;
   initial?: Record<string, unknown> | null;
   submitLabel?: string;
@@ -72,6 +75,25 @@ export function QuestionRunner({
     const init = (initial?.pairs as { left: string; right: string }[]) ?? [];
     setPairs(Object.fromEntries(init.map((p) => [p.left, p.right])));
   }, [question.quiz_question_id, question.question_id]); // reset per question
+
+  const editRevision = useRef(0);
+  useEffect(() => () => { editRevision.current += 1; }, []);
+
+  function changed() { editRevision.current += 1; onDirtyChange?.(true); }
+  function emit(payload: Record<string, unknown>) {
+    // Leave existing live-session callback behavior unchanged when draft
+    // tracking is not requested.
+    if (!onDirtyChange) { void onAnswer(payload); return; }
+    const revision = editRevision.current;
+    try {
+      const result = onAnswer(payload);
+      if (result instanceof Promise) {
+        void result.then((accepted) => { if (accepted !== false && revision === editRevision.current) onDirtyChange?.(false); }).catch(() => {});
+      } else if (result !== false) onDirtyChange?.(false);
+    } catch {
+      // Keep the draft marked unsaved when the consumer rejects it.
+    }
+  }
 
   const t = question.type;
 
@@ -99,7 +121,7 @@ export function QuestionRunner({
               <button
                 key={o.id}
                 disabled={disabled}
-                onClick={() => { setSelected([o.id]); onAnswer({ option_id: o.id }); }}
+                onClick={() => { changed(); setSelected([o.id]); emit({ option_id: o.id }); }}
                 className={cn(
                   "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                   selected.includes(o.id)
@@ -121,9 +143,10 @@ export function QuestionRunner({
                 <button
                   key={o.id}
                   disabled={disabled}
-                  onClick={() =>
-                    setSelected((prev) => (prev.includes(o.id) ? prev.filter((x) => x !== o.id) : [...prev, o.id]))
-                  }
+                  onClick={() => {
+                    changed();
+                    setSelected((prev) => (prev.includes(o.id) ? prev.filter((x) => x !== o.id) : [...prev, o.id]));
+                  }}
                   className={cn(
                     "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
                     selected.includes(o.id)
@@ -136,7 +159,7 @@ export function QuestionRunner({
                 </button>
               ))}
             </div>
-            <Button className="mt-4" disabled={disabled || selected.length === 0} onClick={() => onAnswer({ option_ids: selected })}>
+            <Button className="mt-4" disabled={disabled || selected.length === 0} onClick={() => emit({ option_ids: selected })}>
               {submitLabel}
             </Button>
           </div>
@@ -144,15 +167,15 @@ export function QuestionRunner({
 
         {t === "short_answer" && (
           <div className="flex gap-2">
-            <Input value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} placeholder="Type your answer…" onKeyDown={(e) => e.key === "Enter" && text.trim() && onAnswer({ text })} />
-            <Button disabled={disabled || !text.trim()} onClick={() => onAnswer({ text })}>{submitLabel}</Button>
+            <Input value={text} disabled={disabled} onChange={(e) => { changed(); setText(e.target.value); }} placeholder="Type your answer…" onKeyDown={(e) => e.key === "Enter" && text.trim() && emit({ text })} />
+            <Button disabled={disabled || !text.trim()} onClick={() => emit({ text })}>{submitLabel}</Button>
           </div>
         )}
 
         {t === "numeric" && (
           <div className="flex gap-2">
-            <Input type="number" step="any" value={num} disabled={disabled} onChange={(e) => setNum(e.target.value)} placeholder="Enter a number…" onKeyDown={(e) => e.key === "Enter" && num.trim() && onAnswer({ value: parseFloat(num) })} />
-            <Button disabled={disabled || !num.trim()} onClick={() => onAnswer({ value: parseFloat(num) })}>{submitLabel}</Button>
+            <Input type="number" step="any" value={num} disabled={disabled} onChange={(e) => { changed(); setNum(e.target.value); }} placeholder="Enter a number…" onKeyDown={(e) => e.key === "Enter" && num.trim() && emit({ value: parseFloat(num) })} />
+            <Button disabled={disabled || !num.trim()} onClick={() => emit({ value: parseFloat(num) })}>{submitLabel}</Button>
           </div>
         )}
 
@@ -164,12 +187,12 @@ export function QuestionRunner({
                 <li key={`${label}-${i}`} className="flex items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-evergreen-100 text-xs font-bold text-evergreen-800">{i + 1}</span>
                   <span className="flex-1 font-medium"><MathText text={label} /></span>
-                  <button disabled={disabled || i === 0} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => setOrder((p) => { const n = [...p]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; })}>↑</button>
-                  <button disabled={disabled || i === order.length - 1} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => setOrder((p) => { const n = [...p]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; return n; })}>↓</button>
+                  <button disabled={disabled || i === 0} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => { const n = [...p]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; }); }}>↑</button>
+                  <button disabled={disabled || i === order.length - 1} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => { const n = [...p]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; return n; }); }}>↓</button>
                 </li>
               ))}
             </ol>
-            <Button className="mt-4" disabled={disabled} onClick={() => onAnswer({ order })}>{submitLabel}</Button>
+            <Button className="mt-4" disabled={disabled} onClick={() => emit({ order })}>{submitLabel}</Button>
           </div>
         )}
 
@@ -183,7 +206,7 @@ export function QuestionRunner({
                   <select
                     disabled={disabled}
                     value={pairs[left] ?? ""}
-                    onChange={(e) => setPairs((p) => ({ ...p, [left]: e.target.value }))}
+                    onChange={(e) => { changed(); setPairs((p) => ({ ...p, [left]: e.target.value })); }}
                     className="rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm"
                   >
                     <option value="">Choose a match…</option>
@@ -197,7 +220,7 @@ export function QuestionRunner({
             <Button
               className="mt-4"
               disabled={disabled || Object.values(pairs).filter(Boolean).length === 0}
-              onClick={() => onAnswer({ pairs: Object.entries(pairs).filter(([, v]) => v).map(([left, right]) => ({ left, right })) })}
+              onClick={() => emit({ pairs: Object.entries(pairs).filter(([, v]) => v).map(([left, right]) => ({ left, right })) })}
             >
               {submitLabel}
             </Button>
@@ -206,13 +229,13 @@ export function QuestionRunner({
 
         {t === "open_ended" && (
           <div>
-            <Textarea rows={6} value={text} disabled={disabled} onChange={(e) => setText(e.target.value)} placeholder="Write your answer…" />
-            <Button className="mt-3" disabled={disabled || !text.trim()} onClick={() => onAnswer({ text })}>{submitLabel}</Button>
+            <Textarea rows={6} value={text} disabled={disabled} onChange={(e) => { changed(); setText(e.target.value); }} placeholder="Write your answer…" />
+            <Button className="mt-3" disabled={disabled || !text.trim()} onClick={() => emit({ text })}>{submitLabel}</Button>
           </div>
         )}
 
         {t === "slide" && (
-          <Button disabled={disabled} onClick={() => onAnswer({ acknowledged: true })}>
+          <Button disabled={disabled} onClick={() => emit({ acknowledged: true })}>
             Continue
           </Button>
         )}

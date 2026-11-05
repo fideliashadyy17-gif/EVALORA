@@ -74,11 +74,11 @@ const GROUPS: NavGroup[] = [
     title: "B. Organizations & Schools",
     items: [
       { href: "/admin/organizations", label: "All Organizations", icon: Building2 },
+      { href: "/admin/classes", label: "Class Management", icon: GraduationCap },
       { href: "/admin/organizations/new", label: "Create Organization", icon: Plus },
       { href: "/admin/organizations/admins", label: "Organization Administrators", icon: UserCog },
       { href: "/admin/subscriptions", label: "Organization Subscriptions", icon: Repeat },
       { href: "/admin/organizations/settings", label: "Organization Settings", icon: Settings },
-      { href: "/admin/classes", label: "Academic Mgmt — Classes", icon: GraduationCap },
       { href: "/admin/demo", label: "DEMO School & Migration", icon: Sparkles },
     ],
   },

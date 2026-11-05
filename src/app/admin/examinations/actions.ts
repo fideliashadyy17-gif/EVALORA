@@ -465,26 +465,32 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
   const answerId = String(formData.get("answer_id") ?? "");
   const back = safeBack(formData, "/admin/examinations/marking");
 
-  const { data: answer } = await admin
+  const { data: answer, error: answerError } = await admin
     .from("exam_answers")
-    .select("*, questions(points), exam_attempts!inner(id, exam_id, status, exams(organization_id))")
+    .select("*, questions(organization_id, points), exam_attempts!inner(id, exam_id, status, exams(organization_id, quiz_id))")
     .eq("id", answerId)
     .maybeSingle();
-  if (!answer) go(back, "e=answer");
+  if (answerError || !answer) go(back, "e=answer");
 
   const attempt = answer!.exam_attempts as unknown as {
     id: string;
     exam_id: string;
     status: string;
-    exams: { organization_id: string } | null;
+    exams: { organization_id: string; quiz_id: string | null } | null;
   };
-  if (attempt.status === "in_progress") go(back, "e=in_progress");
-  const maxPoints = Number((answer!.questions as { points?: number } | null)?.points ?? 0);
-  const points = Number(formData.get("points") ?? NaN);
-  if (!Number.isFinite(points) || points < 0 || points > maxPoints) go(back, "e=points");
+  const question = answer!.questions as unknown as { organization_id: string; points: number } | null;
+  if (!attempt || !attempt.exams?.quiz_id || !question || question.organization_id !== attempt.exams.organization_id) go(back, "e=answer");
+  if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) go(back, "e=in_progress");
+  const { data: paperQuestion, error: paperError } = await admin.from("quiz_questions").select("id, points")
+    .eq("quiz_id", attempt.exams!.quiz_id!).eq("question_id", answer!.question_id).maybeSingle();
+  if (paperError || !paperQuestion || (answer!.quiz_question_id && answer!.quiz_question_id !== paperQuestion.id)) go(back, "e=answer");
+  const maxPoints = Number(paperQuestion!.points ?? question!.points);
+  const rawPoints = String(formData.get("points") ?? "").trim();
+  const points = rawPoints ? Number(rawPoints) : NaN;
+  if (!Number.isFinite(maxPoints) || maxPoints < 0 || !Number.isFinite(points) || points < 0 || points > maxPoints) go(back, "e=points");
   const note = fstr(formData, "note", 1000);
 
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("exam_answers")
     .update({
       points_awarded: points,
@@ -493,25 +499,32 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
       marker_note: note,
       updated_at: new Date().toISOString(),
     })
-    .eq("id", answerId);
-  if (error) go(back, "e=failed");
+    .eq("id", answerId).eq("attempt_id", attempt.id).select("id").maybeSingle();
+  if (error || !updated) go(back, "e=failed");
 
-  const { data: allAnswers } = await admin
+  const metadata = { exam_id: attempt.exam_id, attempt_id: attempt.id, points_awarded: points, max_points: maxPoints };
+  const reportPartial = async (): Promise<never> => {
+    await audit(ctx, "exam.answer_marked_by_admin_total_unconfirmed", "exam_answers", answerId, attempt.exams!.organization_id, metadata);
+    revalidatePath("/admin/examinations/marking");
+    revalidatePath("/admin/examinations/results");
+    return go(back, "e=partial");
+  };
+  const { data: allAnswers, error: answersError } = await admin
     .from("exam_answers")
     .select("points_awarded, is_correct")
     .eq("attempt_id", attempt.id);
-  const total = Math.round((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
-  const allMarked = (allAnswers ?? []).length > 0 && (allAnswers ?? []).every((a) => a.is_correct !== null);
-  await admin
+  if (answersError || !allAnswers) return reportPartial();
+  const total = Math.round(allAnswers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const allMarked = allAnswers.length > 0 && allAnswers.every((a) => a.is_correct !== null);
+  const { data: updatedAttempt, error: totalError } = await admin
     .from("exam_attempts")
     .update({ score: total, ...(allMarked ? { status: "marked" } : {}) })
-    .eq("id", attempt.id);
+    .eq("id", attempt.id).eq("exam_id", attempt.exam_id).in("status", ["submitted", "auto_submitted", "marked"])
+    .select("id").maybeSingle();
+  if (totalError || !updatedAttempt) return reportPartial();
 
-  await audit(ctx, "exam.answer_marked_by_admin", "exam_answers", answerId, attempt.exams?.organization_id, {
-    exam_id: attempt.exam_id,
-    attempt_id: attempt.id,
-    points_awarded: points,
-    max_points: maxPoints,
+  await audit(ctx, "exam.answer_marked_by_admin", "exam_answers", answerId, attempt.exams!.organization_id, {
+    ...metadata,
     attempt_marked: allMarked,
   });
   revalidatePath("/admin/examinations/marking");

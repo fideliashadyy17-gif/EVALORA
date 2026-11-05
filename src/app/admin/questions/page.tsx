@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import { adminDeleteQuestion, adminSetQuestionStatus } from "../actions";
-import { duplicateQuestionAsAdmin } from "./actions";
+import { duplicateQuestionAsAdmin, setQuestionReview } from "./actions";
 import { Notice } from "../ui";
 
 export const metadata: Metadata = { title: "Question Bank" };
@@ -21,7 +21,7 @@ const tone = (s: string) =>
 export default async function AdminQuestions({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string; ok?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; class?: string; curr?: string; review?: string; saved?: string; e?: string; ok?: string; n?: string; dup?: string; short?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -29,16 +29,24 @@ export default async function AdminQuestions({
 
   let query = admin
     .from("questions")
-    .select("*, organizations(name)")
+    .select("*, organizations(name), classes(name)")
     .order("created_at", { ascending: false })
     .limit(100);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.org) query = query.eq("organization_id", sp.org);
-  const [{ data: questions }, { data: orgList }] = await Promise.all([
+  if (sp.class) query = query.eq("class_id", sp.class);
+  if (sp.curr) query = query.eq("curriculum", sp.curr);
+  if (sp.review) query = query.eq("review_status", sp.review);
+  const [{ data: questions }, { data: orgList }, { data: classList }] = await Promise.all([
     query,
     admin.from("organizations").select("id, name").order("name").limit(500),
+    sp.org
+      ? admin.from("classes").select("id, name, organization_id").eq("organization_id", sp.org).order("grade_order").order("name").limit(500)
+      : admin.from("classes").select("id, name, organization_id").order("name").limit(500),
   ]);
+  const orgNameById = new Map((orgList ?? []).map((o) => [o.id, o.name]));
+  const back = `/admin/questions${sp.org || sp.class ? `?${new URLSearchParams({ ...(sp.org ? { org: sp.org } : {}), ...(sp.class ? { class: sp.class } : {}), ...(sp.review ? { review: sp.review } : {}) }).toString()}` : ""}`;
   const exportCsv = toCsv([
     ["Prompt", "Type", "Difficulty", "Points", "Status", "Organization", "Topic", "Tags"],
     ...(questions ?? []).map((q) => [
@@ -72,7 +80,7 @@ export default async function AdminQuestions({
           </div>
         }
       />
-      <Notice ok={sp.ok} e={sp.e} messages={{ duplicated: "Question duplicated as a draft.", duplicate_failed: "The question could not be duplicated.", confirm: "Tick the confirmation box before deleting.", not_ready: "That question cannot be published yet — open Answers & Solutions to see what is missing.", not_found: "That question no longer exists." }} />
+      <Notice ok={sp.ok} e={sp.e} messages={{ duplicated: "Question duplicated as a draft.", duplicate_failed: "The question could not be duplicated.", confirm: "Tick the confirmation box before deleting.", not_ready: "That question cannot be approved/published yet — it needs at least two options with a correct answer marked. Open Answers & Solutions to see what is missing.", not_found: "That question no longer exists.", generated: `Generation complete: ${sp.n ?? 0} new questions added as Pending review${sp.dup && sp.dup !== "0" ? `, ${sp.dup} duplicates skipped` : ""}${sp.short && sp.short !== "0" ? `, shortfall of ${sp.short} reported (not padded with repeats)` : ""}. Review and approve them below.`, review_approved: "Question approved and published to its class pool.", review_rejected: "Question rejected (kept as draft for correction).", review_reviewed: "Marked as reviewed — still needs approval before competition use.", review_archived: "Question archived.", review_draft: "Question sent back to draft." }} />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
       {sp.e === "confirm" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Tick the confirmation box before deleting.</p>}
 
@@ -129,9 +137,28 @@ export default async function AdminQuestions({
                   </div>
                 </td>
                 <td className="px-4 py-2.5 text-ink-soft">{(q.organizations as { name?: string } | null)?.name ?? "—"}</td>
+                <td className="px-4 py-2.5 text-ink-soft">
+                  <span className="block font-medium text-ink">{(q.classes as { name?: string } | null)?.name ?? "—"}</span>
+                  {q.curriculum_course && <span className="block text-xs">{q.curriculum_course}</span>}
+                  {q.curriculum && <span className="block text-xs">{String(q.curriculum).toUpperCase()}{q.creation_method === "ai_generated" ? " · Generated" : ""}</span>}
+                </td>
                 <td className="px-4 py-2.5 text-ink-soft">{String(q.type).replace(/_/g, " ")}</td>
                 <td className="px-4 py-2.5 text-ink-soft">{q.difficulty}</td>
                 <td className="px-4 py-2.5"><Badge tone={tone(q.status)}>{String(q.status).replace(/_/g, " ")}</Badge></td>
+                <td className="px-4 py-2.5">
+                  <Badge tone={q.review_status === "approved" ? "green" : q.review_status === "rejected" ? "gray" : "amber"}>{String(q.review_status ?? "draft")}</Badge>
+                  <div className="mt-1.5 flex flex-wrap gap-x-2 text-xs">
+                    {q.review_status !== "approved" && (
+                      <form action={setQuestionReview} className="inline"><input type="hidden" name="id" value={q.id} /><input type="hidden" name="review" value="approved" /><input type="hidden" name="back" value={back} /><button className="font-semibold text-emerald-800 underline-offset-2 hover:underline">Approve</button></form>
+                    )}
+                    {q.review_status !== "rejected" && (
+                      <form action={setQuestionReview} className="inline"><input type="hidden" name="id" value={q.id} /><input type="hidden" name="review" value="rejected" /><input type="hidden" name="back" value={back} /><button className="font-medium text-red-700 underline-offset-2 hover:underline">Reject</button></form>
+                    )}
+                    {q.review_status !== "archived" && (
+                      <form action={setQuestionReview} className="inline"><input type="hidden" name="id" value={q.id} /><input type="hidden" name="review" value="archived" /><input type="hidden" name="back" value={back} /><button className="font-medium text-ink-soft underline-offset-2 hover:underline">Archive</button></form>
+                    )}
+                  </div>
+                </td>
                 <td className="px-4 py-2.5 text-ink-soft">{fmtDate(q.created_at)}</td>
                 <td className="px-4 py-2.5">
                   <form action={adminSetQuestionStatus} className="flex items-center gap-1.5">

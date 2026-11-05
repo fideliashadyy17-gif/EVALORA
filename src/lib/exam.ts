@@ -26,12 +26,16 @@ export async function attemptRows(
   exam: { quiz_id: string | null; settings: Record<string, unknown> },
   attempt: { id: string; question_order: unknown },
 ): Promise<SessionQuestionRow[]> {
-  if (!exam.quiz_id) return [];
-  const rows = await loadQuizQuestions(admin, exam.quiz_id);
+  if (!exam.quiz_id) throw new Error("Examination paper is unavailable.");
+  const rows = await loadQuizQuestions(admin, exam.quiz_id, { failOnError: true });
+  if (!rows.length) throw new Error("Examination paper is empty or unavailable.");
   const order = Array.isArray(attempt.question_order) ? (attempt.question_order as string[]) : [];
   if (order.length) {
     const byId = new Map(rows.map((r) => [r.id, r]));
-    return order.map((id) => byId.get(id)).filter(Boolean) as SessionQuestionRow[];
+    if (new Set(order).size !== order.length || order.some((id) => typeof id !== "string" || !byId.has(id))) {
+      throw new Error("Examination paper no longer matches the attempt.");
+    }
+    return order.map((id) => byId.get(id)!);
   }
   return exam.settings.randomize_questions ? seededShuffle(rows, attempt.id) : rows;
 }
@@ -42,14 +46,16 @@ export async function gradeAttempt(
   attemptId: string,
   rows: SessionQuestionRow[],
 ) {
-  const { data: answers } = await admin.from("exam_answers").select("*").eq("attempt_id", attemptId);
-  const byQuestion = new Map((answers ?? []).map((a) => [a.question_id, a]));
+  const { data: answers, error: answerError } = await admin.from("exam_answers").select("*").eq("attempt_id", attemptId);
+  if (answerError || !answers) throw new Error("Could not load examination answers for grading.");
+  const byQuestion = new Map(answers.map((a) => [a.question_id, a]));
   let score = 0;
   let max = 0;
 
   for (const row of rows) {
     const q = row.questions;
     const maxPoints = Number(row.points ?? q.points);
+    if (!Number.isFinite(maxPoints) || maxPoints < 0) throw new Error("Invalid examination question points.");
     max += maxPoints;
     const saved = byQuestion.get(q.id);
     if (!saved) continue;
@@ -63,10 +69,16 @@ export async function gradeAttempt(
       (saved.answer ?? {}) as Record<string, unknown>,
       row.points,
     );
-    await admin
+    const { data: updated, error: updateError } = await admin
       .from("exam_answers")
       .update({ is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points })
-      .eq("id", saved.id);
+      .eq("id", saved.id)
+      .is("marked_by", null)
+      .select("id")
+      .maybeSingle();
+    // Do not overwrite a concurrent human mark or confirm a grade that did
+    // not persist. Earlier per-answer writes can still have succeeded.
+    if (updateError || !updated) throw new Error("Could not persist examination grading.");
     score += scored.isCorrect === null ? 0 : scored.points;
   }
   return { score: Math.round(score * 100) / 100, max };

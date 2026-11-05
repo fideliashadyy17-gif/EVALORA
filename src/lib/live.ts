@@ -214,12 +214,14 @@ export interface SessionQuestionRow {
 export async function loadQuizQuestions(
   supabase: SupabaseClient,
   quizId: string,
+  options: { failOnError?: boolean } = {},
 ): Promise<SessionQuestionRow[]> {
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("quiz_questions")
     .select("*, questions(*, question_options(*))")
     .eq("quiz_id", quizId)
     .order("position");
+  if (options.failOnError && (error || !data)) throw new Error("Could not load examination paper.");
   return (data ?? []).map((r) => ({
     ...r,
     questions: {

@@ -15,16 +15,18 @@ export const dynamic = "force-dynamic";
 
 const MESSAGES: Record<string, string> = {
   marked: "Mark saved and the candidate total recalculated.",
-  answer: "That answer no longer exists.",
+  answer: "The answer, its question or paper could not be verified.",
   in_progress: "An answer cannot be marked while the candidate attempt is still in progress.",
   points: "Points must be between zero and the maximum for this question.",
   failed: "The mark could not be saved.",
+  partial: "The answer mark may have been saved, but the attempt total could not be confirmed. Check the mark and total before publishing results.",
 };
 
 interface QueueRow {
   id: string;
   answer: Record<string, unknown> | null;
   updated_at: string;
+  quiz_questions: { id: string; quiz_id: string; question_id: string; points: number | null } | null;
   questions: {
     id: string;
     prompt: string;
@@ -41,7 +43,7 @@ interface QueueRow {
     started_at: string;
     submitted_at: string | null;
     exam_candidates: { full_name: string; candidate_ref: string | null } | null;
-    exams: { id: string; title: string; organization_id: string; organizations: { name: string } | null } | null;
+    exams: { id: string; title: string; organization_id: string; quiz_id: string | null; organizations: { name: string } | null } | null;
   } | null;
 }
 
@@ -64,7 +66,7 @@ export default async function ExaminationMarkingPage({
   const [{ data: rawQueue }, { data: exams }, { data: orgs }, { count: markedCount }] = await Promise.all([
     admin
       .from("exam_answers")
-      .select("id, answer, updated_at, questions(id, prompt, prompt_doc, explanation, explanation_doc, points, type, config), exam_attempts!inner(id, status, started_at, submitted_at, exam_candidates(full_name, candidate_ref), exams!inner(id, title, organization_id, organizations(name)))")
+      .select("id, answer, updated_at, quiz_questions(id, quiz_id, question_id, points), questions(id, prompt, prompt_doc, explanation, explanation_doc, points, type, config), exam_attempts!inner(id, status, started_at, submitted_at, exam_candidates(full_name, candidate_ref), exams!inner(id, title, organization_id, quiz_id, organizations(name)))")
       .is("is_correct", null)
       .order("updated_at", { ascending: true })
       .limit(1000),
@@ -81,7 +83,17 @@ export default async function ExaminationMarkingPage({
     return true;
   });
   const back = `/admin/examinations/marking${sp.exam ? `?exam=${sp.exam}` : ""}`;
-  const totalMarksPending = queue.reduce((sum, row) => sum + Number(row.questions?.points ?? 0), 0);
+  // Legacy answers may have no quiz_question_id; do not guess their paper
+  // override in the UI. The action resolves it authoritatively on save.
+  function knownMaximum(row: QueueRow): number | null {
+    const question = row.questions;
+    const paper = row.quiz_questions;
+    if (!question || !paper || paper.question_id !== question.id || paper.quiz_id !== row.exam_attempts?.exams?.quiz_id) return null;
+    const value = Number(paper.points ?? question.points);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  }
+  const unknownMaximums = queue.filter((row) => knownMaximum(row) === null).length;
+  const totalMarksPending = queue.reduce((sum, row) => sum + (knownMaximum(row) ?? 0), 0);
 
   return (
     <>
@@ -94,9 +106,11 @@ export default async function ExaminationMarkingPage({
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Answers awaiting marking" value={queue.length} icon={<ClipboardList className="h-5 w-5" />} />
-        <StatCard label="Marks represented" value={totalMarksPending} icon={<PenLine className="h-5 w-5" />} />
+        <StatCard label="Known marks represented" value={totalMarksPending} icon={<PenLine className="h-5 w-5" />} />
         <StatCard label="Fully marked attempts" value={markedCount ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
       </div>
+
+      {unknownMaximums > 0 && <p className="mb-4 text-sm text-ink-soft">{unknownMaximums} answer(s) have a paper maximum that must be verified when saving; their marks are excluded from the known total.</p>}
 
       <form method="get" className="mb-6 flex flex-wrap items-end gap-2">
         <Select name="exam" defaultValue={sp.exam ?? ""} className="min-w-[280px]" aria-label="Examination">
@@ -120,6 +134,7 @@ export default async function ExaminationMarkingPage({
             const q = row.questions!;
             const attempt = row.exam_attempts!;
             const criteria = String(q.config?.marking_criteria ?? "").trim();
+            const maximum = knownMaximum(row);
             return (
               <Card key={row.id} className="p-6">
                 <div className="flex flex-wrap items-start justify-between gap-3">
@@ -132,7 +147,7 @@ export default async function ExaminationMarkingPage({
                     </p>
                   </div>
                   <div className="flex gap-2">
-                    <Badge tone="gold">Maximum {Number(q.points)} marks</Badge>
+                    <Badge tone="gold">{maximum === null ? "Maximum verified on save" : `Maximum ${maximum} marks`}</Badge>
                     <Link href={`/admin/questions/${q.id}`} className="text-sm font-medium text-evergreen-700 hover:underline">Question editor →</Link>
                   </div>
                 </div>
@@ -160,8 +175,8 @@ export default async function ExaminationMarkingPage({
                     <form action={markExamAnswerAsAdmin} className="mt-5 grid gap-3 rounded-xl border border-evergreen-900/15 p-4 sm:grid-cols-[130px_1fr_auto]">
                       <input type="hidden" name="answer_id" value={row.id} />
                       <input type="hidden" name="back" value={back} />
-                      <Field label={`Marks (0–${Number(q.points)})`}>
-                        <Input name="points" type="number" min={0} max={Number(q.points)} step="0.5" required />
+                      <Field label={maximum === null ? "Marks (maximum verified on save)" : `Marks (0–${maximum})`}>
+                        <Input name="points" type="number" min={0} max={maximum ?? undefined} step="0.5" required />
                       </Field>
                       <Field label="Marker note / feedback">
                         <Textarea name="note" rows={2} maxLength={1000} placeholder="Method, accuracy and final-answer feedback…" />

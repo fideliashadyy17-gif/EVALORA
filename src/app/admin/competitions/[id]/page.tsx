@@ -179,7 +179,9 @@ export default async function CompetitionDetailPage({
                 status_archived: "Competition archived.",
                 no_quiz: "Attach a quiz in Settings before going live.",
                 no_questions: "The attached quiz has no questions yet — add them in Quiz Studio.",
-                session_failed: "Could not create the live session. Try again.",
+                session_failed: "Could not create or link the live session. Check the competition before retrying.",
+                phase_closed: "Open the event phase after meeting its progression requirements before starting this competition.",
+                session_mismatch: "The event session is ended or does not match this competition. Check the event links before proceeding.",
               }}
             />
             <div className="grid gap-4 lg:grid-cols-2">

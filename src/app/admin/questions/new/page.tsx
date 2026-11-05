@@ -48,6 +48,11 @@ export default async function AdminNewQuestionPage({
     .select("id, name")
     .eq("organization_id", selected.id)
     .order("name");
+  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }] = await Promise.all([
+    admin.from("classes").select("id, name").eq("organization_id", selected.id).eq("status", "active").order("grade_order").order("name"),
+    admin.from("curriculum_programmes").select("key, name").eq("organization_id", selected.id).eq("is_active", true).order("name"),
+    admin.from("subjects").select("id, name").eq("organization_id", selected.id).order("name"),
+  ]);
 
   return (
     <>
@@ -79,6 +84,9 @@ export default async function AdminNewQuestionPage({
         uploadImage={uploadQuestionImageAsAdmin}
         successHref="/admin/questions"
         organizationId={selected.id}
+        subjectOptions={subjectOptions ?? []}
+        classOptions={classOptions ?? []}
+        curriculumOptions={programmes ?? []}
       />
     </>
   );

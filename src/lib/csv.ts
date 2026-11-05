@@ -4,7 +4,8 @@
  * embedded commas/newlines and CRLF. Validation lives with callers
  * so every import gets row-level error reporting.
  */
-export function parseCsv(text: string): string[][] {
+export function parseCsv(text: string, separator = ","): string[][] {
+  if (![",", ";", "\t", "|"].includes(separator)) throw new Error("Unsupported delimiter.");
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -25,7 +26,7 @@ export function parseCsv(text: string): string[][] {
       }
     } else if (ch === '"') {
       inQuotes = true;
-    } else if (ch === ",") {
+    } else if (ch === separator) {
       row.push(field);
       field = "";
     } else if (ch === "\n" || ch === "\r") {

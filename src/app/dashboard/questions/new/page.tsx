@@ -16,6 +16,11 @@ export default async function NewQuestionPage() {
     .select("id, name")
     .eq("organization_id", org.id)
     .order("name");
+  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }] = await Promise.all([
+    supabase.from("classes").select("id, name").eq("organization_id", org.id).eq("status", "active").order("grade_order").order("name"),
+    supabase.from("curriculum_programmes").select("key, name").eq("organization_id", org.id).eq("is_active", true).order("name"),
+    supabase.from("subjects").select("id, name").eq("organization_id", org.id).order("name"),
+  ]);
 
   return (
     <>
@@ -25,6 +30,9 @@ export default async function NewQuestionPage() {
         save={saveQuestion as unknown as QuestionSaveFn}
         uploadImage={uploadQuestionImage}
         successHref="/dashboard/questions"
+        subjectOptions={subjectOptions ?? []}
+        classOptions={classOptions ?? []}
+        curriculumOptions={programmes ?? []}
       />
     </>
   );

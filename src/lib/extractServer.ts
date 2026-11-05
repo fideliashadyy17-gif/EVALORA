@@ -76,23 +76,38 @@ async function extractSpreadsheet(buffer: Buffer): Promise<ExtractResult> {
   return { rows: best, method: "spreadsheet", warnings, needsOcr: false, sheets: wb.SheetNames, sheet: bestSheet };
 }
 
+/** Detect separators in the first nonempty logical record, ignoring quoted text. */
+function csvDelimiter(text: string): { ch: string; label: string } {
+  const candidates = [
+    { ch: ",", label: "comma", count: 0 }, { ch: ";", label: "semicolon", count: 0 },
+    { ch: "\t", label: "tab", count: 0 }, { ch: "|", label: "pipe", count: 0 },
+  ];
+  let quoted = false;
+  let hasContent = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '"') {
+      hasContent = true;
+      if (quoted && text[i + 1] === '"') i++;
+      else quoted = !quoted;
+    } else if (!quoted && (ch === "\n" || ch === "\r")) {
+      if (hasContent) break;
+    } else if (!quoted) {
+      const candidate = candidates.find((item) => item.ch === ch);
+      if (candidate) candidate.count++;
+      if (!/\s/.test(ch) || candidate) hasContent = true;
+    }
+  }
+  // Stable ordering retains comma as the default when counts tie or are zero.
+  candidates.sort((a, b) => b.count - a.count);
+  return candidates[0];
+}
+
 async function extractCsv(buffer: Buffer): Promise<ExtractResult> {
   const text = buffer.toString("utf8");
-  const firstLine = text.split(/\r?\n/).find((l) => l.trim()) ?? "";
-  const candidates: [string, string][] = [[",", "comma"], [";", "semicolon"], ["\t", "tab"], ["|", "pipe"]];
-  const counts = candidates.map(([ch, label]) => ({ ch, label, n: (firstLine.match(new RegExp(ch === "|" ? "\\|" : ch, "g")) ?? []).length }));
-  counts.sort((a, b) => b.n - a.n);
-  const top = counts[0];
-  let rows: string[][];
-  if (!top || top.ch === ",") {
-    rows = clean(parseCsv(text));
-  } else {
-    const XLSX = await import("xlsx");
-    const wb = XLSX.read(text, { type: "string", FS: top.ch });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    rows = clean(XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: "" }) as unknown[][]);
-  }
-  return { rows, method: `csv (${top?.label ?? "comma"}-separated)`, warnings: [], needsOcr: false };
+  const delimiter = csvDelimiter(text.replace(/^\uFEFF/, ""));
+  const rows = clean(parseCsv(text, delimiter.ch));
+  return { rows, method: `csv (${delimiter.label}-separated)`, warnings: [], needsOcr: false };
 }
 
 async function extractPdf(buffer: Buffer): Promise<ExtractResult> {

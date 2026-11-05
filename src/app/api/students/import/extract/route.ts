@@ -1,4 +1,4 @@
-import { getSessionContext } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
 import { extractStudentRows, IMPORT_FILE_EXTENSIONS } from "@/lib/extractServer";
 import { NextResponse } from "next/server";
 
@@ -15,6 +15,14 @@ const MAX_FILE_BYTES = 10 * 1024 * 1024;
 export async function POST(request: Request) {
   const ctx = await getSessionContext();
   if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  // Parsing uploaded documents is a privileged, resource-intensive operation.
+  // Match the student-import creator roles before reading the request body;
+  // platform administrators can use the separate cross-organization wizard.
+  const org = activeOrg(ctx);
+  if (ctx.profile.status === "suspended" || ctx.tenantDenied ||
+      (ctx.profile.platform_role !== "super_admin" && (!org || !can(ctx, org.id, CREATOR_ROLES)))) {
+    return NextResponse.json({ error: "You do not have permission to import students in this workspace." }, { status: 403 });
+  }
 
   let file: File | null = null;
   try {

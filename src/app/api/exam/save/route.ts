@@ -35,12 +35,16 @@ export async function POST(request: Request) {
     .eq("question_id", question_id)
     .maybeSingle();
   if (!belongs) return NextResponse.json({ error: "Question not in this paper." }, { status: 400 });
+  if (quiz_question_id && quiz_question_id !== belongs.id)
+    return NextResponse.json({ error: "Question does not match this paper." }, { status: 400 });
 
   const { error } = await admin.from("exam_answers").upsert(
     {
       attempt_id: attempt.id,
       question_id,
-      quiz_question_id: quiz_question_id ?? belongs.id,
+      // Always persist the association resolved from this examination, never
+      // an unrelated quiz-question ID supplied by the client.
+      quiz_question_id: belongs.id,
       answer,
       updated_at: new Date().toISOString(),
     },
@@ -49,7 +53,10 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: "Could not save." }, { status: 500 });
 
   if (flagged) {
-    await admin.from("exam_attempts").update({ flagged }).eq("id", attempt.id);
+    const { error: flagError } = await admin.from("exam_attempts").update({ flagged }).eq("id", attempt.id);
+    // The answer may already have been stored; do not confirm the combined
+    // request when the flag update failed. A retry can re-send both values.
+    if (flagError) return NextResponse.json({ error: "Could not save review flags. Please retry." }, { status: 500 });
   }
   return NextResponse.json({ ok: true, saved_at: new Date().toISOString() });
 }

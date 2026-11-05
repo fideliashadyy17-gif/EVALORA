@@ -215,10 +215,20 @@ export async function startCompetitionSession(formData: FormData) {
     .eq("quiz_id", comp!.quiz_id);
   if (!qCount) redirect(`/admin/competitions/${id}?e=no_questions`);
 
+  const { data: phaseClass, error: phaseClassError } = await admin.from("competition_phase_classes")
+    .select("id, session_id, competition_event_phases(status)").eq("competition_id", id).maybeSingle();
+  if (phaseClassError) redirect(`/admin/competitions/${id}?e=session_failed`);
+  const eventPhase = phaseClass?.competition_event_phases as unknown as { status: string } | null;
+  if (phaseClass && eventPhase?.status !== "open") redirect(`/admin/competitions/${id}?e=phase_closed`);
+  if (phaseClass?.session_id && comp!.session_id !== phaseClass.session_id) redirect(`/admin/competitions/${id}?e=session_mismatch`);
+
   let sessionId = comp!.session_id as string | null;
   if (sessionId) {
     const { data: s } = await admin.from("quiz_sessions").select("status").eq("id", sessionId).maybeSingle();
-    if (!s || s.status === "ended") sessionId = null;
+    if (!s || s.status === "ended") {
+      if (phaseClass) redirect(`/admin/competitions/${id}?e=session_mismatch`);
+      sessionId = null;
+    }
   }
   if (!sessionId) {
     const mode = comp!.format === "scheduled_individual" || comp!.format === "individual_ranking" ? "self_paced" : "synchronized";
@@ -235,8 +245,8 @@ export async function startCompetitionSession(formData: FormData) {
           mode,
           status: "lobby",
           phase: "waiting",
-          admission_open: true,
-          require_approval: Boolean((comp!.settings as Record<string, unknown>)?.require_approval),
+          admission_open: !phaseClass,
+          require_approval: phaseClass ? true : Boolean((comp!.settings as Record<string, unknown>)?.require_approval),
           settings: {
             ...defaultLiveSessionSettings(comp!.max_participants ?? 1000, {
               showLeaderboard: (comp!.scoring as Record<string, unknown>)?.show_leaderboard === true,
@@ -254,6 +264,10 @@ export async function startCompetitionSession(formData: FormData) {
       .from("competitions")
       .update({ session_id: sessionId, status: "live", updated_at: new Date().toISOString() })
       .eq("id", id);
+  }
+  if (phaseClass) {
+    const { error } = await admin.from("competition_phase_classes").update({ session_id: sessionId }).eq("id", phaseClass.id);
+    if (error) redirect(`/admin/competitions/${id}?e=session_failed`);
   }
   await audit(ctx, "competition.session_started", "competitions", id, comp!.organization_id, { session_id: sessionId });
 

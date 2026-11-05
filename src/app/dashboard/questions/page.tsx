@@ -20,7 +20,7 @@ const STATUS_TONE: Record<string, "green" | "amber" | "gray"> = {
 export default async function QuestionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; e?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -35,7 +35,15 @@ export default async function QuestionsPage({
     .limit(200);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.status) query = query.eq("status", sp.status);
+  if (sp.class) query = query.eq("class_id", sp.class);
+  if (sp.curr) query = query.eq("curriculum", sp.curr);
   const { data: questions } = await query;
+  const { data: classList } = await supabase
+    .from("classes")
+    .select("id, name")
+    .eq("organization_id", org.id)
+    .order("grade_order")
+    .order("name");
 
   const { data: categories } = await supabase
     .from("question_categories")

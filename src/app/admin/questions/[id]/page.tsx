@@ -36,6 +36,11 @@ export default async function AdminEditQuestionPage({
     .select("id, name")
     .eq("organization_id", q.organization_id)
     .order("name");
+  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }] = await Promise.all([
+    admin.from("classes").select("id, name").eq("organization_id", q.organization_id).order("grade_order").order("name"),
+    admin.from("curriculum_programmes").select("key, name").eq("organization_id", q.organization_id).order("name"),
+    admin.from("subjects").select("id, name").eq("organization_id", q.organization_id).order("name"),
+  ]);
 
   const options = [...(((q.question_options as Record<string, unknown>[]) ?? []))].sort(
     (a, b) => Number(a.position ?? 0) - Number(b.position ?? 0),
@@ -54,6 +59,13 @@ export default async function AdminEditQuestionPage({
     topic: q.topic ?? "",
     status: q.status,
     category_id: q.category_id,
+    class_id: q.class_id,
+    subject_id: q.subject_id,
+    curriculum: q.curriculum,
+    curriculum_course: q.curriculum_course,
+    subtopic: q.subtopic,
+    source_reference: q.source_reference,
+    source_url: q.source_url,
     config: (q.config as Record<string, unknown>) ?? {},
     options: options.map((o) => ({
       label: String(o.label ?? ""),
@@ -98,6 +110,9 @@ export default async function AdminEditQuestionPage({
         uploadImage={uploadQuestionImageAsAdmin}
         successHref="/admin/questions"
         organizationId={q.organization_id}
+        subjectOptions={subjectOptions ?? []}
+        classOptions={classOptions ?? []}
+        curriculumOptions={programmes ?? []}
       />
     </>
   );

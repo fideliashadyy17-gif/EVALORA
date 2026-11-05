@@ -21,6 +21,7 @@ export async function POST(request: Request) {
   const ctx = await loadAttemptContext(admin, parsed.data.attempt_id, parsed.data.token);
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404 });
   const { attempt, exam, candidate } = ctx;
+  if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500 });
 
   if (attempt.status !== "in_progress") {
     return NextResponse.json({ ok: true, already_submitted: true, status: attempt.status });
@@ -32,16 +33,23 @@ export async function POST(request: Request) {
   const finalStatus = late ? "auto_submitted" : "submitted";
   const submittedAt = late ? deadline : now;
 
-  const rows = await attemptRows(admin, exam, attempt);
-  const { score, max } = await gradeAttempt(admin, attempt.id, rows);
+  let result: Awaited<ReturnType<typeof gradeAttempt>>;
+  try {
+    const rows = await attemptRows(admin, exam, attempt);
+    result = await gradeAttempt(admin, attempt.id, rows);
+  } catch {
+    return NextResponse.json({ error: "Could not confirm grading. Reload or contact your invigilator." }, { status: 500 });
+  }
+  const { score, max } = result;
 
-  const { error } = await admin
+  const { data: closed, error } = await admin
     .from("exam_attempts")
     .update({ status: finalStatus, submitted_at: submittedAt.toISOString(), score, max_score: max })
     .eq("id", attempt.id)
-    .eq("status", "in_progress");
-  if (error) return NextResponse.json({ error: "Could not submit this attempt." }, { status: 500 });
-  await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
+    .eq("status", "in_progress").select("id").maybeSingle();
+  if (error || !closed) return NextResponse.json({ error: "Could not submit this attempt." }, { status: 500 });
+  const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
+  if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500 });
 
   const resultsPublished = Boolean((exam.settings as Record<string, unknown>)?.results_published);
   return NextResponse.json({
