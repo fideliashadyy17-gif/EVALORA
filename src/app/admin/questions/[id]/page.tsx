@@ -85,7 +85,7 @@ export default async function AdminEditQuestionPage({
       </p>
       <PageTitle
         title="Edit question"
-        subtitle={`Organization: ${org?.name ?? "—"}. Structured mathematics, images and explanations are preserved and render identically for participants and candidates.`}
+        subtitle={`Organization: ${org?.name ?? "—"}. Changes affect linked papers and may alter existing attempts or grading. Duplicate as draft to preserve the original.`}
         action={
           <form action={duplicateQuestionAsAdmin}>
             <input type="hidden" name="id" value={q.id} />
@@ -100,6 +100,7 @@ export default async function AdminEditQuestionPage({
         messages={{
           duplicated: "This is the duplicated draft. Review it before publishing.",
           duplicate_failed: "The question could not be duplicated.",
+          duplicate_options_incomplete: "The draft was created but its answer options could not be copied. Review this draft before using it.",
         }}
       />
       <QuestionForm

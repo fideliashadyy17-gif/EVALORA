@@ -3,6 +3,7 @@
 import type { QuestionFormValues } from "@/components/QuestionForm";
 import { audit, fstr, requireSuperAdmin } from "@/lib/admin";
 import { questionPublishError } from "@/lib/questionValidation";
+import { questionOptionsUnchanged } from "@/lib/questionOptions";
 import { normalizePrompt } from "@/lib/questionGeneration";
 import { createHash } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -147,6 +148,16 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
     updated_at: new Date().toISOString(),
   };
 
+  // Avoid replacing option IDs when only metadata changed. This comparison
+  // is not a transactional snapshot; actual option edits still require versioning.
+  let optionsUnchanged = false;
+  if (q.id) {
+    const { data: oldOptions, error: optionsReadError } = await admin.from("question_options")
+      .select("label, is_correct, position, content_doc").eq("question_id", q.id).order("position");
+    if (optionsReadError || !oldOptions) return { error: "Existing options could not be loaded. Please retry." };
+    optionsUnchanged = questionOptionsUnchanged(oldOptions, q.options);
+  }
+
   let questionId = q.id ?? null;
   if (questionId) {
     const { error } = await admin
@@ -155,8 +166,10 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
       .eq("id", questionId)
       .eq("organization_id", organizationId);
     if (error) return { error: error.message };
-    const { error: deleteError } = await admin.from("question_options").delete().eq("question_id", questionId);
-    if (deleteError) return { error: deleteError.message };
+    if (!optionsUnchanged) {
+      const { error: deleteError } = await admin.from("question_options").delete().eq("question_id", questionId);
+      if (deleteError) return { error: "Question details were saved, but existing options could not be replaced. Please reload and contact an administrator." };
+    }
     await audit(ctx, "question.updated_by_super_admin", "questions", questionId, organizationId, {
       type: q.type,
       status: q.status,
@@ -171,7 +184,7 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
     });
   }
 
-  if (q.options.length) {
+  if (!optionsUnchanged && q.options.length) {
     const { error } = await admin.from("question_options").insert(
       q.options.map((o, i) => ({
         question_id: questionId!,
@@ -255,6 +268,13 @@ export async function duplicateQuestionAsAdmin(formData: FormData) {
     .insert({
       organization_id: q!.organization_id,
       category_id: q!.category_id,
+      class_id: q!.class_id,
+      subject_id: q!.subject_id,
+      curriculum: q!.curriculum,
+      curriculum_course: q!.curriculum_course,
+      subtopic: q!.subtopic,
+      source_reference: q!.source_reference,
+      source_url: q!.source_url,
       type: q!.type,
       prompt: `${q!.prompt} (copy)`,
       prompt_doc: withCopyMarker(q!.prompt_doc),
@@ -274,7 +294,7 @@ export async function duplicateQuestionAsAdmin(formData: FormData) {
   if (error || !created) redirect(dest("e=duplicate_failed"));
 
   if (options.length) {
-    await admin.from("question_options").insert(
+    const { error: optionError } = await admin.from("question_options").insert(
       options.map((o, i) => ({
         question_id: created!.id,
         label: o.label,
@@ -283,6 +303,13 @@ export async function duplicateQuestionAsAdmin(formData: FormData) {
         position: i,
       })),
     );
+    if (optionError) {
+      // The new question is already persisted as a draft. Do not report a
+      // complete copy or erase it; staff can review or remove that draft.
+      await audit(ctx, "question.duplicate_options_failed", "questions", created!.id, q!.organization_id, { from: id });
+      revalidatePath("/admin/questions");
+      redirect(`/admin/questions/${created!.id}?e=duplicate_options_incomplete`);
+    }
   }
 
   await audit(ctx, "question.duplicated_by_super_admin", "questions", created!.id, q!.organization_id, { from: id });

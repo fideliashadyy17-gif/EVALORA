@@ -52,6 +52,9 @@ export async function gradeAttempt(
   let score = 0;
   let max = 0;
 
+  // Calculate every objective result before any writes. A stale option ID or
+  // malformed marking key must not partially grade earlier answers.
+  const updates: { id: string; is_correct: boolean | null; points_awarded: number | null }[] = [];
   for (const row of rows) {
     const q = row.questions;
     const maxPoints = Number(row.points ?? q.points);
@@ -60,26 +63,27 @@ export async function gradeAttempt(
     const saved = byQuestion.get(q.id);
     if (!saved) continue;
     if (saved.marked_by) {
-      score += Number(saved.points_awarded ?? 0);
-      continue; // human mark stands
+      const humanPoints = Number(saved.points_awarded);
+      if (saved.points_awarded === null || !Number.isFinite(humanPoints) || humanPoints < 0 || humanPoints > maxPoints)
+        throw new Error("Invalid human examination mark.");
+      score += humanPoints;
+      continue;
     }
-    const scored = scoreAnswer(
-      { type: q.type, points: q.points, config: q.config },
-      q.question_options,
-      (saved.answer ?? {}) as Record<string, unknown>,
-      row.points,
-    );
+    const scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
+      (saved.answer ?? {}) as Record<string, unknown>, row.points);
+    updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
+    score += scored.isCorrect === null ? 0 : scored.points;
+  }
+  for (const update of updates) {
     const { data: updated, error: updateError } = await admin
       .from("exam_answers")
-      .update({ is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points })
-      .eq("id", saved.id)
+      .update({ is_correct: update.is_correct, points_awarded: update.points_awarded })
+      .eq("id", update.id)
       .is("marked_by", null)
       .select("id")
       .maybeSingle();
-    // Do not overwrite a concurrent human mark or confirm a grade that did
-    // not persist. Earlier per-answer writes can still have succeeded.
+    // Separate DB writes remain non-atomic if a later write fails.
     if (updateError || !updated) throw new Error("Could not persist examination grading.");
-    score += scored.isCorrect === null ? 0 : scored.points;
   }
   return { score: Math.round(score * 100) / 100, max };
 }

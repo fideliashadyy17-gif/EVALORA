@@ -3,6 +3,7 @@
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
+import { questionOptionsUnchanged } from "@/lib/questionOptions";
 import { normalizePrompt } from "@/lib/questionGeneration";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
@@ -118,22 +119,32 @@ export async function saveQuestion(raw: QuestionInput) {
     updated_at: new Date().toISOString(),
   };
 
+  // Avoid replacing option IDs when only metadata changed. This comparison
+  // is not a transactional snapshot; actual option edits still require versioning.
+  let optionsUnchanged = false;
+  if (q.id) {
+    const { data: oldOptions, error: optionsReadError } = await supabase.from("question_options")
+      .select("label, is_correct, position, content_doc").eq("question_id", q.id).order("position");
+    if (optionsReadError || !oldOptions) return { error: "Existing options could not be loaded. Please retry." };
+    optionsUnchanged = questionOptionsUnchanged(oldOptions, q.options);
+  }
+
   let questionId = q.id;
   if (questionId) {
     const { error } = await supabase.from("questions").update(payload).eq("id", questionId).eq("organization_id", org.id);
     if (error) return { error: error.message };
-    const { error: deleteError } = await supabase.from("question_options").delete().eq("question_id", questionId);
-    // The question update was a separate write; never report success or append
-    // replacements if deleting the old options failed. Atomic editing remains
-    // a separate, necessary migration and must not be implied by this check.
-    if (deleteError) return { error: "Question details were saved, but existing options could not be replaced. Please reload and contact an administrator." };
+    if (!optionsUnchanged) {
+      const { error: deleteError } = await supabase.from("question_options").delete().eq("question_id", questionId);
+      // Details have already been written separately; never claim full success.
+      if (deleteError) return { error: "Question details were saved, but existing options could not be replaced. Please reload and contact an administrator." };
+    }
   } else {
     const { data, error } = await supabase.from("questions").insert(payload).select().single();
     if (error || !data) return { error: error?.message ?? "Could not save the question." };
     questionId = data.id;
   }
 
-  if (q.options.length > 0) {
+  if (!optionsUnchanged && q.options.length > 0) {
     const { error } = await supabase.from("question_options").insert(
       q.options.map((o, i) => ({
         question_id: questionId!,

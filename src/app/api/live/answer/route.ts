@@ -94,12 +94,17 @@ export async function POST(request: Request) {
   }
 
   const q = row.questions;
-  const scored = scoreAnswer(
-    { type: q.type, points: q.points, config: q.config },
-    q.question_options,
-    answer as AnswerPayload,
-    row.points,
-  );
+  let scored: ReturnType<typeof scoreAnswer>;
+  try {
+    scored = scoreAnswer(
+      { type: q.type, points: q.points, config: q.config },
+      q.question_options,
+      answer as AnswerPayload,
+      row.points,
+    );
+  } catch {
+    return NextResponse.json({ error: "This answer could not be verified. Contact the organizer." }, { status: 409 });
+  }
   const awarded =
     scored.isCorrect === null ? 0 : Math.round(scored.points * speedFactor * 100) / 100;
 

@@ -39,7 +39,7 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
       if (options.length < 2) issues.push("at least two poll options are required");
       break;
     case "short_answer":
-      if (!options.some((o) => String(o.label ?? "").trim())) {
+      if (!options.some((o) => o.is_correct && String(o.label ?? "").trim())) {
         issues.push("at least one accepted answer is required");
       }
       break;
@@ -49,8 +49,11 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
       }
       break;
     case "numeric": {
-      const answer = Number(config.numeric_answer);
-      const tolerance = config.tolerance == null || config.tolerance === "" ? 0 : Number(config.tolerance);
+      const rawAnswer = config.numeric_answer;
+      const answer = typeof rawAnswer === "number" || (typeof rawAnswer === "string" && rawAnswer.trim()) ? Number(rawAnswer) : NaN;
+      const rawTolerance = config.tolerance;
+      const tolerance = rawTolerance == null || rawTolerance === "" ? 0 :
+        typeof rawTolerance === "number" || (typeof rawTolerance === "string" && rawTolerance.trim()) ? Number(rawTolerance) : NaN;
       if (!Number.isFinite(answer)) issues.push("a valid numeric answer is required");
       if (!Number.isFinite(tolerance) || tolerance < 0) issues.push("the numeric tolerance must be zero or greater");
       break;
@@ -62,7 +65,9 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
         const row = pair as Record<string, unknown>;
         return String(row.left ?? "").trim() && String(row.right ?? "").trim();
       });
-      if (complete.length < 2) issues.push("at least two complete matching pairs are required");
+      if (complete.length < 2 || complete.length !== pairs.length) issues.push("at least two complete matching pairs are required");
+      const lefts = complete.map((pair) => String((pair as Record<string, unknown>).left).trim().toLowerCase().replace(/\s+/g, " "));
+      if (new Set(lefts).size !== lefts.length) issues.push("matching prompts must be unique");
       break;
     }
     case "open_ended":
