@@ -253,36 +253,60 @@ export async function publishResults(formData: FormData) {
   redirect(`${back}?publish_ok=1`);
 }
 
-/** Supervisor incident logging & review. */
-export async function logIncident(formData: FormData) {
+/** Record an observation without allowing a workspace to target another exam. */
+export async function logIncident(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard/exams");
-  const examId = String(formData.get("exam_id"));
+  const org = activeOrg(ctx);
+  const fail = (message: string) => ({ ok: false, message });
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES)) return fail("Your workspace cannot record this observation.");
+  const examId = String(formData.get("exam_id") ?? "");
+  const candidateId = String(formData.get("candidate_id") ?? "") || null;
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const type = String(formData.get("type") ?? "observation");
+  const severity = String(formData.get("severity") ?? "medium");
+  if (!uuid.test(examId) || (candidateId && !uuid.test(candidateId)) ||
+      !["observation", "second_person", "left_seat", "phone_detected", "talking", "connection", "other"].includes(type) ||
+      !["low", "medium", "high"].includes(severity)) return fail("Check the candidate, type and severity before submitting.");
+
   const supabase = await createClient();
-  await supabase.from("proctoring_incidents").insert({
-    exam_id: examId,
-    candidate_id: String(formData.get("candidate_id") ?? "") || null,
-    type: String(formData.get("type") ?? "observation").slice(0, 60),
-    severity: String(formData.get("severity") ?? "medium"),
-    note: String(formData.get("note") ?? "").slice(0, 1000) || null,
+  const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (examError || !exam) return fail("The examination could not be verified in this workspace.");
+  if (candidateId) {
+    const { data: candidate, error } = await supabase.from("exam_candidates").select("id").eq("id", candidateId).eq("exam_id", examId).maybeSingle();
+    if (error || !candidate) return fail("The selected candidate could not be verified for this examination.");
+  }
+  const { data: incident, error } = await supabase.from("proctoring_incidents").insert({
+    exam_id: examId, candidate_id: candidateId, type, severity,
+    note: String(formData.get("note") ?? "").trim().slice(0, 1000) || null,
     reported_by: ctx.user.id,
-  });
+  }).select("id").maybeSingle();
+  if (error || !incident) return fail("The observation could not be confirmed. Check the incident list before retrying; your draft is preserved.");
   revalidatePath(`/dashboard/exams/${examId}/proctor`);
   revalidatePath(`/dashboard/exams/${examId}`);
+  return { ok: true, message: "Observation recorded for human review." };
 }
 
+/** Review only an incident belonging to the verified workspace examination. */
 export async function reviewIncident(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard/exams");
+  const org = activeOrg(ctx);
+  const examId = String(formData.get("exam_id") ?? "");
+  const incidentId = String(formData.get("id") ?? "");
+  const expected = String(formData.get("expected_status") ?? "");
+  const status = String(formData.get("status") ?? "");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)) redirect("/dashboard/exams");
+  const back = `/dashboard/exams/${examId}`;
+  if (!["open", "investigating"].includes(expected) || !["valid", "invalid", "investigating"].includes(status) || status === expected) redirect(`${back}?incident_error=invalid`);
   const supabase = await createClient();
-  await supabase
-    .from("proctoring_incidents")
-    .update({ status: String(formData.get("status")), reviewed_by: ctx.user.id })
-    .eq("id", String(formData.get("id")));
-  revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}`);
-  revalidatePath(`/dashboard/exams/${String(formData.get("exam_id"))}/proctor`);
+  const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (examError || !exam) redirect("/dashboard/exams?e=incident");
+  const { data: incident, error } = await supabase.from("proctoring_incidents")
+    .update({ status, reviewed_by: ctx.user.id }).eq("id", incidentId).eq("exam_id", examId).eq("status", expected).select("id").maybeSingle();
+  if (error || !incident) redirect(`${back}?incident_error=review`);
+  revalidatePath(back);
+  revalidatePath(`${back}/proctor`);
+  redirect(`${back}?incident_ok=reviewed`);
 }
 
 /** Limited organizer invitation controls. Other advanced settings remain in the global console. */

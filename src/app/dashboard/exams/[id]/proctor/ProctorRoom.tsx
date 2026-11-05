@@ -80,6 +80,22 @@ function Grid({ candidates, onRetry, connectionError }: { candidates: { id: stri
 }
 
 function IncidentForm({ examId, candidates }: { examId: string; candidates: { id: string; full_name: string }[] }) {
+  const [message, setMessage] = useState<{ ok: boolean; message: string } | null>(null);
+  const [pending, setPending] = useState(false);
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    const form = event.currentTarget;
+    setPending(true);
+    setMessage(null);
+    try {
+      const result = await logIncident(new FormData(form));
+      if (result.ok) form.reset();
+      setMessage(result);
+    } catch {
+      setMessage({ ok: false, message: "The observation could not be confirmed. Check the incident list before retrying; your draft is preserved." });
+    } finally { setPending(false); }
+  }
   return (
       <Card className="mt-6 p-5">
         <h3 className="font-display text-lg font-semibold text-evergreen-950">Log an observation</h3>
@@ -87,7 +103,8 @@ function IncidentForm({ examId, candidates }: { examId: string; candidates: { id
           Record facts only (e.g. “second person visible at 10:04”). Every incident is reviewed by an
           authorized person before any conclusion — an alert is never proof of misconduct.
         </p>
-        <form action={logIncident} className="mt-3 grid gap-3 sm:grid-cols-[1fr_160px_140px_auto]">
+        {message && <p role={message.ok ? "status" : "alert"} className={`mt-3 text-sm ${message.ok ? "text-evergreen-800" : "text-red-700"}`}>{message.message}</p>}
+        <form onSubmit={submit} className="mt-3 grid gap-3 sm:grid-cols-[1fr_160px_140px_auto]">
           <input type="hidden" name="exam_id" value={examId} />
           <Field label="Candidate">
             <Select name="candidate_id">
@@ -116,7 +133,7 @@ function IncidentForm({ examId, candidates }: { examId: string; candidates: { id
             </Select>
           </Field>
           <div className="flex items-end">
-            <Button type="submit">Log</Button>
+            <Button type="submit" disabled={pending}>{pending ? "Recording…" : "Log"}</Button>
           </div>
           <div className="sm:col-span-4">
             <Input name="note" placeholder="Note (what you observed, with time)…" />

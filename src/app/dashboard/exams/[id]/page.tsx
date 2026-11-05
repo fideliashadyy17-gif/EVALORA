@@ -1,7 +1,7 @@
 import { RichContent } from "@/components/RichContent";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -20,7 +20,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -93,6 +93,8 @@ export default async function ExamDetailPage({
         }
       />
 
+      {sp.incident_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Observation review recorded.</p>}
+      {sp.incident_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The review could not be confirmed. The observation may have changed; reload before trying again.</p>}
       {sp.candidate_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Candidate removed.</p>}
       {sp.candidate_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The candidate could not be removed. Candidates with recorded attempts are protected; check permissions and try again only if appropriate.</p>}
       {sp.access_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination access updated.</p>}
@@ -286,12 +288,13 @@ export default async function ExamDetailPage({
                     <span className="text-ink-soft">{i.type}{i.note ? ` — ${i.note}` : ""}</span>
                     <span className="ml-auto flex items-center gap-2">
                       <Badge tone={i.status === "open" ? "amber" : "green"}>{i.status}</Badge>
-                      {i.status === "open" && (
+                      {can(ctx, org.id, PROCTOR_ROLES) && ["open", "investigating"].includes(i.status) && (
                         <>
-                          {(["valid", "invalid", "investigating"] as const).map((s) => (
+                          {(["valid", "invalid", "investigating"] as const).filter((s) => s !== i.status).map((s) => (
                             <form key={s} action={reviewIncident}>
                               <input type="hidden" name="id" value={i.id} />
                               <input type="hidden" name="exam_id" value={id} />
+                              <input type="hidden" name="expected_status" value={i.status} />
                               <input type="hidden" name="status" value={s} />
                               <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">{s}</button>
                             </form>
