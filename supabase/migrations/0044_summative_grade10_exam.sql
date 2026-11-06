@@ -1,4 +1,4 @@
--- Sommetisation Assessment — Grade 10 (Oak International School)
+-- Summative Assessment — Grade 10 (Oak International School)
 --
 -- Source document: "MYP 5 Mathematics — Sequences & Series E-Assessment"
 -- (34 pages, supplied PDF). The assessment title follows the owner's naming,
@@ -39,10 +39,10 @@ declare
 begin
   select id into v_existing
     from public.exams
-   where organization_id = v_org and title = 'Sommetisation Assessment — Grade 10'
+   where organization_id = v_org and title = 'Summative Assessment — Grade 10'
    limit 1;
   if v_existing is not null then
-    raise notice 'Sommetisation Assessment already exists (%), nothing to do.', v_existing;
+    raise notice 'Summative Assessment already exists (%), nothing to do.', v_existing;
     return;
   end if;
 
@@ -72,7 +72,7 @@ begin
   insert into public.quizzes (organization_id, title, description, status, settings)
   values (
     v_org,
-    'Sommetisation Assessment — Grade 10',
+    'Summative Assessment — Grade 10',
     'Fifty single-choice questions on recursive and explicit formulas, linear, arithmetic, quadratic and geometric sequences, and arithmetic series. 1 mark each, 60 minutes, calculator allowed.',
     'published',
     jsonb_build_object('randomize_questions', false, 'randomize_options', false)
@@ -98,7 +98,7 @@ begin
     v_org,
     v_quiz,
     v_class,
-    'Sommetisation Assessment — Grade 10',
+    'Summative Assessment — Grade 10',
     'MYP 5 Mathematics — Sequences & Series. 50 questions, 1 mark each, 50 marks in total.',
     'Answer all 50 questions. Each question has one correct answer out of four. You have 60 minutes and may use a calculator. Enter your first name and last name exactly as they appear on your class list. Your score and the worked answer for every question are shown as soon as you submit.',
     60,
@@ -119,5 +119,5 @@ begin
   )
   returning id into v_exam;
 
-  raise notice 'Sommetisation Assessment created: exam %, quiz %, 50 questions, access code %.', v_exam, v_quiz, 'MYP5-SEQ-2026';
+  raise notice 'Summative Assessment created: exam %, quiz %, 50 questions, access code %.', v_exam, v_quiz, 'MYP5-SEQ-2026';
 end $$;

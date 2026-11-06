@@ -440,18 +440,18 @@ Residue afterwards: 0 probe pools, 0 published pools, 1 permanent audit row, fla
 
 No Elimination pool has actually been published — the event holds none. Publication is now permitted, not performed. The count gate is one condition among several; a pool must still be complete, valid, single-class, curriculum-valid and approved-only.
 
-## Sommetisation Assessment — Grade 10 (content) and the notification bell popover
+## Summative Assessment — Grade 10 (content) and the notification bell popover
 
 ### What changed
 
-- `supabase/migrations/0041_sommetisation_assessment_questions_1_25.sql`, `0042_sommetisation_assessment_questions_26_50.sql`, `0043_sommetisation_assessment_options.sql` and `0044_sommetisation_assessment_exam.sql` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. Each file is separately idempotent, so re-running any of them is a no-op.
+- `supabase/migrations/0041_summative_grade10_questions_1_25.sql`, `0042_summative_grade10_questions_26_50.sql`, `0043_summative_grade10_options.sql` and `0044_summative_grade10_exam.sql` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. Each file is separately idempotent, so re-running any of them is a no-op.
 - `src/components/dashboard/NotificationBell.tsx` + `src/lib/notifications.ts` replace the sidebar notification link with a floating popover over the same `notifications` rows; `DashboardChrome` renders it in the sidebar and in the mobile topbar.
 
 ### Automated evidence
 
 | Suite | Checks | Result |
 |---|---|---|
-| `node scripts/test-sommetisation-assessment.mjs` | 35 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration, idempotency guards |
+| `node scripts/test-summative-assessments.mjs` | 35 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration, idempotency guards |
 | `node scripts/test-notification-popover.mjs` | 51 | pass — 15 helper cases executed, 36 component/chrome behaviour assertions |
 | Full sweep (`scripts/test-*.mjs`) | 67 suites | 64 pass, 3 environment-only failures (2 Playwright browser suites without a browser binary, 1 PGlite ownership DDL) |
 | `npx tsc --noEmit` | — | clean |
@@ -474,3 +474,32 @@ The anonymous candidate flow was exercised against `https://evalora-six.vercel.a
 The verification attempt, its three answers and the candidate record were deleted afterwards; the examination, its 50 questions and its 200 options were not modified by the run.
 
 Not covered by automation or by this run: clicking the bell and marking a notification read, which need an authenticated dashboard session.
+
+## Summative Assessments — Grade 9 and the Grade 10 repairs
+
+### What changed
+
+- **Grade 9 — Summative Assessment** (MYP 4 Statistics & Distributions): `0046`–`0049` carry the 50 questions in four steps, `0050` the 200 options with their text, `0051` the quiz, the paper and the examination on the Grade 9 — MYP 4 class, access code `MYP4-STAT-2026`.
+- **Grade 10 repairs**: `0045` writes the option text the seed never stored (`content_doc`), and `0052` attaches the two figures the seed could not carry (Q6 matchsticks, Q28 dot arrays).
+- **Rename**: the Grade 10 assessment is "Summative Assessment — Grade 10" in the migrations, the headers, the titles and the idempotency guard, matching the live examination.
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-summative-assessments.mjs` | 64 | pass — both papers: 50 question rows each, 200 options each, one keyed option per question, the 50-letter key matched, printed order, 1 mark, every referenced figure present in `public/`, option text written to `content_doc`, examination configuration, idempotency guards, no "Sommetisation" left |
+| `npx tsc --noEmit` | — | clean |
+
+### Figure pipeline
+
+The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each question's figure is rendered from the page at 220 dpi, cropped to the band between the question text and its options, then trimmed of blank margins — so the caption, axis numbers and axis titles travel with the drawing. The 35 image figures are committed under `public/exam-figures/grade9/`; the 3 data callouts stay as text so they reflow on a small screen.
+
+### Verified in production
+
+| Check | Result |
+|---|---|
+| Grade 9 rows | 50 questions, 200 options, 50 keyed, 200 options with text, 35 figures, 3 callouts |
+| Grade 9 key | `BDDADBBCCAABBCDBDCCACDCDABCDCDCBBAADABCDADAABABCBC` — identical to the document's key, and every letter re-checked against the marking scheme (0 mismatches) |
+| Grade 9 examination | open, 60 minutes, 50-item paper, Grade 9 — MYP 4 class, code `MYP4-STAT-2026`, results released on submission, both shuffles off |
+| Grade 10 option text repair | 200 of 200 options now carry their printed text (`content_doc`) |
+| Grade 10 figure repair | 2 of 2 figure questions now carry their drawing |
