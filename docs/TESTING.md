@@ -412,3 +412,30 @@ all from the same route so a single browser print produces one PDF.
   runs. Denying access removes the session, not the auth record: an uninvited
   account exists but can do nothing, and gets the same denial on every retry. A
   `before-user-created` hook would be needed to prevent the record itself.
+
+## Oak Elimination count: from deferred to confirmed
+
+### What changed
+
+- The owner confirmed the existing **20 questions per class** for the Elimination round on 2026-11-06; the earlier 25 and 5-per-class candidates are rejected.
+- `supabase/migrations/0040_oak_elimination_count_confirmed.sql` records it: `elimination_question_count_status = confirmed`, `elimination_question_count_confirmed = 20`, `elimination_question_count_confirmed_on`, a resolution note, and one `audit_logs` row (`competition.elimination_count_confirmed`). The migration resolves the event by name, raises when the event is missing, and returns early when the flag is already confirmed.
+- Nothing else moved: no examination created, renamed or re-counted; no pool created, edited or published; semi-final (24 configured / 25 phase maximum) and grand-final (30) untouched.
+
+### How the gate is proved in both directions
+
+- `scripts/test-event-operations.sql` B9 became two assertions running inside the same `BEGIN … ROLLBACK` transaction. **B9a** forces the flag back to `pending_owner_confirmation` and asserts the publish is refused *and* that the message is the count message (so a validation failure cannot masquerade as a pass). **B9b** restores `confirmed` and asserts the same pool reaches `status = published`.
+- `scripts/test-event-operations.mjs` gained 12 static checks — the migration exists, records 20 and the date, rejects the other candidates, is idempotent, fails loudly without the event, writes the audit row, creates/publishes no pool, resolves by name, the operations guide states the confirmed count, and both SQL assertions are present. **57 checks pass.**
+
+### Production probe (rolled back)
+
+| Check | Result |
+|---|---|
+| Draft Elimination pool assembled and validates | pass — 5 selected, 38 eligible, curriculum quota met |
+| Publish refused while the flag is `pending_owner_confirmation` | pass — *"The Elimination question count is unresolved. Owner confirmation is required before publishing."* |
+| Publish permitted while the flag is `confirmed` | pass — `status=published` |
+
+Residue afterwards: 0 probe pools, 0 published pools, 1 permanent audit row, flag `confirmed`.
+
+### Not verified
+
+No Elimination pool has actually been published — the event holds none. Publication is now permitted, not performed. The count gate is one condition among several; a pool must still be complete, valid, single-class, curriculum-valid and approved-only.

@@ -40,6 +40,25 @@ check("identity migration updates existing event, not a duplicate", !/insert int
 check("identity migration records unresolved count", identity.includes("elimination_question_count_status"));
 check("identity migration builds exact three phase titles", identity.includes(`${OFFICIAL} — `) && ["Elimination Round", "Semi-Final", "Grand Final"].every((suffix) => identity.includes(`'${suffix}'`)));
 
+// The count decision moved from deferred to confirmed on 2026-11-06 (migration
+// 0040). These checks keep the recorded decision, its scope and the two-way
+// database proof in place.
+const confirmationPath = "supabase/migrations/0040_oak_elimination_count_confirmed.sql";
+check("count-confirmation migration exists", exists(confirmationPath));
+const confirmation = read(confirmationPath);
+check("confirmation records the chosen count (20 per class)", /'elimination_question_count_confirmed',\s*20/.test(confirmation));
+check("confirmation records the decision date", confirmation.includes("2026-11-06"));
+check("confirmation rejects the 25 and 5-per-class candidates", confirmation.includes("jsonb_build_array(25, 5)"));
+check("confirmation is idempotent", confirmation.includes("already confirmed"));
+check("confirmation fails loudly when the event is missing", confirmation.includes("raise exception"));
+check("confirmation writes an audit row", confirmation.includes("competition.elimination_count_confirmed") && confirmation.includes("public.audit_logs"));
+check("confirmation creates or publishes no pool", !/insert into public\.question_pools/i.test(confirmation) && !/status\s*=\s*'published'/i.test(confirmation));
+check("confirmation does not retarget the event by id", /where name = 'Oak International School Mental Math Competition'/.test(confirmation));
+check("operations guide records the confirmed count", read("docs/OAK_EVENT_OPERATIONS.md").includes("owner confirmed **20 questions per class**"));
+const eventSql = read("scripts/test-event-operations.sql");
+check("SQL suite proves the count gate blocks while pending", eventSql.includes("B9a pending count still blocks publish"));
+check("SQL suite proves the count gate permits once confirmed", eventSql.includes("B9b confirmed count permits publish"));
+
 const pools = read("supabase/migrations/0013_question_pools.sql");
 check("pool migration enforces approved/published questions", pools.includes("review_status = 'approved'") && pools.includes("status = 'published'"));
 check("pool migration forbids mixed classes", pools.includes("another organization or class"));

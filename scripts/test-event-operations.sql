@@ -57,15 +57,36 @@ BEGIN
     INSERT INTO evalora_test_results VALUES ('B8 no mixed classes', true, v_msg);
   END;
 
-  -- Elimination publishing is blocked while the owner count decision is deferred.
+  -- The owner confirmed 20 questions per class (migration 0040), so an
+  -- Elimination pool may now be published. Both directions are proved here:
+  -- forcing the pending state back inside this transaction must still be
+  -- refused by the count guard, and restoring the confirmed state must let the
+  -- same publish through.
   UPDATE public.question_pools SET target_count=5, filters='{"previous_usage":"exclude"}'::jsonb WHERE id='e0000000-0000-4000-8000-0000000000b1';
   PERFORM public.generate_question_pool_items('e0000000-0000-4000-8000-0000000000b1', false);
+
+  UPDATE public.competition_events
+     SET settings = settings || '{"elimination_question_count_status":"pending_owner_confirmation"}'::jsonb
+   WHERE id = '0a400000-0000-4000-8000-000000000200';
   BEGIN
     UPDATE public.question_pools SET status='published' WHERE id='e0000000-0000-4000-8000-0000000000b1';
-    INSERT INTO evalora_test_results VALUES ('B9 elimination publish blocked', false, 'Unresolved count guard did not reject');
+    INSERT INTO evalora_test_results VALUES ('B9a pending count still blocks publish', false, 'Unresolved count guard did not reject');
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
-    INSERT INTO evalora_test_results VALUES ('B9 elimination publish blocked', true, v_msg);
+    INSERT INTO evalora_test_results VALUES ('B9a pending count still blocks publish', v_msg ILIKE '%unresolved%', v_msg);
+  END;
+
+  UPDATE public.competition_events
+     SET settings = settings || '{"elimination_question_count_status":"confirmed"}'::jsonb
+   WHERE id = '0a400000-0000-4000-8000-000000000200';
+  BEGIN
+    UPDATE public.question_pools SET status='published' WHERE id='e0000000-0000-4000-8000-0000000000b1';
+    INSERT INTO evalora_test_results
+      SELECT 'B9b confirmed count permits publish', status = 'published', 'status=' || status
+      FROM public.question_pools WHERE id='e0000000-0000-4000-8000-0000000000b1';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_msg = MESSAGE_TEXT;
+    INSERT INTO evalora_test_results VALUES ('B9b confirmed count permits publish', false, v_msg);
   END;
 END $$;
 
