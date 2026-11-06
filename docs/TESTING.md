@@ -440,18 +440,18 @@ Residue afterwards: 0 probe pools, 0 published pools, 1 permanent audit row, fla
 
 No Elimination pool has actually been published — the event holds none. Publication is now permitted, not performed. The count gate is one condition among several; a pool must still be complete, valid, single-class, curriculum-valid and approved-only.
 
-## Sommetisation Assessment — Grade 10 (content) and the notification bell popover
+## Summative Assessment — Grade 10 (content) and the notification bell popover
 
 ### What changed
 
-- `supabase/migrations/0041_sommetisation_assessment_questions_1_25.sql`, `0042_sommetisation_assessment_questions_26_50.sql`, `0043_sommetisation_assessment_options.sql` and `0044_sommetisation_assessment_exam.sql` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. Each file is separately idempotent, so re-running any of them is a no-op.
+- `supabase/migrations/0041_summative_grade10_questions_1_25.sql`, `0042_summative_grade10_questions_26_50.sql`, `0043_summative_grade10_options.sql` and `0044_summative_grade10_exam.sql` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. Each file is separately idempotent, so re-running any of them is a no-op.
 - `src/components/dashboard/NotificationBell.tsx` + `src/lib/notifications.ts` replace the sidebar notification link with a floating popover over the same `notifications` rows; `DashboardChrome` renders it in the sidebar and in the mobile topbar.
 
 ### Automated evidence
 
 | Suite | Checks | Result |
 |---|---|---|
-| `node scripts/test-sommetisation-assessment.mjs` | 35 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration, idempotency guards |
+| `node scripts/test-summative-assessments.mjs` | 35 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration, idempotency guards |
 | `node scripts/test-notification-popover.mjs` | 51 | pass — 15 helper cases executed, 36 component/chrome behaviour assertions |
 | Full sweep (`scripts/test-*.mjs`) | 67 suites | 64 pass, 3 environment-only failures (2 Playwright browser suites without a browser binary, 1 PGlite ownership DDL) |
 | `npx tsc --noEmit` | — | clean |

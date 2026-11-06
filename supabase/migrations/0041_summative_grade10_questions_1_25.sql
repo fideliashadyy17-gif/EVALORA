@@ -1,4 +1,4 @@
--- Sommetisation Assessment — Grade 10 (Oak International School)
+-- Summative Assessment — Grade 10 (Oak International School)
 --
 -- Source document: "MYP 5 Mathematics — Sequences & Series E-Assessment"
 -- (34 pages, supplied PDF). The assessment title follows the owner's naming,
