@@ -98,3 +98,40 @@ infrastructures with different ceilings.
 ## Final deployment note
 
 All auto-started Vercel previews from pushes on `arena/21f3ffe0-evalora` were canceled, including `dpl_6X67iKBT4vKsWEHWWyMuafnPT4yc` (`da0d079`) and `dpl_BPdUNLRjxxy6cJuNcR9ZSujmpAPf` (`06fa6cc`). Any preview started by the final docs push is also canceled; exact IDs are in Vercel deployment history. Production deployment `dpl_9wriaiQ6pPLkjy6NsR1DgT5oMG2n` remains the only promoted deployment and was not changed.
+
+## Current verification — grading rubrics, moderation and grade audit, 2026-11-06
+
+- Migration `0036_grading_rubrics_moderation_audit.sql` was applied to production
+  as version `20261106052420` (39 applied). Additive only: 7 new tables, 4 new
+  `exam_answers` columns, 2 new `exams` columns, 8 triggers. Existing data was
+  untouched — the 8 `exam_answers` rows defaulted to `not_required`/`manual`,
+  and the 1,076 questions, 15 examinations and 1 attempt are unchanged.
+- Production verification ran inside `BEGIN … ROLLBACK` with no residue: a rubric
+  derived its total (12) from criteria 6 + 6; a mark above a criterion maximum
+  was rejected; a rubric attached to another organisation was rejected; two
+  graders kept independent criterion scores; rubric marking appended a `marked`
+  row; and a moderation insert carrying only `answer_id`, `decision`,
+  `proposed_marks`, `note` and `moderator_email` had its attempt, examination and
+  organisation derived by trigger, stamped `previous_marks` 8, projected 9.5
+  onto the answer, set the status to `adjusted`, and appended a `moderated` row.
+  Editing the grade log and deleting a moderation decision were both refused.
+  After rollback: rubrics/criteria/links/scores/moderation/log all 0, answers 8.
+- Local suites: `scripts/test-grading-rubrics-moderation.mjs` **16/16** (isolated
+  PGlite), `scripts/test-rubric-marking-action.mjs` **16/16** (the real server
+  actions with mocked auth and database), `scripts/test-result-publication-action.mjs`
+  **7/7** (now also asserts the release stamp and its clearing). Full suite:
+  **54 pass, 3 environment-only failures** — `test-exam-browser` and
+  `test-printable-paper-browser` need the absent `playwright-core`, and
+  `test-profile-status-security` cannot exercise ownership-dependent DDL in PGlite.
+- `tsc --noEmit`, `eslint` on the touched paths and `next build` are clean;
+  `/dashboard/rubrics`, `/dashboard/rubrics/[id]` and `/dashboard/exams/[id]/grades`
+  appear in the route manifest.
+- Production deployment `dpl_Fm7ccUx4mtjody8qBGe9LziXQzA9` (commit `99d1506`) is
+  READY / PROMOTED with the `evalora-six.vercel.app` alias, and `/login` renders.
+- **Not verified:** authenticated browser flows for rubric creation, criterion
+  marking and moderation. No Super Admin credential is available in this
+  environment, so those paths are evidenced by the action tests and the
+  production SQL blocks, not by clicking through the app. Do not claim otherwise.
+- Unchanged constraint: the Vercel project still has `productionBranch: main` and
+  `createDeployments: disabled`, so production deployments are created explicitly
+  for a specific commit rather than triggered by pushing this branch.
