@@ -444,14 +444,14 @@ No Elimination pool has actually been published — the event holds none. Public
 
 ### What changed
 
-- `supabase/migrations/0041_sommetisation_assessment_grade10.sql` seeds 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`.
+- `supabase/migrations/0041`–`0044` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. The paper is split into four steps so no single migration carries everything: questions 1–25, questions 26–50, the options, then the paper and examination — the last step refuses to create the examination unless all 50 questions and 200 options are present.
 - `src/components/dashboard/NotificationBell.tsx` + `src/lib/notifications.ts` replace the sidebar notification link with a floating popover over the same `notifications` rows; `DashboardChrome` renders it in the sidebar and in the mobile topbar.
 
 ### Automated evidence
 
 | Suite | Checks | Result |
 |---|---|---|
-| `node scripts/test-sommetisation-assessment.mjs` | 33 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration |
+| `node scripts/test-sommetisation-assessment.mjs` | 36 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration |
 | `node scripts/test-notification-popover.mjs` | 51 | pass — 15 helper cases executed, 36 component/chrome behaviour assertions |
 | Full sweep (`scripts/test-*.mjs`) | 67 suites | 64 pass, 3 environment-only failures (2 Playwright browser suites without a browser binary, 1 PGlite ownership DDL) |
 | `npx tsc --noEmit` | — | clean |
