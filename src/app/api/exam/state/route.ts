@@ -1,5 +1,6 @@
 import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
-import { publicQuestion } from "@/lib/live";
+import { answerReveal, publicQuestion } from "@/lib/live";
+import { buildExamResult } from "@/lib/examResults";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -88,14 +89,24 @@ export async function GET(request: Request) {
         seed: attempt.id,
       });
       const s = savedByQ.get(row.questions.id);
+      // Correctness is only revealed after submission AND publication. Once it
+      // is, the paper is marked in full: every question carries its result and
+      // its worked solution, including the ones the candidate left blank, so a
+      // candidate can revise from a complete marking scheme instead of only the
+      // questions they happened to answer.
+      const reveal = submitted && resultsPublished ? answerReveal(row) : null;
       return {
         ...pub,
+        ...(reveal ? { reveal } : {}),
         saved_answer: s?.answer ?? null,
-        // Correctness is only revealed after submission AND publication.
-        result:
-          submitted && resultsPublished && s
-            ? { is_correct: s.is_correct, points_awarded: s.points_awarded !== null ? Number(s.points_awarded) : null, explanation: row.questions.explanation, explanation_doc: row.questions.explanation_doc ?? null }
-            : null,
+        result: reveal
+          ? buildExamResult({
+              saved: s ?? null,
+              correctOptionIds: reveal.correct_option_ids,
+              explanation: row.questions.explanation ?? null,
+              explanationDoc: row.questions.explanation_doc ?? null,
+            })
+          : null,
       };
     }),
   }, { headers });
