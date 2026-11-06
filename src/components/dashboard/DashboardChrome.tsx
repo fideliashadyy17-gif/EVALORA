@@ -1,12 +1,12 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
   BarChart3,
-  Bell,
   BookOpenCheck,
   CreditCard,
   FileCheck2,
@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] }[] = [
   { items: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true }] },
@@ -54,7 +54,6 @@ const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon
     items: [
       { href: "/dashboard/team", label: "Team & Roles", icon: Users },
       { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard },
-      { href: "/dashboard/notifications", label: "Notifications", icon: Bell },
       { href: "/dashboard/settings", label: "Settings", icon: Settings },
     ],
   },
@@ -84,16 +83,6 @@ export function DashboardChrome({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [unread, setUnread] = useState(0);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase
-      .from("notifications")
-      .select("id", { count: "exact", head: true })
-      .is("read_at", null)
-      .then(({ count }) => setUnread(count ?? 0));
-  }, [pathname]);
 
   async function signOut() {
     const supabase = createClient();
@@ -122,11 +111,6 @@ export function DashboardChrome({
               >
                 <n.icon className="h-5 w-5 shrink-0" />
                 {n.label}
-                {n.href === "/dashboard/notifications" && unread > 0 && (
-                  <span className="ml-auto rounded-full bg-gold-500 px-2 py-0.5 text-xs font-bold text-evergreen-950">
-                    {unread}
-                  </span>
-                )}
               </Link>
             );
           })}
@@ -152,7 +136,10 @@ export function DashboardChrome({
           {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
           {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}
         </div>
-        <div className="mt-6 flex-1 overflow-y-auto scroll-slim">{nav}</div>
+        <div className="mt-4">
+          <NotificationBell />
+        </div>
+        <div className="mt-2 flex-1 overflow-y-auto scroll-slim">{nav}</div>
         <div className="mt-4 border-t border-evergreen-900/10 pt-4">
           <p className="truncate px-1 text-sm font-medium text-ink">{userName}</p>
           <button onClick={signOut} className={cn(navLink, "mt-2 w-full", navIdle)}>
@@ -165,9 +152,12 @@ export function DashboardChrome({
         {/* Topbar — mobile */}
         <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
           <Logo href="/dashboard" />
-          <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu">
-            {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-          </button>
+          <div className="flex items-center gap-1">
+            <NotificationBell variant="icon" />
+            <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu">
+              {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
         </header>
         {open && (
           <div className="border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
