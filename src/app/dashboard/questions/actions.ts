@@ -1,7 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
 import { questionOptionsUnchanged } from "@/lib/questionOptions";
 import { normalizePrompt } from "@/lib/questionGeneration";
@@ -140,6 +140,7 @@ export async function saveQuestion(raw: QuestionInput) {
     }
   } else {
     const { data, error } = await supabase.from("questions").insert(payload).select().single();
+    if (error && isPlanLimitError(error)) return { error: planLimitMessage(error) };
     if (error || !data) return { error: error?.message ?? "Could not save the question." };
     questionId = data.id;
   }
@@ -292,7 +293,14 @@ export async function importQuestionsCsv(csv: string) {
       created_by: ctx.user.id,
     }).select().single();
 
-    if (error || !created) { report.push({ row: rowNo, ok: false, message: error?.message ?? "Insert failed." }); continue; }
+    if (error || !created) {
+      const message = error && isPlanLimitError(error) ? planLimitMessage(error) : error?.message ?? "Insert failed.";
+      report.push({ row: rowNo, ok: false, message });
+      // A quota rejection applies to the rest of the file too; stop rather than
+      // emitting one identical failure per remaining row.
+      if (error && isPlanLimitError(error)) break;
+      continue;
+    }
 
     if (optLabels.length > 0) {
       await supabase.from("question_options").insert(

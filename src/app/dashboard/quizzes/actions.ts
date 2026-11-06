@@ -1,7 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
@@ -58,6 +58,7 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
     await supabase.from("quiz_questions").delete().eq("quiz_id", quizId);
   } else {
     const { data, error } = await supabase.from("quizzes").insert(payload).select().single();
+    if (error && isPlanLimitError(error)) return { error: planLimitMessage(error) };
     if (error || !data) return { error: error?.message ?? "Could not create the quiz." };
     quizId = data.id;
   }

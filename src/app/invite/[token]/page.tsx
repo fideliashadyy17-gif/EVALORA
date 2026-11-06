@@ -23,11 +23,16 @@ async function accept(formData: FormData) {
   if (!inv || new Date(inv.expires_at) < new Date()) redirect(`/invite/${token}?e=expired`);
   if (inv.email.toLowerCase() !== ctx.user.email.toLowerCase()) redirect(`/invite/${token}?e=email`);
 
-  await admin.from("organization_members").upsert(
-    { organization_id: inv.organization_id, user_id: ctx.user.id, role: inv.role, status: "active" },
-    { onConflict: "organization_id,user_id" },
-  );
-  await admin.from("invitations").update({ status: "accepted" }).eq("id", inv.id);
+  // The database performs the membership insert and the plan check together;
+  // doing it in two steps (as before) let a workspace exceed its member limit.
+  const { data: outcome, error: acceptError } = await admin.rpc("accept_invitation", {
+    p_token: token,
+    p_user: ctx.user.id,
+  });
+  if (acceptError) redirect(`/invite/${token}?e=failed`);
+  if (outcome === "limit") redirect(`/invite/${token}?e=limit`);
+  if (outcome === "expired") redirect(`/invite/${token}?e=expired`);
+  if (outcome === "invalid") redirect(`/invite/${token}?e=expired`);
   await admin.from("notifications").insert({
     user_id: ctx.user.id,
     type: "invitation",
@@ -64,6 +69,17 @@ export default async function InvitePage({
       ) : sp.e === "email" ? (
         <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
           This invitation was sent to <strong>{inv.email}</strong>. Sign in with that email address to accept it.
+        </p>
+      ) : sp.e === "limit" ? (
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This workspace has reached the number of members included in its plan, so the invitation cannot be accepted
+          yet. Ask an owner or administrator to upgrade the plan, then try this link again — it stays valid until it
+          expires.
+        </p>
+      ) : sp.e === "failed" ? (
+        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          The invitation could not be accepted. Nothing was changed — please try again, and tell your administrator if
+          it keeps happening.
         </p>
       ) : (
         <div className="space-y-4">

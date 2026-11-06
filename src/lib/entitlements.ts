@@ -170,3 +170,33 @@ export async function getEntitlementFor(
 export function withinLimit(limit: number, current: number) {
   return limit === -1 || current < limit;
 }
+
+/**
+ * The database enforces plan limits itself (migration 0037), so a rejected write
+ * arrives as a Postgres error rather than a count mismatch. `PLAN_LIMIT:<key>:<limit>`
+ * is written to DETAIL; the message is the human explanation. Both are checked so
+ * a wording change in either place cannot turn a quota rejection into a generic
+ * "something went wrong".
+ */
+export function isPlanLimitError(
+  error: { message?: string | null; details?: string | null; detail?: string | null; hint?: string | null } | null | undefined,
+): boolean {
+  if (!error) return false;
+  const text = [error.message, error.details, error.detail, error.hint].filter(Boolean).join(" ");
+  return text.includes("PLAN_LIMIT:") || /reached its plan limit/i.test(text);
+}
+
+/** A message suitable for a form, naming the plan ceiling that was hit. */
+export function planLimitMessage(error: {
+  message?: string | null;
+  details?: string | null;
+  detail?: string | null;
+} | null | undefined): string {
+  const text = `${error?.details ?? error?.detail ?? ""} ${error?.message ?? ""}`;
+  const match = /PLAN_LIMIT:([a-z_]+):(-?\d+)/.exec(text);
+  const label = match?.[1]?.replace(/_/g, " ").replace(/^max /, "") ?? "this";
+  const limit = match?.[2];
+  return limit
+    ? `Your plan allows ${limit} ${label}. Upgrade in Billing to add more.`
+    : "Your plan limit has been reached. Upgrade in Billing to add more.";
+}

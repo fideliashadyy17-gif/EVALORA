@@ -1,7 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
-import { withinLimit } from "@/lib/entitlements";
+import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities } from "@/lib/capabilities";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -75,6 +75,7 @@ export async function createExam(formData: FormData) {
     },
     created_by: ctx.user.id,
   }).select("id, access_code, invite_token, access_link").single();
+  if (error && isPlanLimitError(error)) redirect("/dashboard/exams?e=limit");
   if (error || !exam) redirect("/dashboard/exams/new?e=create");
 
   let roomError = false;
