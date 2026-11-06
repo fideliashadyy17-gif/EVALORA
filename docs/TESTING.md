@@ -530,3 +530,25 @@ The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each
 | Blank questions | `answered: false`, `is_correct: false`, `points_awarded: 0`, explanation still present |
 | Answered questions | correct answer revealed only after publication; chosen-wrong option identifiable from `correct_option_ids` |
 | Before submission | no `result`, no `reveal`, no `is_correct` in the payload |
+
+## One-page corrigé
+
+### What changed
+
+- `src/components/ExamCorrige.tsx` (new): the complete marking scheme on one page — every question with its prompt, its four marked options, the answer key line, the mark obtained and the worked solution.
+- `src/app/take-exam/[attemptId]/TakeExamClient.tsx`: "Voir le corrigé complet (50 questions)" and "Imprimer / PDF" on the results card; the sidebar and the single-question card step aside while the corrigé is open.
+- Print support reuses the existing `paper-print` / `paper-question` rules in `globals.css`, so printing or "Save as PDF" yields the whole paper with the app chrome removed.
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-exam-corrige.mjs` | 25 | pass — real component rendered with the real marking rules: 50 questions, 200 options, 48 blanks labelled "Not answered · 0 / 1 point", exactly one "Incorrect", 50 answer-key lines, ✗ only on the chosen wrong option, the blank count in the summary, score/percentage/pass mark, Print calling `window.print`, the print classes, and the publication gate on the exam screen |
+| `node scripts/test-exam-results.mjs` | 37 | pass — unchanged |
+| `node scripts/test-summative-assessments.mjs` | 64 | pass — unchanged |
+| `npx tsc --noEmit` | — | clean |
+| `npm run build` | — | clean |
+
+### Not claimed
+
+- No automated browser test: the page has no browser runner in this environment. The component is covered by a React render test; the print output is covered by the shared print stylesheet, not by a rendered PDF.
