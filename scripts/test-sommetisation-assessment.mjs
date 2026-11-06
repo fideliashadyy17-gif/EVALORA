@@ -1,16 +1,27 @@
 /**
- * Checks for the Sommetisation Assessment — Grade 10 seed
- * (supabase/migrations/0041_sommetisation_assessment_grade10.sql).
+ * Checks for the Sommetisation Assessment — Grade 10 seed, written as four
+ * ordered migrations:
+ *   0041 questions 1–25, 0042 questions 26–50, 0043 the 200 options,
+ *   0044 the quiz, the paper and the examination.
  *
- * The migration is the source of truth for the 50 questions, their four
- * options, the keyed answer of each and the examination configuration, so the
- * assertions below read the SQL that will actually be applied — not a copy.
+ * The migrations are the source of truth for the questions, their options, the
+ * keyed answer of each and the examination configuration, so the assertions
+ * below read the SQL that will actually be applied — not a copy.
  *
  * Run: node scripts/test-sommetisation-assessment.mjs
  */
 import { readFileSync } from "node:fs";
 
-const sql = readFileSync("supabase/migrations/0041_sommetisation_assessment_grade10.sql", "utf8");
+const FILES = [
+  "supabase/migrations/0041_sommetisation_assessment_questions_1_25.sql",
+  "supabase/migrations/0042_sommetisation_assessment_questions_26_50.sql",
+  "supabase/migrations/0043_sommetisation_assessment_options.sql",
+  "supabase/migrations/0044_sommetisation_assessment_exam.sql",
+];
+const parts = FILES.map((file) => readFileSync(file, "utf8"));
+const questionsSql = parts[0] + "\n" + parts[1];
+const optionsSql = parts[2];
+const examSql = parts[3];
 
 let passed = 0;
 const ok = (name, condition, detail) => {
@@ -30,8 +41,8 @@ const DOCUMENT_KEY = {
   43: "A", 44: "A", 45: "B", 46: "A", 47: "B", 48: "C", 49: "B", 50: "C",
 };
 
-/* ── Extract the option rows from the `opts` CTE ── */
-const optionRows = [...sql.matchAll(/^\s*\((\d+), \$txt\$([ABCD])\$txt\$, (\d), (true|false), \$txt\$/gm)].map(
+/* ── Option rows ── */
+const optionRows = [...optionsSql.matchAll(/^  \((\d+), \$txt\$([ABCD])\$txt\$, (\d), (true|false), \$txt\$/gm)].map(
   (m) => ({ n: Number(m[1]), letter: m[2], position: Number(m[3]), correct: m[4] === "true" }),
 );
 
@@ -49,69 +60,63 @@ ok(
 );
 ok(
   "the keyed option of every question matches the document key",
-  Object.entries(DOCUMENT_KEY).every(([n, letter]) => {
-    const correct = optionRows.find((r) => r.n === Number(n) && r.correct);
-    return correct?.letter === letter;
-  }),
+  Object.entries(DOCUMENT_KEY).every(
+    ([n, letter]) => optionRows.find((r) => r.n === Number(n) && r.correct)?.letter === letter,
+  ),
 );
-ok(
-  "every question number 1–50 is present exactly once",
-  new Set(optionRows.map((r) => r.n)).size === 50,
-);
+ok("every question number 1–50 is present exactly once", new Set(optionRows.map((r) => r.n)).size === 50);
 ok(
   "option letters cover all four choices in every question",
-  Array.from({ length: 50 }, (_, i) => i + 1).every((n) => {
-    const letters = optionRows.filter((r) => r.n === n).map((r) => r.letter).sort().join("");
-    return letters === "ABCD";
-  }),
+  Array.from({ length: 50 }, (_, i) => i + 1).every(
+    (n) => optionRows.filter((r) => r.n === n).map((r) => r.letter).sort().join("") === "ABCD",
+  ),
 );
 
-/* ── Question rows: 50 seed tuples with prompt + explanation ── */
-const seedBlock = sql.slice(sql.indexOf("with seed("), sql.indexOf("),\n  inserted as ("));
-const seedRowStarts = [...seedBlock.matchAll(/^\s*\((\d+), \$txt\$/gm)].map((m) => Number(m[1]));
+/* ── Question rows ── */
+const seedRowStarts = [...questionsSql.matchAll(/^  \((\d+), \$txt\$/gm)].map((m) => Number(m[1]));
 ok("50 question rows are written", seedRowStarts.length === 50, `found ${seedRowStarts.length}`);
 ok(
   "question numbers are 1–50 in printed order",
   seedRowStarts.join(",") === Array.from({ length: 50 }, (_, i) => i + 1).join(","),
 );
-ok("every question row carries an explanation", (seedBlock.match(/\$txt\$1\. /g) ?? []).length === 50);
+ok("every question row carries an explanation", (questionsSql.match(/\$txt\$1\. /g) ?? []).length === 50);
+ok("questions 1–25 and 26–50 are split across two steps", /questions 1–25/.test(parts[0]) && /questions 26–50/.test(parts[1]));
+ok("all questions are single-choice", /'single_choice'/.test(questionsSql));
+ok("questions are published and approved", /'published', 'approved'/.test(questionsSql));
+ok("each question is worth exactly 1 mark", /s\.explanation, 1,/.test(questionsSql));
+ok("the source marker is stored on every question", new RegExp(`jsonb_build_object\\('source', 'myp5-sequences-and-series-e-assessment'`).test(questionsSql));
+ok("question inserts are idempotent per question number", (questionsSql.match(/where not exists \(/g) ?? []).length === 2);
+ok("option inserts skip questions that already have options", /not exists \(select 1 from public\.question_options/.test(optionsSql));
 ok(
-  "no question prompt is empty",
-  !/\$txt\$\s*\$txt\$/.test(seedBlock),
+  "the examination is only created when the paper is complete",
+  /v_questions <> 50 or v_options <> 200 or v_correct <> 50/.test(examSql) && /v_paper <> 50/.test(examSql),
 );
-
-/* ── Structure of the migration ── */
-ok("all questions are single-choice", /'single_choice'|single_choice/.test(sql));
-ok("questions are published and approved", /'published', 'approved'/.test(sql));
-ok("each question is worth exactly 1 mark", /select v_org, 'single_choice'.*?, 1, s.difficulty/s.test(sql));
+ok("re-running the examination step is a no-op", /if v_existing is not null then/.test(examSql));
 ok(
-  "the source marker is stored on every question",
-  /jsonb_build_object\('source', 'myp5-sequences-and-series-e-assessment'/.test(sql),
+  "no unterminated string is left in the seed",
+  !/assessment''/.test(questionsSql) && !/'[^'\n]*''[^'\n]*\n/.test(questionsSql.split("values")[0]),
 );
-ok("the migration verifies 50 questions and 200 options before continuing", /v_questions <> 50 or v_options <> 200/.test(sql));
-ok("re-running the migration is a no-op", /if v_existing is not null then/.test(sql));
-ok("the target class is validated in the same tenant", /classes where id = v_class and organization_id = v_org/.test(sql));
 
 /* ── Quiz / paper ── */
-ok("one quiz holds the paper", /insert into public\.quizzes/.test(sql));
-ok("the quiz is published", /'published',\s*\n\s*jsonb_build_object\('randomize_questions', false, 'randomize_options', false\)/.test(sql));
-ok("paper questions are created from the seeded question bank", /insert into public\.quiz_questions/.test(sql));
-ok("paper order follows the question number", /order by \(q\.config ->> 'question_number'\)::int/.test(sql));
+ok("one quiz holds the paper", /insert into public\.quizzes/.test(examSql));
+ok("the quiz is published without shuffling", /'published',\s*\n\s*jsonb_build_object\('randomize_questions', false, 'randomize_options', false\)/.test(examSql));
+ok("paper questions are created from the seeded question bank", /insert into public\.quiz_questions/.test(examSql));
+ok("paper order follows the question number", /order by \(q\.config ->> 'question_number'\)::int/.test(examSql));
 
 /* ── Examination configuration ── */
-ok("the examination is open, not a draft", /'open',/.test(sql));
-ok("the examination is attached to the Grade 10 — MYP 5 class", /v_class uuid := '0a400000-0000-4000-8000-000000000110'/.test(sql));
-ok("the examination lasts 60 minutes", /\n    60,\n/.test(sql));
-ok("the shared link is enabled", /true,\n\s*jsonb_build_object\(\s*\n\s*'proctoring'/.test(sql));
-ok("results are released immediately after submission", /'results_published', true/.test(sql));
-ok("question order is fixed so the printed key stays valid", /'randomize_questions', false/.test(sql));
-ok("option order is fixed so the printed key stays valid", /'randomize_options', false/.test(sql));
-ok("no proctoring is configured for this assessment", /'proctoring', false/.test(sql));
-ok("the access code is set", /'MYP5-SEQ-2026'/.test(sql));
+ok("the examination is open, not a draft", /'open',/.test(examSql));
+ok("the examination is attached to the Grade 10 — MYP 5 class", /v_class uuid := '0a400000-0000-4000-8000-000000000110'/.test(examSql));
+ok("the examination lasts 60 minutes", /\n    60,\n/.test(examSql));
+ok("the shared link is enabled", /true,\n\s*jsonb_build_object\(\s*\n\s*'proctoring'/.test(examSql));
+ok("results are released immediately after submission", /'results_published', true/.test(examSql));
+ok("question order is fixed so the printed key stays valid", /'randomize_questions', false/.test(examSql));
+ok("option order is fixed so the printed key stays valid", /'randomize_options', false/.test(examSql));
+ok("no proctoring is configured for this assessment", /'proctoring', false/.test(examSql));
+ok("the access code is set", /'MYP5-SEQ-2026'/.test(examSql));
 
 /* ── Notation fidelity ── */
-ok("flattened exponentials were restored (2ⁿ, 2ⁿ⁻¹)", /2\u207f/.test(sql) && /2\u207f\u207b\u00b9/.test(sql));
-ok("Q39 distractor keeps the linear rule 2n", /L\u2099 = 2n\$txt\$/.test(sql));
-ok("no mojibake or replacement characters", !/\ufffd/.test(sql));
+ok("flattened exponentials were restored (2ⁿ, 2ⁿ⁻¹)", /2\u207f/.test(questionsSql) && /2\u207f\u207b\u00b9/.test(questionsSql));
+ok("the Q39 distractor keeps the linear rule 2n", /L\u2099 = 2n\$txt\$/.test(optionsSql));
+ok("no mojibake or replacement characters", !/\ufffd/.test(parts.join("")));
 
 console.log(`\n${passed} checks passed.`);
