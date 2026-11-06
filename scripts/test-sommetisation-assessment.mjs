@@ -10,7 +10,18 @@
  */
 import { readFileSync } from "node:fs";
 
-const sql = readFileSync("supabase/migrations/0041_sommetisation_assessment_grade10.sql", "utf8");
+const FILES = [
+  "supabase/migrations/0041_sommetisation_assessment_questions_1_25.sql",
+  "supabase/migrations/0042_sommetisation_assessment_questions_26_50.sql",
+  "supabase/migrations/0043_sommetisation_assessment_options.sql",
+  "supabase/migrations/0044_sommetisation_assessment_exam.sql",
+];
+const parts = FILES.map((file) => readFileSync(file, "utf8"));
+/** All four steps concatenated: the question rows and the option rows live in different files. */
+const sql = parts.join("\n");
+const questionsSql = parts[0] + "\n" + parts[1];
+const optionsSql = parts[2];
+const examSql = parts[3];
 
 let passed = 0;
 const ok = (name, condition, detail) => {
@@ -67,7 +78,7 @@ ok(
 );
 
 /* ── Question rows: 50 seed tuples with prompt + explanation ── */
-const seedBlock = sql.slice(sql.indexOf("with seed("), sql.indexOf("),\n  inserted as ("));
+const seedBlock = questionsSql;
 const seedRowStarts = [...seedBlock.matchAll(/^\s*\((\d+), \$txt\$/gm)].map((m) => Number(m[1]));
 ok("50 question rows are written", seedRowStarts.length === 50, `found ${seedRowStarts.length}`);
 ok(
@@ -81,33 +92,44 @@ ok(
 );
 
 /* ── Structure of the migration ── */
-ok("all questions are single-choice", /'single_choice'|single_choice/.test(sql));
-ok("questions are published and approved", /'published', 'approved'/.test(sql));
-ok("each question is worth exactly 1 mark", /select v_org, 'single_choice'.*?, 1, s.difficulty/s.test(sql));
+ok("all questions are single-choice", /'single_choice'/.test(questionsSql));
+ok("questions are published and approved", /'published', 'approved'/.test(questionsSql));
+ok("each question is worth exactly 1 mark", /s\.explanation,\s*\n?\s*1, s\.difficulty/.test(questionsSql));
 ok(
   "the source marker is stored on every question",
-  /jsonb_build_object\('source', 'myp5-sequences-and-series-e-assessment'/.test(sql),
+  /jsonb_build_object\('source', 'myp5-sequences-and-series-e-assessment'/.test(questionsSql),
 );
-ok("the migration verifies 50 questions and 200 options before continuing", /v_questions <> 50 or v_options <> 200/.test(sql));
-ok("re-running the migration is a no-op", /if v_existing is not null then/.test(sql));
-ok("the target class is validated in the same tenant", /classes where id = v_class and organization_id = v_org/.test(sql));
+ok("question inserts are idempotent per question number", (questionsSql.match(/where not exists \(/g) ?? []).length === 2);
+ok("questions 1–25 and 26–50 are split across two steps", /writes questions 1–25/.test(parts[0]) && /writes questions 26–50/.test(parts[1]));
+ok("option inserts skip questions that already have options", /not exists \(select 1 from public\.question_options/.test(optionsSql));
+ok(
+  "the examination is only created when the paper is complete",
+  /v_questions <> 50 or v_options <> 200 or v_correct <> 50/.test(examSql) && /v_paper <> 50/.test(examSql),
+  "missing completeness gate",
+);
+ok("re-running the examination step is a no-op", /if v_existing is not null then/.test(examSql));
+ok(
+  "the target class is validated in the same tenant",
+  /classes where id = '0a400000-0000-4000-8000-000000000110'/.test(questionsSql) &&
+    /and organization_id = '0a400000-0000-4000-8000-000000000001'/.test(questionsSql),
+);
 
 /* ── Quiz / paper ── */
-ok("one quiz holds the paper", /insert into public\.quizzes/.test(sql));
-ok("the quiz is published", /'published',\s*\n\s*jsonb_build_object\('randomize_questions', false, 'randomize_options', false\)/.test(sql));
-ok("paper questions are created from the seeded question bank", /insert into public\.quiz_questions/.test(sql));
-ok("paper order follows the question number", /order by \(q\.config ->> 'question_number'\)::int/.test(sql));
+ok("one quiz holds the paper", /insert into public\.quizzes/.test(examSql));
+ok("the quiz is published", /'published',\s*\n\s*jsonb_build_object\('randomize_questions', false, 'randomize_options', false\)/.test(examSql));
+ok("paper questions are created from the seeded question bank", /insert into public\.quiz_questions/.test(examSql));
+ok("paper order follows the question number", /order by \(q\.config ->> 'question_number'\)::int/.test(examSql));
 
 /* ── Examination configuration ── */
-ok("the examination is open, not a draft", /'open',/.test(sql));
-ok("the examination is attached to the Grade 10 — MYP 5 class", /v_class uuid := '0a400000-0000-4000-8000-000000000110'/.test(sql));
-ok("the examination lasts 60 minutes", /\n    60,\n/.test(sql));
-ok("the shared link is enabled", /true,\n\s*jsonb_build_object\(\s*\n\s*'proctoring'/.test(sql));
-ok("results are released immediately after submission", /'results_published', true/.test(sql));
-ok("question order is fixed so the printed key stays valid", /'randomize_questions', false/.test(sql));
-ok("option order is fixed so the printed key stays valid", /'randomize_options', false/.test(sql));
-ok("no proctoring is configured for this assessment", /'proctoring', false/.test(sql));
-ok("the access code is set", /'MYP5-SEQ-2026'/.test(sql));
+ok("the examination is open, not a draft", /'open',/.test(examSql));
+ok("the examination is attached to the Grade 10 — MYP 5 class", /v_class_uuid uuid := '0a400000-0000-4000-8000-000000000110'/.test(examSql));
+ok("the examination lasts 60 minutes", /\n    60,\n/.test(examSql));
+ok("the shared link is enabled", /true,\n\s*jsonb_build_object\(\s*\n\s*'proctoring'/.test(examSql));
+ok("results are released immediately after submission", /'results_published', true/.test(examSql));
+ok("question order is fixed so the printed key stays valid", /'randomize_questions', false/.test(examSql));
+ok("option order is fixed so the printed key stays valid", /'randomize_options', false/.test(examSql));
+ok("no proctoring is configured for this assessment", /'proctoring', false/.test(examSql));
+ok("the access code is set", /'MYP5-SEQ-2026'/.test(examSql));
 
 /* ── Notation fidelity ── */
 ok("flattened exponentials were restored (2ⁿ, 2ⁿ⁻¹)", /2\u207f/.test(sql) && /2\u207f\u207b\u00b9/.test(sql));
