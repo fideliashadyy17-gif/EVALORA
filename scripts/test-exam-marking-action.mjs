@@ -17,7 +17,7 @@ const db={from(table) {const filter=[];let patch=null;
 const original=Module._load;
 Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/auth')return {requireUser:async()=>ctx,activeOrg:()=>ctx.org,can:()=>ctx.allowed,CREATOR_ROLES:[],MARKER_ROLES:[],PROCTOR_ROLES:[]};
- if(request==='@/lib/entitlements'||request==='@/lib/capabilities')return {};
+ if(request==='@/lib/entitlements'||request==='@/lib/capabilities'||request==='@/lib/ai-marking')return {};
  if(request==='@/lib/supabase/server')return {createClient:async()=>db,createAdminClient:()=>db};
  if(request==='@/lib/utils')return {};
  if(request==='next/cache')return {revalidatePath:()=>{}};

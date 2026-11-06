@@ -3,8 +3,10 @@
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities } from "@/lib/capabilities";
+import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -257,6 +259,88 @@ async function recomputeAttempt(
   return total;
 }
 
+type RubricMarkingContext = {
+  answerId: string;
+  attemptId: string;
+  questionId: string;
+  examId: string;
+  rubricId: string;
+  questionPrompt: string;
+  answerText: string;
+  maxPoints: number;
+  criteria: (MarkingCriterion & { position: number })[];
+};
+
+/**
+ * Everything a rubric mark needs, verified in one place: the answer belongs to
+ * this attempt, the attempt to this examination, the examination to this
+ * workspace, and the rubric is attached to it. Shared by manual rubric marking
+ * and by AI proposals so both are authorised identically.
+ */
+async function loadRubricMarkingContext(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  orgId: string,
+  ids: { answerId: string; attemptId: string; examId: string; rubricId: string },
+): Promise<{ ok: true; ctx: RubricMarkingContext } | { ok: false; code: "invalid" | "in_progress" | "rubric" }> {
+  const { data: exam, error: examError } = await supabase
+    .from("exams").select("id, quiz_id").eq("id", ids.examId).eq("organization_id", orgId).maybeSingle();
+  if (examError || !exam?.quiz_id) return { ok: false, code: "invalid" };
+  const { data: attempt, error: attemptError } = await supabase
+    .from("exam_attempts").select("id, exam_id, status").eq("id", ids.attemptId).eq("exam_id", exam.id).maybeSingle();
+  if (attemptError || !attempt) return { ok: false, code: "invalid" };
+  if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) return { ok: false, code: "in_progress" };
+  const { data: answer, error: answerError } = await supabase
+    .from("exam_answers")
+    .select("id, attempt_id, question_id, answer, quiz_question_id, questions(organization_id, points, type, prompt)")
+    .eq("id", ids.answerId).eq("attempt_id", attempt.id).maybeSingle();
+  if (answerError || !answer) return { ok: false, code: "invalid" };
+  const question = answer.questions as unknown as { organization_id: string; points: number; type: string; prompt: string } | null;
+  if (!question || question.organization_id !== orgId || question.type !== "open_ended") return { ok: false, code: "invalid" };
+
+  const { data: quizQuestion } = await supabase
+    .from("quiz_questions").select("id, points")
+    .eq("quiz_id", exam.quiz_id).eq("question_id", answer.question_id).maybeSingle();
+  if (!quizQuestion) return { ok: false, code: "invalid" };
+  const maxPoints = Number(quizQuestion.points ?? question.points);
+
+  const { data: rubric } = await supabase
+    .from("grading_rubrics").select("id").eq("id", ids.rubricId).eq("organization_id", orgId).maybeSingle();
+  if (!rubric) return { ok: false, code: "rubric" };
+  const { data: link } = await supabase
+    .from("exam_rubric_links").select("id")
+    .eq("exam_id", exam.id).eq("rubric_id", ids.rubricId)
+    .or(`question_id.is.null,question_id.eq.${answer.question_id}`)
+    .limit(1).maybeSingle();
+  if (!link) return { ok: false, code: "rubric" };
+
+  const { data: criteria, error: criteriaError } = await supabase
+    .from("grading_rubric_criteria").select("id, code, label, description, max_marks, position")
+    .eq("rubric_id", ids.rubricId).order("position");
+  if (criteriaError || !criteria || criteria.length === 0) return { ok: false, code: "rubric" };
+
+  return {
+    ok: true,
+    ctx: {
+      answerId: answer.id,
+      attemptId: attempt.id,
+      questionId: answer.question_id,
+      examId: exam.id,
+      rubricId: ids.rubricId,
+      questionPrompt: question.prompt ?? "",
+      answerText: typeof (answer.answer as { text?: string } | null)?.text === "string" ? (answer.answer as { text: string }).text : "",
+      maxPoints,
+      criteria: criteria.map((c) => ({
+        id: c.id as string,
+        code: (c.code as string | null) ?? null,
+        label: c.label as string,
+        description: (c.description as string | null) ?? null,
+        maxMarks: Number(c.max_marks),
+        position: Number(c.position ?? 0),
+      })),
+    },
+  };
+}
+
 /**
  * Criterion-by-criterion marking against an attached rubric. Each criterion
  * score is stored against the answer and the grader, so a second marker keeps an
@@ -276,42 +360,9 @@ export async function markWithRubric(formData: FormData) {
   if (!answerId || !attemptId || !examId || !rubricId) return fail("invalid");
 
   const supabase = await createClient();
-  const { data: exam, error: examError } = await supabase
-    .from("exams").select("id, quiz_id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
-  if (examError || !exam?.quiz_id) return fail("invalid");
-  const { data: attempt, error: attemptError } = await supabase
-    .from("exam_attempts").select("id, exam_id, status").eq("id", attemptId).eq("exam_id", exam.id).maybeSingle();
-  if (attemptError || !attempt) return fail("invalid");
-  if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) return fail("in_progress");
-  const { data: answer, error: answerError } = await supabase
-    .from("exam_answers")
-    .select("id, attempt_id, question_id, quiz_question_id, questions(organization_id, points, type)")
-    .eq("id", answerId).eq("attempt_id", attempt.id).maybeSingle();
-  if (answerError || !answer) return fail("invalid");
-  const question = answer.questions as unknown as { organization_id: string; points: number; type: string } | null;
-  if (!question || question.organization_id !== org.id || question.type !== "open_ended") return fail("invalid");
-
-  const { data: quizQuestion } = await supabase
-    .from("quiz_questions").select("id, points")
-    .eq("quiz_id", exam.quiz_id).eq("question_id", answer.question_id).maybeSingle();
-  if (!quizQuestion) return fail("invalid");
-  const maxPoints = Number(quizQuestion.points ?? question.points);
-
-  // The rubric must belong to this workspace and be attached to this exam.
-  const { data: rubric } = await supabase
-    .from("grading_rubrics").select("id").eq("id", rubricId).eq("organization_id", org.id).maybeSingle();
-  if (!rubric) return fail("rubric");
-  const { data: link } = await supabase
-    .from("exam_rubric_links").select("id")
-    .eq("exam_id", exam.id).eq("rubric_id", rubricId)
-    .or(`question_id.is.null,question_id.eq.${answer.question_id}`)
-    .limit(1).maybeSingle();
-  if (!link) return fail("rubric");
-
-  const { data: criteria, error: criteriaError } = await supabase
-    .from("grading_rubric_criteria").select("id, max_marks, position")
-    .eq("rubric_id", rubricId).order("position");
-  if (criteriaError || !criteria || criteria.length === 0) return fail("rubric");
+  const loaded = await loadRubricMarkingContext(supabase, org.id, { answerId, attemptId, examId, rubricId });
+  if (!loaded.ok) return fail(loaded.code);
+  const { answerId: answerRowId, attemptId: attemptRowId, examId: examRowId, questionId: answerQuestionId, criteria, maxPoints } = loaded.ctx;
 
   const scores: { criterion_id: string; marks: number }[] = [];
   for (const criterion of criteria) {
@@ -319,7 +370,7 @@ export async function markWithRubric(formData: FormData) {
     if (raw === "") return fail("criteria");
     const marks = Number(raw);
     if (!Number.isFinite(marks) || marks < 0) return fail("criteria");
-    if (marks > Number(criterion.max_marks)) return fail("criteria");
+    if (marks > criterion.maxMarks) return fail("criteria");
     scores.push({ criterion_id: criterion.id, marks: Math.round(marks * 100) / 100 });
   }
   const total = Math.round(scores.reduce((sum, s) => sum + s.marks, 0) * 100) / 100;
@@ -328,13 +379,13 @@ export async function markWithRubric(formData: FormData) {
   // Replace only this grader's own criterion scores.
   const { error: clearError } = await supabase
     .from("answer_rubric_scores").delete()
-    .eq("answer_id", answer.id).eq("grader_id", ctx.user.id);
+    .eq("answer_id", answerRowId).eq("grader_id", ctx.user.id);
   if (clearError) return fail("failed");
   const { error: scoreError } = await supabase.from("answer_rubric_scores").insert(
     scores.map((s) => ({
-      answer_id: answer.id,
-      attempt_id: attempt.id,
-      question_id: answer.question_id,
+      answer_id: answerRowId,
+      attempt_id: attemptRowId,
+      question_id: answerQuestionId,
       rubric_id: rubricId,
       criterion_id: s.criterion_id,
       organization_id: org.id,
@@ -354,12 +405,12 @@ export async function markWithRubric(formData: FormData) {
       grading_method: "rubric",
       updated_at: new Date().toISOString(),
     })
-    .eq("id", answer.id).eq("attempt_id", attempt.id).select("id").maybeSingle();
+    .eq("id", answerRowId).eq("attempt_id", attemptRowId).select("id").maybeSingle();
   if (updateError || !updated) return fail("failed");
 
-  if ((await recomputeAttempt(supabase, attempt.id, exam.id)) === null) return fail("partial");
+  if ((await recomputeAttempt(supabase, attemptRowId, examRowId)) === null) return fail("partial");
   revalidatePath(back);
-  revalidatePath(`/dashboard/exams/${exam.id}/grades`);
+  revalidatePath(`/dashboard/exams/${examRowId}/grades`);
   redirect(`${back}?mark_ok=rubric`);
 }
 
@@ -550,4 +601,201 @@ export async function updateWorkspaceExamAccess(formData: FormData) {
   revalidatePath(back);
   if (auditFailed) redirect(`${back}?access_error=audit`);
   redirect(`${back}?access_ok=1`);
+}
+
+/**
+ * Ask the configured model for criterion suggestions for one written answer.
+ *
+ * This action never writes a mark. It stores proposals, attributed to the
+ * provider and model that produced them, for a human to accept or reject. When
+ * no credential is configured it refuses — there is no code path that produces
+ * marks without a model and pretends otherwise.
+ */
+export async function proposeAiMarks(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const examId = String(formData.get("exam_id") ?? "");
+  const rubricId = String(formData.get("rubric_id") ?? "");
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?ai_error=${code}`);
+  if (!answerId || !attemptId || !examId || !rubricId) return fail("invalid");
+
+  // Checked before any work, so an unconfigured deployment costs nothing and
+  // says why rather than appearing to succeed.
+  const availability = describeAiMarking();
+  if (!availability.configured) return fail("unconfigured");
+
+  const supabase = await createClient();
+  const loaded = await loadRubricMarkingContext(supabase, org.id, { answerId, attemptId, examId, rubricId });
+  if (!loaded.ok) return fail(loaded.code);
+  const { answerText, questionPrompt, maxPoints, criteria } = loaded.ctx;
+
+  let outcome;
+  try {
+    outcome = await suggestCriterionMarks({ question: questionPrompt, answer: answerText, criteria, maxPoints });
+  } catch (error) {
+    if (error instanceof AiMarkingError) {
+      if (error.code === "unconfigured") return fail("unconfigured");
+      if (error.code === "invalid_response") return fail("invalid_response");
+      return fail("provider");
+    }
+    return fail("provider");
+  }
+
+  const admin = createAdminClient();
+  // A newer suggestion replaces the old live ones; decided history is untouched.
+  const { error: supersedeError } = await admin
+    .from("ai_marking_proposals")
+    .update({ status: "superseded" })
+    .eq("answer_id", answerId)
+    .eq("status", "proposed");
+  if (supersedeError) return fail("failed");
+
+  const answerDigest = createHash("sha256").update(answerText).digest("hex");
+  const { error: insertError } = await admin.from("ai_marking_proposals").insert(
+    outcome.suggestions.map((suggestion) => ({
+      answer_id: answerId,
+      attempt_id: attemptId,
+      exam_id: examId,
+      organization_id: org.id,
+      rubric_id: rubricId,
+      criterion_id: suggestion.criterionId,
+      proposed_marks: suggestion.marks,
+      rationale: suggestion.rationale,
+      provider: outcome.provider,
+      model: outcome.model,
+      prompt_digest: outcome.promptDigest,
+      answer_digest: answerDigest,
+      status: "proposed",
+      requested_by: ctx.user.id,
+    })),
+  );
+  if (insertError) return fail("failed");
+
+  revalidatePath(back);
+  revalidatePath(`/dashboard/exams/${examId}/grades`);
+  redirect(`${back}?ai_ok=proposed#ai-${answerId}`);
+}
+
+/**
+ * Record a human decision on one suggestion. Acceptance is the only path from a
+ * suggestion to a mark: it writes the criterion score, marks the answer as
+ * `ai_assisted` (which the database logs as its own change type), and stamps who
+ * decided. Rejection writes no marks at all.
+ */
+export async function decideAiProposal(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const proposalId = String(formData.get("proposal_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  const rawMarks = String(formData.get("marks") ?? "").trim();
+  const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+  const examId = String(formData.get("exam_id") ?? "");
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?ai_error=${code}`);
+  const done = (code: string): never => redirect(`${back}?ai_ok=${code}#ai-${String(formData.get("answer_id") ?? "")}`);
+  if (!proposalId || !examId || !["accept", "reject"].includes(decision)) return fail("invalid");
+
+  const supabase = await createClient();
+  const { data: proposal } = await supabase
+    .from("ai_marking_proposals")
+    .select("id, answer_id, attempt_id, exam_id, rubric_id, criterion_id, proposed_marks, status")
+    .eq("id", proposalId).eq("organization_id", org.id).maybeSingle();
+  if (!proposal || proposal.exam_id !== examId) return fail("invalid");
+  if (proposal.status !== "proposed") return fail("decided");
+
+  const loaded = await loadRubricMarkingContext(supabase, org.id, {
+    answerId: proposal.answer_id,
+    attemptId: proposal.attempt_id,
+    examId: proposal.exam_id,
+    rubricId: proposal.rubric_id,
+  });
+  if (!loaded.ok) return fail(loaded.code);
+  const { criteria, maxPoints, attemptId: attemptRowId } = loaded.ctx;
+
+  const admin = createAdminClient();
+  const decidedAt = new Date().toISOString();
+
+  if (decision === "reject") {
+    const { error } = await admin
+      .from("ai_marking_proposals")
+      .update({ status: "rejected", decided_by: ctx.user.id, decided_at: decidedAt, decision_note: note })
+      .eq("id", proposalId).eq("status", "proposed");
+    if (error) return fail("failed");
+    revalidatePath(back);
+    done("rejected");
+  }
+
+  const criterion = criteria.find((c) => c.id === proposal.criterion_id);
+  if (!criterion) return fail("invalid");
+  const marks = rawMarks === "" ? Number(proposal.proposed_marks) : Number(rawMarks);
+  if (!Number.isFinite(marks) || marks < 0) return fail("marks");
+  if (marks > criterion.maxMarks) return fail("marks");
+
+  // Replace this marker's score for the criterion with the accepted value.
+  const { error: scoreError } = await supabase.from("answer_rubric_scores").upsert(
+    {
+      answer_id: proposal.answer_id,
+      attempt_id: proposal.attempt_id,
+      question_id: loaded.ctx.questionId,
+      rubric_id: proposal.rubric_id,
+      criterion_id: proposal.criterion_id,
+      organization_id: org.id,
+      marks_awarded: marks,
+      grader_id: ctx.user.id,
+      note: note ?? `Accepted AI suggestion (${proposal.id.slice(0, 8)})`,
+    },
+    { onConflict: "answer_id,criterion_id,grader_id" },
+  );
+  if (scoreError) return fail("failed");
+
+  const { error: acceptError } = await admin
+    .from("ai_marking_proposals")
+    .update({ status: "accepted", decided_by: ctx.user.id, decided_at: decidedAt, decided_marks: marks, decision_note: note })
+    .eq("id", proposalId).eq("status", "proposed");
+  if (acceptError) return fail("partial");
+
+  // The answer total is only meaningful once every criterion has a score from
+  // this marker; deciding one criterion must not silently produce a low total.
+  const { data: allScores } = await supabase
+    .from("answer_rubric_scores")
+    .select("criterion_id, marks_awarded")
+    .eq("answer_id", proposal.answer_id)
+    .eq("grader_id", ctx.user.id);
+  const scored = new Set((allScores ?? []).map((row) => row.criterion_id as string));
+  const remaining = criteria.filter((c) => !scored.has(c.id)).length;
+
+  if (remaining > 0) {
+    revalidatePath(back);
+    done(`remaining-${remaining}`);
+  }
+
+  const total = Math.round(
+    (allScores ?? [])
+      .filter((row) => criteria.some((c) => c.id === row.criterion_id))
+      .reduce((sum, row) => sum + Number(row.marks_awarded ?? 0), 0) * 100,
+  ) / 100;
+  if (!Number.isFinite(maxPoints) || total > maxPoints) return fail("rubric_total");
+
+  const { data: updated, error: updateError } = await supabase
+    .from("exam_answers")
+    .update({
+      points_awarded: total,
+      is_correct: total > 0,
+      marked_by: ctx.user.id,
+      ...(note ? { marker_note: note } : {}),
+      grading_method: "ai_assisted",
+      updated_at: decidedAt,
+    })
+    .eq("id", proposal.answer_id).eq("attempt_id", attemptRowId).select("id").maybeSingle();
+  if (updateError || !updated) return fail("partial");
+
+  if ((await recomputeAttempt(supabase, attemptRowId, proposal.exam_id)) === null) return fail("partial");
+  revalidatePath(back);
+  revalidatePath(`/dashboard/exams/${proposal.exam_id}/grades`);
+  done("accepted");
 }
