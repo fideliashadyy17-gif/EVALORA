@@ -132,6 +132,10 @@ All auto-started Vercel previews from pushes on `arena/21f3ffe0-evalora` were ca
   marking and moderation. No Super Admin credential is available in this
   environment, so those paths are evidenced by the action tests and the
   production SQL blocks, not by clicking through the app. Do not claim otherwise.
-- Unchanged constraint: the Vercel project still has `productionBranch: main` and
-  `createDeployments: disabled`, so production deployments are created explicitly
-  for a specific commit rather than triggered by pushing this branch.
+- Deployment path, corrected: PR #3 merged this work into `main` (merge commit
+  `5545668`), and that merge automatically produced production deployment
+  `dpl_DkoC9twBb6KpHgYDpL1JGK7NtQ7Q` — built from `main`, READY / PROMOTED, holding
+  both `evalora-starboyboy2017-cells-projects.vercel.app` and `evalora-six.vercel.app`.
+  Pushing to `main` is therefore the normal shipping path. Pushing a *feature*
+  branch still only creates a preview, which is why the earlier deployments had to
+  be created explicitly for a specific commit.
