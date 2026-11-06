@@ -34,4 +34,4 @@ update public.questions q
  where q.organization_id = '0a400000-0000-4000-8000-000000000001'
    and q.config ->> 'source' = 'myp5-sequences-and-series-e-assessment'
    and (q.config ->> 'question_number')::int = f.n
-   and not (q.prompt_doc::text like '%"image"%');
+   and coalesce(q.prompt_doc::text, '') not like '%"image"%';

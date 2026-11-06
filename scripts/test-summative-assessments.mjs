@@ -114,7 +114,7 @@ ok("Grade 10 figures: both image files exist in the repository",
   existsSync("public/exam-figures/grade10/q06.png") && existsSync("public/exam-figures/grade10/q28.png"));
 ok("Grade 10 figures: the prompt text is read from the row, not re-typed", /'text', q\.prompt/.test(G10_FIGURES));
 ok("Grade 10 figures: a question that already shows a figure is skipped",
-  /not \(q\.prompt_doc::text like '%"image"%'\)/.test(G10_FIGURES));
+  /coalesce\(q\.prompt_doc::text, ''\) not like '%"image"%'/.test(G10_FIGURES));
 
 /* ── Grade 10: examination ── */
 ok("Grade 10 exam: the examination is open, not a draft", /'open',/.test(g10Exam));
