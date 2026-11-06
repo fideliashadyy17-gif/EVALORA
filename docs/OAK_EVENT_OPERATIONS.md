@@ -14,9 +14,11 @@ Exact phase titles:
 
 The event monitor is `/admin/competitions/events`. It shows one parent event, the three phase records, all class links, pool status, qualification counts and links to the existing Examination and Live Competition records.
 
-## Question-count decision (owner deferred)
+## Question-count decision (owner confirmed: 20)
 
-Actual configuration: Elimination **20** questions per class, Semi-Final **24** configured / **25** phase maximum, Grand Final **30**. Master guidance contains conflicting Elimination values **20**, **25** and an earlier **5 per class**. The owner decision on 2026-11-05 was: **keep existing 20 but do not create or publish a new examination configuration**. The authoritative count remains unresolved and is recorded in the event settings as `elimination_question_count_status=pending_owner_confirmation`. Elimination pool publishing is blocked until the owner confirms the count. No published examination or question count was changed.
+Actual configuration: Elimination **20** questions per class, Semi-Final **24** configured / **25** phase maximum, Grand Final **30**. Master guidance carried conflicting Elimination values **20**, **25** and an earlier **5 per class**; on 2026-11-05 the owner deferred the choice (keep the existing 20, create or publish nothing new), which was recorded as `elimination_question_count_status=pending_owner_confirmation`.
+
+**Resolved 2026-11-06:** the owner confirmed **20 questions per class** as authoritative; 25 and 5 per class are rejected. Migration `0040_oak_elimination_count_confirmed` records `elimination_question_count_status=confirmed`, `elimination_question_count_confirmed=20`, the decision date and the resolution text, and writes an `audit_logs` row (`competition.elimination_count_confirmed`). Nothing else changed: no examination was created, renamed or re-counted, no pool was created or published, and the semi-final (24 / 25) and grand-final (30) configurations are untouched. Elimination pool publishing is now **permitted once the pool passes validation** — complete, valid, single-class, curriculum-valid and approved-only. As of this decision the event still holds **0 Elimination pools**, so nothing has been published.
 
 ## Generic question-pool assembly
 
@@ -28,7 +30,7 @@ Workflow:
 2. Create a draft pool. It uses the phase maximum as its default target and derives a curriculum quota from the event's `curriculum_split` or the selected curriculum.
 3. Use **Auto-generate** to fill from approved/published questions only, or tick questions and **Save selected questions**.
 4. **Preview**, **Shuffle**, **Replace** and **Save filters** operate on drafts only.
-5. Reopen a published pool as a draft to edit it. Publishing requires a complete, valid, single-class, curriculum-valid, approved-only pool and owner confirmation for Elimination.
+5. Reopen a published pool as a draft to edit it. Publishing requires a complete, valid, single-class, curriculum-valid, approved-only pool and owner confirmation for Elimination — confirmed at 20 per class on 2026-11-06 (migration `0040`), so the count gate no longer blocks this event. Reopening a pool that is already published keeps the normal draft/publish lifecycle.
 6. If a shortfall appears, use **Generate in Question Bank** and **Review & approve**, then regenerate the draft pool. Unapproved questions are never silently added and the target count is never silently reduced.
 
 Database guards enforce the same rules for direct REST/SQL writes: `question_pool_item_guard`, `question_pool_publish_guard`, `set_question_pool_items`, `question_pool_validate`, `generate_question_pool_items`, `replace_question_pool_item`, `shuffle_question_pool_items`, `track_question_pool_usage` and the `question_usage` ledger.
@@ -85,5 +87,5 @@ New tables/columns are additive. RLS is organizer-only for `question_pools`, `qu
 
 ## Admin decisions still open
 
-- Authoritative Elimination question count (20 / 25 / 5 per class).
+- ~~Authoritative Elimination question count (20 / 25 / 5 per class)~~ — **closed 2026-11-06: 20 per class confirmed** by the owner (migration `0040`); Elimination pools may be published once they pass validation.
 - Production deployment is authorized **only after** authenticated browser tests and the full changed-file / migration / RLS / build / lint / test / Vercel env / secret review pass. No production deployment has been performed in this work.
