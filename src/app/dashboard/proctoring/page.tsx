@@ -1,4 +1,5 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { describeIncidentType } from "@/lib/integrity";
 import { activeOrg, can, MANAGER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import {
   DECISION_LABEL,
@@ -207,7 +208,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={i.severity === "high" ? "red" : i.severity === "medium" ? "amber" : "gray"}>{i.severity}</Badge>
                   <Badge tone={statusTone(i.status)}>{i.status === "open" ? "awaiting review" : i.status}</Badge>
-                  <span className="font-medium text-evergreen-950">{String(i.type).replace(/_/g, " ")}</span>
+                  <span className="font-medium text-evergreen-950">{describeIncidentType(String(i.type))}</span>
                   <span className="text-sm text-ink-soft">· {cand?.full_name ?? "Unassigned candidate"}</span>
                   <span className="text-sm text-ink-soft">· {ex?.title ?? "—"}</span>
                   <span className="ml-auto text-xs text-ink-soft">{fmtDateTime(i.created_at)}</span>

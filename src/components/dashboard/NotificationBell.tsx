@@ -34,7 +34,19 @@ const COLUMNS = "id,title,body,link,created_at,read_at";
  * markup free of timestamps (no hydration drift) and avoids fetching anything
  * for users who never open the bell.
  */
-export function NotificationBell({ variant = "sidebar" }: { variant?: "sidebar" | "icon" }) {
+export function NotificationBell({
+  variant = "sidebar",
+  extraCount = 0,
+  allHref = "/dashboard/notifications",
+  allLabel = "View all notifications",
+}: {
+  variant?: "sidebar" | "icon";
+  /** Alerts that live outside the notification table (payments, tickets, incidents). */
+  extraCount?: number;
+  /** Where the footer link leads; the popover itself never navigates on open. */
+  allHref?: string;
+  allLabel?: string;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -140,8 +152,9 @@ export function NotificationBell({ variant = "sidebar" }: { variant?: "sidebar" 
     await load();
   }
 
-  const badge = unreadBadgeLabel(unread);
-  const triggerLabel = bellAriaLabel(unread);
+  const extras = Number.isFinite(extraCount) ? Math.max(0, Math.floor(extraCount)) : 0;
+  const badge = unreadBadgeLabel(unread + extras);
+  const triggerLabel = extras > 0 ? `Notifications (${unread + extras} needing attention)` : bellAriaLabel(unread);
 
   return (
     <div ref={rootRef} className={cn("relative", variant === "sidebar" && "w-full")}>
@@ -299,10 +312,10 @@ export function NotificationBell({ variant = "sidebar" }: { variant?: "sidebar" 
 
           <div className="border-t border-evergreen-900/10 bg-cream px-3 py-2">
             <Link
-              href="/dashboard/notifications"
+              href={allHref}
               className="block text-center text-xs font-medium text-evergreen-700 hover:underline"
             >
-              View all notifications
+              {allLabel}
             </Link>
           </div>
         </div>

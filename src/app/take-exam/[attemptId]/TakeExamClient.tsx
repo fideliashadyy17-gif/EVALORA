@@ -2,6 +2,8 @@
 
 import { Logo } from "@/components/Logo";
 import { ExamCorrige } from "@/components/ExamCorrige";
+import { IntegrityMonitor } from "@/lib/integrityMonitor";
+import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
 import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
 import { RichContent } from "@/components/RichContent";
@@ -12,12 +14,12 @@ import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Flag } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Flag, ShieldAlert, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number };
+  exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
   questions: (PublicQuestion & {
@@ -127,6 +129,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   // One-page corrigé: every question of the paper, answered or left blank.
   const [corrigeAll, setCorrigeAll] = useState(false);
+  // Integrity: the browser reports what it can observe (tab hidden, focus lost,
+  // full-screen exit, clipboard use); the server records it and owns the count.
+  const [warning, setWarning] = useState<IntegrityWarning | null>(null);
+  const monitorRef = useRef<IntegrityMonitor | null>(null);
+  const audioRef = useRef<AudioContext | null>(null);
+  const lastBeepAt = useRef(0);
+  const attemptStatus = state?.attempt.status ?? "in_progress";
+  const activePolicy = useMemo(() => parseIntegrityPolicy(state?.exam.integrity), [state?.exam.integrity]);
   const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -137,6 +147,31 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   }, []);
   const offset = useRef(0);
 
+  // A single short tone, created only after the candidate has interacted with
+  // the page (browser autoplay rules) and never allowed to break the paper.
+  const beep = useCallback(() => {
+    try {
+      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!Ctor) return;
+      audioRef.current ??= new Ctor();
+      const ctx = audioRef.current;
+      if (ctx.state === "suspended") void ctx.resume();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+      oscillator.connect(gain);
+      gain.connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.4);
+    } catch {
+      // Audio is a courtesy, never a requirement.
+    }
+  }, []);
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(`evalora-attempt-${attemptId}`);
@@ -146,6 +181,45 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       setError("We couldn't verify this session.");
     }
   }, [attemptId]);
+
+  // The shared integrity monitor: the same class a quiz can use, given this
+  // attempt's token as its transport. It stops the moment the paper is
+  // submitted, so nothing is reported after the attempt is closed.
+  useEffect(() => {
+    if (!token || attemptStatus !== "in_progress" || !activePolicy.enabled) return;
+    const monitor = new IntegrityMonitor(
+      { document, window, now: () => Date.now() },
+      activePolicy,
+      async (event, detail) => {
+        try {
+          const response = await fetch("/api/exam/integrity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ attempt_id: attemptId, token, event, detail }),
+            keepalive: true,
+          });
+          if (!response.ok) return null;
+          const data = await response.json().catch(() => null);
+          return data && typeof data.count === "number" ? { count: data.count } : null;
+        } catch {
+          return null;
+        }
+      },
+      (next) => {
+        setWarning(next);
+        if (activePolicy.sound && Date.now() - lastBeepAt.current > 1000) {
+          lastBeepAt.current = Date.now();
+          beep();
+        }
+      },
+    );
+    monitor.start();
+    monitorRef.current = monitor;
+    return () => {
+      monitor.stop();
+      monitorRef.current = null;
+    };
+  }, [token, attemptId, attemptStatus, activePolicy, beep]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -410,6 +484,29 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </aside>
 
         <section>
+          {warning && (
+            <div
+              role="alert"
+              className="mb-5 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-sm text-amber-950 print:hidden"
+            >
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">{warning.title}</p>
+                  <p className="mt-1">{warning.body}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setWarning(null)}
+                  aria-label="Dismiss this warning"
+                  className="rounded p-1 text-amber-800 transition hover:bg-amber-100"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+
           {corrigeAll && showCorrige ? (
             <ExamCorrige
               exam={{

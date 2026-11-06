@@ -1,4 +1,5 @@
 import { RichContent } from "@/components/RichContent";
+import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
@@ -594,7 +595,7 @@ export default async function ExamDetailPage({
                   <div key={i.id} className="flex flex-wrap items-center gap-2 rounded-xl border border-evergreen-900/10 bg-cream px-3 py-2.5 text-sm">
                     <Badge tone={i.severity === "high" ? "red" : i.severity === "medium" ? "amber" : "gray"}>{i.severity}</Badge>
                     <span className="font-medium">{(i.exam_candidates as { full_name: string } | null)?.full_name ?? "—"}</span>
-                    <span className="text-ink-soft">{i.type}{i.note ? ` — ${i.note}` : ""}</span>
+                    <span className="text-ink-soft">{describeIncidentType(i.type)}{i.note && !String(i.type).startsWith("integrity_") ? ` — ${i.note}` : ""}</span>
                     <span className="ml-auto flex items-center gap-2">
                       <Badge tone={i.status === "open" ? "amber" : "green"}>{i.status}</Badge>
                       {can(ctx, org.id, PROCTOR_ROLES) && ["open", "investigating"].includes(i.status) && (

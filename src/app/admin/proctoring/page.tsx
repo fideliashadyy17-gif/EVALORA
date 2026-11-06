@@ -1,4 +1,5 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { describeIncidentType } from "@/lib/integrity";
 import { requireSuperAdmin } from "@/lib/auth";
 import {
   DECISION_LABEL,
@@ -200,7 +201,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
               return (
                 <tr key={i.id} className="border-b border-evergreen-900/10 align-top">
                   <td className="max-w-xs px-4 py-2.5">
-                    <span className="font-medium">{String(i.type).replace(/_/g, " ")}</span>
+                    <span className="font-medium">{describeIncidentType(String(i.type))}</span>
                     {i.note && (
                       <span className="block text-xs text-ink-soft" title={i.note}>
                         {i.retention_state === "anonymized" ? "[redacted by retention policy]" : i.note}

@@ -584,3 +584,34 @@ The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each
 | `GET /exam` | 404 | 200, entry page |
 | `GET /exam/?code=MYP4-STAT-2026` | 404 | resolves to the Grade 9 join page |
 | `GET /exam/join/3f867709-…` | 200 | 200, unchanged |
+
+## Universal assessment integrity
+
+### What changed
+
+- `src/lib/integrity.ts` (new): policy parsing, event catalogue, severity, escalation ladder, warning copy.
+- `src/lib/integrityMonitor.ts` (new): one browser monitor (visibility, focus, full screen, clipboard, context menu, unload, connectivity) with an injected environment and transport.
+- `src/app/api/exam/integrity/route.ts` (new): records `integrity_<event>` rows in the existing `proctoring_incidents`, resolving exam/candidate/organisation from the attempt token.
+- `src/app/api/exam/state/route.ts`: sends the assessment's integrity policy to the candidate client (never an answer key).
+- `take-exam/[attemptId]/TakeExamClient.tsx`: starts the monitor while the attempt is in progress, shows a dismissible warning and an optional tone, stops on submission.
+- Teacher consoles: human-readable incident labels, browser payloads hidden.
+- `NotificationBell`: `extraCount` / `allHref` / `allLabel`; the admin console now uses the popover instead of a page link.
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-integrity.mjs` | 60 | pass — policy defaults and clamping, per-event switches, escalation (none/warn/strong/review), warning copy, fake-DOM monitor (tab hidden, dedupe, blur collapse, clipboard, full screen, `stop()`, disabled policy, server-authoritative count, throwing transport), route identity/dedupe/cap/409/policy gate, console labels, bell wiring |
+| `npx tsc --noEmit` | — | clean |
+| `npm run build` | — | clean |
+
+### Production evidence
+
+| Check | Result |
+|---|---|
+| Candidate attempt with the monitor active | `POST /api/exam/integrity` accepts the token and records `integrity_tab_hidden` / `integrity_focus_lost` / `integrity_copy` |
+| Row association | `exam_id`, `candidate_id`, `attempt_id`, `organization_id` all resolve from the token |
+| Foreign token | rejected with 404 — no cross-attempt or cross-tenant write |
+| Closed attempt | rejected with 409 |
+| Teacher console | incidents listed with a readable label |
+| Bell | admin console opens the popover, no navigation |
