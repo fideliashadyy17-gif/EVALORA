@@ -265,3 +265,45 @@ about that: it suggests, a person decides, and with no credential it refuses.
   quality, because no model has been called.
 - **Not verified:** an authenticated browser session generating and accepting a
   suggestion (no Super Admin credential here), and real provider responses.
+
+## Current verification — printable paper beyond print-only, 2026-11-06
+
+The paper was a single unpersonalised print view. It now also produces a
+candidate answer sheet, a marker's rubric grid, and one packet per candidate,
+all from the same route so a single browser print produces one PDF.
+
+- `src/lib/printablePackets.ts` holds the pure builders: `answerLinesFor()`
+  (7 lines for a written answer, 4 for short answer, 2 otherwise, none where
+  options are printed), `buildAnswerSheet()` (numbered boxes, marks, option
+  letters, and a writing-space fallback so a choice question with no printable
+  options cannot produce an empty row), `buildMarkerGrid()` and
+  `buildCandidatePackets()`. The rubric for a question is resolved with
+  `rubricForQuestion` — the same helper the marking screen uses — so a
+  question-level rubric overrides the examination-level one on paper exactly as
+  it does on screen. A question with no rubric still gets a single-mark row, so
+  nothing drops off the sheet.
+- Packets are ordered by candidate name (case-insensitive), de-duplicated by id,
+  carry the same answer sheet, grid and total, and each later packet starts a new
+  page (`print:break-before-page`) so a cohort prints as one document with one
+  candidate per page. A candidate with no access code still prints, with a blank
+  reference.
+- The route `/dashboard/exams/[id]/paper` takes `?mode=paper|sheet|packets|markers`
+  (default `paper`, unchanged output). An unknown mode falls back to the question
+  paper. The mode switch is hidden when printing. Rubric links, criteria and
+  candidates are read through the existing workspace-scoped queries.
+- Local suites: new `scripts/test-printable-packets.mjs` **14/14** (pure builders,
+  compiled from the TypeScript) and `scripts/test-printable-paper-page.mjs`
+  **8/8**, which gained four checks: the answer-sheet view numbers every question
+  with writing space, packets name each candidate and mark later packets with a
+  page break, the marker view prints the awarded table, and an unknown mode
+  renders no packet body. Full suite: **59 pass, 3 environment-only failures**
+  (`test-exam-browser` and `test-printable-paper-browser` need the absent
+  `playwright-core`; `test-profile-status-security` cannot exercise
+  ownership-dependent DDL in PGlite). `tsc --noEmit`, `eslint` on the touched
+  paths and `next build` clean, with `/dashboard/exams/[id]/paper` in the route
+  manifest.
+- **Not verified:** the authenticated browser rendering and the actual printed
+  output — no Super Admin credential is available here. This remains browser
+  print-to-PDF; there is no server-side PDF generation, no scanning, no candidate
+  matching and no paper-mark capture, and the packets only include candidates
+  recorded against the examination.
