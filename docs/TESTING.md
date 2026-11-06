@@ -199,3 +199,69 @@ each other — could exceed a plan freely. The database now enforces them.
   as `proctoring` remain action-layer checks.
 - **Not verified:** the authenticated browser experience of hitting a limit and
   upgrading — no Super Admin credential is available in this environment.
+
+## Current verification — AI-assisted marking as proposal and review, 2026-11-06
+
+`grading_method` already allowed `'ai_assisted'`, and `grade_change_log` already
+allowed a `change_type` of the same name, but nothing ever wrote either and no
+model credential exists in this project. So the feature is built to be honest
+about that: it suggests, a person decides, and with no credential it refuses.
+
+- Production migrations `ai_marking_proposals` and `ai_marking_guardrails`
+  (repo files `0038` and `0039`) add `public.ai_marking_proposals`: one row per
+  criterion suggestion, carrying the proposed mark, a required rationale, the
+  provider and model, a digest of the prompt and of the answer text, and the
+  decision (who, what mark, when, note). RLS gives workspace markers read access
+  and grants no insert/update/delete at all — proposals are written and decided
+  by the server with the service role after it has authorised the caller, so a
+  client cannot fabricate a "model" suggestion or quietly rewrite a decided one.
+- Guard rails are in the database, not only in the action: a suggestion cannot
+  exceed its criterion maximum, must belong to a rubric the examination actually
+  uses, cannot be inserted as already decided, cannot be edited after a
+  decision, cannot be deleted once decided, and cannot be accepted without an
+  attributable decider. Replacing the candidate's answer supersedes live
+  suggestions about the old text. One live suggestion exists per criterion.
+- `src/lib/ai-marking.ts` is the provider boundary: `describeAiMarking()` reports
+  whether a credential exists, and `suggestCriterionMarks()` throws
+  `AiMarkingError('unconfigured')` when none does — it never returns invented
+  marks. Replies are parsed strictly: an unknown, missing, repeated or
+  out-of-range criterion, a missing rationale, or a total above the question's
+  worth rejects the whole reply rather than snapping values into range.
+- `proposeAiMarks` stores suggestions and writes no mark; `decideAiProposal` is
+  the only path to a mark. Accepting writes the criterion score, marks the answer
+  `grading_method='ai_assisted'`, and the database logs the change as
+  `ai_assisted` (the previously-unreachable audit label). Rejecting writes no
+  mark. Deciding one criterion of several records the decision but deliberately
+  leaves the answer total alone until every criterion is scored, so a partial
+  review cannot produce a silently low mark.
+- UI: on `/dashboard/exams/[id]`, each written answer in the marking queue shows
+  either the suggestion controls or the plain reason they are off; each proposal
+  shows the criterion, the proposed mark against its maximum, the rationale, and
+  accept (with an editable mark) / reject.
+- Local suites: `scripts/test-ai-marking-schema.mjs` **14/14** (migrations
+  0038–0039 in isolated PGlite), `scripts/test-ai-marking-actions.mjs` **15/15**
+  (the real actions with a stubbed provider, including that an unconfigured,
+  failed or unusable provider writes nothing) and
+  `scripts/test-ai-marking-provider.mjs` **16/16** (config resolution, strict
+  parsing, prompt construction; no network). Full suite **58 pass, 3
+  environment-only failures** (`test-exam-browser`, `test-printable-paper-browser`
+  need the absent `playwright-core`; `test-profile-status-security` cannot
+  exercise ownership-dependent DDL in PGlite). `tsc --noEmit`, `eslint` on the
+  touched paths and `next build` clean.
+- Production verification, `BEGIN … ROLLBACK` inside the DEMO workspace as its
+  owner: an over-maximum suggestion was refused; a rubric the examination does
+  not use was refused; a valid suggestion had its attempt, examination and
+  workspace derived from the answer rather than trusted from the caller and left
+  the answer mark `null`; accepting stamped the decider and the accepted mark;
+  re-deciding was refused; writing the mark logged `change_type='ai_assisted'`
+  with the new points; and replacing the answer superseded the live suggestion.
+  Afterwards: 0 proposals, 0 rubrics or candidates from the probe, 8 answers and
+  15 examinations — nothing persisted.
+- **Inert, by design:** no provider credential is configured anywhere (Supabase
+  secrets or Vercel environment), so suggestions cannot be generated in
+  production today. The UI says so instead of pretending, and adding
+  `AI_MARKING_PROVIDER` + `AI_MARKING_API_KEY` (or a provider key variable such
+  as `OPENAI_API_KEY`) is the switch. Nothing here proves a real model's output
+  quality, because no model has been called.
+- **Not verified:** an authenticated browser session generating and accepting a
+  suggestion (no Super Admin credential here), and real provider responses.

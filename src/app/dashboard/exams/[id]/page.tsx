@@ -8,9 +8,10 @@ import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
+import { describeAiMarking } from "@/lib/ai-marking";
 import {
-  addCandidate, addCandidatesBulk, deleteExam, markAnswer, markWithRubric, moderateAnswer, publishResults,
-  removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
+  addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
+  proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -21,7 +22,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -108,6 +109,24 @@ export default async function ExamDetailPage({
   for (const criterion of (rubricCriteriaData ?? []) as RubricCriterion[]) {
     criteriaByRubric.set(criterion.rubric_id, [...(criteriaByRubric.get(criterion.rubric_id) ?? []), criterion]);
   }
+  type AiProposalRow = {
+    id: string; answer_id: string; criterion_id: string; proposed_marks: number;
+    rationale: string; provider: string; model: string;
+  };
+  const { data: aiProposalData } = shownAnswerIds.length
+    ? await supabase
+        .from("ai_marking_proposals")
+        .select("id, answer_id, criterion_id, proposed_marks, rationale, provider, model")
+        .in("answer_id", shownAnswerIds)
+        .eq("status", "proposed")
+        .order("created_at")
+    : { data: [] as AiProposalRow[] };
+  const proposalsByAnswer = new Map<string, AiProposalRow[]>();
+  for (const row of (aiProposalData ?? []) as AiProposalRow[]) {
+    proposalsByAnswer.set(row.answer_id, [...(proposalsByAnswer.get(row.answer_id) ?? []), row]);
+  }
+  const ai = describeAiMarking();
+
   type ScoreRow = { answer_id: string; criterion_id: string; marks_awarded: number; grader_id: string | null; note: string | null };
   const scoresByAnswer = new Map<string, ScoreRow[]>();
   for (const row of (answerScoresData ?? []) as ScoreRow[]) {
@@ -172,6 +191,34 @@ export default async function ExamDetailPage({
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
       {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{sp.mark_ok === "rubric" ? "Criterion marks saved, answer mark recalculated and the change added to the grade history." : "Mark saved and attempt total recalculated."}</p>}
+      {sp.ai_ok && (
+        <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
+          {sp.ai_ok === "proposed"
+            ? "Suggestions saved for review. Nothing has been marked — accept or reject each criterion below."
+            : sp.ai_ok === "rejected"
+              ? "Suggestion rejected. No mark was written."
+              : sp.ai_ok === "accepted"
+                ? "Suggestion accepted, criterion mark written and the change logged as AI-assisted."
+                : sp.ai_ok.startsWith("remaining-")
+                  ? `Suggestion accepted and that criterion saved. ${sp.ai_ok.slice("remaining-".length)} criterion(s) still need a mark before the answer total is calculated.`
+                  : "Suggestion decision recorded."}
+        </p>
+      )}
+      {sp.ai_error && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          {sp.ai_error === "unconfigured"
+            ? "No model credential is configured for this deployment, so no suggestions can be generated. Nothing was written."
+            : sp.ai_error === "invalid_response"
+              ? "The model's reply could not be used safely (a mark outside the criterion maximum, a missing criterion or no rationale). Nothing was written."
+              : sp.ai_error === "marks"
+                ? "The accepted mark must be between 0 and the criterion maximum. Nothing was written."
+                : sp.ai_error === "decided"
+                  ? "That suggestion has already been decided. Reload to see its current state."
+                  : sp.ai_error === "partial"
+                    ? "The criterion mark was saved and the suggestion accepted, but the answer total could not be confirmed. Check the mark before marking anything else."
+                    : "The suggestion could not be completed. Nothing was written unless stated above."}
+        </p>
+      )}
       {sp.moderation_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Moderation decision recorded — {MODERATION_LABEL[sp.moderation_ok]?.toLowerCase() ?? sp.moderation_ok}. Both the decision and the resulting mark change are in the grade history.</p>}
       {sp.moderation_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{moderationErrors[sp.moderation_error] ?? "The moderation decision could not be recorded."}</p>}
       {exam.grades_published_at && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Grades were released to candidates on {fmtDateTime(exam.grades_published_at)}.</p>}
@@ -327,12 +374,82 @@ export default async function ExamDetailPage({
                   const rubric = rubricFor(ans.question_id);
                   const existing = scoresByAnswer.get(ans.id) ?? [];
                   return (
-                  <div key={ans.id} className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
+                  <div key={ans.id} id={`ai-${ans.id}`} className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
                     <p className="text-xs font-medium text-ink-soft">
                       {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} pts
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
                     <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 text-sm">{ans.answer?.text ?? "(empty)"}</p>
+                    {rubric && canMark ? (
+                      <div className="mt-3 rounded-lg border border-gold-600/30 bg-gold-50/40 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-evergreen-900">
+                            {ai.configured
+                              ? `AI suggestion draft · ${ai.provider} · ${ai.model} — proposals only, a person decides.`
+                              : "AI suggestions are off: no model credential is configured for this deployment, and nothing is generated without one."}
+                          </p>
+                          {ai.configured && (
+                            <form action={proposeAiMarks}>
+                              <input type="hidden" name="answer_id" value={ans.id} />
+                              <input type="hidden" name="attempt_id" value={attempt.id} />
+                              <input type="hidden" name="exam_id" value={id} />
+                              <input type="hidden" name="rubric_id" value={rubric.rubricId} />
+                              <Button type="submit" variant="outline" className="text-xs">Suggest criterion marks</Button>
+                            </form>
+                          )}
+                        </div>
+                        {(proposalsByAnswer.get(ans.id) ?? []).length > 0 && (
+                          <ul className="mt-2 space-y-2">
+                            {(proposalsByAnswer.get(ans.id) ?? []).map((proposal) => {
+                              const criterion = rubric.criteria.find((c) => c.id === proposal.criterion_id);
+                              return (
+                                <li key={proposal.id} className="rounded-lg border border-evergreen-900/10 bg-white p-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="text-xs font-medium text-evergreen-900">
+                                      {criterion?.code ? `${criterion.code} · ` : ""}{criterion?.label ?? "Criterion"}
+                                    </span>
+                                    <Badge tone="gold">
+                                      suggested {Number(proposal.proposed_marks)} / {criterion ? Number(criterion.max_marks) : "?"}
+                                    </Badge>
+                                  </div>
+                                  <p className="mt-1 text-[11px] leading-snug text-ink-soft">{proposal.rationale}</p>
+                                  <div className="mt-2 flex flex-wrap items-end gap-2">
+                                    <form action={decideAiProposal} className="flex flex-wrap items-end gap-2">
+                                      <input type="hidden" name="proposal_id" value={proposal.id} />
+                                      <input type="hidden" name="answer_id" value={ans.id} />
+                                      <input type="hidden" name="exam_id" value={id} />
+                                      <input type="hidden" name="decision" value="accept" />
+                                      <Field label="Accept mark">
+                                        <Input
+                                          name="marks"
+                                          type="number"
+                                          step="0.25"
+                                          min={0}
+                                          max={criterion ? Number(criterion.max_marks) : undefined}
+                                          defaultValue={Number(proposal.proposed_marks)}
+                                          className="w-20"
+                                        />
+                                      </Field>
+                                      <Field label="Note">
+                                        <Input name="note" placeholder="Optional" className="w-40" />
+                                      </Field>
+                                      <Button type="submit" className="text-xs">Accept</Button>
+                                    </form>
+                                    <form action={decideAiProposal}>
+                                      <input type="hidden" name="proposal_id" value={proposal.id} />
+                                      <input type="hidden" name="answer_id" value={ans.id} />
+                                      <input type="hidden" name="exam_id" value={id} />
+                                      <input type="hidden" name="decision" value="reject" />
+                                      <Button type="submit" variant="outline" className="text-xs">Reject</Button>
+                                    </form>
+                                  </div>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
                     {rubric && canMark ? (
                       <form action={markWithRubric} className="mt-3 space-y-2">
                         <input type="hidden" name="answer_id" value={ans.id} />
