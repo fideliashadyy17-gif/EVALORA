@@ -244,3 +244,13 @@ Statuses apply to the requirement as a whole, not to every underlying increment.
 - Notification popover: `NotificationBell` gained `extraCount`, `allHref` and `allLabel`; the admin console now mounts that same popover instead of a `<Link href="/admin/notifications">`. Platform alerts (payments, tickets, incidents) still count in the badge, and the footer link keeps the full console reachable. One notification store, two views.
 - Verification: `scripts/test-integrity.mjs` — **60 checks** (policy parsing and clamping, event gating, escalation thresholds, warning copy, a fake-DOM monitor driving every listener including dedupe, blur-after-tab collapse, `stop()`, disabled policy, server-authoritative counts and a throwing transport; then the route's token-only identity, dedupe, cap, 409, policy gate and single-table storage; then the client wiring, the console labels and the bell). `npx tsc --noEmit` clean, `npm run build` clean.
 - Not claimed: browser detection cannot prevent Alt+Tab, a second device or OS shortcuts; `page_leave` is best-effort; live quizzes (`/play/[code]`, `session_participants`) are not wired yet because `proctoring_incidents.exam_id` is `NOT NULL` and a quiz run has no examination row — that needs an additive schema change in a later increment.
+
+### Suite health increment
+
+The integrity work shipped with its own suite green, but the wider run was not:
+fourteen suites could not even import their database fixture, four died on
+missing loader mocks, one fixture policy was invalid in the WASM engine, and one
+assertion in the bell suite was invalidated by the new `allHref` prop. `npm test`
+now runs the lot in under ninety seconds and reports 69 suites green with two
+browser suites explicitly skipped. The candidate client also no longer starts the
+monitor in a DOM-less environment, which is what made two render suites crash.

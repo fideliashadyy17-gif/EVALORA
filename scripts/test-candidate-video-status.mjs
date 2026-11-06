@@ -12,13 +12,17 @@ const queue=compile('src/lib/examSaveQueue.ts','scripts/__vid_queue.cjs');const 
 const original=Module._load;Module._load=function(req,parent){if(parent?.filename===file){
  if(req==='@/components/QuestionRunner')return {QuestionRunner:props=>{const [draft,setDraft]=React.useState('');return React.createElement('input',{'data-draft':true,value:draft,onChange:e=>{setDraft(e.target.value);props.onDirtyChange(true);}});}};
  if(req==='@/components/Logo'||req==='@/components/RichContent')return {Logo:()=>null,RichContent:()=>null};
+ if(req==='@/components/ExamCorrige')return {ExamCorrige:()=>null};
+ if(req==='@/lib/examResults')return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>''};
+ if(req==='@/lib/integrity')return {parseIntegrityPolicy:raw=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
+ if(req==='@/lib/integrityMonitor')return {IntegrityMonitor:class{start(){}stop(){}}};
  if(req==='@/lib/examSaveQueue')return queue;
  if(req==='@/components/ui')return {Button:p=>React.createElement('button',p),Card:p=>React.createElement('div',p),Badge:p=>React.createElement('span',p)};
  if(req==='@/lib/utils')return {cn:(...v)=>v.filter(Boolean).join(' '),mmss:()=> '10:00'};
  if(req==='@livekit/components-styles')return {};
  if(req==='@livekit/components-react')return {LiveKitRoom:p=>{roomProps=p;return React.createElement('section',null,p.children)},VideoTrack:()=>null,useConnectionState:()=>connection,useLocalParticipant:()=>({isCameraEnabled:camera,isMicrophoneEnabled:microphone,isScreenShareEnabled:screen,localParticipant:{setScreenShareEnabled:async value=>{screen=value;}}}),useTracks:()=>[]};
  if(req==='livekit-client')return {Track:{Source:{Camera:'camera'}}};
- if(req==='lucide-react')return {Flag:()=>null};
+ if(req==='lucide-react')return {Flag:()=>null,ShieldAlert:()=>null,X:()=>null};
 }return original.apply(this,arguments);};
 const {TakeExamClient}=compile('src/app/take-exam/[attemptId]/TakeExamClient.tsx',file);Module._load=original;
 const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};globalThis.localStorage={getItem:()=>JSON.stringify({token:'attempt-token'})};globalThis.window={addEventListener:()=>{},removeEventListener:()=>{},confirm:()=>true};

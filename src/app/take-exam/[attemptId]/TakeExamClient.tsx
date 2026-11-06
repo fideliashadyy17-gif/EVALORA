@@ -187,6 +187,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // submitted, so nothing is reported after the attempt is closed.
   useEffect(() => {
     if (!token || attemptStatus !== "in_progress" || !activePolicy.enabled) return;
+    // Effects do not run on the server, but the paper is also rendered in
+    // environments without a DOM (print preview, embedded viewers). Never let
+    // the monitor be the reason a candidate cannot sit the examination.
+    if (typeof document === "undefined" || typeof window === "undefined") return;
     const monitor = new IntegrityMonitor(
       { document, window, now: () => Date.now() },
       activePolicy,
