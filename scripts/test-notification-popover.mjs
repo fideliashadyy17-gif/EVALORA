@@ -25,6 +25,7 @@ const lib = require(`${outDir}/lib/notifications.js`);
 
 const bell = readFileSync("src/components/dashboard/NotificationBell.tsx", "utf8");
 const chrome = readFileSync("src/components/dashboard/DashboardChrome.tsx", "utf8");
+const adminShell = readFileSync("src/app/admin/AdminShell.tsx", "utf8");
 
 let passed = 0;
 const ok = (name, condition, detail) => {
@@ -90,7 +91,24 @@ ok("mark-all is disabled when nothing is unread", /disabled=\{busy \|\| unread =
 ok("the badge is re-read after every change", /await load\(\)/.test(bell));
 ok("the badge stays in sync with the real unread count", /setUnread\(count\.count \?\? 0\)/.test(bell));
 ok("an empty state is provided", /You&rsquo;re all caught up/.test(bell));
-ok("the full page remains reachable from the popover", /href="\/dashboard\/notifications"/.test(bell));
+ok(
+  "the full page remains reachable from the popover",
+  /allHref = "\/dashboard\/notifications"/.test(bell) && /href=\{allHref\}/.test(bell),
+);
+ok("the footer link label is overridable too", /allLabel = "View all notifications"/.test(bell) && /\{allLabel\}/.test(bell));
+ok(
+  "the platform console retargets the same popover instead of navigating away",
+  /<NotificationBell[\s\S]{0,240}allHref="\/admin\/notifications"/.test(adminShell) &&
+    !/<Link href="\/admin\/notifications"[^>]*>\s*<Bell/.test(adminShell),
+);
+ok(
+  "platform alerts still count in the console badge",
+  /extraCount=\{counts\.payments \+ counts\.tickets \+ counts\.incidents\}/.test(adminShell),
+);
+ok(
+  "the popover fits a phone screen",
+  /w-\[min\(22rem,calc\(100vw-2rem\)\)\]/.test(bell) || /max-w-\[calc\(100vw/.test(bell),
+);
 
 /* ── Chrome wiring ── */
 ok("the chrome renders the bell in the sidebar", /<NotificationBell \/>/.test(chrome));

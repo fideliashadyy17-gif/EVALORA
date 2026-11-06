@@ -13,6 +13,8 @@ Module._load=function(request,parent){
  if(parent?.filename===file){
   if(request==='@/lib/exam') return {loadAttemptContext:async(_db,id,token)=>{observed.push({id,token});return token==='right'?structuredClone(context):null;},attemptDeadline:()=>new Date(Date.now()+600000),attemptRows:async()=>[],gradeAttempt:async()=>({score:0,max:0})};
   if(request==='@/lib/live') return {publicQuestion:()=>({})};
+  if(request==='@/lib/examResults') return {buildExamResult:()=>({})};
+  if(request==='@/lib/integrity') return {parseIntegrityPolicy:()=>({enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   if(request==='@/lib/supabase/server') return {createAdminClient:()=>admin};
   if(request==='next/server') return {NextResponse:{json:(body,options)=>({body,status:options?.status??200,headers:options?.headers??{}})}};
  }

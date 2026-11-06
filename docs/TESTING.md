@@ -615,3 +615,39 @@ The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each
 | Closed attempt | rejected with 409 |
 | Teacher console | incidents listed with a readable label |
 | Bell | admin console opens the popover, no navigation |
+
+## Suite health (whole repository)
+
+`npm test` runs every `scripts/test-*.mjs` suite and prints one summary. Two
+browser suites are skipped unless `--all` is passed, because they drive a real
+Chromium through Playwright (`npx playwright install chromium`); they are
+reported as skipped rather than hidden.
+
+| Run | Result |
+|---|---|
+| `npm test` | **69 suites passed, 0 failed, 2 skipped — 321 checks** |
+| `npx tsc --noEmit` | clean |
+| `npm run build` | clean |
+
+Fixes made so the suite is actually runnable and green:
+
+- `@electric-sql/pglite` is now a declared devDependency. Fourteen SQL/RLS
+  suites had been unreachable without it (`ERR_MODULE_NOT_FOUND`), so their
+  results were unknown rather than passing.
+- Four suites that compile real modules with an injected loader were missing
+  mocks for imports those modules gained over time (`@/components/ExamCorrige`,
+  `@/lib/examResults`, `@/lib/integrity`, `@/lib/integrityMonitor`) and died
+  before asserting anything. They now mock exactly what the module under test
+  imports and pass again.
+- `TakeExamClient` refuses to start the integrity monitor when `document` or
+  `window` is absent, so a DOM-less render (print preview, embedded viewer,
+  React test renderer) can never be blocked by the monitor.
+- `scripts/test-profile-status-security.mjs` created a fixture policy after
+  `RESET SESSION AUTHORIZATION`, which does not return the session to the table
+  owner in PGlite, so the fixture died with `must be owner of table profiles`.
+  The policy is now created as the owner during setup; the assertions about the
+  privilege trigger are unchanged.
+- `scripts/test-notification-popover.mjs` asserted a literal
+  `href="/dashboard/notifications"`; the bell now takes `allHref` (same default)
+  and the suite checks the default, the override used by the platform console,
+  and that the console no longer navigates away on click.

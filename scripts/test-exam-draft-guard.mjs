@@ -19,13 +19,19 @@ Module._load=function(request,parent) {
   if(request==='@/components/QuestionRunner') return {QuestionRunner:StubRunner};
   if(request==='@/components/Logo') return {Logo:()=>null};
   if(request==='@/components/RichContent') return {RichContent:()=>null};
+  if(request==='@/components/ExamCorrige') return {ExamCorrige:()=>null};
+  if(request==='@/lib/examResults') return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>'',
+    // the client only reads presentation helpers; keep them inert here
+    parseIntegrityPolicy:undefined};
+  if(request==='@/lib/integrity') return {parseIntegrityPolicy:(raw)=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
+  if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
   if(request==='@/lib/examSaveQueue') return queue;
   if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p)};
   if(request==='@/lib/utils') return {cn:(...args)=>args.filter(Boolean).join(' '),mmss:()=> '10:00'};
   if(request==='@livekit/components-styles') return {};
   if(request==='@livekit/components-react') return {};
   if(request==='livekit-client') return {Track:{Source:{}}};
-  if(request==='lucide-react') return {Flag:()=>null};
+  if(request==='lucide-react') return {Flag:()=>null,ShieldAlert:()=>null,X:()=>null};
  }
  return original.apply(this,arguments);
 };
