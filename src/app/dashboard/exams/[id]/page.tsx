@@ -1,14 +1,15 @@
 import { RichContent } from "@/components/RichContent";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
-import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import {
-  addCandidate, addCandidatesBulk, deleteExam, markAnswer, publishResults,
+  addCandidate, addCandidatesBulk, deleteExam, markAnswer, markWithRubric, moderateAnswer, publishResults,
   removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
 } from "../actions";
 
@@ -20,7 +21,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -50,7 +51,7 @@ export default async function ExamDetailPage({
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
-      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, questions(prompt, prompt_doc, points, type))")
+      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, grading_method, moderation_status, questions(prompt, prompt_doc, points, type))")
       .eq("exam_id", id)
       .order("started_at"),
     supabase
@@ -63,19 +64,86 @@ export default async function ExamDetailPage({
       : Promise.resolve({ data: [] }),
   ]);
   const paperPoints = new Map((paperQuestions ?? []).map((q) => [q.question_id, q.points]));
+  type MarkableAnswer = {
+    id: string;
+    question_id: string;
+    is_correct: boolean | null;
+    points_awarded: number | null;
+    grading_method: string;
+    moderation_status: string;
+    answer: { text?: string };
+    questions: { prompt: string; points: number; type: string };
+  };
+  const answersOf = (a: { exam_answers?: unknown; status: string }) =>
+    ((a.exam_answers as MarkableAnswer[] | null) ?? []).filter(
+      (ans) => ans.questions.type === "open_ended" && a.status !== "in_progress",
+    );
+
+  const awaitingMarking = (attempts ?? []).flatMap((a) =>
+    answersOf(a).filter((ans) => ans.is_correct === null).map((ans) => ({ attempt: a, ans })),
+  );
+  const gradedWritten = (attempts ?? []).flatMap((a) =>
+    answersOf(a).filter((ans) => ans.is_correct !== null).map((ans) => ({ attempt: a, ans })),
+  );
+
+  // Rubrics attached to this examination plus every criterion score already
+  // recorded for the written answers shown on this page.
+  const { data: rubricLinksData } = await supabase
+    .from("exam_rubric_links")
+    .select("id, rubric_id, question_id, grading_rubrics(title, total_marks)")
+    .eq("exam_id", id)
+    .eq("organization_id", org.id);
+  const rubricLinks = (rubricLinksData ?? []) as unknown as ExamRubricLink[];
+  const rubricIds = [...new Set(rubricLinks.map((l) => l.rubric_id))];
+  const shownAnswerIds = [...awaitingMarking, ...gradedWritten].map((entry) => entry.ans.id);
+  const [{ data: rubricCriteriaData }, { data: answerScoresData }] = await Promise.all([
+    rubricIds.length
+      ? supabase.from("grading_rubric_criteria").select("*").in("rubric_id", rubricIds).order("position")
+      : Promise.resolve({ data: [] as RubricCriterion[] }),
+    shownAnswerIds.length
+      ? supabase.from("answer_rubric_scores").select("answer_id, criterion_id, rubric_id, marks_awarded, grader_id, note").in("answer_id", shownAnswerIds)
+      : Promise.resolve({ data: [] as { answer_id: string; criterion_id: string; rubric_id: string; marks_awarded: number; grader_id: string | null; note: string | null }[] }),
+  ]);
+  const criteriaByRubric = new Map<string, RubricCriterion[]>();
+  for (const criterion of (rubricCriteriaData ?? []) as RubricCriterion[]) {
+    criteriaByRubric.set(criterion.rubric_id, [...(criteriaByRubric.get(criterion.rubric_id) ?? []), criterion]);
+  }
+  type ScoreRow = { answer_id: string; criterion_id: string; marks_awarded: number; grader_id: string | null; note: string | null };
+  const scoresByAnswer = new Map<string, ScoreRow[]>();
+  for (const row of (answerScoresData ?? []) as ScoreRow[]) {
+    scoresByAnswer.set(row.answer_id, [...(scoresByAnswer.get(row.answer_id) ?? []), row]);
+  }
+  const rubricFor = (questionId: string) => {
+    const match = rubricForQuestion(rubricLinks, questionId);
+    if (!match) return null;
+    const criteria = criteriaByRubric.get(match.link.rubric_id) ?? [];
+    if (criteria.length === 0) return null;
+    return {
+      rubricId: match.link.rubric_id,
+      level: match.level,
+      title: match.link.grading_rubrics?.title ?? "Rubric",
+      criteria,
+    };
+  };
+  const canMark = can(ctx, org.id, MARKER_ROLES);
+
   const markErrors: Record<string, string> = {
     invalid: "The answer, examination or paper could not be verified. No mark was saved.",
     in_progress: "A mark cannot be recorded while the attempt is in progress.",
     points: "Enter a valid mark between zero and the paper’s maximum for this question.",
+    criteria: "Every criterion needs a mark between zero and its own maximum. Nothing was saved.",
+    rubric: "That rubric is not attached to this examination, or has no criteria. Nothing was saved.",
+    rubric_total: "The criterion marks add up to more than this question is worth. Adjust the criteria and retry.",
     failed: "The mark could not be saved. Please retry.",
     partial: "The answer mark may have been saved, but the attempt total could not be confirmed. Contact an administrator to check the mark and total.",
   };
-
-  const awaitingMarking = (attempts ?? []).flatMap((a) =>
-    ((a.exam_answers as { id: string; question_id: string; is_correct: boolean | null; answer: { text?: string }; questions: { prompt: string; points: number; type: string } }[]) ?? [])
-      .filter((ans) => ans.is_correct === null && ans.questions.type === "open_ended" && a.status !== "in_progress")
-      .map((ans) => ({ attempt: a, ans })),
-  );
+  const moderationErrors: Record<string, string> = {
+    invalid: "The answer or examination could not be verified. No decision was recorded.",
+    decision: "Choose approve, adjust or return.",
+    marks: "A corrected mark is required for an adjustment and must not exceed the question maximum.",
+    failed: "The moderation decision could not be recorded. Nothing was changed.",
+    partial: "The decision was recorded, but the attempt total could not be confirmed. Contact an administrator.",
+  };
 
   return (
     <>
@@ -87,6 +155,7 @@ export default async function ExamDetailPage({
             {Boolean(settings.proctoring) && (
               <ButtonLink href={`/dashboard/exams/${id}/proctor`} variant="gold">🎥 Proctoring room</ButtonLink>
             )}
+            <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline">Grade history</ButtonLink>
             <ButtonLink href={`/dashboard/reports/exam/${id}`} variant="outline">Report</ButtonLink>
             <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>
           </div>
@@ -102,7 +171,10 @@ export default async function ExamDetailPage({
       {sp.publish_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
-      {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Mark saved and attempt total recalculated.</p>}
+      {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{sp.mark_ok === "rubric" ? "Criterion marks saved, answer mark recalculated and the change added to the grade history." : "Mark saved and attempt total recalculated."}</p>}
+      {sp.moderation_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Moderation decision recorded — {MODERATION_LABEL[sp.moderation_ok]?.toLowerCase() ?? sp.moderation_ok}. Both the decision and the resulting mark change are in the grade history.</p>}
+      {sp.moderation_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{moderationErrors[sp.moderation_error] ?? "The moderation decision could not be recorded."}</p>}
+      {exam.grades_published_at && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Grades were released to candidates on {fmtDateTime(exam.grades_published_at)}.</p>}
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
       {sp.room_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The examination was created, but its proctoring room could not be confirmed. Contact an administrator before opening it.</p>}
       {sp.ok === "created" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination created. Its unique link and access code are stored with the exam and shown below.</p>}
@@ -251,27 +323,147 @@ export default async function ExamDetailPage({
               <p className="mt-2 text-sm text-ink-soft">No written answers awaiting a corrector. Objective questions mark themselves automatically.</p>
             ) : (
               <div className="mt-3 space-y-4">
-                {awaitingMarking.map(({ attempt, ans }) => (
+                {awaitingMarking.map(({ attempt, ans }) => {
+                  const rubric = rubricFor(ans.question_id);
+                  const existing = scoresByAnswer.get(ans.id) ?? [];
+                  return (
                   <div key={ans.id} className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
                     <p className="text-xs font-medium text-ink-soft">
                       {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} pts
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
                     <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 text-sm">{ans.answer?.text ?? "(empty)"}</p>
-                    <form action={markAnswer} className="mt-3 flex flex-wrap items-end gap-2">
-                      <input type="hidden" name="answer_id" value={ans.id} />
-                      <input type="hidden" name="attempt_id" value={attempt.id} />
-                      <input type="hidden" name="exam_id" value={id} />
-                      <Field label="Points">
-                        <Input name="points" type="number" step="0.5" min={0} max={Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} required className="w-24" />
-                      </Field>
-                      <Field label="Marker note">
-                        <Input name="note" placeholder="Feedback…" className="w-56" />
-                      </Field>
-                      <Button type="submit">Save mark</Button>
-                    </form>
+                    {rubric && canMark ? (
+                      <form action={markWithRubric} className="mt-3 space-y-2">
+                        <input type="hidden" name="answer_id" value={ans.id} />
+                        <input type="hidden" name="attempt_id" value={attempt.id} />
+                        <input type="hidden" name="exam_id" value={id} />
+                        <input type="hidden" name="rubric_id" value={rubric.rubricId} />
+                        <p className="text-xs font-medium text-evergreen-800">
+                          {rubric.title} · {rubric.level === "question" ? "question rubric" : "examination rubric"} · {rubric.criteria.length} criteria
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {rubric.criteria.map((criterion) => {
+                            const mine = existing.find((row) => row.criterion_id === criterion.id && row.grader_id === ctx.user.id);
+                            const otherGraders = existing.filter((row) => row.criterion_id === criterion.id && row.grader_id !== ctx.user.id);
+                            return (
+                              <div key={criterion.id} className="rounded-lg border border-evergreen-900/10 bg-white p-2">
+                                <div className="flex items-start justify-between gap-2">
+                                  <span className="text-xs font-medium text-evergreen-900">
+                                    {criterion.code ? `${criterion.code} · ` : ""}{criterion.label}
+                                  </span>
+                                  <label className="flex shrink-0 items-center gap-1 text-xs text-ink-soft">
+                                    <input
+                                      name={`criterion_${criterion.id}`}
+                                      type="number"
+                                      step="0.25"
+                                      min={0}
+                                      max={Number(criterion.max_marks)}
+                                      defaultValue={mine ? Number(mine.marks_awarded) : ""}
+                                      required
+                                      className="w-16 rounded border border-evergreen-900/20 px-1 py-0.5 text-right tabular-nums"
+                                    />
+                                    / { Number(criterion.max_marks) }
+                                  </label>
+                                </div>
+                                {criterion.description && <p className="mt-1 text-[11px] leading-snug text-ink-soft">{criterion.description}</p>}
+                                {otherGraders.length > 0 && (
+                                  <p className="mt-1 text-[11px] text-amber-800">
+                                    Another marker scored this {otherGraders.map((row) => Number(row.marks_awarded)).join(", ")} — your judgement is stored separately.
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div className="flex flex-wrap items-end gap-2">
+                          <Field label="Marker note">
+                            <Input name="note" placeholder="Feedback…" className="w-56" />
+                          </Field>
+                          <Button type="submit">Save criterion marks</Button>
+                        </div>
+                        <p className="text-[11px] text-ink-soft">A single mark can be recorded instead by detaching the rubric from this examination.</p>
+                      </form>
+                    ) : (
+                      <form action={markAnswer} className="mt-3 flex flex-wrap items-end gap-2">
+                        <input type="hidden" name="answer_id" value={ans.id} />
+                        <input type="hidden" name="attempt_id" value={attempt.id} />
+                        <input type="hidden" name="exam_id" value={id} />
+                        <Field label="Points">
+                          <Input name="points" type="number" step="0.5" min={0} max={Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} required className="w-24" />
+                        </Field>
+                        <Field label="Marker note">
+                          <Input name="note" placeholder="Feedback…" className="w-56" />
+                        </Field>
+                        <Button type="submit">Save mark</Button>
+                      </form>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+
+          <Card className="p-6">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Moderation ({gradedWritten.length} written answers marked)</h2>
+              <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline" className="text-xs">Full grade history</ButtonLink>
+            </div>
+            <p className="mt-1 text-xs text-ink-soft">
+              A moderator may approve a mark, adjust it, or return it to the marker. Each decision is appended to the grade
+              history with the previous mark and cannot be rewritten or deleted.
+            </p>
+            {gradedWritten.length === 0 ? (
+              <p className="mt-3 text-sm text-ink-soft">No written answers have been marked on this examination yet.</p>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {gradedWritten.map(({ attempt, ans }) => {
+                  const scoreRows = scoresByAnswer.get(ans.id) ?? [];
+                  const perGrader = new Map<string, number>();
+                  for (const row of scoreRows) {
+                    const key = row.grader_id ?? "unknown";
+                    perGrader.set(key, Math.round(((perGrader.get(key) ?? 0) + Number(row.marks_awarded)) * 100) / 100);
+                  }
+                  const maxPoints = Number(paperPoints.get(ans.question_id) ?? ans.questions.points);
+                  const tone = ans.moderation_status === "approved" ? "green" : ans.moderation_status === "adjusted" ? "gold" : ans.moderation_status === "returned" ? "red" : "gray";
+                  return (
+                    <div key={ans.id} className="rounded-xl border border-evergreen-900/10 bg-cream p-3">
+                      <div className="flex flex-wrap items-center gap-2 text-sm">
+                        <Badge tone={tone}>{MODERATION_LABEL[ans.moderation_status] ?? ans.moderation_status}</Badge>
+                        <span className="font-medium">{(attempt.exam_candidates as { full_name: string } | null)?.full_name ?? "Candidate"}</span>
+                        <span className="tabular-nums">{Number(ans.points_awarded ?? 0)} / {maxPoints}</span>
+                        <span className="ml-auto text-xs text-ink-soft">{GRADING_METHOD_LABEL[ans.grading_method] ?? ans.grading_method}</span>
+                      </div>
+                      <p className="mt-1 truncate text-xs text-ink-soft">{ans.questions.prompt}</p>
+                      {perGrader.size > 0 && (
+                        <p className="mt-1 text-[11px] text-ink-soft">
+                          Criterion totals by marker: {[...perGrader.values()].map((v) => Number(v)).join(" · ")}
+                        </p>
+                      )}
+                      {canMark && (
+                        <form action={moderateAnswer} className="mt-2 flex flex-wrap items-end gap-2">
+                          <input type="hidden" name="answer_id" value={ans.id} />
+                          <input type="hidden" name="exam_id" value={id} />
+                          <Field label="Decision">
+                            <Select name="decision" defaultValue="approved" className="w-40">
+                              <option value="approved">Approve mark</option>
+                              <option value="adjusted">Adjust mark</option>
+                              <option value="returned">Return to marker</option>
+                            </Select>
+                          </Field>
+                          <Field label="Corrected mark" hint="Only for an adjustment">
+                            <Input name="proposed_marks" type="number" step="0.25" min={0} max={maxPoints} className="w-24" />
+                          </Field>
+                          <Field label="Reason">
+                            <Input name="note" placeholder="Why…" className="w-52" />
+                          </Field>
+                          <Button type="submit" variant="outline">Record decision</Button>
+                        </form>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </Card>

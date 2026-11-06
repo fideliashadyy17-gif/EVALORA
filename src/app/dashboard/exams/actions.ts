@@ -231,6 +231,198 @@ export async function markAnswer(formData: FormData) {
   redirect(`${back}?mark_ok=1`);
 }
 
+/** Recompute an attempt's score from its answers; null means the write failed. */
+async function recomputeAttempt(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  attemptId: string,
+  examId: string,
+): Promise<number | null> {
+  const { data: answers, error } = await supabase
+    .from("exam_answers")
+    .select("points_awarded, is_correct")
+    .eq("attempt_id", attemptId);
+  if (error || !answers) return null;
+  const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
+  const { data: updated, error: totalError } = await supabase
+    .from("exam_attempts")
+    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) })
+    .eq("id", attemptId)
+    .eq("exam_id", examId)
+    .in("status", ["submitted", "auto_submitted", "marked"])
+    .select("id")
+    .maybeSingle();
+  if (totalError || !updated) return null;
+  return total;
+}
+
+/**
+ * Criterion-by-criterion marking against an attached rubric. Each criterion
+ * score is stored against the answer and the grader, so a second marker keeps an
+ * independent judgement instead of overwriting the first.
+ */
+export async function markWithRubric(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const examId = String(formData.get("exam_id") ?? "");
+  const rubricId = String(formData.get("rubric_id") ?? "");
+  const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?mark_error=${code}`);
+  if (!answerId || !attemptId || !examId || !rubricId) return fail("invalid");
+
+  const supabase = await createClient();
+  const { data: exam, error: examError } = await supabase
+    .from("exams").select("id, quiz_id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (examError || !exam?.quiz_id) return fail("invalid");
+  const { data: attempt, error: attemptError } = await supabase
+    .from("exam_attempts").select("id, exam_id, status").eq("id", attemptId).eq("exam_id", exam.id).maybeSingle();
+  if (attemptError || !attempt) return fail("invalid");
+  if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) return fail("in_progress");
+  const { data: answer, error: answerError } = await supabase
+    .from("exam_answers")
+    .select("id, attempt_id, question_id, quiz_question_id, questions(organization_id, points, type)")
+    .eq("id", answerId).eq("attempt_id", attempt.id).maybeSingle();
+  if (answerError || !answer) return fail("invalid");
+  const question = answer.questions as unknown as { organization_id: string; points: number; type: string } | null;
+  if (!question || question.organization_id !== org.id || question.type !== "open_ended") return fail("invalid");
+
+  const { data: quizQuestion } = await supabase
+    .from("quiz_questions").select("id, points")
+    .eq("quiz_id", exam.quiz_id).eq("question_id", answer.question_id).maybeSingle();
+  if (!quizQuestion) return fail("invalid");
+  const maxPoints = Number(quizQuestion.points ?? question.points);
+
+  // The rubric must belong to this workspace and be attached to this exam.
+  const { data: rubric } = await supabase
+    .from("grading_rubrics").select("id").eq("id", rubricId).eq("organization_id", org.id).maybeSingle();
+  if (!rubric) return fail("rubric");
+  const { data: link } = await supabase
+    .from("exam_rubric_links").select("id")
+    .eq("exam_id", exam.id).eq("rubric_id", rubricId)
+    .or(`question_id.is.null,question_id.eq.${answer.question_id}`)
+    .limit(1).maybeSingle();
+  if (!link) return fail("rubric");
+
+  const { data: criteria, error: criteriaError } = await supabase
+    .from("grading_rubric_criteria").select("id, max_marks, position")
+    .eq("rubric_id", rubricId).order("position");
+  if (criteriaError || !criteria || criteria.length === 0) return fail("rubric");
+
+  const scores: { criterion_id: string; marks: number }[] = [];
+  for (const criterion of criteria) {
+    const raw = String(formData.get(`criterion_${criterion.id}`) ?? "").trim();
+    if (raw === "") return fail("criteria");
+    const marks = Number(raw);
+    if (!Number.isFinite(marks) || marks < 0) return fail("criteria");
+    if (marks > Number(criterion.max_marks)) return fail("criteria");
+    scores.push({ criterion_id: criterion.id, marks: Math.round(marks * 100) / 100 });
+  }
+  const total = Math.round(scores.reduce((sum, s) => sum + s.marks, 0) * 100) / 100;
+  if (!Number.isFinite(maxPoints) || total > maxPoints) return fail("rubric_total");
+
+  // Replace only this grader's own criterion scores.
+  const { error: clearError } = await supabase
+    .from("answer_rubric_scores").delete()
+    .eq("answer_id", answer.id).eq("grader_id", ctx.user.id);
+  if (clearError) return fail("failed");
+  const { error: scoreError } = await supabase.from("answer_rubric_scores").insert(
+    scores.map((s) => ({
+      answer_id: answer.id,
+      attempt_id: attempt.id,
+      question_id: answer.question_id,
+      rubric_id: rubricId,
+      criterion_id: s.criterion_id,
+      organization_id: org.id,
+      marks_awarded: s.marks,
+      grader_id: ctx.user.id,
+      note,
+    })),
+  );
+  if (scoreError) return fail("failed");
+
+  const { data: updated, error: updateError } = await supabase.from("exam_answers")
+    .update({
+      points_awarded: total,
+      is_correct: total > 0,
+      marked_by: ctx.user.id,
+      marker_note: note,
+      grading_method: "rubric",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", answer.id).eq("attempt_id", attempt.id).select("id").maybeSingle();
+  if (updateError || !updated) return fail("failed");
+
+  if ((await recomputeAttempt(supabase, attempt.id, exam.id)) === null) return fail("partial");
+  revalidatePath(back);
+  revalidatePath(`/dashboard/exams/${exam.id}/grades`);
+  redirect(`${back}?mark_ok=rubric`);
+}
+
+/**
+ * Record a moderator decision. The database projects an adjustment onto the
+ * answer, stamps the previous mark and appends both a moderation row and a
+ * grade-change row; nothing here may bypass that.
+ */
+export async function moderateAnswer(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const examId = String(formData.get("exam_id") ?? "");
+  const decision = String(formData.get("decision") ?? "");
+  const note = String(formData.get("note") ?? "").slice(0, 2000) || null;
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?moderation_error=${code}`);
+  if (!answerId || !examId) return fail("invalid");
+  if (!["approved", "adjusted", "returned"].includes(decision)) return fail("decision");
+
+  const supabase = await createClient();
+  const { data: exam } = await supabase
+    .from("exams").select("id, quiz_id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (!exam?.quiz_id) return fail("invalid");
+  const { data: answer } = await supabase
+    .from("exam_answers")
+    .select("id, attempt_id, question_id, points_awarded, questions(organization_id, points, type), exam_attempts!inner(exam_id, status)")
+    .eq("id", answerId).maybeSingle();
+  if (!answer) return fail("invalid");
+  const attemptRel = answer.exam_attempts as unknown as { exam_id: string; status: string } | null;
+  const question = answer.questions as unknown as { organization_id: string; points: number; type: string } | null;
+  if (!attemptRel || attemptRel.exam_id !== exam.id) return fail("invalid");
+  if (!question || question.organization_id !== org.id || question.type !== "open_ended") return fail("invalid");
+
+  let proposed: number | null = null;
+  if (decision === "adjusted") {
+    const raw = String(formData.get("proposed_marks") ?? "").trim();
+    proposed = raw ? Number(raw) : NaN;
+    if (!Number.isFinite(proposed) || proposed < 0) return fail("marks");
+    const { data: quizQuestion } = await supabase
+      .from("quiz_questions").select("points")
+      .eq("quiz_id", exam.quiz_id).eq("question_id", answer.question_id).maybeSingle();
+    const maxPoints = Number(quizQuestion?.points ?? question.points);
+    if (!Number.isFinite(maxPoints) || proposed > maxPoints) return fail("marks");
+    proposed = Math.round(proposed * 100) / 100;
+  }
+
+  const { error: insertError } = await supabase.from("grading_moderation").insert({
+    answer_id: answer.id,
+    decision,
+    proposed_marks: proposed,
+    note,
+    moderator_id: ctx.user.id,
+    moderator_email: ctx.user.email ?? null,
+  });
+  if (insertError) return fail("failed");
+
+  if ((await recomputeAttempt(supabase, answer.attempt_id, exam.id)) === null) return fail("partial");
+  revalidatePath(back);
+  revalidatePath(`/dashboard/exams/${exam.id}/grades`);
+  redirect(`${back}?moderation_ok=${decision}`);
+}
+
 export async function publishResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
@@ -246,7 +438,15 @@ export async function publishResults(formData: FormData) {
     .eq("id", examId).eq("organization_id", org.id).maybeSingle();
   if (readError || !exam) redirect(`${back}?publish_error=1`);
   const settings = { ...((exam.settings as object) ?? {}), results_published: value === "1" };
-  const { data: updated, error: updateError } = await supabase.from("exams").update({ settings })
+  // Publishing stamps who released the marks; the audit log keeps every change
+  // that led to them.
+  const published = value === "1";
+  const { data: updated, error: updateError } = await supabase.from("exams")
+    .update({
+      settings,
+      grades_published_at: published ? new Date().toISOString() : null,
+      grades_published_by: published ? ctx.user.id : null,
+    })
     .eq("id", examId).eq("organization_id", org.id).select("id").maybeSingle();
   if (updateError || !updated) redirect(`${back}?publish_error=1`);
   revalidatePath(back);
