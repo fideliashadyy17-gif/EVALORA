@@ -1,6 +1,7 @@
 import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
 import { answerReveal, publicQuestion } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -65,6 +66,10 @@ export async function GET(request: Request) {
       proctoring: Boolean(settings.proctoring),
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
+      // The candidate client needs the assessment's integrity policy to know
+      // which browser events to report and when to warn. Only thresholds and
+      // switches travel here — never an answer, never another candidate.
+      integrity: parseIntegrityPolicy(settings.integrity),
     },
     candidate: {
       name: candidate.full_name,

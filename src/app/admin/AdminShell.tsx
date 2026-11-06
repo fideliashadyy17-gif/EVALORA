@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -247,7 +248,6 @@ export function AdminShell({
     router.refresh();
   }
 
-  const totalAlerts = counts.payments + counts.tickets + counts.incidents + counts.unread;
 
   const workspaceForm = (next: string, label: string, Icon: ComponentType<{ className?: string }>) => (
     <form key={next} action={enterOrgWorkspace}>
@@ -454,19 +454,17 @@ export function AdminShell({
               )}
             </div>
 
-            {/* Notifications */}
-            <Link
-              href="/admin/notifications"
-              className="relative rounded-full p-2.5 text-evergreen-900 hover:bg-evergreen-50"
-              aria-label={`Notifications${totalAlerts ? ` (${totalAlerts} needing attention)` : ""}`}
-            >
-              <Bell className="h-5 w-5" />
-              {totalAlerts > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 rounded-full bg-gold-500 px-1.5 py-0.5 text-[11px] font-bold leading-none text-evergreen-950">
-                  {totalAlerts}
-                </span>
-              )}
-            </Link>
+            {/* Notifications: a floating panel, not a page navigation. The
+                platform alerts (payments, tickets, incidents) still count in
+                the badge; "See all platform alerts" opens the full console. */}
+            <div className="rounded-full p-0.5 text-evergreen-900">
+              <NotificationBell
+                variant="icon"
+                extraCount={counts.payments + counts.tickets + counts.incidents}
+                allHref="/admin/notifications"
+                allLabel="See all platform alerts"
+              />
+            </div>
 
             {/* Profile */}
             <div className="relative" ref={profile.ref}>
