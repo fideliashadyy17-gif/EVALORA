@@ -139,3 +139,63 @@ All auto-started Vercel previews from pushes on `arena/21f3ffe0-evalora` were ca
   Pushing to `main` is therefore the normal shipping path. Pushing a *feature*
   branch still only creates a preview, which is why the earlier deployments had to
   be created explicitly for a specific commit.
+
+## Current verification — plan-limit enforcement at the database, 2026-11-06
+
+Before this increment, plan limits were advisory: `withinLimit()` ran in four
+server actions, so a client talking to PostgREST directly — or two creates racing
+each other — could exceed a plan freely. The database now enforces them.
+
+- Production migration `plan_limit_enforcement`, version `20261106104030`, adds
+  `free_plan_defaults()`, `org_entitlement_limits(uuid)`, `org_limit(uuid, text)`
+  and the `enforce_plan_quota()` trigger function, with triggers on `exams`,
+  `quizzes`, `questions` and `organization_members`. It resolves limits in the
+  same order as `src/lib/entitlements.ts`: hard-coded free defaults < the `free`
+  plan row < an active/trialing plan < that subscription's `limits_override`; a
+  lapsed trial or billing period falls back to free. Unlimited is `-1`.
+- Unmetered by design: writes with no `auth.uid()` (service role, migrations,
+  job runners — this is what lets onboarding create an organisation and its first
+  member) and the platform owner (`is_super_admin()`), matching the existing
+  owner bypass in TypeScript.
+- Invitation acceptance used to write `organization_members` with the service
+  role, so it skipped metering entirely: a workspace could invite past its plan
+  and every acceptance succeeded. It now goes through `accept_invitation(text,
+  uuid)`, which takes an organisation row lock, checks the member limit and
+  inserts in one transaction, returning `ok` / `limit` / `expired` / `invalid`.
+  The function is revoked from `anon` and `authenticated`; the app checks the
+  invitation email against the session before calling it with the service role.
+- Server actions map a rejection to their own upgrade prompt instead of a generic
+  failure: `isPlanLimitError()` / `planLimitMessage()` in `src/lib/entitlements.ts`
+  read the `PLAN_LIMIT:<key>:<limit>` code written to `DETAIL`, and the message
+  itself is written for a person. A bulk question import stops at the first quota
+  rejection rather than reporting the same failure once per remaining row.
+- Local suites: `scripts/test-plan-limit-enforcement.mjs` **18/18** in isolated
+  PGlite against the real migration file (free cap, paid ceiling, unlimited,
+  lapsed period, lapsed trial, running trial, override, plan-row override,
+  independent metering of exams/questions, member cap, workspace isolation,
+  owner bypass, service-role bypass, drift check against `FREE_LIMITS`, and four
+  invitation paths). `scripts/test-exam-create-security.mjs` is now **10/10** —
+  it gained a check that a database quota rejection reaches the upgrade prompt.
+  Full suite: **55 pass, 3 environment-only failures** (`test-exam-browser`,
+  `test-printable-paper-browser` need the absent `playwright-core`;
+  `test-profile-status-security` cannot exercise ownership-dependent DDL in
+  PGlite). `tsc --noEmit`, `eslint` on the touched paths and `next build` clean.
+- Production verification, `BEGIN … ROLLBACK`, no residue: resolved limits read
+  back per workspace (DEMO Premium `-1/-1/-1/50`; Oak and EVALORA Platform on free
+  `5/2/100/3`). Simulating an ordinary authenticated teacher, five quizzes
+  inserted and the sixth was refused with "This workspace has reached its plan
+  limit for quizzes (5)…"; simulating the platform owner, seven inserted against
+  a limit of five. Afterwards 3 organisations and 44 quizzes — no probe rows.
+- **Consequence to decide, not a defect:** Oak International School holds 42
+  quizzes, 14 examinations and 1,064 questions with no subscription, so it
+  resolves to free limits. Its only member is the `super_admin` owner, who is
+  unmetered, so nothing is blocked today; staff who are not the owner could not
+  create content there until a plan is assigned. Assigning Oak a plan is a
+  commercial decision and was deliberately left to the owner.
+- **Not enforced here, and not claimed:** `max_participants_per_session` (a
+  live-session admission rule, not a row count), `max_classes` / `max_students`
+  (both default to unlimited; wire with the institutional rollout) and
+  `storage_mb` (needs a file-size ledger that does not exist). Feature gates such
+  as `proctoring` remain action-layer checks.
+- **Not verified:** the authenticated browser experience of hitting a limit and
+  upgrading — no Super Admin credential is available in this environment.
