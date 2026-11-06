@@ -277,7 +277,8 @@ export async function adminReviewIncident(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   if (!["open", "valid", "invalid", "investigating"].includes(status)) redirect("/admin/proctoring");
-  await admin.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id }).eq("id", id);
+  const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
+  await admin.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", id);
   await audit(`incident.${status}`, "proctoring_incidents", id);
   revalidatePath("/admin/proctoring");
   redirect("/admin/proctoring?saved=1");

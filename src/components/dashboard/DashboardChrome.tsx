@@ -19,6 +19,7 @@ import {
   Menu,
   PenSquare,
   Settings,
+  ShieldCheck,
   Users,
   X,
 } from "lucide-react";
@@ -42,6 +43,7 @@ const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon
       { href: "/dashboard/quizzes", label: "Quiz Studio", icon: PenSquare },
       { href: "/dashboard/questions", label: "Question Bank", icon: Library },
       { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2 },
+      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck },
       { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
     ],
   },

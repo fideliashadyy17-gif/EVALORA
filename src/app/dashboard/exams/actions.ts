@@ -296,17 +296,26 @@ export async function reviewIncident(formData: FormData) {
   const status = String(formData.get("status") ?? "");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)) redirect("/dashboard/exams");
-  const back = `/dashboard/exams/${examId}`;
+  // The review console and the exam page share this action; only a known,
+  // same-application destination is honoured.
+  const back = String(formData.get("return_to") ?? "") === "/dashboard/proctoring"
+    ? "/dashboard/proctoring"
+    : `/dashboard/exams/${examId}`;
   if (!["open", "investigating"].includes(expected) || !["valid", "invalid", "investigating"].includes(status) || status === expected) redirect(`${back}?incident_error=invalid`);
   const supabase = await createClient();
   const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
   if (examError || !exam) redirect("/dashboard/exams?e=incident");
+  // The reviewer narrative is stored with the decision; the database trigger
+  // (migration 0035) copies it into the append-only review history so the
+  // reasoning survives even if the observation is later redacted by retention.
+  const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
   const { data: incident, error } = await supabase.from("proctoring_incidents")
-    .update({ status, reviewed_by: ctx.user.id }).eq("id", incidentId).eq("exam_id", examId).eq("status", expected).select("id").maybeSingle();
+    .update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", incidentId).eq("exam_id", examId).eq("status", expected).select("id").maybeSingle();
   if (error || !incident) redirect(`${back}?incident_error=review`);
   revalidatePath(back);
-  revalidatePath(`${back}/proctor`);
-  redirect(`${back}?incident_ok=reviewed`);
+  revalidatePath(`/dashboard/exams/${examId}`);
+  revalidatePath(`/dashboard/exams/${examId}/proctor`);
+  redirect(back === "/dashboard/proctoring" ? `${back}?ok=reviewed` : `${back}?incident_ok=reviewed`);
 }
 
 /** Limited organizer invitation controls. Other advanced settings remain in the global console. */

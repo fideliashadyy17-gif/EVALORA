@@ -2,6 +2,7 @@ import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
 import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/platform";
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { ensureProctoringRoom, recordRoomEvents } from "@/lib/proctoring";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { AccessToken } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
@@ -97,6 +98,24 @@ export async function POST(request: Request) {
     const ent = await getEntitlementFor(supabase, ctx, exam.organization_id);
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
+  }
+
+  // Persist the supervision room and the join event. The room row is the
+  // anchor for join/leave evidence and for the retention lifecycle; recording
+  // it here means every media grant is attributable even if the supervisor's
+  // browser never loads the grid.
+  const room = await ensureProctoringRoom(admin, exam, sessionCtx?.user.id ?? null);
+  if (room) {
+    await recordRoomEvents(admin, [
+      {
+        room_id: room.id,
+        organization_id: exam.organization_id,
+        exam_id: exam.id,
+        participant_identity: identity,
+        event: "joined",
+        detail: { role, can_publish: canPublish, ttl_seconds: tokenTtl },
+      },
+    ]);
   }
 
   const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: tokenTtl });
