@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/Logo";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
+import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
 import { ExamSaveQueue, type ExamQueueState } from "@/lib/examSaveQueue";
@@ -20,7 +21,16 @@ interface ExamState {
   attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
-    result: { is_correct: boolean | null; points_awarded: number | null; explanation: string | null; explanation_doc?: RichDoc | null } | null;
+    result: {
+      is_correct: boolean | null;
+      points_awarded: number | null;
+      answered?: boolean;
+      selected_option_ids?: string[];
+      correct_option_ids?: string[];
+      explanation: string | null;
+      explanation_doc?: RichDoc | null;
+    } | null;
+    reveal?: { correct_option_ids: string[]; summary: string[] } | null;
   })[];
 }
 
@@ -71,6 +81,25 @@ function CandidateVideoStatus({ onRetry, mediaError }: { onRetry: () => void; me
     {(connection === "disconnected" || mediaError) && <Button variant="outline" className="w-full text-xs" onClick={onRetry}>Retry video connection</Button>}
     <LocalCamera />
   </div>;
+}
+
+/** Glyph, colour and label for one question in the post-submission navigator. */
+function resultMark(result: { is_correct: boolean | null; answered?: boolean }) {
+  if (result.answered === false) return { glyph: "–", tone: "bg-ink/50", label: "not answered, 0 marks" };
+  if (result.is_correct === true) return { glyph: "✓", tone: "bg-evergreen-600", label: "correct" };
+  if (result.is_correct === false) return { glyph: "✗", tone: "bg-red-600", label: "incorrect" };
+  return { glyph: "…", tone: "bg-amber-500", label: "awaiting manual marking" };
+}
+
+/**
+ * Colour for a result panel. A blank question is neutral, not a failure: it is
+ * simply worth zero marks and its worked solution is still worth reading.
+ */
+function resultTone(result: { is_correct: boolean | null; answered?: boolean }): string {
+  if (result.answered === false) return "border border-evergreen-900/15 bg-white text-ink";
+  if (result.is_correct === true) return "bg-evergreen-50 text-evergreen-900";
+  if (result.is_correct === false) return "bg-red-50 text-red-900";
+  return "bg-amber-50 text-amber-900";
 }
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
@@ -275,6 +304,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const submitted = attempt.status !== "in_progress";
   const remaining = Math.max(0, (new Date(attempt.deadline).getTime() - (now + offset.current)) / 1000);
   const current = questions[index];
+  const currentMarkings = optionMarkings(current?.result ?? null);
+  const currentKeyLine = answerKeyLine(current?.reveal?.summary);
+  const showCorrige = submitted && attempt.results_published;
+  const answeredCount = questions.filter((q) => q.result && q.result.answered !== false).length;
+  const correctCount = questions.filter((q) => q.result?.is_correct === true).length;
 
   const pct = attempt.score !== null && attempt.max_score ? (attempt.score / attempt.max_score) * 100 : null;
 
@@ -319,12 +353,15 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </Card>
           )}
           <Card className="p-4">
-            <p className="mb-3 text-sm font-semibold text-evergreen-950">Questions</p>
+            <p className="mb-3 text-sm font-semibold text-evergreen-950">
+              {showCorrige ? `Corrigé · ${questions.length} questions` : "Questions"}
+            </p>
             <div className="flex flex-wrap gap-1.5">
               {questions.map((q, i) => (
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
+                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : ""}`}
                   className={cn(
                     "relative flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition",
                     i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
@@ -332,10 +369,27 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 >
                   {i + 1}
                   {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
+                  {q.result && (
+                    <span
+                      aria-hidden
+                      className={cn(
+                        "absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white",
+                        resultMark(q.result).tone,
+                      )}
+                    >
+                      {resultMark(q.result).glyph}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
-            <p className="mt-3 text-xs text-ink-soft" aria-live="polite">{savedIds.size} of {questions.length} answers confirmed by the server.</p>
+            {showCorrige ? (
+              <p className="mt-3 text-xs text-ink-soft">
+                {correctCount} correct · {answeredCount} answered · {questions.length - answeredCount} left blank (0 marks)
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-ink-soft" aria-live="polite">{savedIds.size} of {questions.length} answers confirmed by the server.</p>
+            )}
             <p className="mt-1 text-xs text-ink-soft" aria-live="polite">
               {queueState.pending ? `${queueState.pending} answer(s) awaiting confirmation${queueState.syncing ? " · saving…" : ""}.` : "No answer saves waiting."}
             </p>
@@ -366,7 +420,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   <Badge tone={(pct ?? 0) >= exam.pass_mark_percent ? "green" : "red"} className="mt-2 px-3 py-1">
                     {(pct ?? 0) >= exam.pass_mark_percent ? "PASS" : "Below pass mark"} · pass mark {exam.pass_mark_percent}%
                   </Badge>
-                  <p className="mt-3 text-sm text-ink-soft">Use the question navigator to review each question with its result and explanation.</p>
+                  <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and the official explanation. Blank answers score 0 and are shown too.</p>
                 </div>
               ) : (
                 <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
@@ -402,6 +456,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 submitLabel="Save answer"
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
                 onDirtyChange={setAnswerDirty}
+                markings={currentMarkings}
               />
 
               {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}
@@ -411,15 +466,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               {draftWarning && <p role="alert" className="mt-2 text-sm text-red-700">Save this answer or discard the changes before submitting.</p>}
 
               {current.result && (
-                <div className={`mt-5 rounded-xl p-4 text-sm ${current.result.is_correct === true ? "bg-evergreen-50 text-evergreen-900" : current.result.is_correct === false ? "bg-red-50 text-red-900" : "bg-amber-50 text-amber-900"}`}>
-                  <p className="font-semibold">
-                    {current.result.is_correct === null
-                      ? "Awaiting manual marking by your examiner."
-                      : `${current.result.is_correct ? "Correct" : "Incorrect"} · ${current.result.points_awarded ?? 0} / ${current.points} points`}
-                  </p>
+                <div className={`mt-5 rounded-xl p-4 text-sm ${resultTone(current.result)}`}>
+                  <p className="font-semibold">{resultLabel(current.result, current.points)}</p>
+                  {currentKeyLine && <p className="mt-1 font-medium">{currentKeyLine}</p>}
                   {(current.result.explanation || current.result.explanation_doc) && (
                     <div className="mt-1"><RichContent doc={current.result.explanation_doc ?? null} text={current.result.explanation ?? ""} /></div>
                   )}
+                  {/* The marking scheme is published for every question, so a blank one is revision material too. */}
                 </div>
               )}
 

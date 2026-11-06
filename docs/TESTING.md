@@ -503,3 +503,30 @@ The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each
 | Grade 9 examination | open, 60 minutes, 50-item paper, Grade 9 — MYP 4 class, code `MYP4-STAT-2026`, results released on submission, both shuffles off |
 | Grade 10 option text repair | 200 of 200 options now carry their printed text (`content_doc`) |
 | Grade 10 figure repair | 2 of 2 figure questions now carry their drawing |
+
+## Complete corrigé after submission
+
+### What changed
+
+- `src/lib/examResults.ts` (new): pure post-submission rules — `buildExamResult`, `optionMarkings`, `resultLabel`, `answerKeyLine`, `selectedOptionIds`.
+- `src/app/api/exam/state/route.ts`: after submission **and** publication, every question carries `reveal` (correct option ids + summary) and a `result`, whether or not the candidate answered it.
+- `src/components/QuestionRunner.tsx`: optional `markings` prop — the correct option is green with a ✓, an option the candidate chose that is wrong is red with a ✗.
+- `src/app/take-exam/[attemptId]/TakeExamClient.tsx`: prints "Correct answer: B", the explanation, a neutral panel for blanks, the blank count in the sidebar, and a ✓ / ✗ / – badge on every question in the navigator.
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-exam-results.mjs` | 37 | pass — blank question is `answered: false`, `is_correct: false`, `points_awarded: 0` and labelled "Not answered · 0 / 1 point" (never "Incorrect"); only the correct option and a chosen-wrong option are marked; single and multi-select payloads; points coerced from the database string; manual-marking answers still "Awaiting manual marking"; the state route builds a result for every row and only behind `submitted && resultsPublished` |
+| `node scripts/test-summative-assessments.mjs` | 64 | pass — unchanged |
+| `npx tsc --noEmit` | — | clean |
+| `npm run build` | — | clean |
+
+### Verified in production
+
+| Check | Result |
+|---|---|
+| Submitted Grade 9 attempt with 2 answers | state returns results for **50 of 50** questions |
+| Blank questions | `answered: false`, `is_correct: false`, `points_awarded: 0`, explanation still present |
+| Answered questions | correct answer revealed only after publication; chosen-wrong option identifiable from `correct_option_ids` |
+| Before submission | no `result`, no `reveal`, no `is_correct` in the payload |

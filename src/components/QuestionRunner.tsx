@@ -45,6 +45,7 @@ export function QuestionRunner({
   disabled: initiallyDisabled = false,
   initial,
   submitLabel = "Submit answer",
+  markings,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -53,7 +54,18 @@ export function QuestionRunner({
   disabled?: boolean;
   initial?: Record<string, unknown> | null;
   submitLabel?: string;
+  /** Post-submission marking: option id → "correct" | "wrong". */
+  markings?: Record<string, "correct" | "wrong">;
 }) {
+  /** Marked options win over the neutral/selected styling after submission. */
+  const optionClass = (id: string, idle: string, picked: string) => {
+    const mark = markings?.[id];
+    if (mark === "correct") return "border-evergreen-600 bg-evergreen-50 text-evergreen-950";
+    if (mark === "wrong") return "border-red-400 bg-red-50 text-red-900";
+    return selected.includes(id) ? picked : idle;
+  };
+  const optionMark = (id: string) => markings?.[id];
+
   const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
   const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.left === "string" && typeof item.right === "string") && new Set(value.map((item) => item.left)).size === value.length;
   const selectedFromSaved = () => isStringArray(initial?.option_ids) ? initial.option_ids : typeof initial?.option_id === "string" ? [initial.option_id] : [];
@@ -135,13 +147,17 @@ export function QuestionRunner({
                 onClick={() => { changed(); setSelected([o.id]); emit({ option_id: o.id }); }}
                 className={cn(
                   "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
-                  selected.includes(o.id)
-                    ? "border-evergreen-700 bg-evergreen-700 text-white shadow"
-                    : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50",
+                  optionClass(o.id, "border-evergreen-900/25 bg-white hover:border-evergreen-600/60 hover:bg-evergreen-50", "border-evergreen-700 bg-evergreen-700 text-white shadow"),
                 )}
               >
                 <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-extrabold", selected.includes(o.id) ? "bg-white text-evergreen-800" : "bg-gold-400 text-evergreen-950")}>{String.fromCharCode(65 + i)}</span>
                 <span className="min-w-0 flex-1"><RichContent doc={o.content_doc ?? null} text={o.label} /></span>
+                {optionMark(o.id) === "correct" && (
+                  <span aria-label="Correct answer" title="Correct answer" className="mt-0.5 shrink-0 font-bold text-evergreen-700">✓</span>
+                )}
+                {optionMark(o.id) === "wrong" && (
+                  <span aria-label="Your answer, incorrect" title="Your answer, incorrect" className="mt-0.5 shrink-0 font-bold text-red-600">✗</span>
+                )}
               </button>
             ))}
           </div>
@@ -160,13 +176,17 @@ export function QuestionRunner({
                   }}
                   className={cn(
                     "flex min-h-14 items-start gap-3 rounded-xl border-2 px-4 py-3.5 text-left font-medium transition disabled:opacity-60",
-                    selected.includes(o.id)
-                      ? "border-evergreen-700 bg-evergreen-100 text-evergreen-950"
-                      : "border-evergreen-900/25 bg-white hover:border-evergreen-600/60",
+                    optionClass(o.id, "border-evergreen-900/25 bg-white hover:border-evergreen-600/60", "border-evergreen-700 bg-evergreen-100 text-evergreen-950"),
                   )}
                 >
                   <span className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-sm font-extrabold", selected.includes(o.id) ? "bg-evergreen-700 text-white" : "bg-gold-400 text-evergreen-950")}>{String.fromCharCode(65 + i)}</span>
                   <span className="min-w-0 flex-1"><RichContent doc={o.content_doc ?? null} text={o.label} /></span>
+                {optionMark(o.id) === "correct" && (
+                  <span aria-label="Correct answer" title="Correct answer" className="mt-0.5 shrink-0 font-bold text-evergreen-700">✓</span>
+                )}
+                {optionMark(o.id) === "wrong" && (
+                  <span aria-label="Your answer, incorrect" title="Your answer, incorrect" className="mt-0.5 shrink-0 font-bold text-red-600">✗</span>
+                )}
                 </button>
               ))}
             </div>
