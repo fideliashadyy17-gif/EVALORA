@@ -307,3 +307,108 @@ all from the same route so a single browser print produces one PDF.
   print-to-PDF; there is no server-side PDF generation, no scanning, no candidate
   matching and no paper-mark capture, and the packets only include candidates
   recorded against the examination.
+
+## Single sign-on (Google) and the provisioning guard
+
+### What ships inert
+
+- `src/lib/sso.ts` resolves which providers the deployment may offer. With no
+  flag set, `enabledSsoProviders()` is empty and `/login` renders exactly what it
+  rendered before SSO existed: no divider, no button, no dead end. A button that
+  cannot complete a sign-in is worse than no button — the same fail-closed rule
+  AI marking follows with no credential.
+- Enabling Google needs **both** halves: a Google Cloud OAuth client whose
+  authorized redirect URI is
+  `https://nqxqisjtbfsratgztmch.supabase.co/auth/v1/callback`, pasted into
+  Supabase → Authentication → Providers → Google, **and**
+  `NEXT_PUBLIC_GOOGLE_SSO_ENABLED=true` in the deployment environment. A
+  declared-but-blank `NEXT_PUBLIC_GOOGLE_SSO_CLIENT_ID` mirror fails closed, so a
+  half-configured environment stops advertising a dead sign-in method.
+- `/dashboard/settings` shows a **Single sign-on** card listing each provider as
+  *Enabled* or *Not configured*, with the school portal link when it is live and
+  the exact configuration steps when it is not.
+
+### Where the round trip goes
+
+- The start action (`startSsoSignIn`) re-checks the provider server-side — the
+  hidden field is user input, the deployment flag is the authority — then calls
+  `signInWithOAuth` with a callback URL built from the request's own host, so a
+  sign-in begun on a school subdomain returns to that subdomain.
+- A Host header is attacker-controlled, so the origin is only accepted when the
+  hostname is loopback, the configured `NEXT_PUBLIC_ROOT_DOMAIN` (or a subdomain
+  of it), or a known platform suffix; anything else falls back to
+  `NEXT_PUBLIC_APP_URL`, and no usable fallback means SSO is refused instead of
+  redirecting a browser to an untrusted origin. The protocol cannot be
+  downgraded by `x-forwarded-proto`. Tenant subdomains that are not under the
+  configured root domain need `NEXT_PUBLIC_ROOT_DOMAIN` set to be accepted.
+- `next` is filtered through the existing `safeLocalPath` in both the action and
+  the page, so an off-site or protocol-relative destination is dropped.
+
+### Provisioning policy: deny by default
+
+- `src/lib/ssoSession.ts` checks the freshly authenticated identity against
+  `profiles`: no row, or a non-active row, and the session is **destroyed**
+  (`signOut()`) before the redirect, so an uninvited Google account never holds a
+  live session. The user is sent to `?error=sso_unprovisioned` (or `?error=suspended`)
+  with copy that says to ask a school administrator for an invitation.
+- Membership, roles and organization scope are untouched: SSO authenticates a
+  person, it never creates a workspace identity. The profile read prefers the
+  service-role client so the answer cannot depend on how the `profiles` RLS
+  policy is written, and falls back to the session client when no service key is
+  configured.
+- The callback marker `?sso=<provider>` is what enables the guard. Email
+  confirmation and password recovery travel through the same route without it and
+  keep their previous behaviour (`?next=/reset-password` still reaches the form).
+- Each attempt writes `audit_logs.action = 'auth.sso_signin'` with the provider,
+  the **masked** email (`a***@school.edu`) and the outcome (`provisioned`,
+  `denied_no_profile`, `denied_inactive`). `actor_id` is null for a denial with no
+  profile, because `actor_id` references `profiles(id)` and a profile-less auth
+  user would violate the foreign key. An audit failure is swallowed — it must
+  never block a legitimate sign-in.
+
+### Verification
+
+- `scripts/test-sso.mjs` **21/21** — pure gate (empty unless explicitly on;
+  ambiguous values off; blank client-id mirror fails closed), origin allowlist
+  (platform host, school subdomain, loopback, forwarded-host chain, look-alike
+  suffixes, injection strings, no proto downgrade), callback URL marker and
+  destination encoding, email masking, error copy.
+- `scripts/test-sso-flow.mjs` **14/14** — the real action and the real callback
+  handler against a stubbed Supabase client: no provider attempt when SSO is off
+  or the provider is unknown, no attempt when no trustworthy origin exists,
+  hostile `next` values dropped, provider errors returning to the form,
+  provisioned identities reaching `/auth/resolve` with a masked audit row,
+  no-profile and inactive identities signed out *before* the redirect with
+  `Cache-Control: private, no-store`, the email-confirmation leg doing no
+  provisioning lookup at all, recovery links preserved, failed code exchange
+  returning to sign-in, and an audit outage not blocking a valid sign-in.
+- `scripts/test-sso-login-page.mjs` **8/8** — the real server page and the real
+  client form: an unconfigured deployment shows no SSO control whatsoever, a
+  configured one shows `Continue with Google` posting to the action, denial copy
+  names the next step, non-SSO errors keep their own copy, unknown error codes
+  render no banner, a local `next` reaches the hidden field while a hostile one
+  does not, and the registered/reset notices survive the move to a server page.
+- Full suite: **62 pass, 3 environment-only failures** (`test-exam-browser` and
+  `test-printable-paper-browser` need the absent `playwright-core`;
+  `test-profile-status-security` cannot exercise ownership-dependent DDL in
+  PGlite). `tsc --noEmit`, targeted `eslint` and `next build` clean, with
+  `/login`, `/auth/callback` and `/dashboard/settings` in the route manifest.
+- Production audit shape checked in `BEGIN … ROLLBACK` against
+  `audit_logs`: a denial row with `actor_id` null and a provisioned row with a
+  real profile actor both insert, and 0 probe rows persisted. No schema change was
+  needed — `audit_logs` already allowed a null actor.
+
+### Not verified, and why
+
+- **No real Google sign-in has been performed.** There is no OAuth client
+  credential in this project and no Supabase provider entry, so the flag stays
+  off and the feature stays inert. The code path is exercised only against stubs.
+- **School-subdomain SSO is not proven in production.** `src/lib/tenant.ts`
+  deliberately excludes `.vercel.app` from tenant suffixes, so tenant hosts
+  resolve only once a wildcard custom domain and `NEXT_PUBLIC_ROOT_DOMAIN` exist.
+  The host-preserving behaviour is unit-tested; a real `<school>.domain` sign-in
+  cannot be smoke-tested on the current platform hosts.
+- Supabase creates the auth user during the provider round trip, before this code
+  runs. Denying access removes the session, not the auth record: an uninvited
+  account exists but can do nothing, and gets the same denial on every retry. A
+  `before-user-created` hook would be needed to prevent the record itself.
