@@ -439,3 +439,24 @@ Residue afterwards: 0 probe pools, 0 published pools, 1 permanent audit row, fla
 ### Not verified
 
 No Elimination pool has actually been published — the event holds none. Publication is now permitted, not performed. The count gate is one condition among several; a pool must still be complete, valid, single-class, curriculum-valid and approved-only.
+
+## Sommetisation Assessment — Grade 10 (content) and the notification bell popover
+
+### What changed
+
+- `supabase/migrations/0041_sommetisation_assessment_grade10.sql` seeds 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`.
+- `src/components/dashboard/NotificationBell.tsx` + `src/lib/notifications.ts` replace the sidebar notification link with a floating popover over the same `notifications` rows; `DashboardChrome` renders it in the sidebar and in the mobile topbar.
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-sommetisation-assessment.mjs` | 33 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration |
+| `node scripts/test-notification-popover.mjs` | 51 | pass — 15 helper cases executed, 36 component/chrome behaviour assertions |
+| Full sweep (`scripts/test-*.mjs`) | 67 suites | 64 pass, 3 environment-only failures (2 Playwright browser suites without a browser binary, 1 PGlite ownership DDL) |
+| `npx tsc --noEmit` | — | clean |
+| `npx eslint src/components/dashboard src/lib/notifications.ts` | — | clean |
+
+### Not covered by automation
+
+Clicking the bell, marking a notification read and the anonymous student run need a live session or a deployed URL; the production evidence for both is recorded in the increment sections above and in the follow-up documentation commit.
