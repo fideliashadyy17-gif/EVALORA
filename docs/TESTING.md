@@ -552,3 +552,35 @@ The Grade 9 PDF holds no raster images: all 38 figures are vector drawings. Each
 ### Not claimed
 
 - No automated browser test: the page has no browser runner in this environment. The component is covered by a React render test; the print output is covered by the shared print stylesheet, not by a rendered PDF.
+
+## `/exam` entry page
+
+### What changed
+
+- `src/app/exam/page.tsx` (new): `/exam` and `/exam/` answered **404** in production; the page now accepts a pasted invitation link, a bare invitation token or an access code.
+- `src/lib/examEntry.ts` (new): pure parsing rules, unit-testable without a browser or database.
+
+### Behaviour
+
+| Input | Result |
+|---|---|
+| `https://…/exam/join/<token>` | redirect to that join page (with its `code` if present) |
+| bare `<token>` | redirect to `/exam/join/<token>` |
+| access code (`MYP4-STAT-2026`) | SHA-256 looked up against open, shared-link assessments; redirect only on exactly one match |
+| anything else | the page explains, with the same copy whatever the reason |
+
+### Automated evidence
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-exam-entry.mjs` | 27 | pass — link/token/code parsing, code normalisation, rejection of non-examination and `javascript:` URLs, extra parameters dropped, destinations always internal, hash-only lookup restricted to open shared-link assessments, single-match redirect, no question/answer fields, GET form, labelled input |
+| `npx tsc --noEmit` | — | clean |
+| `npm run build` | — | clean |
+
+### Production evidence
+
+| Check | Before | After |
+|---|---|---|
+| `GET /exam` | 404 | 200, entry page |
+| `GET /exam/?code=MYP4-STAT-2026` | 404 | resolves to the Grade 9 join page |
+| `GET /exam/join/3f867709-…` | 200 | 200, unchanged |
