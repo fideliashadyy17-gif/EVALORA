@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { ExamCorrige } from "@/components/ExamCorrige";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
 import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
 import { RichContent } from "@/components/RichContent";
@@ -124,6 +125,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     if (!dirty) setDraftWarning(false);
   }, []);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // One-page corrigé: every question of the paper, answered or left blank.
+  const [corrigeAll, setCorrigeAll] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
@@ -314,7 +317,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const examBody = (
     <div className="min-h-screen bg-cream">
-      <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper">
+      <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
@@ -336,8 +339,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </div>
       </header>
 
-      <main className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]">
-        <aside className="space-y-4 lg:sticky lg:top-24 lg:h-fit">
+      <main className={cn("mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]", corrigeAll && "block")}>
+        <aside className={cn("space-y-4 lg:sticky lg:top-24 lg:h-fit print:hidden", corrigeAll && "hidden")}>
           {exam.proctoring && !submitted && (
             <Card className="space-y-2 p-3">
               <p className="text-xs font-semibold text-evergreen-900">Video supervision</p>
@@ -407,7 +410,24 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </aside>
 
         <section>
-          {submitted ? (
+          {corrigeAll && showCorrige ? (
+            <ExamCorrige
+              exam={{
+                title: exam.title,
+                candidateName:
+                  state.candidate.first_name || state.candidate.last_name
+                    ? `${state.candidate.first_name ?? ""} ${state.candidate.last_name ?? ""}`.trim()
+                    : state.candidate.name,
+                score: attempt.score,
+                maxScore: attempt.max_score,
+                passMarkPercent: exam.pass_mark_percent,
+              }}
+              questions={questions}
+              onBack={() => setCorrigeAll(false)}
+            />
+          ) : null}
+
+          {submitted && !corrigeAll ? (
             <Card className="p-7 text-center">
               {queueState.pending > 0 && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{queueState.pending} answer(s) were not confirmed before submission or expiry. Contact your invigilator; do not close this tab.</p>}
               <p className="text-5xl">📋</p>
@@ -421,6 +441,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     {(pct ?? 0) >= exam.pass_mark_percent ? "PASS" : "Below pass mark"} · pass mark {exam.pass_mark_percent}%
                   </Badge>
                   <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and the official explanation. Blank answers score 0 and are shown too.</p>
+                  <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
+                    <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
+                    <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
+                  </div>
                 </div>
               ) : (
                 <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
@@ -428,7 +452,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </Card>
           ) : null}
 
-          {current && (
+          {current && !corrigeAll && (
             <Card className={`${submitted ? "mt-5" : ""} p-6 sm:p-7`}>
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">Question {index + 1} of {questions.length}</Badge>
@@ -465,7 +489,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               }}>Discard unsaved changes</Button>}
               {draftWarning && <p role="alert" className="mt-2 text-sm text-red-700">Save this answer or discard the changes before submitting.</p>}
 
-              {current.result && (
+              {current.result && !corrigeAll && (
                 <div className={`mt-5 rounded-xl p-4 text-sm ${resultTone(current.result)}`}>
                   <p className="font-semibold">{resultLabel(current.result, current.points)}</p>
                   {currentKeyLine && <p className="mt-1 font-medium">{currentKeyLine}</p>}
