@@ -444,19 +444,33 @@ No Elimination pool has actually been published — the event holds none. Public
 
 ### What changed
 
-- `supabase/migrations/0041_sommetisation_assessment_grade10.sql` seeds 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`.
+- `supabase/migrations/0041_sommetisation_assessment_questions_1_25.sql`, `0042_sommetisation_assessment_questions_26_50.sql`, `0043_sommetisation_assessment_options.sql` and `0044_sommetisation_assessment_exam.sql` seed 50 single-choice questions (200 options, one keyed answer each), one published quiz holding all 50 in printed order at 1 mark each, and one open examination attached to the Grade 10 — MYP 5 class with a shared link, an access code and `results_published = true`. Each file is separately idempotent, so re-running any of them is a no-op.
 - `src/components/dashboard/NotificationBell.tsx` + `src/lib/notifications.ts` replace the sidebar notification link with a floating popover over the same `notifications` rows; `DashboardChrome` renders it in the sidebar and in the mobile topbar.
 
 ### Automated evidence
 
 | Suite | Checks | Result |
 |---|---|---|
-| `node scripts/test-sommetisation-assessment.mjs` | 33 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration |
+| `node scripts/test-sommetisation-assessment.mjs` | 35 | pass — 50 questions, 200 options, 1 correct per question, all 50 keyed letters matched to the document key, printed order, 1 mark, exam configuration, idempotency guards |
 | `node scripts/test-notification-popover.mjs` | 51 | pass — 15 helper cases executed, 36 component/chrome behaviour assertions |
 | Full sweep (`scripts/test-*.mjs`) | 67 suites | 64 pass, 3 environment-only failures (2 Playwright browser suites without a browser binary, 1 PGlite ownership DDL) |
 | `npx tsc --noEmit` | — | clean |
 | `npx eslint src/components/dashboard src/lib/notifications.ts` | — | clean |
 
-### Not covered by automation
+### Live production verification (deployed URL, anonymous)
 
-Clicking the bell, marking a notification read and the anonymous student run need a live session or a deployed URL; the production evidence for both is recorded in the increment sections above and in the follow-up documentation commit.
+The anonymous candidate flow was exercised against `https://evalora-six.vercel.app/exam/join/3ec9e83b-6286-4885-b178-12bc8dff8bb4` with the code `MYP5-SEQ-2026`:
+
+| Step | Endpoint | Result |
+|---|---|---|
+| Wrong access code | `POST /api/exam/link-access` | 403 — *"That access code is not correct for this examination."* |
+| Admission | `POST /api/exam/link-access` | 200 — attempt created, token issued, deadline 60 minutes out |
+| Exam state before submission | `GET /api/exam/state` | 200 — 50 questions; no `is_correct` key, no `correct_option_ids`, every per-question `result` is `null` (no answer leakage) |
+| Autosave | `POST /api/exam/save` × 3 | 200 — two correct answers (Q1 B, Q2 D) and one deliberately wrong (Q3 A) persisted |
+| Submit | `POST /api/exam/submit` | 200 — `score: 2`, `max_score: 50`, `results_published: true`, `auto_submitted: false` (graded server-side, not from the client) |
+| Exam state after submission | `GET /api/exam/state` | 200 — a result for all 50 questions, each with `is_correct`, `points_awarded` and a worked explanation |
+| Repeat admission, same guest key | `POST /api/exam/link-access` | 409 — *"This attempt has already been submitted. Duplicate attempts are not permitted."* |
+
+The verification attempt, its three answers and the candidate record were deleted afterwards; the examination, its 50 questions and its 200 options were not modified by the run.
+
+Not covered by automation or by this run: clicking the bell and marking a notification read, which need an authenticated dashboard session.
