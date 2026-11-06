@@ -7,32 +7,48 @@ import { NextResponse } from "next/server";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const attemptId = searchParams.get("attempt_id");
-  const token = searchParams.get("token");
-  if (!attemptId || !token) return NextResponse.json({ error: "Missing credentials." }, { status: 400 });
+  // Prefer the header so the current client does not put attempt tokens in
+  // URLs, logs or browser history. The query parameter remains supported for
+  // already-deployed clients until a coordinated deprecation is possible.
+  const authorization = request.headers.get("authorization");
+  const token = authorization === null
+    ? searchParams.get("token")
+    : /^Bearer\s+([^\s]+)$/i.exec(authorization)?.[1] ?? null;
+  const headers = { "Cache-Control": "private, no-store" };
+  if (!attemptId || !token) return NextResponse.json({ error: "Missing credentials." }, { status: 400, headers });
 
   const admin = createAdminClient();
   const ctx = await loadAttemptContext(admin, attemptId, token);
-  if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404 });
+  if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers });
   const { attempt, exam, candidate } = ctx;
+  if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
-  const deadline = attemptDeadline(exam, attempt.started_at);
+  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
 
-  // Auto-submit when the server deadline has passed.
-  if (attempt.status === "in_progress" && new Date() > deadline) {
-    const rows = await attemptRows(admin, exam, attempt);
-    const { score, max } = await gradeAttempt(admin, attempt.id, rows);
-    await admin
-      .from("exam_attempts")
-      .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
-      .eq("id", attempt.id);
-    await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
-    attempt.status = "auto_submitted";
-    attempt.score = score;
-    attempt.max_score = max;
+  let rows: Awaited<ReturnType<typeof attemptRows>>;
+  try {
+    rows = await attemptRows(admin, exam, attempt);
+    // Auto-submit only after the paper and saved answers were loaded and all
+    // grading writes succeeded. These operations are not yet transactional.
+    if (attempt.status === "in_progress" && new Date() > deadline) {
+      const { score, max } = await gradeAttempt(admin, attempt.id, rows);
+      const { data: closed, error: closeError } = await admin
+        .from("exam_attempts")
+        .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
+        .eq("id", attempt.id).eq("status", "in_progress").select("id").maybeSingle();
+      if (closeError || !closed) return NextResponse.json({ error: "Could not confirm the examination submission. Reload or contact your invigilator." }, { status: 500, headers });
+      const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
+      if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500, headers });
+      attempt.status = "auto_submitted";
+      attempt.score = score;
+      attempt.max_score = max;
+    }
+  } catch {
+    return NextResponse.json({ error: "Examination data or grading is unavailable. Reload or contact your invigilator." }, { status: 500, headers });
   }
 
-  const rows = await attemptRows(admin, exam, attempt);
-  const { data: saved } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
+  const { data: saved, error: savedError } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
+  if (savedError || !saved) return NextResponse.json({ error: "Saved answers could not be loaded. Reload or contact your invigilator." }, { status: 500, headers });
   const savedByQ = new Map((saved ?? []).map((a) => [a.question_id, a]));
 
   const submitted = attempt.status !== "in_progress";
@@ -49,7 +65,13 @@ export async function GET(request: Request) {
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
     },
-    candidate: { name: candidate.full_name, ref: candidate.candidate_ref },
+    candidate: {
+      name: candidate.full_name,
+      ref: candidate.candidate_ref,
+      first_name: candidate.first_name ?? null,
+      last_name: candidate.last_name ?? null,
+      class_id: candidate.class_id ?? null,
+    },
     attempt: {
       id: attempt.id,
       status: attempt.status,
@@ -72,9 +94,9 @@ export async function GET(request: Request) {
         // Correctness is only revealed after submission AND publication.
         result:
           submitted && resultsPublished && s
-            ? { is_correct: s.is_correct, points_awarded: s.points_awarded !== null ? Number(s.points_awarded) : null, explanation: row.questions.explanation }
+            ? { is_correct: s.is_correct, points_awarded: s.points_awarded !== null ? Number(s.points_awarded) : null, explanation: row.questions.explanation, explanation_doc: row.questions.explanation_doc ?? null }
             : null,
       };
     }),
-  });
+  }, { headers });
 }

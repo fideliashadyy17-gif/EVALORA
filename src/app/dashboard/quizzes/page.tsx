@@ -9,7 +9,8 @@ import { deleteQuiz, duplicateQuiz, setQuizStatus, startSession } from "./action
 export const metadata: Metadata = { title: "Quiz Studio" };
 export const dynamic = "force-dynamic";
 
-export default async function QuizzesPage() {
+export default async function QuizzesPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+  const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -26,6 +27,11 @@ export default async function QuizzesPage() {
         subtitle="Assemble quizzes from your question bank, publish them, then run live sessions or attach them to examinations."
         action={<ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink>}
       />
+      {sp.e === "module" && (
+        <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          The Live Quizzes module is temporarily disabled platform-wide by the administrator. Existing sessions are unaffected.
+        </p>
+      )}
       {(quizzes ?? []).length === 0 ? (
         <EmptyState
           title="No quizzes yet"

@@ -1,6 +1,6 @@
 import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime, money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
@@ -29,7 +29,7 @@ export default async function BillingPage({
     supabase.from("plans").select("*").eq("is_active", true).order("sort"),
     supabase.from("payment_requests").select("*, plans(name)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("platform_settings").select("value").eq("key", "payment_instructions").maybeSingle(),
-    getEntitlement(supabase, org.id),
+    getEntitlementFor(supabase, ctx, org.id),
     Promise.all([
       supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
       supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
@@ -59,23 +59,26 @@ export default async function BillingPage({
       )}
       {sp.e && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Something needs attention — please check the form and try again.</p>}
 
-      <Card className="mb-6 bg-evergreen-950 p-6 text-white">
+      <Card className="mb-6 border-evergreen-700/30 bg-evergreen-50 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone="gold" className="px-3 py-1 text-sm">{ent.planName}</Badge>
-          <span className="capitalize text-evergreen-100/85">{ent.status}</span>
-          {ent.trialEndsAt && ent.status === "trialing" && <span className="text-sm text-evergreen-100/70">Trial ends {fmtDate(ent.trialEndsAt)}</span>}
-          {ent.currentPeriodEnd && ent.status === "active" && <span className="text-sm text-evergreen-100/70">Renews / ends {fmtDate(ent.currentPeriodEnd)}</span>}
+          <span className="font-medium capitalize text-ink">{ent.status}</span>
+          {ent.trialEndsAt && ent.status === "trialing" && <span className="text-sm text-ink-soft">Trial ends {fmtDate(ent.trialEndsAt)}</span>}
+          {ent.currentPeriodEnd && ent.status === "active" && <span className="text-sm text-ink-soft">Renews / ends {fmtDate(ent.currentPeriodEnd)}</span>}
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-4">
           {usageRows.map(([label, used, limit]) => (
-            <div key={label} className="rounded-xl bg-white/5 p-3">
-              <p className="text-xs uppercase tracking-wide text-evergreen-100/60">{label}</p>
-              <p className="mt-0.5 font-display text-xl font-semibold">{used} <span className="text-sm font-normal text-evergreen-100/60">/ {limit === -1 ? "∞" : limit}</span></p>
+            <div key={label} className="rounded-xl border border-evergreen-900/10 bg-paper p-3">
+              <p className="text-xs uppercase tracking-wide text-ink-soft">{label}</p>
+              <p className="mt-0.5 font-display text-xl font-semibold text-evergreen-950">{used} <span className="text-sm font-normal text-ink-soft">/ {limit === -1 ? "∞" : limit}</span></p>
             </div>
           ))}
         </div>
-        <p className="mt-3 text-sm text-evergreen-100/75">
+        <p className="mt-3 text-sm text-ink-soft">
           Video proctoring: {ent.limits.proctoring ? "included" : "not included"} · Advanced reports: {ent.limits.advanced_reports ? "included" : "not included"} · Up to {ent.limits.max_participants_per_session === -1 ? "unlimited" : ent.limits.max_participants_per_session} participants per live session
+        </p>
+        <p className="mt-1 text-xs text-ink-soft">
+          Institutional / Enterprise: {ent.limits.institutional ? "included" : "not included"} · Multi-class operations: {ent.limits.multi_class_operations ? "included" : "restricted"} · Centralized resources: {ent.limits.central_asset_management ? "included" : "restricted"} · Configurable limits: {ent.limits.configurable_limits ? "included" : "restricted"} · Classes: {ent.limits.max_classes === -1 ? "unlimited" : ent.limits.max_classes} · Students: {ent.limits.max_students === -1 ? "unlimited" : ent.limits.max_students}
         </p>
       </Card>
 

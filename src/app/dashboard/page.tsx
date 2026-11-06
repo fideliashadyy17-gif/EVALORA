@@ -1,6 +1,6 @@
 import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Library, PenSquare, Radio, Users } from "lucide-react";
@@ -26,7 +26,7 @@ export default async function DashboardPage() {
       supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
     ]);
 
-  const entitlement = await getEntitlement(supabase, org.id);
+  const entitlement = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
     <>
@@ -36,10 +36,10 @@ export default async function DashboardPage() {
         action={<ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink>}
       />
 
-      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 bg-evergreen-950 p-5 text-white">
+      <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 border-evergreen-700/30 bg-evergreen-50 p-5">
         <div className="flex items-center gap-3">
           <Badge tone="gold">{entitlement.planName} plan</Badge>
-          <p className="text-sm text-evergreen-100/85">
+          <p className="text-sm text-ink">
             {entitlement.status === "trialing" && entitlement.trialEndsAt
               ? `Free trial until ${fmtDate(entitlement.trialEndsAt)}`
               : entitlement.status === "active" && entitlement.currentPeriodEnd
@@ -67,7 +67,7 @@ export default async function DashboardPage() {
           {(recentSessions.data ?? []).length === 0 ? (
             <p className="text-sm text-ink-soft">No sessions yet. Publish a quiz, then start a live session from the Quiz Studio.</p>
           ) : (
-            <ul className="divide-y divide-evergreen-900/5">
+            <ul className="divide-y divide-evergreen-900/10">
               {(recentSessions.data ?? []).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-3">
                   <div>
@@ -96,7 +96,7 @@ export default async function DashboardPage() {
           {(upcomingExams.data ?? []).length === 0 ? (
             <p className="text-sm text-ink-soft">No examinations yet. Create one from a published quiz and register your candidates.</p>
           ) : (
-            <ul className="divide-y divide-evergreen-900/5">
+            <ul className="divide-y divide-evergreen-900/10">
               {(upcomingExams.data ?? []).map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3 py-3">
                   <div>

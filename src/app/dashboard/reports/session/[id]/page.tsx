@@ -1,4 +1,4 @@
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
@@ -22,10 +22,10 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
   const [{ data: participants }, { data: answers }, { data: qq }] = await Promise.all([
     supabase.from("session_participants").select("*").eq("session_id", id).order("score", { ascending: false }),
     supabase.from("participant_answers").select("*").eq("session_id", id),
-    supabase.from("quiz_questions").select("id, position, questions(prompt, type, topic, difficulty, points)").eq("quiz_id", session.quiz_id).order("position"),
+    supabase.from("quiz_questions").select("id, position, questions(prompt, prompt_doc, type, topic, difficulty, points)").eq("quiz_id", session.quiz_id).order("position"),
   ]);
 
-  const parts = (participants ?? []).filter((p) => p.status !== "rejected");
+  const parts = (participants ?? []).filter((p) => !["rejected", "blocked"].includes(p.status));
   const allAnswers = answers ?? [];
   const avg = parts.length ? parts.reduce((s, p) => s + Number(p.score), 0) / parts.length : 0;
   const correctCount = allAnswers.filter((a) => a.is_correct === true).length;
@@ -89,7 +89,7 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
             {questionStats.map((q, i) => (
               <div key={i}>
                 <div className="flex items-start justify-between gap-3">
-                  <p className="line-clamp-2 flex-1 text-sm font-medium"><span className="text-ink-soft">Q{i + 1}.</span> <MathText text={q.prompt} /></p>
+                  <p className="line-clamp-2 flex-1 text-sm font-medium"><span className="text-ink-soft">Q{i + 1}.</span> <RichContent doc={(q as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={q.prompt} /></p>
                   {q.pct !== null ? <Badge tone={q.pct >= 70 ? "green" : q.pct >= 40 ? "amber" : "red"}>{q.pct}%</Badge> : <Badge tone="gray">ungraded</Badge>}
                 </div>
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-evergreen-100">

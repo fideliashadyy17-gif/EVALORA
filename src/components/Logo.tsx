@@ -39,7 +39,7 @@ export function Logo({
           <span
             className={cn(
               "mt-0.5 block text-[9px] font-semibold uppercase tracking-[0.28em]",
-              variant === "dark" ? "text-gold-600" : "text-gold-400",
+              variant === "dark" ? "text-gold-700" : "text-gold-400",
             )}
           >
             Assess · Examine · Excel

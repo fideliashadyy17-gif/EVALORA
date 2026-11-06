@@ -2,6 +2,7 @@ import { AuthShell } from "@/components/AuthShell";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { rootDomain, subdomainSuggestions, tenantPortalLabel, validateSubdomain } from "@/lib/tenant";
 import { slugify } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -16,12 +17,27 @@ async function createOrg(formData: FormData) {
   if (!name) redirect("/onboarding?error=1");
 
   const admin = createAdminClient();
-  let slug = slugify(name) || "org";
-  // Ensure unique slug
-  for (let i = 0; i < 5; i++) {
-    const { data: existing } = await admin.from("organizations").select("id").eq("slug", slug).maybeSingle();
-    if (!existing) break;
-    slug = `${slugify(name)}-${Math.random().toString(36).slice(2, 6)}`;
+  // Tenant subdomain: the school's choice when valid/free, otherwise a
+  // generated unique slug. Conflicts return alternatives — never a
+  // silent assignment of somebody else's address.
+  const requested = String(formData.get("subdomain") ?? "").trim();
+  let slug: string;
+  if (requested) {
+    const check = validateSubdomain(requested);
+    const back = `/onboarding?name=${encodeURIComponent(name)}&subdomain=${encodeURIComponent(requested)}&suggest=${encodeURIComponent(subdomainSuggestions(requested || name).join(","))}`;
+    if (!check.ok) redirect(`${back}&error=slug_invalid`);
+    const { data: existing } = await admin.from("organizations").select("id").eq("slug", check.slug).maybeSingle();
+    if (existing) redirect(`${back}&error=slug_taken`);
+    slug = check.slug;
+  } else {
+    let base = slugify(name) || "school";
+    if (!validateSubdomain(base).ok) base = `${base}-school`;
+    slug = base.slice(0, 63).replace(/-+$/g, "");
+    for (let i = 0; i < 5; i++) {
+      const { data: existing } = await admin.from("organizations").select("id").eq("slug", slug).maybeSingle();
+      if (!existing) break;
+      slug = `${base.slice(0, 55)}-${Math.random().toString(36).slice(2, 6)}`;
+    }
   }
 
   const { data: org, error } = await admin
@@ -58,7 +74,7 @@ async function createOrg(formData: FormData) {
     action: "organization.created",
     entity: "organizations",
     entity_id: org.id,
-    metadata: { name, type },
+    metadata: { name, type, slug },
   });
 
   redirect("/dashboard");
@@ -67,7 +83,7 @@ async function createOrg(formData: FormData) {
 export default async function OnboardingPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; name?: string; subdomain?: string; suggest?: string }>;
 }) {
   const ctx = await requireUser();
   if (ctx.memberships.length > 0) redirect("/dashboard");
@@ -81,11 +97,23 @@ export default async function OnboardingPage({
       <form action={createOrg} className="space-y-4">
         {sp.error && (
           <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-            Something went wrong creating the organization. Please try again.
+            {sp.error === "slug_taken"
+              ? "That school subdomain is already taken. Choose one of the alternatives below or type another."
+              : sp.error === "slug_invalid"
+                ? "That subdomain is reserved or invalid (3–63 lowercase letters, numbers or hyphens). Try an alternative below."
+                : "Something went wrong creating the organization. Please try again."}
+          </p>
+        )}
+        {sp.suggest && (
+          <p className="rounded-lg bg-cream px-4 py-3 text-sm text-ink">
+            Alternatives: {sp.suggest.split(",").map((alt) => <strong key={alt} className="mr-2">{tenantPortalLabel(alt)}</strong>)}
           </p>
         )}
         <Field label="Organization name">
-          <Input name="name" required placeholder="e.g. Riverdale International School" />
+          <Input name="name" required defaultValue={sp.name ?? ""} placeholder="e.g. Riverdale International School" />
+        </Field>
+        <Field label="School subdomain" hint={rootDomain() ? `Your portal will be https://<subdomain>.${rootDomain()}` : "Your school's unique portal address (e.g. riverdale). Leave blank to generate it from the name."}>
+          <Input name="subdomain" defaultValue={sp.subdomain ?? ""} placeholder="e.g. riverdale" />
         </Field>
         <Field label="Organization type">
           <Select name="type" defaultValue="school">

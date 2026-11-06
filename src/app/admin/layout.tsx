@@ -1,35 +1,40 @@
-import { Logo } from "@/components/Logo";
 import { requireSuperAdmin } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/server";
 import type { ReactNode } from "react";
-import { AdminNav } from "./AdminNav";
+import { AdminShell, type ShellCounts } from "./AdminShell";
+
+async function count(query: PromiseLike<{ count: number | null }>) {
+  try {
+    const { count } = await query;
+    return count ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+
+  const head = { count: "exact" as const, head: true };
+  const [payments, tickets, incidents, unread, platformOrg] = await Promise.all([
+    count(admin.from("payment_requests").select("id", head).eq("status", "pending")),
+    count(admin.from("support_tickets").select("id", head).eq("status", "open")),
+    count(admin.from("proctoring_incidents").select("id", head).eq("status", "open")),
+    count(admin.from("notifications").select("id", head).eq("user_id", ctx.user.id).is("read_at", null)),
+    admin.from("organizations").select("id").eq("slug", "evalora-platform").maybeSingle(),
+  ]);
+
+  const counts: ShellCounts = { payments, tickets, incidents, unread };
+
   return (
-    <div className="min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
-      <aside className="sticky top-0 hidden h-screen flex-col bg-stone-950 p-5 text-white lg:flex">
-        <Logo variant="light" href="/admin" />
-        <p className="mt-3 inline-flex w-fit rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-evergreen-950">
-          Super Admin
-        </p>
-        <div className="mt-6 flex-1">
-          <AdminNav />
-        </div>
-        <p className="border-t border-white/10 pt-4 text-xs text-stone-400">
-          {ctx.profile.email}
-          <span className="block">Every action here is written to the audit log.</span>
-        </p>
-      </aside>
-      <div className="min-w-0">
-        <header className="sticky top-0 z-40 flex items-center justify-between bg-stone-950 px-4 py-3 lg:hidden">
-          <Logo variant="light" href="/admin" />
-          <span className="rounded-full bg-gold-500 px-3 py-1 text-xs font-bold text-evergreen-950">SUPER ADMIN</span>
-        </header>
-        <div className="border-b border-evergreen-900/10 bg-stone-950 px-4 py-3 lg:hidden">
-          <AdminNav horizontal />
-        </div>
-        <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">{children}</main>
-      </div>
-    </div>
+    <AdminShell
+      email={ctx.profile.email}
+      isPrimary={Boolean(ctx.profile.is_primary)}
+      counts={counts}
+      platformOrgId={platformOrg.data?.id ?? null}
+    >
+      {children}
+    </AdminShell>
   );
 }

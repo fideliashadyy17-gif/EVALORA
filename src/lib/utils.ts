@@ -53,11 +53,15 @@ export function mmss(totalSeconds: number) {
 }
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+/** Codes are bearer credentials: never derive them from Math.random. */
 export function genCode(len = 6) {
-  let out = "";
-  for (let i = 0; i < len; i++)
-    out += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-  return out;
+  if (!Number.isSafeInteger(len) || len < 1 || len > 128) throw new Error("Invalid code length.");
+  // This alphabet has exactly 32 characters, so masking bytes to five bits
+  // samples it uniformly without modulo bias. Web Crypto exists in modern
+  // Node and secure browser contexts; fail closed if it is unavailable.
+  const bytes = new Uint8Array(len);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (value) => CODE_CHARS[value & 31]).join("");
 }
 
 export function shuffle<T>(arr: T[]): T[] {
@@ -74,8 +78,12 @@ export function toCsv(rows: (string | number | null | undefined)[][]) {
     .map((r) =>
       r
         .map((c) => {
-          const v = c == null ? "" : String(c);
-          return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+          // CSV quoting alone does not stop spreadsheet applications from interpreting
+          // untrusted text as formulas. Preserve numeric values as numbers, but
+          // force dangerous text (including whitespace/control prefixes) to text.
+          let v = c == null ? "" : String(c);
+          if (typeof c === "string" && (/^[\t\r\n]/.test(v) || /^[\s\uFEFF]*[=+\-@]/.test(v))) v = `'${v}`;
+          return /[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
         })
         .join(","),
     )

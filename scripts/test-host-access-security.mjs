@@ -1,0 +1,9 @@
+// Actual organizer host-state route; mocks auth and DB boundaries.
+import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
+const f=path.resolve('scripts/__host_security.cjs');let ctx,dbReads=0;const id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const old=Module._load;Module._load=function(req,parent){if(parent?.filename===f){if(req==='@/lib/auth')return {getSessionContext:async()=>ctx,CREATOR_ROLES:['teacher','owner'],can:(c,org)=>org==='org'&&c.profile.status==='active'&&c.allowed};if(req==='@/lib/live')return {};if(req==='@/lib/liveDisplayToken')return {};if(req==='@/lib/supabase/server')return {createAdminClient:()=>({from:()=>({select(){return this},eq(){return this},async maybeSingle(){dbReads++;return {data:{id,organization_id:'org',host_id:'same-user'}}}})})};if(req==='next/server')return {NextResponse:{json:(body,o)=>({status:o?.status??200,body})}};}return old.apply(this,arguments)};
+const m=new Module(f);m.filename=f;m.paths=Module._nodeModulePaths(path.dirname(f));m._compile(ts.transpileModule(readFileSync('src/app/api/live/host/state/route.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);Module._load=old;const req=()=>new Request(`https://example.test/api/live/host/state?session_id=${id}`);
+ctx={user:{id:'same-user'},profile:{status:'suspended'},allowed:true};let r=await m.exports.GET(req());assert.equal(r.status,403);assert.equal(dbReads,0);
+ctx={user:{id:'same-user'},profile:{status:'active'},allowed:false};r=await m.exports.GET(req());assert.equal(r.status,403);assert.equal(dbReads,1);
+ctx=null;r=await m.exports.GET(req());assert.equal(r.status,401);
+console.log('PASS: suspended or removed former session host cannot read privileged live state (mock DB/auth).');

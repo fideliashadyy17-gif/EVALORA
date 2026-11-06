@@ -7,13 +7,13 @@ type BtnVariant = "primary" | "gold" | "outline" | "ghost" | "danger" | "dark";
 const btnStyles: Record<BtnVariant, string> = {
   primary: "bg-evergreen-700 text-white hover:bg-evergreen-800 shadow-sm",
   gold: "bg-gold-500 text-evergreen-950 hover:bg-gold-400 shadow-sm font-semibold",
-  outline: "border border-evergreen-700/30 text-evergreen-800 hover:bg-evergreen-50 bg-white/60",
+  outline: "border border-evergreen-700/50 text-evergreen-800 hover:bg-evergreen-50 bg-white",
   ghost: "text-evergreen-800 hover:bg-evergreen-50",
   danger: "bg-red-700 text-white hover:bg-red-800",
   dark: "bg-evergreen-950 text-white hover:bg-evergreen-900",
 };
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500/60 whitespace-nowrap";
+  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-evergreen-600 whitespace-nowrap";
 
 export function Button({
   variant = "primary",
@@ -47,7 +47,7 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
     <input
       {...props}
       className={cn(
-        "w-full rounded-lg border border-evergreen-900/15 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 shadow-sm focus:border-evergreen-600 focus:outline-none focus:ring-2 focus:ring-evergreen-600/20 disabled:bg-cream",
+        "w-full rounded-lg border border-evergreen-900/55 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-soft shadow-sm focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25 disabled:bg-cream",
         props.className,
       )}
     />
@@ -59,7 +59,7 @@ export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
     <textarea
       {...props}
       className={cn(
-        "w-full rounded-lg border border-evergreen-900/15 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-soft/60 shadow-sm focus:border-evergreen-600 focus:outline-none focus:ring-2 focus:ring-evergreen-600/20",
+        "w-full rounded-lg border border-evergreen-900/55 bg-white px-3.5 py-2.5 text-sm text-ink placeholder:text-ink-soft shadow-sm focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25",
         props.className,
       )}
     />
@@ -71,7 +71,7 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
     <select
       {...props}
       className={cn(
-        "w-full rounded-lg border border-evergreen-900/15 bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm focus:border-evergreen-600 focus:outline-none focus:ring-2 focus:ring-evergreen-600/20",
+        "w-full rounded-lg border border-evergreen-900/55 bg-white px-3.5 py-2.5 text-sm text-ink shadow-sm focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25",
         props.className,
       )}
     />
@@ -107,7 +107,7 @@ export function Card({
   className?: string;
 }) {
   return (
-    <div className={cn("rounded-2xl border border-evergreen-900/10 bg-paper shadow-[var(--shadow-card)]", className)}>
+    <div className={cn("rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
       {children}
     </div>
   );
@@ -124,7 +124,7 @@ export function Badge({
 }) {
   const tones = {
     green: "bg-evergreen-100 text-evergreen-800",
-    gold: "bg-gold-100 text-gold-700",
+    gold: "bg-gold-100 text-gold-800",
     gray: "bg-stone-200/70 text-stone-700",
     red: "bg-red-100 text-red-800",
     amber: "bg-amber-100 text-amber-800",
@@ -142,7 +142,7 @@ export function PageTitle({
   action,
 }: {
   title: string;
-  subtitle?: string;
+  subtitle?: ReactNode;
   action?: ReactNode;
 }) {
   return (
@@ -166,7 +166,7 @@ export function EmptyState({
   action?: ReactNode;
 }) {
   return (
-    <div className="rounded-2xl border border-dashed border-evergreen-900/20 bg-paper px-6 py-12 text-center">
+    <div className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center">
       <h3 className="font-display text-lg font-semibold text-evergreen-900">{title}</h3>
       {body && <p className="mx-auto mt-1 max-w-md text-sm text-ink-soft">{body}</p>}
       {action && <div className="mt-4 flex justify-center">{action}</div>}

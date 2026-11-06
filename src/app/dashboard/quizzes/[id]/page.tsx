@@ -36,7 +36,7 @@ export default async function EditQuizPage({
   const selectedIds = ordered;
   const { data: bank } = await supabase
     .from("questions")
-    .select("id, type, prompt, points, status, topic")
+    .select("id, type, prompt, prompt_doc, points, status, topic")
     .eq("organization_id", org.id)
     .or(`status.eq.published,id.in.(${selectedIds.length ? selectedIds.join(",") : "00000000-0000-0000-0000-000000000000"})`)
     .limit(300);

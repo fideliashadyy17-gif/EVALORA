@@ -48,10 +48,13 @@ export async function POST(request: Request) {
     .eq("candidate_id", candidate.id)
     .maybeSingle();
 
+  const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  const attemptPolicy = typeof settings.attempt_policy === "string" ? settings.attempt_policy : "single_resume";
   let attempt = existing;
+  if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
+    return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
   if (!attempt) {
     const rows = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
-    const settings = (exam.settings ?? {}) as Record<string, unknown>;
     const ordered = settings.randomize_questions
       ? seededShuffle(rows, `${exam.id}:${candidate.id}`)
       : rows;
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
   }
 
-  const deadline = attemptDeadline(exam, attempt.started_at);
+  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
   return NextResponse.json({
     attempt_id: attempt.id,
     access_token: attempt.access_token,

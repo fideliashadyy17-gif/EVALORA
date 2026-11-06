@@ -14,7 +14,7 @@ export default function HelpPage() {
         <h3>Import questions from CSV</h3>
         <p>Dashboard → Questions → Import CSV. Your file needs the columns: <strong>type, prompt, options, correct, points, explanation</strong>. Separate multiple options with <strong>|</strong> and list correct answers by their 1-based positions (e.g. <strong>2</strong> or <strong>1|3</strong>). Imported questions arrive as <em>Pending review</em> — publish them after checking.</p>
         <h3>Run a live session</h3>
-        <p>From any published quiz choose <strong>Start live session</strong>. Share the code or QR code, open the projector screen, then use the host console to move through questions. In self-paced mode participants progress independently.</p>
+        <p>From any published quiz choose <strong>Start live session</strong>. Keep the private Host Control Screen on your own device, open the separate <strong>secure Public Live Screen link</strong> from that console on the projector/TV, and share the participant code or QR code with students. Each student joins on their own device, chooses an avatar, and answers there. Use the host screen to control admission, start/pause, reveal answers, show rankings and display the final podium. In self-paced mode participants progress independently.</p>
         <h3>Set up an examination</h3>
         <p>Dashboard → Examinations → New examination. Choose the question set (a quiz), duration and window, then register candidates. Each candidate gets a personal access code — distribute these securely.</p>
 

@@ -1,4 +1,4 @@
-import { MathText } from "@/components/MathText";
+import { RichContent } from "@/components/RichContent";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -20,7 +20,7 @@ const STATUS_TONE: Record<string, "green" | "amber" | "gray"> = {
 export default async function QuestionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; e?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -35,7 +35,15 @@ export default async function QuestionsPage({
     .limit(200);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.status) query = query.eq("status", sp.status);
+  if (sp.class) query = query.eq("class_id", sp.class);
+  if (sp.curr) query = query.eq("curriculum", sp.curr);
   const { data: questions } = await query;
+  const { data: classList } = await supabase
+    .from("classes")
+    .select("id, name")
+    .eq("organization_id", org.id)
+    .order("grade_order")
+    .order("name");
 
   const { data: categories } = await supabase
     .from("question_categories")
@@ -50,6 +58,15 @@ export default async function QuestionsPage({
         subtitle="Reusable questions for quizzes and examinations. Imports wait here for review before they can be published."
         action={<ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink>}
       />
+
+      {sp.e === "not_ready" && (
+        <p className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900 ring-1 ring-red-600/30">
+          That question cannot be published yet. Open it and check its answer key, accepted answers, numeric answer, pairs/items or marking criteria.
+        </p>
+      )}
+      {sp.e === "not_found" && (
+        <p className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900 ring-1 ring-red-600/30">That question no longer exists.</p>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div>
@@ -84,7 +101,7 @@ export default async function QuestionsPage({
                         {q.topic && <Badge tone="gray">{q.topic}</Badge>}
                       </div>
                       <div className="mt-2 line-clamp-2 font-medium text-ink">
-                        <MathText text={q.prompt} />
+                        <RichContent doc={(q as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={q.prompt} />
                       </div>
                       <p className="mt-1 text-xs text-ink-soft">
                         {(q.question_options as unknown[])?.length ?? 0} options

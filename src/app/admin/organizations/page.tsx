@@ -1,79 +1,148 @@
-import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
+import { ORG_TYPES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
+import { Building2, GraduationCap, Users } from "lucide-react";
 import type { Metadata } from "next";
-import { grantSubscription, setOrgStatus } from "../actions";
+import Link from "next/link";
+import { setOrgStatus } from "../actions";
+import { enterOrgWorkspace } from "../actions/orgs";
+import { Notice, StatusBadge, Table } from "../ui";
 
 export const metadata: Metadata = { title: "Organizations" };
 export const dynamic = "force-dynamic";
 
-export default async function AdminOrganizations() {
+export default async function AdminOrganizations({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string; type?: string; status?: string; ok?: string; e?: string }>;
+}) {
   await requireSuperAdmin();
+  const sp = await searchParams;
   const admin = createAdminClient();
 
-  const [{ data: orgs }, { data: plans }] = await Promise.all([
-    admin
-      .from("organizations")
-      .select("*, organization_members(id), quizzes(id), exams(id), subscriptions(status, plans(name, slug), trial_ends_at, current_period_end)")
-      .order("created_at", { ascending: false })
-      .limit(100),
-    admin.from("plans").select("id, name").eq("is_active", true).order("sort"),
+  let query = admin
+    .from("organizations")
+    .select(
+      "id, name, slug, type, status, country, city, created_at, organization_members(id), students(id), quizzes(id), exams(id), competitions(id), subscriptions(status, source, plans(name), trial_ends_at, current_period_end)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (sp.q) query = query.ilike("name", `%${sp.q}%`);
+  if (sp.type) query = query.eq("type", sp.type);
+  if (sp.status) query = query.eq("status", sp.status);
+  const { data: orgs } = await query;
+
+  const head = { count: "exact" as const, head: true };
+  const [total, schools, students] = await Promise.all([
+    admin.from("organizations").select("id", head).eq("is_demo", false).then((r) => r.count ?? 0),
+    admin.from("organizations").select("id", head).eq("type", "school").eq("is_demo", false).then((r) => r.count ?? 0),
+    admin.from("students").select("id", head).eq("status", "active").then((r) => r.count ?? 0),
   ]);
 
   return (
     <>
-      <PageTitle title="Organizations" subtitle="Tenants of the platform. Grant complimentary subscriptions (institutional contracts) or suspend abusive workspaces." />
-      <div className="space-y-4">
-        {(orgs ?? []).map((o) => {
-          const sub = ((o.subscriptions as { status: string; plans: { name: string; slug: string } | null; trial_ends_at: string | null; current_period_end: string | null }[]) ?? [])
-            .find((s) => ["active", "trialing"].includes(s.status));
-          return (
-            <Card key={o.id} className="p-5">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <p className="font-display text-lg font-semibold text-evergreen-950">{o.name}</p>
-                  <p className="text-sm text-ink-soft">
-                    {o.type.replace(/_/g, " ")} · since {fmtDate(o.created_at)} · {(o.organization_members as unknown[])?.length ?? 0} members · {(o.quizzes as unknown[])?.length ?? 0} quizzes · {(o.exams as unknown[])?.length ?? 0} exams
-                  </p>
-                  <p className="mt-1 text-sm">
-                    {sub ? (
-                      <><Badge tone="gold">{sub.plans?.name}</Badge> <span className="capitalize text-ink-soft">{sub.status}{sub.trial_ends_at && sub.status === "trialing" ? ` until ${fmtDate(sub.trial_ends_at)}` : ""}{sub.current_period_end && sub.status === "active" ? ` until ${fmtDate(sub.current_period_end)}` : ""}</span></>
-                    ) : (
-                      <Badge tone="gray">Free</Badge>
-                    )}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge tone={o.status === "active" ? "green" : "red"}>{o.status}</Badge>
-                  <form action={setOrgStatus}>
-                    <input type="hidden" name="id" value={o.id} />
-                    <input type="hidden" name="status" value={o.status === "active" ? "suspended" : "active"} />
-                    <button className={`text-sm font-medium underline-offset-2 hover:underline ${o.status === "active" ? "text-red-700" : "text-evergreen-700"}`}>
-                      {o.status === "active" ? "Suspend" : "Reactivate"}
-                    </button>
-                  </form>
-                </div>
-              </div>
-              <form action={grantSubscription} className="mt-4 flex flex-wrap items-end gap-2 border-t border-evergreen-900/10 pt-4">
-                <input type="hidden" name="organization_id" value={o.id} />
-                <Field label="Grant plan">
-                  <Select name="plan_id">
-                    {(plans ?? []).map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Months">
-                  <Input name="months" type="number" min={1} max={60} defaultValue={12} className="w-24" />
-                </Field>
-                <Button type="submit" variant="outline">Grant subscription</Button>
-              </form>
-            </Card>
-          );
-        })}
-        {(orgs ?? []).length === 0 && <p className="text-sm text-ink-soft">No organizations yet.</p>}
+      <PageTitle
+        title="Organizations"
+        subtitle="Create and operate schools, universities and examination centers — no payment required on the path."
+        action={<ButtonLink href="/admin/organizations/new" variant="gold">+ Create organization</ButtonLink>}
+      />
+      <Notice ok={sp.ok} e={sp.e} messages={{ deleted: "Organization permanently deleted." }} />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <StatCard label="Organizations" value={total} icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Schools" value={schools} icon={<GraduationCap className="h-5 w-5" />} />
+        <StatCard label="Active students" value={students} hint="Across every school roster" icon={<Users className="h-5 w-5" />} />
       </div>
+
+      <form className="mb-5 flex flex-wrap items-end gap-2" method="get">
+        <div className="min-w-[220px] flex-1">
+          <Input name="q" placeholder="Search by name…" defaultValue={sp.q ?? ""} aria-label="Search organizations" />
+        </div>
+        <Select name="type" defaultValue={sp.type ?? ""} className="w-52" aria-label="Filter by type">
+          <option value="">All types</option>
+          {ORG_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>{t.label}</option>
+          ))}
+        </Select>
+        <Select name="status" defaultValue={sp.status ?? ""} className="w-44" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="suspended">Suspended</option>
+          <option value="archived">Archived</option>
+        </Select>
+        <Button type="submit" variant="outline">Filter</Button>
+      </form>
+
+      {(orgs ?? []).length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">
+          No organizations match.{" "}
+          <Link href="/admin/organizations/new" className="font-semibold text-evergreen-700 underline underline-offset-2">
+            Create the first organization
+          </Link>
+          .
+        </p>
+      ) : (
+        <Table head={["Organization", "Type", "Scale", "Plan", "Status", "Actions"]}>
+          {(orgs ?? []).map((o) => {
+            const sub = ((o.subscriptions as unknown as { status: string; source?: string; plans: { name: string } | null; trial_ends_at: string | null; current_period_end: string | null }[]) ?? [])
+              .find((s) => ["active", "trialing"].includes(s.status));
+            const cnt = (k: string) => (o[k as keyof typeof o] as unknown[])?.length ?? 0;
+            return (
+              <tr key={o.id}>
+                <td>
+                  <Link href={`/admin/organizations/${o.id}`} className="font-semibold text-evergreen-900 hover:underline">
+                    {o.name}
+                  </Link>
+                  <span className="block text-xs text-ink-soft">
+                    {[o.city, o.country].filter(Boolean).join(", ") || o.slug} · since {fmtDate(o.created_at)}
+                  </span>
+                </td>
+                <td className="capitalize">{o.type.replace(/_/g, " ")}</td>
+                <td className="text-xs text-ink-soft">
+                  {cnt("organization_members")} members · {cnt("students")} students
+                  <span className="block">{cnt("quizzes")} quizzes · {cnt("exams")} exams · {cnt("competitions")} competitions</span>
+                </td>
+                <td>
+                  {sub ? (
+                    <>
+                      <span className="font-medium text-ink">{sub.plans?.name}</span>
+                      <span className="block text-xs capitalize text-ink-soft">
+                        {sub.status}
+                        {sub.source && sub.source !== "paid" ? ` · ${sub.source.replace(/_/g, " ")}` : ""}
+                        {sub.status === "trialing" && sub.trial_ends_at ? ` until ${fmtDate(sub.trial_ends_at)}` : ""}
+                        {sub.status === "active" && sub.current_period_end ? ` until ${fmtDate(sub.current_period_end)}` : ""}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="text-ink-soft">Free</span>
+                  )}
+                </td>
+                <td><StatusBadge status={o.status} /></td>
+                <td>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <Link href={`/admin/organizations/${o.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                      Manage
+                    </Link>
+                    <form action={enterOrgWorkspace}>
+                      <input type="hidden" name="organization_id" value={o.id} />
+                      <button className="font-medium text-gold-800 underline-offset-2 hover:underline">Open workspace</button>
+                    </form>
+                    <form action={setOrgStatus}>
+                      <input type="hidden" name="id" value={o.id} />
+                      <input type="hidden" name="status" value={o.status === "active" ? "suspended" : "active"} />
+                      <button className={`font-medium underline-offset-2 hover:underline ${o.status === "active" ? "text-red-700" : "text-evergreen-700"}`}>
+                        {o.status === "active" ? "Suspend" : "Reactivate"}
+                      </button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+        </Table>
+      )}
     </>
   );
 }

@@ -26,6 +26,12 @@ export default async function PricingPage() {
     { label: "Team members", key: "max_members" },
     { label: "Video proctoring (LiveKit)", key: "proctoring" },
     { label: "Advanced reports", key: "advanced_reports" },
+    { label: "Institutional / Enterprise", key: "institutional" },
+    { label: "Multi-class operations", key: "multi_class_operations" },
+    { label: "Centralized resources", key: "central_asset_management" },
+    { label: "Configurable limits / quotas", key: "configurable_limits" },
+    { label: "Classes", key: "max_classes" },
+    { label: "Students", key: "max_students" },
     { label: "Storage", key: "storage_mb", suffix: " MB" },
   ];
 
@@ -89,9 +95,9 @@ export default async function PricingPage() {
         </table>
       </Card>
 
-      <Card className="mt-8 bg-evergreen-950 p-7 text-white">
-        <h2 className="font-display text-xl font-semibold">How payment works</h2>
-        <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-evergreen-100/85">
+      <Card className="mt-8 border-evergreen-700/30 bg-evergreen-50 p-7">
+        <h2 className="font-display text-xl font-semibold text-evergreen-950">How payment works</h2>
+        <ol className="mt-3 list-decimal space-y-1.5 pl-5 text-sm text-ink">
           <li>Choose a plan inside your dashboard and read the payment instructions.</li>
           <li>Pay externally (bank transfer or Mobile Money) and keep your transaction reference.</li>
           <li>Submit the reference and, optionally, a screenshot as proof.</li>

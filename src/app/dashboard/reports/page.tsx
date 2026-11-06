@@ -30,7 +30,7 @@ export default async function ReportsPage() {
           {(sessions ?? []).length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No sessions yet.</p>
           ) : (
-            <ul className="mt-3 divide-y divide-evergreen-900/5">
+            <ul className="mt-3 divide-y divide-evergreen-900/10">
               {(sessions ?? []).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-3">
                   <div>
@@ -52,7 +52,7 @@ export default async function ReportsPage() {
           {(exams ?? []).length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No examinations yet.</p>
           ) : (
-            <ul className="mt-3 divide-y divide-evergreen-900/5">
+            <ul className="mt-3 divide-y divide-evergreen-900/10">
               {(exams ?? []).map((e) => {
                 const attempts = (e.exam_attempts as { status: string }[]) ?? [];
                 return (

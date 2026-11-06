@@ -37,8 +37,8 @@ function JoinForm() {
 
 export default function JoinPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-evergreen-950 px-4 py-10">
-      <Logo variant="light" className="mb-6" />
+    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 py-10">
+      <Logo className="mb-6" />
       <Card className="w-full max-w-md p-7 sm:p-8">
         <h1 className="font-display text-2xl font-semibold text-evergreen-950">Join a live quiz</h1>
         <p className="mt-1 text-sm text-ink-soft">No account needed — just your session code and a display name.</p>
@@ -48,9 +48,9 @@ export default function JoinPage() {
           </Suspense>
         </div>
       </Card>
-      <p className="mt-6 max-w-md text-center text-sm text-evergreen-100/70">
+      <p className="mt-6 max-w-md text-center text-sm text-ink-soft">
         Sitting a formal examination instead?{" "}
-        <a href="/exam-access" className="font-semibold text-gold-400 underline-offset-2 hover:underline">Enter your examination here</a>.
+        <a href="/exam-access" className="font-semibold text-evergreen-700 underline underline-offset-2">Enter your examination here</a>.
       </p>
     </div>
   );

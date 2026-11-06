@@ -2,10 +2,21 @@ import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./liv
 import { scoreAnswer } from "./scoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Absolute server deadline for an attempt. */
-export function attemptDeadline(exam: { duration_minutes: number; ends_at: string | null }, startedAt: string) {
-  const byDuration = new Date(startedAt).getTime() + exam.duration_minutes * 60000;
-  const byWindow = exam.ends_at ? new Date(exam.ends_at).getTime() : Infinity;
+/**
+ * Absolute server deadline for an attempt. An authorized per-candidate
+ * extension (exam_attempts.extension_minutes) shifts BOTH the duration cap
+ * and the exam window end for that candidate, so "extra time" always means
+ * exactly that many additional minutes — enforced here on the server, never
+ * by a frontend countdown.
+ */
+export function attemptDeadline(
+  exam: { duration_minutes: number; ends_at: string | null },
+  startedAt: string,
+  extensionMinutes = 0,
+) {
+  const ext = Math.max(0, Math.floor(extensionMinutes) || 0) * 60000;
+  const byDuration = new Date(startedAt).getTime() + exam.duration_minutes * 60000 + ext;
+  const byWindow = exam.ends_at ? new Date(exam.ends_at).getTime() + ext : Infinity;
   return new Date(Math.min(byDuration, byWindow));
 }
 
@@ -15,12 +26,16 @@ export async function attemptRows(
   exam: { quiz_id: string | null; settings: Record<string, unknown> },
   attempt: { id: string; question_order: unknown },
 ): Promise<SessionQuestionRow[]> {
-  if (!exam.quiz_id) return [];
-  const rows = await loadQuizQuestions(admin, exam.quiz_id);
+  if (!exam.quiz_id) throw new Error("Examination paper is unavailable.");
+  const rows = await loadQuizQuestions(admin, exam.quiz_id, { failOnError: true });
+  if (!rows.length) throw new Error("Examination paper is empty or unavailable.");
   const order = Array.isArray(attempt.question_order) ? (attempt.question_order as string[]) : [];
   if (order.length) {
     const byId = new Map(rows.map((r) => [r.id, r]));
-    return order.map((id) => byId.get(id)).filter(Boolean) as SessionQuestionRow[];
+    if (new Set(order).size !== order.length || order.some((id) => typeof id !== "string" || !byId.has(id))) {
+      throw new Error("Examination paper no longer matches the attempt.");
+    }
+    return order.map((id) => byId.get(id)!);
   }
   return exam.settings.randomize_questions ? seededShuffle(rows, attempt.id) : rows;
 }
@@ -31,32 +46,44 @@ export async function gradeAttempt(
   attemptId: string,
   rows: SessionQuestionRow[],
 ) {
-  const { data: answers } = await admin.from("exam_answers").select("*").eq("attempt_id", attemptId);
-  const byQuestion = new Map((answers ?? []).map((a) => [a.question_id, a]));
+  const { data: answers, error: answerError } = await admin.from("exam_answers").select("*").eq("attempt_id", attemptId);
+  if (answerError || !answers) throw new Error("Could not load examination answers for grading.");
+  const byQuestion = new Map(answers.map((a) => [a.question_id, a]));
   let score = 0;
   let max = 0;
 
+  // Calculate every objective result before any writes. A stale option ID or
+  // malformed marking key must not partially grade earlier answers.
+  const updates: { id: string; is_correct: boolean | null; points_awarded: number | null }[] = [];
   for (const row of rows) {
     const q = row.questions;
     const maxPoints = Number(row.points ?? q.points);
+    if (!Number.isFinite(maxPoints) || maxPoints < 0) throw new Error("Invalid examination question points.");
     max += maxPoints;
     const saved = byQuestion.get(q.id);
     if (!saved) continue;
     if (saved.marked_by) {
-      score += Number(saved.points_awarded ?? 0);
-      continue; // human mark stands
+      const humanPoints = Number(saved.points_awarded);
+      if (saved.points_awarded === null || !Number.isFinite(humanPoints) || humanPoints < 0 || humanPoints > maxPoints)
+        throw new Error("Invalid human examination mark.");
+      score += humanPoints;
+      continue;
     }
-    const scored = scoreAnswer(
-      { type: q.type, points: q.points, config: q.config },
-      q.question_options,
-      (saved.answer ?? {}) as Record<string, unknown>,
-      row.points,
-    );
-    await admin
-      .from("exam_answers")
-      .update({ is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points })
-      .eq("id", saved.id);
+    const scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
+      (saved.answer ?? {}) as Record<string, unknown>, row.points);
+    updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
     score += scored.isCorrect === null ? 0 : scored.points;
+  }
+  for (const update of updates) {
+    const { data: updated, error: updateError } = await admin
+      .from("exam_answers")
+      .update({ is_correct: update.is_correct, points_awarded: update.points_awarded })
+      .eq("id", update.id)
+      .is("marked_by", null)
+      .select("id")
+      .maybeSingle();
+    // Separate DB writes remain non-atomic if a later write fails.
+    if (updateError || !updated) throw new Error("Could not persist examination grading.");
   }
   return { score: Math.round(score * 100) / 100, max };
 }

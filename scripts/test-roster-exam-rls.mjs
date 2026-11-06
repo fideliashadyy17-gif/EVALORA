@@ -1,0 +1,23 @@
+// Isolated PGlite policy fixture; optional @electric-sql/pglite required.
+import {PGlite} from '@electric-sql/pglite';import {readFile} from 'node:fs/promises';import assert from 'node:assert/strict';
+const db=new PGlite();await db.exec(`
+create role authenticated;create role service_role bypassrls; create schema auth;
+create function auth.uid() returns text language sql stable as $$select current_setting('test.user',true)$$;
+create table memberships(user_id text,org text,role text);insert into memberships values('student','a','student'),('teacher','a','teacher'),('corrector','a','corrector'),('other','b','teacher');
+create function public.org_role(p text) returns text language sql security definer stable as $$select role from public.memberships where user_id=auth.uid() and org=p limit 1$$;
+create function public.is_super_admin() returns boolean language sql security definer stable as $$select auth.uid()='super'$$;
+create function public.is_org_member(p text) returns boolean language sql security definer stable as $$select public.org_role(p) is not null$$;
+create function public.can_create_content(p text) returns boolean language sql security definer stable as $$select coalesce(public.org_role(p) in ('owner','admin','teacher','organizer'),false)$$;
+create table students(id text primary key,organization_id text,user_id text);create table student_enrollments(id text primary key,organization_id text,student_id text);create table exams(id text primary key,organization_id text);
+insert into students values('self','a','student'),('peer','a','peer'),('foreign','b','other');insert into student_enrollments values('self-enrollment','a','self'),('peer-enrollment','a','peer'),('foreign-enrollment','b','foreign'),('invalid-cross-org','b','self');insert into exams values('exam-a','a'),('exam-b','b');
+alter table students enable row level security;alter table student_enrollments enable row level security;alter table exams enable row level security;
+grant usage on schema public,auth to authenticated,service_role;grant select,insert,update,delete on students,student_enrollments,exams to authenticated,service_role;
+create policy stu_select on students for select to authenticated using(public.is_org_member(organization_id) or public.is_super_admin() or user_id=auth.uid());create policy stu_write on students for all to authenticated using(public.can_create_content(organization_id) or public.is_super_admin()) with check(public.can_create_content(organization_id) or public.is_super_admin());
+create policy enr_select on student_enrollments for select to authenticated using(public.is_org_member(organization_id) or public.is_super_admin());create policy enr_write on student_enrollments for all to authenticated using(public.can_create_content(organization_id) or public.is_super_admin()) with check(public.can_create_content(organization_id) or public.is_super_admin());
+create policy exam_select on exams for select to authenticated using(public.is_org_member(organization_id) or public.is_super_admin());create policy exam_write on exams for all to authenticated using(public.can_create_content(organization_id) or public.is_super_admin()) with check(public.can_create_content(organization_id) or public.is_super_admin());
+`);await db.exec(await readFile('supabase/migrations/0026_protect_roster_and_exam_data.sql','utf8'));await db.exec('set role authenticated');let n=0;
+async function user(u){await db.query("select set_config('test.user',$1,false)",[u])}async function ids(t){return (await db.query(`select id from ${t} order by id`)).rows.map(r=>r.id)}async function test(name,fn){await fn();n++;console.log('  ✓ '+name)}
+await test('student sees only own record and valid enrollment, not papers',async()=>{await user('student');assert.deepEqual(await ids('students'),['self']);assert.deepEqual(await ids('student_enrollments'),['self-enrollment']);assert.deepEqual(await ids('exams'),[])});
+for(const u of ['teacher','corrector'])await test(`${u} sees own school records but not another tenant`,async()=>{await user(u);assert.deepEqual(await ids('students'),['peer','self']);assert.deepEqual(await ids('student_enrollments'),['peer-enrollment','self-enrollment']);assert.deepEqual(await ids('exams'),['exam-a'])});
+await test('super admin can inspect all records',async()=>{await user('super');assert.equal((await ids('students')).length,3);assert.equal((await ids('exams')).length,2)});
+await db.exec('reset role; set role service_role');await test('service role retains candidate workflow access',async()=>{assert.equal((await ids('students')).length,3);assert.equal((await ids('exams')).length,2)});console.log(`\n${n} roster/exam RLS checks passed (isolated PGlite fixture).`);await db.close();

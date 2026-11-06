@@ -1,7 +1,7 @@
 import { Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { slugify } from "@/lib/utils";
+import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -26,7 +26,7 @@ async function updateOrg(formData: FormData) {
   const type = String(formData.get("type") ?? "school");
   if (!name) redirect("/dashboard/settings");
   const supabase = await createClient();
-  await supabase.from("organizations").update({ name, type, slug: slugify(name) }).eq("id", org.id);
+  await supabase.from("organizations").update({ name, type }).eq("id", org.id);
   revalidatePath("/dashboard/settings");
   redirect("/dashboard/settings?saved=org");
 }
@@ -101,9 +101,13 @@ export default async function SettingsPage({
                   <option value="other">Other</option>
                 </Select>
               </Field>
-              <Field label="Workspace identifier">
-                <Input value={orgFull?.slug ?? ""} disabled />
+              <Field label="School portal (subdomain)">
+                <Input value={orgFull?.slug ? tenantPortalLabel(orgFull.slug) : ""} disabled />
               </Field>
+              <p className="text-xs text-ink-soft">
+                Your public school portal: <a className="font-semibold text-evergreen-800 underline" href={orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "#"}>{orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "—"}</a>.
+                To request a different subdomain, contact EVALORA support — changes are reviewed so existing links are not broken silently.
+              </p>
               <Button type="submit">Save organization</Button>
             </form>
           ) : (

@@ -1,7 +1,9 @@
 "use server";
 
 import { requireSuperAdmin } from "@/lib/auth";
-import { createAdminClient } from "@/lib/supabase/server";
+import { FEATURE_DEFAULTS, type FeatureKey } from "@/lib/platform";
+import { questionPublishError } from "@/lib/questionValidation";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -105,10 +107,23 @@ export async function savePlan(formData: FormData) {
 }
 
 export async function setUserStatus(formData: FormData) {
-  await requireSuperAdmin();
+  const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const id = String(formData.get("id"));
   const status = String(formData.get("status")) === "suspended" ? "suspended" : "active";
+  const { data: target } = await admin
+    .from("profiles")
+    .select("id, platform_role, is_primary")
+    .eq("id", id)
+    .maybeSingle();
+  if (!target) redirect("/admin/users");
+  // The Primary Super Admin can never be suspended through the console,
+  // nobody can suspend themselves, and only the Primary may act on
+  // another Super Admin. (A database trigger independently protects
+  // platform_role / is_primary against every non-operator caller.)
+  if (target.is_primary) redirect("/admin/users?e=primary");
+  if (id === ctx.user.id) redirect("/admin/users?e=self");
+  if (target.platform_role === "super_admin" && !ctx.profile.is_primary) redirect("/admin/users?e=admin");
   await admin.from("profiles").update({ status }).eq("id", id);
   await audit(`user.${status}`, "profiles", id);
   revalidatePath("/admin/users");
@@ -118,14 +133,15 @@ export async function setOrgStatus(formData: FormData) {
   await requireSuperAdmin();
   const admin = createAdminClient();
   const id = String(formData.get("id"));
-  const status = String(formData.get("status")) === "suspended" ? "suspended" : "active";
+  const rawStatus = String(formData.get("status"));
+  const status = rawStatus === "suspended" ? "suspended" : rawStatus === "archived" ? "archived" : "active";
   await admin.from("organizations").update({ status }).eq("id", id);
   await audit(`organization.${status}`, "organizations", id, id);
   revalidatePath("/admin/organizations");
 }
 
 export async function grantSubscription(formData: FormData) {
-  await requireSuperAdmin();
+  const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const orgId = String(formData.get("organization_id"));
   const planId = String(formData.get("plan_id"));
@@ -135,6 +151,8 @@ export async function grantSubscription(formData: FormData) {
   end.setMonth(end.getMonth() + months);
   await admin.from("subscriptions").insert({
     organization_id: orgId, plan_id: planId, status: "active", billing_period: "one_time",
+    source: "admin_grant", granted_by: ctx.user.id,
+    notes: "Administrative grant — no payment recorded.",
     current_period_start: new Date().toISOString(), current_period_end: end.toISOString(),
   });
   await audit("subscription.granted", "subscriptions", orgId, orgId, { months });
@@ -159,4 +177,209 @@ export async function setTicketStatus(formData: FormData) {
   const admin = createAdminClient();
   await admin.from("support_tickets").update({ status: String(formData.get("status")) }).eq("id", String(formData.get("id")));
   revalidatePath("/admin/support");
+}
+
+/* ─── Competitions / live sessions ─────────────────────────────────── */
+export async function adminEndSession(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  if (formData.get("confirm") !== "on") redirect("/admin/competitions?e=confirm");
+  const { data: s } = await admin.from("quiz_sessions").select("id, organization_id, status, join_code").eq("id", id).maybeSingle();
+  if (s && s.status !== "ended") {
+    await admin.from("quiz_sessions").update({ status: "ended", phase: "completed", phase_started_at: new Date().toISOString(), question_deadline_at: null, ended_at: new Date().toISOString() }).eq("id", id);
+    await audit("session.ended_by_admin", "quiz_sessions", id, s.organization_id, { join_code: s.join_code, was: s.status });
+  }
+  revalidatePath("/admin/competitions");
+  redirect("/admin/competitions?saved=1");
+}
+
+/* ─── Quizzes & questions (platform-wide) ──────────────────────────── */
+export async function adminSetQuizStatus(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["draft", "published", "archived"].includes(status)) redirect("/admin/quizzes");
+  const { data: q } = await admin.from("quizzes").select("id, organization_id").eq("id", id).maybeSingle();
+  await admin.from("quizzes").update({ status }).eq("id", id);
+  await audit(`quiz.status_${status}`, "quizzes", id, q?.organization_id ?? null);
+  revalidatePath("/admin/quizzes");
+  redirect("/admin/quizzes?saved=1");
+}
+
+export async function adminDeleteQuiz(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  if (formData.get("confirm") !== "on") redirect("/admin/quizzes?e=confirm");
+  const { data: q } = await admin.from("quizzes").select("id, organization_id, title").eq("id", id).maybeSingle();
+  await admin.from("quizzes").delete().eq("id", id);
+  await audit("quiz.deleted_by_admin", "quizzes", id, q?.organization_id ?? null, { title: q?.title ?? null });
+  revalidatePath("/admin/quizzes");
+  redirect("/admin/quizzes?saved=1");
+}
+
+export async function adminSetQuestionStatus(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["draft", "pending_review", "published", "archived"].includes(status)) redirect("/admin/questions");
+  const { data: q } = await admin
+    .from("questions")
+    .select("*, question_options(label, is_correct)")
+    .eq("id", id)
+    .maybeSingle();
+  if (status === "published") {
+    if (!q) redirect("/admin/questions?e=not_found");
+    const publishError = questionPublishError({
+      ...q!,
+      options: (q!.question_options as { label: string; is_correct: boolean }[]) ?? [],
+    });
+    if (publishError) redirect("/admin/questions?e=not_ready");
+  }
+  await admin.from("questions").update({ status }).eq("id", id);
+  await audit(`question.status_${status}`, "questions", id, q?.organization_id ?? null);
+  revalidatePath("/admin/questions");
+  redirect("/admin/questions?saved=1");
+}
+
+export async function adminDeleteQuestion(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  if (formData.get("confirm") !== "on") redirect("/admin/questions?e=confirm");
+  const { data: q } = await admin.from("questions").select("id, organization_id").eq("id", id).maybeSingle();
+  await admin.from("questions").delete().eq("id", id);
+  await audit("question.deleted_by_admin", "questions", id, q?.organization_id ?? null);
+  revalidatePath("/admin/questions");
+  redirect("/admin/questions?saved=1");
+}
+
+/* ─── Examinations & proctoring ────────────────────────────────────── */
+export async function adminSetExamStatus(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["draft", "scheduled", "open", "closed"].includes(status)) redirect("/admin/examinations");
+  const { data: e } = await admin.from("exams").select("id, organization_id").eq("id", id).maybeSingle();
+  await admin.from("exams").update({ status }).eq("id", id);
+  await audit(`exam.status_${status}`, "exams", id, e?.organization_id ?? null);
+  revalidatePath("/admin/examinations");
+  redirect("/admin/examinations?saved=1");
+}
+
+export async function adminReviewIncident(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const status = String(formData.get("status"));
+  if (!["open", "valid", "invalid", "investigating"].includes(status)) redirect("/admin/proctoring");
+  const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
+  await admin.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", id);
+  await audit(`incident.${status}`, "proctoring_incidents", id);
+  revalidatePath("/admin/proctoring");
+  redirect("/admin/proctoring?saved=1");
+}
+
+/* ─── Subscriptions ────────────────────────────────────────────────── */
+export async function adminCancelSubscription(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  if (formData.get("confirm") !== "on") redirect("/admin/subscriptions?e=confirm");
+  const { data: s } = await admin.from("subscriptions").select("id, organization_id").eq("id", id).maybeSingle();
+  await admin.from("subscriptions").update({ status: "cancelled" }).eq("id", id);
+  await audit("subscription.cancelled_by_admin", "subscriptions", id, s?.organization_id ?? null);
+  revalidatePath("/admin/subscriptions");
+  redirect("/admin/subscriptions?saved=1");
+}
+
+export async function adminReactivateSubscription(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const { data: s } = await admin.from("subscriptions").select("*").eq("id", id).maybeSingle();
+  if (!s) redirect("/admin/subscriptions");
+  const end = s.current_period_end && new Date(s.current_period_end) > new Date()
+    ? new Date(s.current_period_end)
+    : new Date(Date.now() + 30 * 24 * 3600 * 1000);
+  await admin.from("subscriptions").update({ status: "active", current_period_end: end.toISOString() }).eq("id", id);
+  await audit("subscription.reactivated_by_admin", "subscriptions", id, s.organization_id);
+  revalidatePath("/admin/subscriptions");
+  redirect("/admin/subscriptions?saved=1");
+}
+
+/* ─── Notifications: platform broadcast ────────────────────────────── */
+export async function broadcastNotification(formData: FormData) {
+  await requireSuperAdmin();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 140);
+  const body = String(formData.get("body") ?? "").trim().slice(0, 1000) || null;
+  const link = String(formData.get("link") ?? "").trim().slice(0, 300) || null;
+  if (!title) redirect("/admin/notifications?e=title");
+  // Session client on purpose: the RPC itself re-verifies is_super_admin()
+  // against the caller's JWT (database-level authorization).
+  const supabase = await createClient();
+  const { data: sent, error } = await supabase.rpc("admin_broadcast_notification", {
+    p_title: title, p_body: body, p_link: link,
+  });
+  if (error) redirect("/admin/notifications?e=send");
+  await audit("notification.broadcast", "notifications", "broadcast", null, { title, recipients: sent ?? 0 });
+  revalidatePath("/admin/notifications");
+  redirect(`/admin/notifications?sent=${sent ?? 0}`);
+}
+
+/* ─── Modules & Features ───────────────────────────────────────────── */
+export async function saveFeatures(formData: FormData) {
+  await requireSuperAdmin();
+  const admin = createAdminClient();
+  const value = Object.fromEntries(
+    (Object.keys(FEATURE_DEFAULTS) as FeatureKey[]).map((k) => [k, formData.get(k) === "on"]),
+  );
+  await admin.from("platform_settings").upsert(
+    { key: "features", value, updated_at: new Date().toISOString() }, { onConflict: "key" },
+  );
+  await audit("features.updated", "platform_settings", "features", null, value as Record<string, unknown>);
+  revalidatePath("/admin/modules");
+  redirect("/admin/modules?saved=1");
+}
+
+/* ─── Targeted notifications (organization admins / one user) ─────── */
+export async function sendTargetedNotification(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 160);
+  const body = String(formData.get("body") ?? "").trim().slice(0, 1000) || null;
+  const link = String(formData.get("link") ?? "/dashboard").trim() || "/dashboard";
+  const audience = String(formData.get("audience") ?? "org");
+  if (!title) redirect("/admin/notifications?e=title");
+
+  let userIds: string[] = [];
+  let orgId: string | null = null;
+  if (audience === "org") {
+    orgId = String(formData.get("organization_id") ?? "");
+    const { data: members } = await admin
+      .from("organization_members")
+      .select("user_id")
+      .eq("organization_id", orgId)
+      .eq("status", "active");
+    userIds = [...new Set((members ?? []).map((m) => m.user_id))];
+  } else {
+    const email = String(formData.get("email") ?? "").trim().toLowerCase();
+    const { data: prof } = await admin.from("profiles").select("id").eq("email", email).maybeSingle();
+    if (!prof) redirect("/admin/notifications?e=user");
+    userIds = [prof!.id];
+  }
+  if (userIds.length === 0) redirect("/admin/notifications?e=empty");
+
+  await admin.from("notifications").insert(
+    userIds.map((user_id) => ({ user_id, type: "system", title, body, link })),
+  );
+  await audit("notification.targeted_sent", "notifications", orgId ?? userIds[0], orgId, {
+    recipients: userIds.length, title, audience,
+  });
+  void ctx;
+  redirect(`/admin/notifications?sent=${userIds.length}`);
 }

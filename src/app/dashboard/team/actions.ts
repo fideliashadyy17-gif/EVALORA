@@ -2,7 +2,7 @@
 
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { ORG_ROLES } from "@/lib/brand";
-import { getEntitlement, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -18,7 +18,7 @@ export async function inviteMember(formData: FormData) {
     redirect("/dashboard/team?e=invalid");
 
   const supabase = await createClient();
-  const ent = await getEntitlement(supabase, org.id);
+  const ent = await getEntitlementFor(supabase, ctx, org.id);
   const { count } = await supabase
     .from("organization_members")
     .select("id", { count: "exact", head: true })

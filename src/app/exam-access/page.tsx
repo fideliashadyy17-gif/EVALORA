@@ -33,12 +33,13 @@ export default function ExamAccessPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-evergreen-950 px-4 py-10">
-      <Logo variant="light" className="mb-6" />
+    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 py-10">
+      <Logo className="mb-6" />
       <Card className="w-full max-w-md p-7 sm:p-8">
         <h1 className="font-display text-2xl font-semibold text-evergreen-950">Enter your examination</h1>
         <p className="mt-1 text-sm text-ink-soft">
           You need two codes from your institution: the examination code and your personal candidate code.
+          If your institution sent a shareable examination link, open that link instead — no personal candidate code and no EVALORA account are required there. On the link page, first name and last name are mandatory, the access code is server-verified against that examination, and any configured additional identity fields, class eligibility or registered-student-only restriction is enforced before the instructions and start.
         </p>
         <form onSubmit={submit} className="mt-5 space-y-4">
           {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}

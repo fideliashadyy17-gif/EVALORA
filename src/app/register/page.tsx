@@ -38,7 +38,7 @@ export default function RegisterPage() {
       return;
     }
     if (data.session) {
-      router.push("/onboarding");
+      router.push("/auth/resolve");
       router.refresh();
     } else {
       router.push("/login?registered=1");

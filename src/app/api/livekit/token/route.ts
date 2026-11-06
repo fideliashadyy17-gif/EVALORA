@@ -1,6 +1,8 @@
 import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
-import { getEntitlement } from "@/lib/entitlements";
-import { loadAttemptContext } from "@/lib/exam";
+import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
+import { isFeatureEnabled } from "@/lib/platform";
+import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { ensureProctoringRoom, recordRoomEvents } from "@/lib/proctoring";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { AccessToken } from "livekit-server-sdk";
 import { NextResponse } from "next/server";
@@ -28,6 +30,15 @@ export async function POST(request: Request) {
   if (!apiKey || !apiSecret || !serverUrl)
     return NextResponse.json({ error: "Video proctoring is not configured on this deployment." }, { status: 503 });
 
+  const sessionCtx = await getSessionContext();
+  // getSessionContext alone does not enforce active profile status. A
+  // suspended account must not obtain supervisory access or owner bypass.
+  if (sessionCtx && sessionCtx.profile.status !== "active")
+    return NextResponse.json({ error: "This account is not active." }, { status: 403 });
+  // Only a verified active Super Admin may bypass a platform toggle.
+  if (!(await isFeatureEnabled("proctoring", { ownerBypass: sessionCtx?.profile.platform_role === "super_admin" })))
+    return NextResponse.json({ error: "Video proctoring is temporarily disabled platform-wide by the administrator." }, { status: 503 });
+
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   const { exam_id, attempt_id, token, role } = parsed.data;
@@ -42,27 +53,39 @@ export async function POST(request: Request) {
   let identity: string;
   let name: string;
   let canPublish: boolean;
+  let tokenTtl = 6 * 60 * 60;
 
   if (role === "candidate") {
     if (!attempt_id || !token) return NextResponse.json({ error: "Missing candidate credentials." }, { status: 400 });
     const ctx = await loadAttemptContext(admin, attempt_id, token);
-    if (!ctx || ctx.attempt.exam_id !== exam.id)
+    if (!ctx || ctx.attempt.exam_id !== exam.id || !ctx.candidate || ctx.candidate.exam_id !== exam.id || ctx.attempt.candidate_id !== ctx.candidate.id)
       return NextResponse.json({ error: "Not authorized for this room." }, { status: 403 });
     if (ctx.attempt.status !== "in_progress")
       return NextResponse.json({ error: "Your attempt is not in progress." }, { status: 403 });
+    const deadline = attemptDeadline(exam, ctx.attempt.started_at, Number(ctx.attempt.extension_minutes ?? 0)).getTime();
+    const secondsRemaining = Math.floor((deadline - Date.now()) / 1000);
+    if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0)
+      return NextResponse.json({ error: "This examination has expired." }, { status: 403 });
+    // Shorten new candidate grants to the server-authoritative deadline.
+    // Already-issued LiveKit grants are not revoked on early submission.
+    tokenTtl = Math.min(tokenTtl, secondsRemaining);
     identity = `candidate-${ctx.candidate.id}`;
     name = ctx.candidate.full_name;
     canPublish = true;
 
-    // Proctoring is a Premium entitlement — enforce server-side.
-    const supabase = await createClient();
-    const ent = await getEntitlement(admin, exam.organization_id).catch(async () =>
-      getEntitlement(supabase, exam.organization_id),
-    );
+    // Organization settings are tenant-editable and cannot grant commercial
+    // privileges. The nominated platform workspace is stored in a setting
+    // writable only by the platform Super Admin (migration 0028).
+    const { data: platformSetting, error: settingError } = await admin
+      .from("platform_settings").select("value").eq("key", "proctoring_owner_workspace").maybeSingle();
+    const trustedValue = platformSetting?.value as { organization_id?: unknown } | null;
+    const platformOwned = !settingError && trustedValue?.organization_id === exam.organization_id;
+    const ownerBypass = platformOwned || sessionCtx?.profile.platform_role === "super_admin";
+    const ent = await getEntitlement(admin, exam.organization_id, { ownerBypass });
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   } else {
-    const ctx = await getSessionContext();
+    const ctx = sessionCtx;
     if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
     const org = activeOrg(ctx);
     if (!org || org.id !== exam.organization_id || !can(ctx, exam.organization_id, PROCTOR_ROLES))
@@ -72,17 +95,36 @@ export async function POST(request: Request) {
     canPublish = false;
 
     const supabase = await createClient();
-    const ent = await getEntitlement(supabase, exam.organization_id);
+    const ent = await getEntitlementFor(supabase, ctx, exam.organization_id);
     if (!ent.limits.proctoring)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   }
 
-  const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: "6h" });
+  // Persist the supervision room and the join event. The room row is the
+  // anchor for join/leave evidence and for the retention lifecycle; recording
+  // it here means every media grant is attributable even if the supervisor's
+  // browser never loads the grid.
+  const room = await ensureProctoringRoom(admin, exam, sessionCtx?.user.id ?? null);
+  if (room) {
+    await recordRoomEvents(admin, [
+      {
+        room_id: room.id,
+        organization_id: exam.organization_id,
+        exam_id: exam.id,
+        participant_identity: identity,
+        event: "joined",
+        detail: { role, can_publish: canPublish, ttl_seconds: tokenTtl },
+      },
+    ]);
+  }
+
+  const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: tokenTtl });
   at.addGrant({
     roomJoin: true,
     room: roomName,
     canPublish,
-    canSubscribe: true,
+    // Candidates must not be able to subscribe to other candidates' feeds.
+    canSubscribe: role === "supervisor",
     canPublishData: false,
   });
   const jwt = await at.toJwt();
