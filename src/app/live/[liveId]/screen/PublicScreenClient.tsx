@@ -7,6 +7,7 @@ import type { PublicQuestion } from "@/components/QuestionRunner";
 import { mmss } from "@/lib/utils";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
 
 interface ScreenState {
   server_now: string;
@@ -48,6 +49,10 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   const [now, setNow] = useState(Date.now());
   const [qr, setQr] = useState("");
   const [soundUnlocked, setSoundUnlocked] = useState(false);
+  // The projection screen shows live questions to a room of students. It is a
+  // protected surface for as long as it is open: copy, cut, paste and the context
+  // menu are cancelled, and the displayed text is not selectable.
+  useAssessmentLockdown(true);
   const offset = useRef(0);
   const audioContext = useRef<AudioContext | null>(null);
   const playedEvents = useRef(new Set<string>());

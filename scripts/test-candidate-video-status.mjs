@@ -16,6 +16,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/examResults')return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>''};
  if(req==='@/lib/integrity')return {parseIntegrityPolicy:raw=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
  if(req==='@/lib/integrityMonitor')return {IntegrityMonitor:class{start(){}stop(){}}};
+ if(req==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
  if(req==='@/lib/examSaveQueue')return queue;
  if(req==='@/components/ui')return {Button:p=>React.createElement('button',p),Card:p=>React.createElement('div',p),Badge:p=>React.createElement('span',p)};
  if(req==='@/lib/utils')return {cn:(...v)=>v.filter(Boolean).join(' '),mmss:()=> '10:00'};

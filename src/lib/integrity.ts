@@ -193,10 +193,22 @@ export interface IntegrityWarning {
   body: string;
 }
 
+/**
+ * What the candidate is told about a blocked action. The action is already
+ * cancelled when this shows; the notice explains it, it does not perform it.
+ */
+const BLOCKED_NOTICE: Partial<Record<IntegrityEvent, string>> = {
+  copy: "Copying, cutting and pasting are disabled during this assessment.",
+  cut: "Copying, cutting and pasting are disabled during this assessment.",
+  paste: "Copying, cutting and pasting are disabled during this assessment.",
+  context_menu: "The right-click menu is disabled during this assessment.",
+};
+
 /** Copy the candidate sees. Deliberately calm: a warning, not an accusation. */
 export function warningFor(event: IntegrityEvent, count: number, policy: IntegrityPolicy): IntegrityWarning {
   const level = escalationLevel(count, policy);
-  const what = eventLabel(event);
+  const notice = BLOCKED_NOTICE[event];
+  const what = notice ? `${notice} ${eventLabel(event)}` : eventLabel(event);
   if (level === "review") {
     return {
       level,

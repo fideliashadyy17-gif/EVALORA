@@ -25,6 +25,7 @@ Module._load=function(request,parent) {
     parseIntegrityPolicy:undefined};
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:(raw)=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
+  if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
   if(request==='@/lib/examSaveQueue') return queue;
   if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p)};
   if(request==='@/lib/utils') return {cn:(...args)=>args.filter(Boolean).join(' '),mmss:()=> '10:00'};

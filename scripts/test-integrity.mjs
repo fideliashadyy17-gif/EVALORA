@@ -25,9 +25,11 @@ const rules = compile("src/lib/integrity.ts", "scripts/__integrity_rules.cjs");
 // The monitor imports its rules; give it the module compiled just above so the
 // test exercises the real implementation, not a copy.
 const monitorPath = path.resolve("scripts/__integrity_monitor.cjs");
+const lockdown = compile("src/lib/assessmentLockdown.ts", "scripts/__assessment_lockdown.cjs");
 const originalLoad = Module._load;
 Module._load = function (request, parent) {
   if (parent?.filename === monitorPath && request === "./integrity") return rules;
+  if (parent?.filename === monitorPath && request === "./assessmentLockdown") return lockdown;
   return originalLoad.apply(this, arguments);
 };
 const monitorModule = compile("src/lib/integrityMonitor.ts", "scripts/__integrity_monitor.cjs");
@@ -91,6 +93,8 @@ ok("the review copy explains what happens next", (() => {
   const w = rules.warningFor("copy", 5, policy);
   return w.level === "review" && /invigilator will review/i.test(w.body);
 })());
+ok("a blocked copy, cut or paste names the block, in the agreed words", ["copy", "cut", "paste"].every((e) => rules.warningFor(e, 1, policy).body.includes("Copying, cutting and pasting are disabled during this assessment.")));
+ok("a blocked right-click names the context menu block", rules.warningFor("context_menu", 1, policy).body.includes("The right-click menu is disabled during this assessment."));
 
 /* ── Monitor ── */
 function fakeTarget() {
@@ -167,23 +171,32 @@ function harness({ policyOverrides = {}, reportResult = null, reportThrows = fal
 }
 
 {
+  // Clipboard and context-menu actions are listened for on the window in the
+  // capture phase (the lockdown), not on the document, so a page's own
+  // stopPropagation() cannot hide them from the monitor.
   const h = harness();
   h.monitor.start();
-  h.document.fire("copy");
-  h.document.fire("paste");
-  h.document.fire("contextmenu");
+  const cancelled = [];
+  const spy = (type) => ({ type, preventDefault: () => cancelled.push(type) });
+  h.window.fire("copy", spy("copy"));
+  h.window.fire("paste", spy("paste"));
+  h.window.fire("cut", spy("cut"));
+  h.window.fire("contextmenu", spy("contextmenu"));
   h.document.fire("fullscreenchange");
   await tick();
   ok("clipboard, context menu and full-screen exit are all reported", ["copy", "paste", "context_menu", "fullscreen_exit"].every((e) => h.sent.some((s) => s.event === e)));
+  ok("each blocked clipboard or context-menu action is cancelled, not just logged", ["copy", "paste", "cut", "contextmenu"].every((t) => cancelled.includes(t)));
+  ok("the document keeps only visibility and full-screen listeners", h.document.listeners() === 2);
 }
 
 {
   const h = harness({ policyOverrides: { clipboard: false } });
   h.monitor.start();
-  h.document.fire("copy");
-  h.document.fire("cut");
+  let cancelled = false;
+  h.window.fire("copy", { type: "copy", preventDefault: () => (cancelled = true) });
+  h.window.fire("cut", { type: "cut" });
   await tick();
-  ok("a disabled protection reports nothing", h.sent.length === 0);
+  ok("a disabled protection reports nothing and cancels nothing", h.sent.length === 0 && cancelled === false && h.window.listeners() === 5);  // blur, focus, beforeunload, offline, online: no lockdown
 }
 
 {
@@ -193,6 +206,20 @@ function harness({ policyOverrides = {}, reportResult = null, reportThrows = fal
   h.document.fire("visibilitychange");
   await tick();
   ok("an assessment with integrity off never starts watching", h.sent.length === 0 && h.document.listeners() === 0);
+}
+
+{
+  // Recording switched off is not the same as copying allowed: the clipboard
+  // switch alone governs blocking, so an assessment with integrity off still
+  // cancels copy and reports nothing.
+  const h = harness({ policyOverrides: { enabled: false } });
+  h.monitor.start();
+  let cancelled = false;
+  h.window.fire("copy", { type: "copy", preventDefault: () => (cancelled = true) });
+  await tick();
+  ok("integrity off still blocks copy, and records nothing", cancelled === true && h.sent.length === 0);
+  h.monitor.stop();
+  ok("stop() still releases the lockdown with integrity off", h.window.listeners() === 0);
 }
 
 {
@@ -234,6 +261,12 @@ ok("the candidate sees a warning", /role="alert"/.test(client) && /warning\.titl
 ok("the warning can be dismissed without leaving the paper", /Dismiss this warning/.test(client) && /setWarning\(null\)/.test(client));
 ok("audio is attempted only when the policy allows it and is safely guarded", /AudioContext/.test(client) && /activePolicy\.sound/.test(client) && /catch \{/.test(client));
 ok("events travel to the dedicated endpoint, never straight to the database", /\/api\/exam\/integrity/.test(client) && !/from\("proctoring_incidents"\)/.test(client));
+ok("the exam page locks the paper while it is open for answering only", /useProtectedSurface\(Boolean\(token\) && attemptStatus === "in_progress"/.test(client));
+const playClient = readFileSync("src/app/play/[code]/PlayClient.tsx", "utf8");
+const screenClient = readFileSync("src/app/live/[liveId]/screen/PublicScreenClient.tsx", "utf8");
+ok("the live quiz is locked once a participant has joined", /useAssessmentLockdown\(Boolean\(identity\)\)/.test(playClient));
+ok("the projection screen is locked while open", /useAssessmentLockdown\(true\)/.test(screenClient));
+ok("the monitor's lockdown is detached on stop()", /this\.detachLockdown\?\.\(\)/.test(readFileSync("src/lib/integrityMonitor.ts", "utf8")));
 const state = readFileSync("src/app/api/exam/state/route.ts", "utf8");
 ok("the candidate client receives the policy but never an answer key", /integrity: parseIntegrityPolicy\(settings\.integrity\)/.test(state) && !/settings\.integrity.*is_correct/.test(state));
 
