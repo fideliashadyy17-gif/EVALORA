@@ -83,7 +83,7 @@ def build():
                     "instruction in each question. A calculator is allowed. Sort and match questions: drag each item onto its "
                     "target (on a touch screen, tap an item and then tap its target). Ordering questions: drag the steps into "
                     "order, or use the arrows. Written parts are marked against the criteria shown to the examiner.")
-    return f"""-- G10 Examination — MYP 5 Sequences & Series E-Assessment (Oak International School)
+    return f"""-- MYP5 Examination — MYP 5 Sequences & Series E-Assessment (Oak International School)
 --
 -- Source document: "MYP 5 Mathematics.pdf", 27 pages, 50 printed theory and reasoning questions, 100 marks,
 -- 90 minutes. The paper prints no answer key. Every answer was derived by hand and checked independently in
@@ -181,7 +181,7 @@ begin
   select count(*), coalesce(sum(points), 0) into v_qq, v_points from public.quiz_questions where quiz_id = v_quiz;
 
   if v_n <> {len(items)} or v_o <> {sum(len(i['options']) for i in items)} or v_qq <> {len(items)} or v_points <> {S.TOTAL_MARKS} then
-    raise exception 'G10 import incomplete: questions=%, options=%, quiz_questions=%, marks=%', v_n, v_o, v_qq, v_points;
+    raise exception 'MYP5 import incomplete: questions=%, options=%, quiz_questions=%, marks=%', v_n, v_o, v_qq, v_points;
   end if;
 end $body$;
 """

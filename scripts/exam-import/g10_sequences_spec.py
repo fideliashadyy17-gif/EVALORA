@@ -1,4 +1,4 @@
-# G10 Examination — MYP 5 Sequences & Series E-Assessment (50 printed questions, 100 marks, 90 min).
+# MYP5 Examination — MYP 5 Sequences & Series E-Assessment (50 printed questions, 100 marks, 90 min).
 # Source: "MYP 5 Mathematics.pdf" (27 pages, no answer key). Every stem, table and option is transcribed
 # from the PDF text layer. No answers are printed in the paper: every key below was derived by hand and
 # checked in verify_g10_sequences.py.

@@ -1,4 +1,4 @@
--- G10 Examination — MYP 5 Sequences & Series E-Assessment (Oak International School)
+-- MYP5 Examination — MYP 5 Sequences & Series E-Assessment (Oak International School)
 --
 -- Source document: "MYP 5 Mathematics.pdf", 27 pages, 50 printed theory and reasoning questions, 100 marks,
 -- 90 minutes. The paper prints no answer key. Every answer was derived by hand and checked independently in
@@ -96,6 +96,6 @@ begin
   select count(*), coalesce(sum(points), 0) into v_qq, v_points from public.quiz_questions where quiz_id = v_quiz;
 
   if v_n <> 105 or v_o <> 12 or v_qq <> 105 or v_points <> 100 then
-    raise exception 'G10 import incomplete: questions=%, options=%, quiz_questions=%, marks=%', v_n, v_o, v_qq, v_points;
+    raise exception 'MYP5 import incomplete: questions=%, options=%, quiz_questions=%, marks=%', v_n, v_o, v_qq, v_points;
   end if;
 end $body$;
