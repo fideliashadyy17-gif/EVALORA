@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { EXAM_TRACKS, paperForTrack, parseTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -7,6 +8,7 @@ import { z } from "zod";
 const Body = z.object({
   exam_code: z.string().min(4).max(16),
   candidate_code: z.string().min(4).max(20),
+  track: z.enum(EXAM_TRACKS).optional(),
 });
 
 /**
@@ -54,7 +56,15 @@ export async function POST(request: Request) {
   if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
     return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
   if (!attempt) {
-    const rows = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
+    const tracked = trackSelectionEnabled(settings);
+    const track = parseTrack(parsed.data.track);
+    if (tracked && !track)
+      return NextResponse.json(
+        { error: "Choose Calculus AB or Calculus BC to start this examination.", requires_track: true },
+        { status: 409 },
+      );
+    const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
+    const rows = tracked && track ? paperForTrack(rows0, track) : rows0;
     const ordered = settings.randomize_questions
       ? seededShuffle(rows, `${exam.id}:${candidate.id}`)
       : rows;
@@ -64,6 +74,7 @@ export async function POST(request: Request) {
         exam_id: exam.id,
         candidate_id: candidate.id,
         question_order: ordered.map((r) => r.id),
+        track: tracked && track ? track : null,
       })
       .select()
       .single();
@@ -80,6 +91,7 @@ export async function POST(request: Request) {
     title: exam.title,
     candidate_name: candidate.full_name,
     status: attempt.status,
+    track: attempt.track ?? null,
     deadline: deadline.toISOString(),
     proctoring: Boolean((exam.settings as Record<string, unknown>)?.proctoring),
   });

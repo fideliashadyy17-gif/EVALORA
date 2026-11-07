@@ -58,8 +58,10 @@ export function ExamJoinClient({
     setGuestKey(existing);
   }, [token]);
 
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  const [needsTrack, setNeedsTrack] = useState(false);
+
+  async function submit(e: React.FormEvent | null, track?: "AB" | "BC") {
+    e?.preventDefault();
     if (!firstName.trim() || !lastName.trim()) return setError("Both first name and last name are required.");
     if (!classId) return setError("Select your class.");
     if (!guestKey) return setError("Your browser could not create a secure candidate key.");
@@ -79,10 +81,12 @@ export function ExamJoinClient({
         guest_key: guestKey,
         identity,
         consent: true,
+        ...(track ? { track } : {}),
       }),
     });
     const data = await res.json().catch(() => null);
     setBusy(false);
+    if (data?.requires_track) return setNeedsTrack(true);
     if (!res.ok) return setError(data?.error ?? "Access denied.");
     try {
       localStorage.setItem(
@@ -149,9 +153,18 @@ export function ExamJoinClient({
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 accent-evergreen-700" required />
             <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
           </label>
-          <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || requiresAccount}>
+          {needsTrack ? (
+            <div className="space-y-3 rounded-xl border border-evergreen-900/25 bg-evergreen-50 p-4" role="group" aria-label="Choose your Calculus track">
+              <p className="text-sm font-semibold text-evergreen-950">Which AP Calculus course are you taking?</p>
+              <p className="text-xs text-ink-soft">Questions 45–50 are for BC students only. AB students receive questions 1–44.</p>
+              <div className="grid grid-cols-2 gap-3">
+                <Button type="button" variant="gold" disabled={busy} onClick={() => submit(null, "AB")}>Calculus AB</Button>
+                <Button type="button" variant="gold" disabled={busy} onClick={() => submit(null, "BC")}>Calculus BC</Button>
+              </div>
+            </div>
+          ) : (<Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || requiresAccount}>
             {busy ? "Verifying…" : "Verify & begin examination"}
-          </Button>
+          </Button>)}
           <p className="text-center text-xs text-ink-soft">
             Returning after a disconnection? Use the same link, code, name, identification fields and class on this browser to resume your saved answers.
           </p>
