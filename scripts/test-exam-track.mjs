@@ -40,3 +40,22 @@ assert.equal(parseTrack('ab'), null);
 assert.equal(parseTrack(undefined), null);
 
 console.log('exam-track: 12 checks passed');
+
+// Class links: settings.linked_class_ids must reach the access parser (src/lib/exam-access.ts).
+{
+  const accessSrc = ts.transpileModule(readFileSync('src/lib/exam-access.ts', 'utf8'), {
+    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText;
+  const accessFile = path.join(dir, 'exam-access.cjs');
+  writeFileSync(accessFile, accessSrc);
+  const {parseExamAccessSettings, mergeEligibleClassIds} = await import(accessFile);
+  const AP1 = '11111111-1111-4111-8111-111111111111';
+  const AP2 = '22222222-2222-4222-8222-222222222222';
+  const linked = parseExamAccessSettings({linked_class_ids: [AP1, AP2, 'not-a-uuid']});
+  assert.deepEqual(linked.linkedClassIds, [AP1, AP2], 'both AP classes are linked, invalid ids dropped');
+  assert.deepEqual(parseExamAccessSettings({}).linkedClassIds, [], 'no link when the key is absent');
+  // Existing allowlist behaviour is unchanged: an allowlist still restricts, it does not add classes.
+  assert.deepEqual(mergeEligibleClassIds([AP1], []), [AP1]);
+  assert.deepEqual(mergeEligibleClassIds([AP1, AP2], [AP2]), [AP2]);
+  console.log('exam-track: class-link checks passed');
+}

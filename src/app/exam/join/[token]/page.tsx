@@ -78,6 +78,7 @@ export default async function SharedExamJoinPage({
     if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClassIds.add(row.class_id);
   }
   if (exam.class_id) baseEligibleClassIds.add(exam.class_id);
+  for (const id of access.linkedClassIds) baseEligibleClassIds.add(id);
   const eligibleClassIds = mergeEligibleClassIds([...baseEligibleClassIds], access.eligibleClassIds);
   const { data: classRows } = eligibleClassIds.length
     ? await admin.from("classes").select("id,name,organization_id").in("id", eligibleClassIds)

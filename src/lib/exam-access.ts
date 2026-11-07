@@ -19,6 +19,8 @@ export interface ExamAccessSettings {
   accessMode: AccessMode;
   identityFields: IdentityField[];
   eligibleClassIds: string[];
+  /** Classes explicitly linked to this examination (settings.linked_class_ids). */
+  linkedClassIds: string[];
   attemptPolicy: AttemptPolicy;
   proctoring: boolean;
 }
@@ -89,6 +91,7 @@ export function parseExamAccessSettings(
       : "shared_link",
     identityFields: normalizeIdentityFields(raw.identity_fields),
     eligibleClassIds: normalizeUuidList(raw.eligible_class_ids),
+    linkedClassIds: normalizeUuidList(raw.linked_class_ids),
     attemptPolicy: raw.attempt_policy === "read_only_reentry"
       ? "read_only_reentry"
       : "single_resume",

@@ -110,6 +110,7 @@ export async function POST(request: Request) {
     if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClasses.add(row.class_id);
   }
   if (exam.class_id) baseEligibleClasses.add(exam.class_id);
+  for (const id of access.linkedClassIds) baseEligibleClasses.add(id);
   const eligibleClasses = new Set(mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds));
   if (eligibleClasses.size === 0)
     return NextResponse.json({ error: "No eligible class is configured for this examination." }, { status: 409 });
