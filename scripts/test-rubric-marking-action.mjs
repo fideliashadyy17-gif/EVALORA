@@ -127,6 +127,7 @@ function from(table) {
 const db = {from};
 
 const stub = {
+  '@/lib/integrity': { parseIntegrityPolicy: (raw) => raw },
   '@/lib/auth': {
     requireUser: async () => ({org: {id: state.org}, allowed: state.allowed, user: {id: GRADER, email: 'grader@example.com'}}),
     activeOrg: (ctx) => (ctx.org ? ctx.org : null),

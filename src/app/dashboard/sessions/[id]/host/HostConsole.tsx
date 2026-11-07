@@ -4,10 +4,11 @@ import { ParticipantAvatar } from "@/components/ParticipantAvatar";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
 import { parseLiveSettings } from "@/lib/live";
+import { describeIncidentType } from "@/lib/integrity";
 import { Badge, Button, Card } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
-import { Eye, Radio, Trophy, UserCheck, Users, UserX, Wifi } from "lucide-react";
+import { Eye, Radio, ShieldAlert, Trophy, UserCheck, Users, UserX, Wifi } from "lucide-react";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -64,6 +65,7 @@ interface HostParticipant {
   answers_count: number;
   average_response_ms: number | null;
   last_response_ms: number | null;
+  integrity: { incidents: number; open: number; latest_type: string | null; latest_at: string | null };
 }
 
 interface HostState {
@@ -608,7 +610,17 @@ export function HostConsole({
                         )}
                         {p.average_response_ms !== null && <span className="rounded-full bg-cream px-2 py-1">avg {(p.average_response_ms / 1000).toFixed(1)}s</span>}
                         {p.reconnect_count > 0 && <span className="rounded-full bg-blue-50 px-2 py-1">↻ reconnected ×{p.reconnect_count}</span>}
+                        {p.integrity.incidents > 0 && (
+                          <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 ${p.integrity.open > 0 ? "bg-amber-100 text-amber-900" : "bg-cream text-ink-soft"}`}>
+                            <ShieldAlert className="h-3 w-3" /> {p.integrity.incidents} integrity · {p.integrity.open} awaiting review
+                          </span>
+                        )}
                       </div>
+                      {p.integrity.latest_type && (
+                        <p className="mt-1.5 text-[11px] text-amber-900">
+                          Latest: {describeIncidentType(p.integrity.latest_type)}. Authorized proctor roles can inspect the complete immutable history.
+                        </p>
+                      )}
                       <ParticipantActions participant={p} busy={busy} ended={session.status === "ended"} act={act} sessionId={session.id} />
                     </div>
                   </div>

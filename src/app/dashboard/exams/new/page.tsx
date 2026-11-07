@@ -71,6 +71,30 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             <Field label="Instructions">
               <Textarea name="instructions" rows={3} placeholder="Rules, permitted materials, integrity notice…" />
             </Field>
+            <fieldset className="space-y-3 rounded-xl border border-evergreen-900/15 p-4">
+              <legend className="px-1 text-sm font-semibold text-evergreen-950">Candidate integrity policy</legend>
+              <input type="hidden" name="integrity_configured" value="1" />
+              <p className="text-xs text-ink-soft">Browser events are detected and recorded for human review. This is not a secure-browser lockdown and never automatically disqualifies a candidate.</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  ["integrity_enabled", "Enable integrity monitoring", true],
+                  ["integrity_tab", "Detect tab switching", true],
+                  ["integrity_focus", "Detect window focus loss", true],
+                  ["integrity_fullscreen", "Detect full-screen exit", true],
+                  ["integrity_clipboard", "Detect clipboard actions", true],
+                  ["integrity_sound", "Audible candidate warnings", true],
+                ].map(([name, label, checked]) => (
+                  <label key={name as string} className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+                    <input type="checkbox" name={name as string} defaultChecked={Boolean(checked)} className="h-5 w-5 accent-evergreen-700" />
+                    {label}
+                  </label>
+                ))}
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Strong warning after (incidents)"><Input name="integrity_warn_after" type="number" min={1} max={50} defaultValue={3} /></Field>
+                <Field label="Escalate for review after (incidents)"><Input name="integrity_review_after" type="number" min={1} max={50} defaultValue={5} /></Field>
+              </div>
+            </fieldset>
             <div className="grid gap-2 rounded-xl bg-cream p-4 sm:grid-cols-2">
               {[
                 ["randomize_questions", "Randomize question order per candidate", true],

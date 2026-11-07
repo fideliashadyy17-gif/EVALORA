@@ -7,9 +7,12 @@ import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner
 import { Badge, Button, Card, Field, Input } from "@/components/ui";
 import { AVATARS, type AvatarKey } from "@/lib/avatars";
 import type { RichDoc } from "@/lib/content";
+import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
+import { IntegrityMonitor } from "@/lib/integrityMonitor";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Maximize, ShieldAlert, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface SubmittedAnswer {
   submitted: true;
@@ -40,6 +43,7 @@ interface LiveState {
   explanation_doc?: RichDoc | null;
   participant: { display_name: string; avatar_key: string; status: string; score: number; finished: boolean };
   participant_count: number;
+  integrity: IntegrityPolicy;
   leaderboard: { display_name: string; avatar_key: string; score: number; is_me: boolean }[] | null;
   my_rank: number | null;
 }
@@ -65,8 +69,16 @@ export function PlayClient({ code }: { code: string }) {
   const [connection, setConnection] = useState<"connecting" | "online" | "reconnecting">("connecting");
   const [localSound, setLocalSound] = useState(true);
   const [now, setNow] = useState(Date.now());
+  const [integrityWarning, setIntegrityWarning] = useState<IntegrityWarning | null>(null);
+  const [fullscreenMessage, setFullscreenMessage] = useState<string | null>(null);
   const offsetRef = useRef(0);
   const audioRef = useRef<AudioContext | null>(null);
+  const lastIntegrityToneAt = useRef(0);
+  const integrityPolicyKey = JSON.stringify(state?.integrity ?? {});
+  const activePolicy = useMemo(
+    () => parseIntegrityPolicy(JSON.parse(integrityPolicyKey)),
+    [integrityPolicyKey],
+  );
 
   useEffect(() => {
     try {
@@ -129,6 +141,73 @@ export function PlayClient({ code }: { code: string }) {
     };
   }, [identity, fetchState]);
 
+  const playIntegrityTone = useCallback(() => {
+    try {
+      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!AudioCtor) return;
+      audioRef.current ??= new AudioCtor();
+      const ctx = audioRef.current;
+      if (ctx.state === "suspended") void ctx.resume();
+      const oscillator = ctx.createOscillator();
+      const gain = ctx.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.12, ctx.currentTime + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.35);
+      oscillator.connect(gain).connect(ctx.destination);
+      oscillator.start();
+      oscillator.stop(ctx.currentTime + 0.4);
+    } catch {
+      // Browser audio permission is optional and never blocks participation.
+    }
+  }, []);
+
+  // Student participation only. This component is never reused by the private
+  // host console or public projection screen. Lobby and paused participants
+  // stay covered; completion/removal tears down every listener.
+  const monitoredSessionStatus = state?.session.status ?? null;
+  const monitoredParticipantFinished = Boolean(state?.participant.finished);
+  useEffect(() => {
+    if (!identity || monitoredSessionStatus === null || removed || !activePolicy.enabled) return;
+    if (monitoredSessionStatus === "ended" || monitoredParticipantFinished) return;
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+    const monitor = new IntegrityMonitor(
+      { document, window, now: () => Date.now() },
+      activePolicy,
+      async (event, detail) => {
+        try {
+          const response = await fetch("/api/live/integrity", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              participant_id: identity.participant_id,
+              token: identity.access_token,
+              event,
+              detail,
+            }),
+            keepalive: true,
+          });
+          if (!response.ok) return null;
+          const data = await response.json().catch(() => null);
+          return data && typeof data.count === "number" ? { count: data.count } : null;
+        } catch {
+          return null;
+        }
+      },
+      (next) => {
+        setIntegrityWarning(next);
+        if (activePolicy.sound && Date.now() - lastIntegrityToneAt.current > 1000) {
+          lastIntegrityToneAt.current = Date.now();
+          playIntegrityTone();
+        }
+      },
+      { preventNavigation: true },
+    );
+    monitor.start();
+    return () => monitor.stop();
+  }, [identity, monitoredSessionStatus, monitoredParticipantFinished, removed, activePolicy, playIntegrityTone]);
+
   async function join(e: React.FormEvent) {
     e.preventDefault();
     if (joining) return;
@@ -185,6 +264,22 @@ export function PlayClient({ code }: { code: string }) {
       osc.stop(ctx.currentTime + 0.24);
     } catch {
       // Local feedback sound is optional; submission never depends on it.
+    }
+  }
+
+  async function enterFullscreen() {
+    setFullscreenMessage(null);
+    try {
+      if (!document.fullscreenElement) {
+        if (!document.documentElement.requestFullscreen) {
+          setFullscreenMessage("This browser does not offer full-screen mode. You can continue without it.");
+          return;
+        }
+        await document.documentElement.requestFullscreen();
+      }
+      setFullscreenMessage("Full screen is on. Keep this quiz window in front of you.");
+    } catch {
+      setFullscreenMessage("Full-screen permission was not granted. You can continue; other integrity detection remains active.");
     }
   }
 
@@ -364,6 +459,16 @@ export function PlayClient({ code }: { code: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {activePolicy.enabled && activePolicy.fullscreen && session.status !== "ended" && !participant.finished && (
+            <button
+              type="button"
+              onClick={() => void enterFullscreen()}
+              className="inline-flex items-center gap-1.5 rounded-full border border-evergreen-900/15 bg-white px-3 py-1.5 text-xs font-medium text-evergreen-900"
+              aria-label="Enter full screen"
+            >
+              <Maximize className="h-3.5 w-3.5" /> Full screen
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setLocalSound((v) => !v)}
@@ -394,6 +499,29 @@ export function PlayClient({ code }: { code: string }) {
       <div className="mb-5 h-2 overflow-hidden rounded-full bg-evergreen-100">
         <div className="h-full bg-evergreen-700 transition-all" style={{ width: `${progressPercent}%` }} />
       </div>
+
+      {fullscreenMessage && (
+        <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-3 py-2 text-xs text-evergreen-900">{fullscreenMessage}</p>
+      )}
+      {integrityWarning && (
+        <div role="alert" className="mb-5 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-sm text-amber-950">
+          <div className="flex items-start gap-2">
+            <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" />
+            <div className="min-w-0 flex-1">
+              <p className="font-semibold">{integrityWarning.title}</p>
+              <p className="mt-1">{integrityWarning.body}</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIntegrityWarning(null)}
+              aria-label="Dismiss this warning"
+              className="rounded p-1 text-amber-800 transition hover:bg-amber-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      )}
 
       {participant.status === "pending" ? (
         <CenterState

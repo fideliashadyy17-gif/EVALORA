@@ -21,6 +21,8 @@ export const dynamic = "force-dynamic";
 interface SP {
   exam?: string;
   candidate?: string;
+  session?: string;
+  participant?: string;
   decision?: string;
   source?: string;
   from?: string;
@@ -53,17 +55,20 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   const sp = await searchParams;
   const supabase = await createClient();
 
-  const [exams, candidates] = await Promise.all([
+  const [exams, candidates, sessions] = await Promise.all([
     supabase.from("exams").select("id, title").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(200),
     sp.exam && isUuid(sp.exam)
       ? supabase.from("exam_candidates").select("id, full_name").eq("exam_id", sp.exam).order("full_name").limit(500)
       : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+    supabase.from("quiz_sessions").select("id, title, join_code").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(200),
   ]);
 
   const history = await loadReviewHistory(supabase, {
     organizationId: org.id,
     examId: sp.exam,
     candidateId: sp.candidate,
+    sessionId: sp.session,
+    participantId: sp.participant,
     decision: sp.decision,
     source: sp.source === "backfilled" ? null : sp.source,
     from: isoDay(sp.from) ? `${sp.from}T00:00:00.000Z` : null,
@@ -73,13 +78,15 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
 
   let pendingQuery = supabase
     .from("proctoring_incidents")
-    .select("*, exams(title), exam_candidates(full_name), profiles(email)")
+    .select("*, exams(title), exam_candidates(full_name), quizzes(title), quiz_sessions(title, join_code), session_participants(display_name, participant_ref), profiles(email)")
     .eq("organization_id", org.id)
     .in("status", ["open", "investigating"])
     .order("created_at", { ascending: false })
     .limit(50);
   if (sp.exam && isUuid(sp.exam)) pendingQuery = pendingQuery.eq("exam_id", sp.exam);
   if (sp.candidate && isUuid(sp.candidate)) pendingQuery = pendingQuery.eq("candidate_id", sp.candidate);
+  if (sp.session && isUuid(sp.session)) pendingQuery = pendingQuery.eq("session_id", sp.session);
+  if (sp.participant && isUuid(sp.participant)) pendingQuery = pendingQuery.eq("participant_id", sp.participant);
   const { data: pending } = await pendingQuery;
 
   const { data: rooms } = await supabase
@@ -105,7 +112,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
 
   const query = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    const merged = { exam: sp.exam, candidate: sp.candidate, decision: sp.decision, source: sp.source, from: sp.from, to: sp.to, ...over };
+    const merged = { exam: sp.exam, candidate: sp.candidate, session: sp.session, participant: sp.participant, decision: sp.decision, source: sp.source, from: sp.from, to: sp.to, ...over };
     Object.entries(merged).forEach(([k, v]) => { if (v) p.set(k, v); });
     const s = p.toString();
     return `/dashboard/proctoring${s ? `?${s}` : ""}`;
@@ -115,7 +122,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
     <>
       <PageTitle
         title="Proctoring review"
-        subtitle="Every observation and every reviewer decision in this workspace, with who decided, what they decided and when. Observations are reports for human review — never automatic proof of misconduct."
+        subtitle="Every examination and live-quiz observation and every reviewer decision in this workspace. Observations are reports for human review — never automatic proof of misconduct."
         action={
           <div className="flex gap-2">
             <ButtonLink href="/dashboard/exams" variant="outline">Examinations</ButtonLink>
@@ -151,6 +158,14 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
               ))}
             </Select>
           </Field>
+          <Field label="Live session">
+            <Select name="session" defaultValue={sp.session ?? ""}>
+              <option value="">All live sessions</option>
+              {(sessions.data ?? []).map((session) => (
+                <option key={session.id} value={session.id}>{session.title ?? `Session ${session.join_code}`} · {session.join_code}</option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Candidate">
             <Select name="candidate" defaultValue={sp.candidate ?? ""}>
               <option value="">All candidates</option>
@@ -180,7 +195,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
           </div>
         </form>
         <p className="mt-2 text-xs text-ink-soft">
-          Choose an examination to narrow the candidate list. Exports respect the same filters.
+          Examination, live-session and participant filters also apply to exports. A host can link directly to one session.
         </p>
         <div className="mt-3">
           <ButtonLink
@@ -195,7 +210,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
       <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Observations awaiting a decision</h2>
       {(pending ?? []).length === 0 ? (
         <Card className="mb-8 p-5 text-sm text-ink-soft">
-          No observations are waiting for review. When a supervisor logs an observation during an examination it appears here.
+          No observations are waiting for review. Examination and live-participant integrity events appear here.
         </Card>
       ) : (
         <div className="mb-8 space-y-3">
@@ -203,20 +218,24 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
             const ex = i.exams as { title?: string } | null;
             const cand = i.exam_candidates as { full_name?: string } | null;
             const reporter = i.profiles as { email?: string } | null;
+            const liveSession = i.quiz_sessions as { title?: string | null; join_code?: string } | null;
+            const liveQuiz = i.quizzes as { title?: string } | null;
+            const liveParticipant = i.session_participants as { display_name?: string; participant_ref?: string | null } | null;
             return (
               <Card key={i.id} className="p-5">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={i.severity === "high" ? "red" : i.severity === "medium" ? "amber" : "gray"}>{i.severity}</Badge>
                   <Badge tone={statusTone(i.status)}>{i.status === "open" ? "awaiting review" : i.status}</Badge>
                   <span className="font-medium text-evergreen-950">{describeIncidentType(String(i.type))}</span>
-                  <span className="text-sm text-ink-soft">· {cand?.full_name ?? "Unassigned candidate"}</span>
-                  <span className="text-sm text-ink-soft">· {ex?.title ?? "—"}</span>
+                  <span className="text-sm text-ink-soft">· {cand?.full_name ?? liveParticipant?.display_name ?? "Unassigned participant"}</span>
+                  <span className="text-sm text-ink-soft">· {ex?.title ?? (liveSession ? `Live: ${liveSession.title ?? liveQuiz?.title ?? liveSession.join_code}` : "—")}</span>
                   <span className="ml-auto text-xs text-ink-soft">{fmtDateTime(i.created_at)}</span>
                 </div>
                 {i.note && <p className="mt-2 rounded-lg bg-cream px-3 py-2 text-sm text-ink">{i.note}</p>}
-                <p className="mt-1 text-xs text-ink-soft">Reported by {reporter?.email ?? "unknown user"}</p>
+                <p className="mt-1 text-xs text-ink-soft">Reported by {reporter?.email ?? (i.participant_id ? "participant browser (server-recorded)" : "unknown user")}</p>
                 <form action={reviewIncident} className="mt-3 grid gap-2 sm:grid-cols-[170px_1fr_auto]">
-                  <input type="hidden" name="exam_id" value={i.exam_id} />
+                  {i.exam_id && <input type="hidden" name="exam_id" value={i.exam_id} />}
+                  {i.session_id && <input type="hidden" name="session_id" value={i.session_id} />}
                   <input type="hidden" name="id" value={i.id} />
                   <input type="hidden" name="expected_status" value={i.status} />
                   <input type="hidden" name="return_to" value="/dashboard/proctoring" />
@@ -241,7 +260,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
             <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
               <th className="px-4 py-3 font-semibold">When</th>
               <th className="px-4 py-3 font-semibold">Decision</th>
-              <th className="px-4 py-3 font-semibold">Examination / candidate</th>
+              <th className="px-4 py-3 font-semibold">Assessment / participant</th>
               <th className="px-4 py-3 font-semibold">Reviewer</th>
               <th className="px-4 py-3 font-semibold">Source</th>
               <th className="px-4 py-3 font-semibold">Note</th>
@@ -265,8 +284,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <span className="block">{h.exams?.title ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? "Unassigned candidate"}</span>
+                  <span className="block">{h.exams?.title ?? (h.session_id ? `Live: ${h.quiz_sessions?.title ?? h.quizzes?.title ?? h.quiz_sessions?.join_code}` : "—")}</span>
+                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? h.session_participants?.display_name ?? "Unassigned participant"}</span>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.reviewer_email ?? "—"}</span>

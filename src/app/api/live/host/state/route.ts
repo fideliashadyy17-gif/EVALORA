@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
   }
 
-  const [{ data: competition }, { data: quiz }, rows, { data: rawParticipants }, { data: answers }] =
+  const [{ data: competition }, { data: quiz }, rows, { data: rawParticipants }, { data: answers }, { data: integrityIncidents }] =
     await Promise.all([
       admin
         .from("competitions")
@@ -58,6 +58,13 @@ export async function GET(request: Request) {
         .select("participant_id, quiz_question_id, response_ms, submitted_at")
         .eq("session_id", session.id)
         .order("submitted_at", { ascending: true })
+        .limit(50000),
+      admin
+        .from("proctoring_incidents")
+        .select("participant_id, type, status, created_at")
+        .eq("session_id", session.id)
+        .like("type", "integrity_%")
+        .order("created_at", { ascending: false })
         .limit(50000),
     ]);
 
@@ -111,6 +118,21 @@ export async function GET(request: Request) {
     byParticipant.set(a.participant_id, entry);
   }
 
+  const integrityByParticipant = new Map<string, { incidents: number; open: number; latest_type: string | null; latest_at: string | null }>();
+  for (const row of integrityIncidents ?? []) {
+    if (!row.participant_id) continue;
+    const current = integrityByParticipant.get(row.participant_id) ?? { incidents: 0, open: 0, latest_type: null, latest_at: null };
+    // Rows arrive newest first; returns/reconnections are informational and
+    // do not inflate the participant's violation count.
+    if (!["integrity_tab_visible", "integrity_focus_back", "integrity_online"].includes(row.type)) {
+      current.incidents += 1;
+      if (["open", "investigating"].includes(row.status)) current.open += 1;
+    }
+    current.latest_type ??= row.type;
+    current.latest_at ??= row.created_at;
+    integrityByParticipant.set(row.participant_id, current);
+  }
+
   const participants = rankedParticipants(rawParticipants ?? [], answers ?? []).map((p) => {
     const stats = byParticipant.get(p.id);
     return {
@@ -131,6 +153,7 @@ export async function GET(request: Request) {
       average_response_ms: stats?.timedCount ? Math.round(stats.totalMs / stats.timedCount) : null,
       last_response_ms: stats?.lastMs ?? null,
       last_submitted_at: stats?.lastAt ?? null,
+      integrity: integrityByParticipant.get(p.id) ?? { incidents: 0, open: 0, latest_type: null, latest_at: null },
     };
   });
 

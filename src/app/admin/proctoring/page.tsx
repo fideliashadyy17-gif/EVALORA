@@ -34,6 +34,8 @@ interface SP {
   org?: string;
   exam?: string;
   candidate?: string;
+  session?: string;
+  participant?: string;
   decision?: string;
   from?: string;
   to?: string;
@@ -47,7 +49,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const admin = createAdminClient();
 
-  const [orgs, exams, candidates] = await Promise.all([
+  const [orgs, exams, candidates, sessions, participants] = await Promise.all([
     admin.from("organizations").select("id, name, slug").order("name").limit(500),
     sp.org && isUuid(sp.org)
       ? admin.from("exams").select("id, title").eq("organization_id", sp.org).order("title").limit(300)
@@ -55,16 +57,24 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
     sp.exam && isUuid(sp.exam)
       ? admin.from("exam_candidates").select("id, full_name").eq("exam_id", sp.exam).order("full_name").limit(500)
       : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+    sp.org && isUuid(sp.org)
+      ? admin.from("quiz_sessions").select("id, title, join_code").eq("organization_id", sp.org).order("created_at", { ascending: false }).limit(300)
+      : Promise.resolve({ data: [] as { id: string; title: string | null; join_code: string }[] }),
+    sp.session && isUuid(sp.session)
+      ? admin.from("session_participants").select("id, display_name").eq("session_id", sp.session).order("display_name").limit(500)
+      : Promise.resolve({ data: [] as { id: string; display_name: string }[] }),
   ]);
 
   let incidentQuery = admin
     .from("proctoring_incidents")
-    .select("*, exams(title, organizations(name)), exam_candidates(full_name), profiles(email)")
+    .select("*, exams(title, organizations(name)), exam_candidates(full_name), quizzes(title), quiz_sessions(title, join_code), session_participants(display_name), profiles(email)")
     .order("created_at", { ascending: false })
     .limit(100);
   if (sp.org && isUuid(sp.org)) incidentQuery = incidentQuery.eq("organization_id", sp.org);
   if (sp.exam && isUuid(sp.exam)) incidentQuery = incidentQuery.eq("exam_id", sp.exam);
   if (sp.candidate && isUuid(sp.candidate)) incidentQuery = incidentQuery.eq("candidate_id", sp.candidate);
+  if (sp.session && isUuid(sp.session)) incidentQuery = incidentQuery.eq("session_id", sp.session);
+  if (sp.participant && isUuid(sp.participant)) incidentQuery = incidentQuery.eq("participant_id", sp.participant);
 
   const [incidents, rooms, recordings, openCount, retainedCount] = await Promise.all([
     incidentQuery,
@@ -78,6 +88,8 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
     organizationId: sp.org,
     examId: sp.exam,
     candidateId: sp.candidate,
+    sessionId: sp.session,
+    participantId: sp.participant,
     decision: sp.decision,
     from: isoDay(sp.from) ? `${sp.from}T00:00:00.000Z` : null,
     to: isoDay(sp.to) ? `${sp.to}T23:59:59.999Z` : null,
@@ -90,11 +102,13 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
 
   const query = (over: Record<string, string | undefined>) => {
     const p = new URLSearchParams();
-    const merged = { org: sp.org, exam: sp.exam, candidate: sp.candidate, decision: sp.decision, from: sp.from, to: sp.to, ...over };
+    const merged = { org: sp.org, exam: sp.exam, candidate: sp.candidate, session: sp.session, participant: sp.participant, decision: sp.decision, from: sp.from, to: sp.to, ...over };
     Object.entries(merged).forEach(([k, v]) => { if (v) p.set(k, v); });
     const s = p.toString();
     return `/admin/proctoring${s ? `?${s}` : ""}`;
   };
+
+  const orgNames = new Map((orgs.data ?? []).map((o) => [o.id, o.name]));
 
   return (
     <>
@@ -114,7 +128,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
 
       <Card className="mb-6 p-5">
         <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Filter</h2>
-        <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <form method="get" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Organization">
             <Select name="org" defaultValue={sp.org ?? ""}>
               <option value="">All organizations</option>
@@ -139,6 +153,22 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
               ))}
             </Select>
           </Field>
+          <Field label="Live session">
+            <Select name="session" defaultValue={sp.session ?? ""}>
+              <option value="">All live sessions</option>
+              {(sessions.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>{s.title ?? s.join_code} · {s.join_code}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Live participant">
+            <Select name="participant" defaultValue={sp.participant ?? ""}>
+              <option value="">All live participants</option>
+              {(participants.data ?? []).map((p) => (
+                <option key={p.id} value={p.id}>{p.display_name}</option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Decision">
             <Select name="decision" defaultValue={sp.decision ?? ""}>
               <option value="">All decisions</option>
@@ -155,7 +185,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
           <Field label="To">
             <Input type="date" name="to" defaultValue={sp.to ?? ""} />
           </Field>
-          <div className="flex gap-2 lg:col-span-6">
+          <div className="flex gap-2 lg:col-span-4">
             <Button type="submit">Apply filters</Button>
             <ButtonLink href={query({})} variant="outline">Reset</ButtonLink>
           </div>
@@ -180,8 +210,8 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
           <thead>
             <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
               <th className="px-4 py-3 font-semibold">Observation</th>
-              <th className="px-4 py-3 font-semibold">Examination / organization</th>
-              <th className="px-4 py-3 font-semibold">Candidate</th>
+              <th className="px-4 py-3 font-semibold">Assessment / organization</th>
+              <th className="px-4 py-3 font-semibold">Candidate / participant</th>
               <th className="px-4 py-3 font-semibold">Severity</th>
               <th className="px-4 py-3 font-semibold">Reported</th>
               <th className="px-4 py-3 font-semibold">State</th>
@@ -197,6 +227,9 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
             {(incidents.data ?? []).map((i) => {
               const ex = i.exams as { title?: string; organizations?: { name?: string } | null } | null;
               const cand = i.exam_candidates as { full_name?: string } | null;
+              const quiz = i.quizzes as { title?: string } | null;
+              const session = i.quiz_sessions as { title?: string | null; join_code?: string } | null;
+              const participant = i.session_participants as { display_name?: string } | null;
               const reporter = i.profiles as { email?: string } | null;
               return (
                 <tr key={i.id} className="border-b border-evergreen-900/10 align-top">
@@ -210,10 +243,11 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
                     <span className="block text-[11px] text-ink-soft">by {reporter?.email ?? "unknown"}</span>
                   </td>
                   <td className="px-4 py-2.5 text-ink-soft">
-                    {ex?.title ?? "—"}
-                    {ex?.organizations?.name ? ` · ${ex.organizations.name}` : ""}
+                    {ex?.title ?? session?.title ?? quiz?.title ?? "General observation"}
+                    {session?.join_code ? ` · ${session.join_code}` : ""}
+                    <span className="block text-xs">{ex?.organizations?.name ?? orgNames.get(i.organization_id) ?? "—"}</span>
                   </td>
-                  <td className="px-4 py-2.5 text-ink-soft">{cand?.full_name ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-ink-soft">{cand?.full_name ?? participant?.display_name ?? "—"}</td>
                   <td className="px-4 py-2.5"><Badge tone={sevTone(i.severity)}>{i.severity}</Badge></td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-ink-soft">{fmtDateTime(i.created_at)}</td>
                   <td className="px-4 py-2.5">
@@ -249,7 +283,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
             <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
               <th className="px-4 py-3 font-semibold">When</th>
               <th className="px-4 py-3 font-semibold">Decision</th>
-              <th className="px-4 py-3 font-semibold">Organization / examination</th>
+              <th className="px-4 py-3 font-semibold">Organization / assessment / person</th>
               <th className="px-4 py-3 font-semibold">Reviewer</th>
               <th className="px-4 py-3 font-semibold">Source</th>
               <th className="px-4 py-3 font-semibold">Note</th>
@@ -272,7 +306,11 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.organizations?.name ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exams?.title ?? "—"}</span>
+                  <span className="block text-xs text-ink-soft">
+                    {h.exams?.title ?? h.quiz_sessions?.title ?? h.quizzes?.title ?? "General observation"}
+                    {h.quiz_sessions?.join_code ? ` · ${h.quiz_sessions.join_code}` : ""}
+                  </span>
+                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? h.session_participants?.display_name ?? "—"}</span>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.reviewer_email ?? "—"}</span>

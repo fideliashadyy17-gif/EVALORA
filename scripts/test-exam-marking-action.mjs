@@ -16,6 +16,7 @@ const db={from(table) {const filter=[];let patch=null;
  then(resolve,reject){if(failures[`${table}:list`])return Promise.resolve({data:null,error:{message:'failure'}}).then(resolve,reject);return Promise.resolve({data:(tables[table]??[]).filter((row)=>filter.every((f)=>f(row))).map((row)=>({...row})),error:null}).then(resolve,reject);}};return q;}};
 const original=Module._load;
 Module._load=function(request,parent){if(parent?.filename===file){
+ if(request==='@/lib/integrity')return {parseIntegrityPolicy:(raw)=>raw};
  if(request==='@/lib/auth')return {requireUser:async()=>ctx,activeOrg:()=>ctx.org,can:()=>ctx.allowed,CREATOR_ROLES:[],MARKER_ROLES:[],PROCTOR_ROLES:[]};
  if(request==='@/lib/entitlements'||request==='@/lib/capabilities'||request==='@/lib/ai-marking')return {};
  if(request==='@/lib/supabase/server')return {createClient:async()=>db,createAdminClient:()=>db};

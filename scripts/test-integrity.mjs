@@ -216,15 +216,16 @@ function harness({ policyOverrides = {}, reportResult = null, reportThrows = fal
 
 /* ── The recording API ── */
 const route = readFileSync("src/app/api/exam/integrity/route.ts", "utf8");
+const recorder = readFileSync("src/lib/integrityRecording.ts", "utf8");
 ok("the route trusts only the attempt token", /loadAttemptContext\(admin, attempt_id, token\)/.test(route));
-ok("the candidate, paper and organisation come from the token", /organization_id: exam\.organization_id/.test(route) && /candidate_id: candidate\.id/.test(route) && /exam_id: exam\.id/.test(route));
+ok("the candidate, paper and organisation come from the token", /organizationId: exam\.organization_id/.test(route) && /candidateId: candidate\.id/.test(route) && /examId: exam\.id/.test(route) && /recordIntegrityEvent/.test(route));
 ok("no client-supplied identity is accepted", !/z\.object\([^)]*organization_id/.test(route) && !/z\.object\([^)]*candidate_id/.test(route));
 ok("a closed attempt records nothing", /attempt\.status !== "in_progress"/.test(route));
-ok("the assessment policy gates recording server-side", /parseIntegrityPolicy/.test(route) && /reason: "integrity_disabled"/.test(route) && /reason: "event_disabled"/.test(route));
-ok("duplicate bursts are collapsed server-side too", /DEDUPE_MS/.test(route) && /reason: "duplicate"/.test(route));
-ok("a runaway client cannot flood the review queue", /MAX_EVENTS_PER_ATTEMPT/.test(route) && /reason: "capped"/.test(route));
-ok("returns are stored but never counted as violations", /integrity_tab_visible,integrity_focus_back,integrity_online/.test(route));
-ok("the incident lands in the existing table, not a second one", /from\("proctoring_incidents"\)/.test(route) && !/from\("integrity_events"\)/.test(route));
+ok("the assessment policy gates recording server-side", /parseIntegrityPolicy/.test(route) && /reason: "integrity_disabled"/.test(recorder) && /reason: "event_disabled"/.test(recorder));
+ok("duplicate bursts are collapsed server-side too", /INTEGRITY_DEDUPE_MS/.test(recorder) && /reason: "duplicate"/.test(recorder));
+ok("a runaway client cannot flood the review queue", /MAX_INTEGRITY_EVENTS/.test(recorder) && /reason: "capped"/.test(recorder));
+ok("returns are stored but never counted as violations", /integrity_tab_visible,integrity_focus_back,integrity_online/.test(recorder));
+ok("the incident lands in the existing table, not a second one", /from\("proctoring_incidents"\)/.test(recorder) && !/from\("integrity_events"\)/.test(recorder));
 
 /* ── Client wiring ── */
 const client = readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf8");
@@ -245,6 +246,12 @@ ok("the examination console explains what happened in words", /describeIncidentT
 ok("the proctoring console does the same", /describeIncidentType\(String\(i\.type\)\)/.test(dashboardConsole));
 ok("the super-admin console does the same", /describeIncidentType\(String\(i\.type\)\)/.test(adminConsole));
 ok("raw browser payloads are not shown to teachers", /!String\(i\.type\)\.startsWith\("integrity_"\)/.test(examConsole));
+ok("the super-admin console displays live sessions and participants", /quiz_sessions/.test(adminConsole) && /session_participants/.test(adminConsole) && /name="session"/.test(adminConsole) && /name="participant"/.test(adminConsole));
+const quizActions = readFileSync("src/app/dashboard/quizzes/actions.ts", "utf8");
+ok("quiz edits preserve unrelated stored settings", /existingSettings/.test(quizActions) && /\.\.\.existingSettings/.test(quizActions) && /select\("settings"\)/.test(quizActions));
+const hostState = readFileSync("src/app/api/live/host/state/route.ts", "utf8");
+ok("host integrity summaries require organizer authorization and scope incidents to the session", /can\(ctx, session\.organization_id, CREATOR_ROLES\)/.test(hostState) && /eq\("session_id", session\.id\)/.test(hostState));
+ok("informational return events do not inflate host incident totals", /integrity_tab_visible/.test(hostState) && /current\.incidents \+= 1/.test(hostState) && /current\.open \+= 1/.test(hostState));
 
 /* ── Notification bell ── */
 const bell = readFileSync("src/components/dashboard/NotificationBell.tsx", "utf8");

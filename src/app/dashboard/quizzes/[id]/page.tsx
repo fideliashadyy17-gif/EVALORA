@@ -1,5 +1,6 @@
 import { PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -59,6 +60,7 @@ export default async function EditQuizPage({
           randomize_questions: Boolean(settings.randomize_questions),
           randomize_options: Boolean(settings.randomize_options),
           time_per_question_seconds: Number(settings.time_per_question_seconds ?? 30),
+          integrity: parseIntegrityPolicy(settings.integrity),
           question_ids: ordered,
         }}
       />

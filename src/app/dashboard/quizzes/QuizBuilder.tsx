@@ -2,6 +2,7 @@
 
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
+import { parseIntegrityPolicy, type IntegrityPolicy } from "@/lib/integrity";
 import { Badge, Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -17,6 +18,7 @@ export function QuizBuilder({
   initial?: {
     id?: string; title: string; description: string; status: string;
     randomize_questions: boolean; randomize_options: boolean; time_per_question_seconds: number;
+    integrity?: IntegrityPolicy;
     question_ids: string[];
   };
   bank: BankQ[];
@@ -28,6 +30,7 @@ export function QuizBuilder({
   const [randQ, setRandQ] = useState(initial?.randomize_questions ?? false);
   const [randO, setRandO] = useState(initial?.randomize_options ?? false);
   const [tpq, setTpq] = useState(initial?.time_per_question_seconds ?? 30);
+  const [integrity, setIntegrity] = useState(() => parseIntegrityPolicy(initial?.integrity));
   const [selected, setSelected] = useState<string[]>(initial?.question_ids ?? []);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export function QuizBuilder({
       randomize_questions: randQ,
       randomize_options: randO,
       time_per_question_seconds: tpq,
+      integrity,
       question_ids: selected,
     });
     setBusy(false);
@@ -99,6 +103,51 @@ export function QuizBuilder({
             <input type="checkbox" checked={randO} onChange={(e) => setRandO(e.target.checked)} className="h-5 w-5 accent-evergreen-700" />
             Randomize answer options
           </label>
+        </div>
+      </Card>
+
+      <Card className="space-y-4 p-6">
+        <div>
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Participant integrity policy</h2>
+          <p className="mt-1 text-sm text-ink-soft">
+            Applies to student live-quiz participation. Browser events are recorded for human review; they are not proof of misconduct or a secure-browser lockdown.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {([
+            ["enabled", "Enable integrity monitoring"],
+            ["tabSwitch", "Detect tab switching"],
+            ["focusLoss", "Detect window focus loss"],
+            ["fullscreen", "Detect full-screen exit"],
+            ["clipboard", "Detect clipboard actions"],
+            ["sound", "Audible participant warnings"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+              <input
+                type="checkbox"
+                checked={integrity[key]}
+                onChange={(e) => setIntegrity((current) => ({ ...current, [key]: e.target.checked }))}
+                className="h-5 w-5 accent-evergreen-700"
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Strong warning after (incidents)">
+            <Input
+              aria-label="Strong warning after incidents"
+              type="number" min={1} max={50} value={integrity.warnAfter}
+              onChange={(e) => setIntegrity((current) => parseIntegrityPolicy({ ...current, warnAfter: Number(e.target.value) }))}
+            />
+          </Field>
+          <Field label="Escalate for review after (incidents)">
+            <Input
+              aria-label="Escalate for review after incidents"
+              type="number" min={1} max={50} value={integrity.reviewAfter}
+              onChange={(e) => setIntegrity((current) => parseIntegrityPolicy({ ...current, reviewAfter: Number(e.target.value) }))}
+            />
+          </Field>
         </div>
       </Card>
 

@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,16 @@ const QuizSchema = z.object({
   randomize_questions: z.boolean(),
   randomize_options: z.boolean(),
   time_per_question_seconds: z.number().int().min(5).max(3600),
+  integrity: z.object({
+    enabled: z.boolean(),
+    tabSwitch: z.boolean(),
+    focusLoss: z.boolean(),
+    fullscreen: z.boolean(),
+    clipboard: z.boolean(),
+    sound: z.boolean(),
+    warnAfter: z.number(),
+    reviewAfter: z.number(),
+  }).optional(),
   question_ids: z.array(z.string()),
 });
 
@@ -29,6 +40,16 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   if (!parsed.success) return { error: "Please check the form." };
   const q = parsed.data;
   const supabase = await createClient();
+  let existingSettings: Record<string, unknown> = {};
+  if (q.id) {
+    const { data: existing, error } = await supabase
+      .from("quizzes").select("settings").eq("id", q.id).eq("organization_id", org.id).maybeSingle();
+    if (error) return { error: error.message };
+    if (!existing) return { error: "Quiz not found in this organization." };
+    if (existing.settings && typeof existing.settings === "object" && !Array.isArray(existing.settings)) {
+      existingSettings = existing.settings as Record<string, unknown>;
+    }
+  }
 
   if (!q.id) {
     const ent = await getEntitlementFor(supabase, ctx, org.id);
@@ -43,9 +64,11 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
     description: q.description || null,
     status: q.status,
     settings: {
+      ...existingSettings,
       randomize_questions: q.randomize_questions,
       randomize_options: q.randomize_options,
       time_per_question_seconds: q.time_per_question_seconds,
+      integrity: parseIntegrityPolicy(q.integrity),
     },
     created_by: ctx.user.id,
     updated_at: new Date().toISOString(),

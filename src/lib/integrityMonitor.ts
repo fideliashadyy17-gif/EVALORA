@@ -36,6 +36,11 @@ export type IntegrityReport = (
   detail: Record<string, unknown>,
 ) => Promise<{ count?: number } | null | void>;
 
+export interface IntegrityMonitorOptions {
+  /** Ask the browser to confirm navigation while participation is active. */
+  preventNavigation?: boolean;
+}
+
 export class IntegrityMonitor {
   private started = false;
   private violations = 0;
@@ -48,6 +53,7 @@ export class IntegrityMonitor {
     private readonly policy: IntegrityPolicy,
     private readonly report: IntegrityReport,
     private readonly onWarning: (warning: IntegrityWarning) => void = () => {},
+    private readonly options: IntegrityMonitorOptions = {},
   ) {}
 
   /** Violations recorded so far in this attempt (server-confirmed when available). */
@@ -86,7 +92,16 @@ export class IntegrityMonitor {
     this.on(document, "cut", () => void this.emit("cut", {}));
     this.on(document, "contextmenu", () => void this.emit("context_menu", {}));
 
-    this.on(window, "beforeunload", () => void this.emit("page_leave", {}));
+    this.on(window, "beforeunload", (event) => {
+      if (this.options.preventNavigation) {
+        const unload = event as { preventDefault?: () => void; returnValue?: string };
+        unload.preventDefault?.();
+        unload.returnValue = "";
+      }
+      // `keepalive` is supplied by the assessment transport. This is an
+      // observation/deterrence, not a guarantee that every browser will send.
+      void this.emit("page_leave", {});
+    });
     this.on(window, "offline", () => void this.emit("offline", {}));
     this.on(window, "online", () => void this.emit("online", {}));
   }

@@ -1,3 +1,4 @@
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import {
   effectivePhase,
   loadQuizQuestions,
@@ -210,6 +211,9 @@ export async function GET(request: Request) {
       reconnect_count: Number(presencePatch.reconnect_count ?? participant.reconnect_count ?? 0),
     },
     participant_count: participantCount ?? 0,
+    // The participant UI alone consumes this policy. It contains detection
+    // switches and thresholds only — no answers or private host information.
+    integrity: parseIntegrityPolicy(quizSettings.integrity),
     leaderboard,
     my_rank: myRank,
   });

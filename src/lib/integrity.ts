@@ -203,7 +203,7 @@ export function warningFor(event: IntegrityEvent, count: number, policy: Integri
       event,
       count,
       title: "This has been flagged for your invigilator",
-      body: `${what}. That is ${count} recorded incidents in this paper. Your answers are safe; an invigilator will review the events, and you may be asked about them. Keep the assessment window in front of you until you submit.`,
+      body: `${what}. That is ${count} recorded incidents in this assessment. Your answers are safe; an invigilator will review the events, and you may be asked about them. Keep the assessment window in front of you until you submit.`,
     };
   }
   if (level === "strong") {
@@ -212,7 +212,7 @@ export function warningFor(event: IntegrityEvent, count: number, policy: Integri
       event,
       count,
       title: "Repeated activity recorded",
-      body: `${what}. That is ${count} incidents in this paper. Stay on this tab, in this window, until you submit — further incidents are reported to your invigilator.`,
+      body: `${what}. That is ${count} incidents in this assessment. Stay on this tab, in this window, until you submit — further incidents are reported to your invigilator.`,
     };
   }
   return {

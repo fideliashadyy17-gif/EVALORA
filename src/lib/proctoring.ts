@@ -192,6 +192,8 @@ export interface ReviewFilters {
   organizationId: string;
   examId?: string | null;
   candidateId?: string | null;
+  sessionId?: string | null;
+  participantId?: string | null;
   decision?: string | null;
   source?: string | null;
   from?: string | null;
@@ -202,8 +204,11 @@ export interface ReviewFilters {
 export interface ReviewHistoryRow {
   id: string;
   incident_id: string;
-  exam_id: string;
+  exam_id: string | null;
   candidate_id: string | null;
+  quiz_id: string | null;
+  session_id: string | null;
+  participant_id: string | null;
   decision: string;
   previous_status: string | null;
   new_status: string;
@@ -215,6 +220,9 @@ export interface ReviewHistoryRow {
   created_at: string;
   exams?: { title?: string } | null;
   exam_candidates?: { full_name?: string } | null;
+  quizzes?: { title?: string } | null;
+  quiz_sessions?: { title?: string | null; join_code?: string } | null;
+  session_participants?: { display_name?: string; participant_ref?: string | null } | null;
 }
 
 /**
@@ -228,7 +236,7 @@ export async function loadReviewHistory(
   let query = admin
     .from("proctoring_incident_reviews")
     .select(
-      "id, incident_id, exam_id, candidate_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name)",
+      "id, incident_id, exam_id, candidate_id, quiz_id, session_id, participant_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), quizzes(title), quiz_sessions(title, join_code), session_participants(display_name, participant_ref)",
     )
     .eq("organization_id", filters.organizationId)
     .order("created_at", { ascending: false })
@@ -236,6 +244,8 @@ export async function loadReviewHistory(
 
   if (isUuid(filters.examId)) query = query.eq("exam_id", filters.examId);
   if (isUuid(filters.candidateId)) query = query.eq("candidate_id", filters.candidateId);
+  if (isUuid(filters.sessionId)) query = query.eq("session_id", filters.sessionId);
+  if (isUuid(filters.participantId)) query = query.eq("participant_id", filters.participantId);
   if (filters.decision && ["reported", ...PROCTOR_DECISIONS].includes(filters.decision))
     query = query.eq("decision", filters.decision);
   if (filters.source && ["workspace", "platform", "service", "backfilled"].includes(filters.source))
@@ -264,7 +274,7 @@ export async function loadPlatformReviewHistory(
   let query = admin
     .from("proctoring_incident_reviews")
     .select(
-      "id, incident_id, organization_id, exam_id, candidate_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), organizations(name)",
+      "id, incident_id, organization_id, exam_id, candidate_id, quiz_id, session_id, participant_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), quizzes(title), quiz_sessions(title, join_code), session_participants(display_name, participant_ref), organizations(name)",
     )
     .order("created_at", { ascending: false })
     .limit(Math.min(Math.max(filters.limit ?? 100, 1), 500));
@@ -272,6 +282,8 @@ export async function loadPlatformReviewHistory(
   if (isUuid(filters.organizationId)) query = query.eq("organization_id", filters.organizationId);
   if (isUuid(filters.examId)) query = query.eq("exam_id", filters.examId);
   if (isUuid(filters.candidateId)) query = query.eq("candidate_id", filters.candidateId);
+  if (isUuid(filters.sessionId)) query = query.eq("session_id", filters.sessionId);
+  if (isUuid(filters.participantId)) query = query.eq("participant_id", filters.participantId);
   if (filters.decision && ["reported", ...PROCTOR_DECISIONS].includes(filters.decision))
     query = query.eq("decision", filters.decision);
   if (filters.from) query = query.gte("created_at", filters.from);
@@ -295,8 +307,9 @@ export function reviewHistoryCsv(rows: ReviewHistoryRow[]) {
     "decision",
     "previous_status",
     "new_status",
-    "examination",
-    "candidate",
+    "assessment",
+    "candidate_or_participant",
+    "live_session",
     "reviewer_email",
     "reviewer_role",
     "source",
@@ -309,8 +322,9 @@ export function reviewHistoryCsv(rows: ReviewHistoryRow[]) {
       r.decision,
       r.previous_status ?? "",
       r.new_status,
-      r.exams?.title ?? "",
-      r.exam_candidates?.full_name ?? "",
+      r.exams?.title ?? r.quiz_sessions?.title ?? r.quizzes?.title ?? "",
+      r.exam_candidates?.full_name ?? r.session_participants?.display_name ?? "",
+      r.quiz_sessions?.join_code ?? r.session_id ?? "",
       r.reviewer_email ?? "",
       r.reviewer_role ?? "",
       r.source,
