@@ -18,6 +18,8 @@ await page.route('**/api/exam/**',async route=>{const request=route.request();co
  if(url.pathname==='/api/exam/state'){assert.equal(url.searchParams.has('token'),false);assert.equal(request.headers().authorization,`Bearer ${token}`);requests++;return route.fulfill({status:200,json:responseState()});}
  if(url.pathname==='/api/exam/save'){server.saves++;if(!server.online)return route.fulfill({status:503,json:{error:'offline'}});const payload=request.postDataJSON();server.answers[payload.question_id]=payload.answer;return route.fulfill({status:200,json:{ok:true}});}
  if(url.pathname==='/api/exam/submit'){server.submits++;server.status='submitted';return route.fulfill({status:200,json:{ok:true}});}
+ // The integrity monitor reports page_leave when the page unloads (the reload below). Accept it.
+ if(url.pathname==='/api/exam/integrity'){return route.fulfill({status:200,json:{ok:true,recorded:false,count:0,level:'none',reason:'duplicate'}});}
  throw Error('Unexpected request '+url.pathname);
 });
 try {

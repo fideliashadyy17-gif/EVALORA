@@ -3,6 +3,7 @@
 import { Logo } from "@/components/Logo";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
+import { useProtectedSurface } from "@/lib/useAssessmentLockdown";
 import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
 import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
@@ -186,7 +187,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // attempt's token as its transport. It stops the moment the paper is
   // submitted, so nothing is reported after the attempt is closed.
   useEffect(() => {
-    if (!token || attemptStatus !== "in_progress" || !activePolicy.enabled) return;
+    // The monitor also carries the clipboard and context-menu lockdown, which
+    // follows the clipboard switch even when integrity recording is off.
+    if (!token || attemptStatus !== "in_progress" || (!activePolicy.enabled && !activePolicy.clipboard)) return;
     // Effects do not run on the server, but the paper is also rendered in
     // environments without a DOM (print preview, embedded viewers). Never let
     // the monitor be the reason a candidate cannot sit the examination.
@@ -224,6 +227,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       monitorRef.current = null;
     };
   }, [token, attemptId, attemptStatus, activePolicy, beep]);
+
+  // While the paper is open for answering, the page is a protected surface: no
+  // text selection, no image dragging, and the clipboard and context menu are
+  // cancelled (the monitor above does the cancelling and the recording). When the
+  // attempt closes, the flag drops and the browser behaves normally again.
+  useProtectedSurface(Boolean(token) && attemptStatus === "in_progress" && activePolicy.clipboard);
 
   const load = useCallback(async () => {
     if (!token) return;

@@ -7,6 +7,7 @@ import {
   type IntegrityPolicy,
   type IntegrityWarning,
 } from "./integrity";
+import { attachAssessmentLockdown, isApplePlatform } from "./assessmentLockdown";
 
 /**
  * Browser-side observer for one assessment attempt.
@@ -21,14 +22,16 @@ import {
  * candidate what was recorded.
  */
 type TargetLike = {
-  addEventListener: (type: string, handler: (event: unknown) => void) => void;
-  removeEventListener: (type: string, handler: (event: unknown) => void) => void;
+  addEventListener: (type: string, handler: (event: unknown) => void, options?: boolean | AddEventListenerOptions) => void;
+  removeEventListener: (type: string, handler: (event: unknown) => void, options?: boolean | EventListenerOptions) => void;
 };
 
 export interface MonitorEnvironment {
   document: TargetLike & { visibilityState?: string };
   window: TargetLike;
   now: () => number;
+  /** Override the platform check (Cmd vs Ctrl shortcuts). Defaults to the browser's platform. */
+  isApple?: boolean;
 }
 
 export type IntegrityReport = (
@@ -42,6 +45,7 @@ export class IntegrityMonitor {
   private lastSentAt = new Map<IntegrityEvent, number>();
   private lastTabHiddenAt = Number.NEGATIVE_INFINITY;
   private bound: { target: TargetLike; type: string; handler: (event: unknown) => void }[] = [];
+  private detachLockdown: (() => void) | null = null;
 
   constructor(
     private readonly env: MonitorEnvironment,
@@ -56,8 +60,19 @@ export class IntegrityMonitor {
   }
 
   start(): void {
-    if (this.started || !this.policy.enabled) return;
+    if (this.started) return;
     this.started = true;
+    // Blocking follows the clipboard switch alone: it still applies when the
+    // integrity recording is off, because copying is never allowed in an
+    // assessment unless the assessment explicitly turns the switch off. Nothing
+    // is recorded in that case (emit() checks the policy for every event).
+    if (this.policy.clipboard) {
+      this.detachLockdown = attachAssessmentLockdown(this.env.window, {
+        isApple: this.env.isApple ?? isApplePlatform(typeof navigator === "undefined" ? undefined : navigator),
+        onAction: (action) => void this.emit(action, {}),
+      });
+    }
+    if (!this.policy.enabled) return;
     const { document, window } = this.env;
 
     this.on(document, "visibilitychange", () => {
@@ -81,11 +96,6 @@ export class IntegrityMonitor {
       if (!active) void this.emit("fullscreen_exit", {});
     });
 
-    this.on(document, "copy", () => void this.emit("copy", {}));
-    this.on(document, "paste", () => void this.emit("paste", {}));
-    this.on(document, "cut", () => void this.emit("cut", {}));
-    this.on(document, "contextmenu", () => void this.emit("context_menu", {}));
-
     this.on(window, "beforeunload", () => void this.emit("page_leave", {}));
     this.on(window, "offline", () => void this.emit("offline", {}));
     this.on(window, "online", () => void this.emit("online", {}));
@@ -94,6 +104,8 @@ export class IntegrityMonitor {
   stop(): void {
     for (const { target, type, handler } of this.bound) target.removeEventListener(type, handler);
     this.bound = [];
+    this.detachLockdown?.();
+    this.detachLockdown = null;
     this.started = false;
   }
 

@@ -274,3 +274,27 @@ math-field:focus-within {
   .paper-cover { break-after: page; }
   @page { margin: 16mm; @bottom-center { content: "Page " counter(page); } }
 }
+
+/*
+ * Assessment lockdown (src/lib/assessmentLockdown.ts). While a protected surface
+ * is active, question text cannot be selected and images cannot be dragged out
+ * of the page. Answer fields stay selectable and editable, so the candidate can
+ * still correct their own answer. The copy, cut, paste and context-menu blocking
+ * itself is done in script; this only removes the visual and drag routes.
+ */
+html.assessment-protected {
+  -webkit-touch-callout: none;
+}
+html.assessment-protected body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+html.assessment-protected input,
+html.assessment-protected textarea,
+html.assessment-protected [contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+html.assessment-protected img {
+  -webkit-user-drag: none;
+}

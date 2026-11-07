@@ -10,6 +10,7 @@ import type { RichDoc } from "@/lib/content";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
 
 interface SubmittedAnswer {
   submitted: true;
@@ -65,6 +66,12 @@ export function PlayClient({ code }: { code: string }) {
   const [connection, setConnection] = useState<"connecting" | "online" | "reconnecting">("connecting");
   const [localSound, setLocalSound] = useState(true);
   const [now, setNow] = useState(Date.now());
+  // Once the participant has joined, the live question is an assessment surface:
+  // copy, cut, paste and the context menu are cancelled and the text is not
+  // selectable. Live quiz incidents are not recorded (there is no participant
+  // incident table), so this is prevention only. The join screen stays open so
+  // the participant can paste a code or name.
+  useAssessmentLockdown(Boolean(identity));
   const offsetRef = useRef(0);
   const audioRef = useRef<AudioContext | null>(null);
 
