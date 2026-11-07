@@ -26,15 +26,15 @@ declare
   v_qq int;
   v_points numeric;
 begin
-  if exists (select 1 from public.exams where organization_id = v_org and title = $zq$G10 Examination$zq$) then
-    raise notice 'G10 Examination already exists, nothing to do.';
+  if exists (select 1 from public.exams where organization_id = v_org and title = $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$) then
+    raise notice 'G10 Examination — MYP 5 Sequences & Series (100 marks) already exists, nothing to do.';
     return;
   end if;
 
   insert into public.quizzes (organization_id, title, description, status, settings)
   values (
     v_org,
-    $zq$G10 Examination$zq$,
+    $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$,
     $zq$MYP 5 Sequences & Series E-Assessment. Fifty printed questions (105 scored answer parts), 100 marks, 90 minutes: recursive and explicit formulas, linear sequences, arithmetic sequences, quadratic sequences, geometric sequences and arithmetic series.$zq$,
     'published',
     $zj${"randomize_questions":false,"randomize_options":false}$zj$::jsonb
@@ -77,7 +77,7 @@ begin
     v_org,
     v_quiz,
     null,
-    $zq$G10 Examination$zq$,
+    $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$,
     $zq$MYP 5 Sequences & Series E-Assessment. Fifty printed questions (105 scored answer parts), 100 marks, 90 minutes: recursive and explicit formulas, linear sequences, arithmetic sequences, quadratic sequences, geometric sequences and arithmetic series.$zq$,
     $zq$Answer every part. Show your working where it is asked for. Give units and follow the rounding instruction in each question. A calculator is allowed. Sort and match questions: drag each item onto its target (on a touch screen, tap an item and then tap its target). Ordering questions: drag the steps into order, or use the arrows. Written parts are marked against the criteria shown to the examiner.$zq$,
     90,
