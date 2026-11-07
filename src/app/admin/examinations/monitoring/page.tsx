@@ -25,6 +25,7 @@ interface AttemptRow {
   exam_id: string;
   started_at: string;
   submitted_at: string | null;
+  submission_reason: string | null;
   status: string;
   extension_minutes: number;
   exam_candidates: { full_name: string; candidate_ref: string | null } | null;
@@ -43,14 +44,14 @@ export default async function ExaminationMonitoringPage({
 
   let attemptQuery = admin
     .from("exam_attempts")
-    .select("id, exam_id, started_at, submitted_at, status, extension_minutes, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id), exam_answers(count)")
+    .select("id, exam_id, started_at, submitted_at, submission_reason, status, extension_minutes, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id), exam_answers(count)")
     .order("started_at", { ascending: false })
     .limit(500);
   if (sp.exam) attemptQuery = attemptQuery.eq("exam_id", sp.exam);
 
   let incidentQuery = admin
     .from("proctoring_incidents")
-    .select("*, exams(title, organization_id, organizations(name)), exam_candidates(full_name), reporter:profiles!proctoring_incidents_reported_by_fkey(email), reviewer:profiles!proctoring_incidents_reviewed_by_fkey(email)")
+    .select("*, organizations(name), exams(title), quiz_sessions(title), quizzes(title), exam_candidates(full_name), session_participants(display_name), reporter:profiles!proctoring_incidents_reported_by_fkey(email), reviewer:profiles!proctoring_incidents_reviewed_by_fkey(email)")
     .order("created_at", { ascending: false })
     .limit(500);
   if (sp.exam) incidentQuery = incidentQuery.eq("exam_id", sp.exam);
@@ -140,7 +141,7 @@ export default async function ExaminationMonitoringPage({
                 <tr key={a.id}>
                   <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exams?.title}{a.exam_candidates?.candidate_ref ? ` · ${a.exam_candidates.candidate_ref}` : ""}</span></td>
                   <td className="text-ink-soft">{fmtDateTime(a.started_at)}</td>
-                  <td>{deadline ? fmtDateTime(deadline.toISOString()) : "—"}<span className="block text-xs text-ink-soft">{a.status === "in_progress" && remaining !== null ? (remaining < 0 ? `${Math.abs(remaining)} min overdue` : `${remaining} min left`) : a.submitted_at ? `Submitted ${fmtDateTime(a.submitted_at)}` : ""}</span></td>
+                  <td>{deadline ? fmtDateTime(deadline.toISOString()) : "—"}<span className="block text-xs text-ink-soft">{a.status === "in_progress" && remaining !== null ? (remaining < 0 ? `${Math.abs(remaining)} min overdue` : `${remaining} min left`) : a.submitted_at ? `Submitted ${fmtDateTime(a.submitted_at)} · ${a.submission_reason === "deadline" ? "deadline" : a.submission_reason === "candidate_confirmed" ? "candidate-confirmed" : "legacy / unknown source"}` : ""}</span></td>
                   <td className="tabular-nums">{a.exam_answers[0]?.count ?? 0}</td>
                   <td>{Number(a.extension_minutes) > 0 ? <Badge tone="gold">+{a.extension_minutes} min</Badge> : "—"}</td>
                   <td><StatusBadge status={a.status} /></td>
@@ -162,28 +163,35 @@ export default async function ExaminationMonitoringPage({
         {(incidents ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No proctoring incidents match.</p>
         ) : (
-          <Table head={["Recorded", "Candidate / examination", "Observation", "Severity", "Reported by", "Review"]}>
+          <Table head={["Recorded", "Candidate / activity", "Observation", "Severity", "Reported by", "Review"]}>
             {(incidents ?? []).map((i) => {
-              const exam = i.exams as unknown as { title: string; organizations: { name: string } | null } | null;
+              const exam = i.exams as unknown as { title?: string } | null;
+              const liveSession = i.quiz_sessions as unknown as { title?: string } | null;
+              const quiz = i.quizzes as unknown as { title?: string } | null;
+              const organization = i.organizations as unknown as { name?: string } | null;
+              const candidate = i.exam_candidates as unknown as { full_name?: string } | null;
+              const participant = i.session_participants as unknown as { display_name?: string } | null;
               return (
                 <tr key={i.id}>
                   <td className="text-ink-soft">{fmtDateTime(i.created_at)}</td>
-                  <td><span className="font-medium">{(i.exam_candidates as unknown as { full_name?: string } | null)?.full_name ?? "Unassigned"}</span><span className="block text-xs text-ink-soft">{exam?.title} · {exam?.organizations?.name}</span></td>
+                  <td><span className="font-medium">{candidate?.full_name ?? participant?.display_name ?? "Unassigned"}</span><span className="block text-xs text-ink-soft">{exam?.title ?? liveSession?.title ?? quiz?.title ?? "—"} · {organization?.name ?? ""}</span></td>
                   <td>{String(i.type).replace(/_/g, " ")}{i.note ? <span className="block text-xs text-ink-soft">{i.note}</span> : null}</td>
                   <td><Badge tone={i.severity === "high" ? "red" : i.severity === "medium" ? "amber" : "gray"}>{i.severity}</Badge></td>
                   <td className="text-ink-soft">{(i.reporter as unknown as { email?: string } | null)?.email ?? "System"}</td>
                   <td>
-                    <form action={reviewProctoringIncidentAsAdmin} className="flex min-w-[210px] gap-2">
-                      <input type="hidden" name="incident_id" value={i.id} />
-                      <input type="hidden" name="back" value={back} />
-                      <Select name="status" defaultValue={i.status} aria-label="Incident review status">
-                        <option value="open">Open</option>
-                        <option value="investigating">Investigating</option>
-                        <option value="valid">Valid concern</option>
-                        <option value="invalid">Dismissed / invalid</option>
-                      </Select>
-                      <Button type="submit" variant="outline" className="px-3 py-2 text-xs">Save</Button>
-                    </form>
+                    {["open", "investigating"].includes(i.status) ? (
+                      <form action={reviewProctoringIncidentAsAdmin} className="flex min-w-[210px] gap-2">
+                        <input type="hidden" name="incident_id" value={i.id} />
+                        <input type="hidden" name="expected_status" value={i.status} />
+                        <input type="hidden" name="back" value={back} />
+                        <Select name="status" defaultValue={i.status === "open" ? "investigating" : "valid"} aria-label="Incident review status">
+                          {i.status === "open" && <option value="investigating">Investigating</option>}
+                          <option value="valid">Confirm concern</option>
+                          <option value="invalid">Dismiss / invalid</option>
+                        </Select>
+                        <Button type="submit" variant="outline" className="px-3 py-2 text-xs">Save</Button>
+                      </form>
+                    ) : <Badge tone={i.status === "valid" ? "red" : "green"}>{i.status === "valid" ? "confirmed" : "dismissed"}</Badge>}
                     {(i.reviewer as unknown as { email?: string } | null)?.email && <span className="mt-1 block text-xs text-ink-soft">Reviewed by {(i.reviewer as unknown as { email?: string }).email}</span>}
                   </td>
                 </tr>

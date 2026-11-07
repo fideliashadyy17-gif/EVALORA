@@ -95,13 +95,8 @@ export function QuestionRunner({
   const [order, setOrder] = useState<string[]>(orderFromSaved);
   const [pairs, setPairs] = useState<Record<string, string>>(pairsFromSaved);
 
-  useEffect(() => {
-    setSelected(selectedFromSaved());
-    setText(typeof initial?.text === "string" ? initial.text : "");
-    setNum(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
-    setOrder(orderFromSaved());
-    setPairs(pairsFromSaved());
-  }, [question.quiz_question_id, question.question_id]); // reset per question
+  // Both callers key this component by question identity and runner version,
+  // so initialize once on mount instead of an effect with a stale draft payload.
 
   const editRevision = useRef(0);
   useEffect(() => () => { editRevision.current += 1; }, []);

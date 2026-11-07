@@ -24,7 +24,7 @@ interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
+  attempt: { id: string; status: string; submission_reason?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
     result: {
@@ -349,10 +349,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       const response = await fetch("/api/exam/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attempt_id: attemptId, token }),
+        body: JSON.stringify({ attempt_id: attemptId, token, confirmation: "candidate_confirmed" }),
       });
       if (!response.ok) {
-        setSubmitError("Submission was not confirmed. Please retry or contact your invigilator.");
+        setSubmitError(response.status === 400
+          ? "This assessment page is out of date. Refresh it before submitting; your saved answers remain on the server."
+          : "Submission was not confirmed. Please retry or contact your invigilator.");
         return;
       }
       setConfirmSubmit(false);

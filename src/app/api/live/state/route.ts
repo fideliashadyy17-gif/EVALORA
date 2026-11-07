@@ -9,6 +9,7 @@ import {
   revealedQuestion,
   seededShuffle,
 } from "@/lib/live";
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -191,6 +192,7 @@ export async function GET(request: Request) {
       question_started_at: session.question_started_at,
       question_deadline_at: deadline,
       time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
+      integrity: parseIntegrityPolicy((session.settings as Record<string, unknown> | null)?.integrity),
     },
     progress: {
       index,

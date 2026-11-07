@@ -538,35 +538,54 @@ export async function logIncident(formData: FormData): Promise<{ ok: boolean; me
   return { ok: true, message: "Observation recorded for human review." };
 }
 
-/** Review only an incident belonging to the verified workspace examination. */
+/** Review a tenant-scoped examination or live-session incident. */
 export async function reviewIncident(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const examId = String(formData.get("exam_id") ?? "");
+  const sessionId = String(formData.get("session_id") ?? "");
   const incidentId = String(formData.get("id") ?? "");
   const expected = String(formData.get("expected_status") ?? "");
   const status = String(formData.get("status") ?? "");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)) redirect("/dashboard/exams");
-  // The review console and the exam page share this action; only a known,
-  // same-application destination is honoured.
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(incidentId)) redirect("/dashboard/proctoring");
   const back = String(formData.get("return_to") ?? "") === "/dashboard/proctoring"
     ? "/dashboard/proctoring"
-    : `/dashboard/exams/${examId}`;
+    : uuid.test(examId) ? `/dashboard/exams/${examId}` : "/dashboard/proctoring";
   if (!["open", "investigating"].includes(expected) || !["valid", "invalid", "investigating"].includes(status) || status === expected) redirect(`${back}?incident_error=invalid`);
+
   const supabase = await createClient();
-  const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
-  if (examError || !exam) redirect("/dashboard/exams?e=incident");
-  // The reviewer narrative is stored with the decision; the database trigger
-  // (migration 0035) copies it into the append-only review history so the
-  // reasoning survives even if the observation is later redacted by retention.
+  const { data: scopedIncident, error: loadError } = await supabase.from("proctoring_incidents")
+    .select("id, exam_id, session_id").eq("id", incidentId).eq("organization_id", org.id).maybeSingle();
+  if (loadError || !scopedIncident) redirect(`${back}?incident_error=review`);
+  const incidentExamId = scopedIncident.exam_id as string | null;
+  const incidentSessionId = scopedIncident.session_id as string | null;
+  if (incidentExamId) {
+    if (examId && examId !== incidentExamId) redirect(`${back}?incident_error=scope`);
+    const { data: exam, error } = await supabase.from("exams").select("id")
+      .eq("id", incidentExamId).eq("organization_id", org.id).maybeSingle();
+    if (error || !exam) redirect(`${back}?incident_error=scope`);
+  } else if (incidentSessionId) {
+    if (sessionId && sessionId !== incidentSessionId) redirect(`${back}?incident_error=scope`);
+    const { data: session, error } = await supabase.from("quiz_sessions").select("id")
+      .eq("id", incidentSessionId).eq("organization_id", org.id).maybeSingle();
+    if (error || !session) redirect(`${back}?incident_error=scope`);
+  } else {
+    redirect(`${back}?incident_error=scope`);
+  }
+
+  // The database trigger appends reviewer, decision and note to immutable history.
   const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
-  const { data: incident, error } = await supabase.from("proctoring_incidents")
-    .update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", incidentId).eq("exam_id", examId).eq("status", expected).select("id").maybeSingle();
+  let update = supabase.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id, review_note: reviewNote })
+    .eq("id", incidentId).eq("organization_id", org.id).eq("status", expected);
+  update = incidentExamId ? update.eq("exam_id", incidentExamId) : update.eq("session_id", incidentSessionId!);
+  const { data: incident, error } = await update.select("id").maybeSingle();
   if (error || !incident) redirect(`${back}?incident_error=review`);
   revalidatePath(back);
-  revalidatePath(`/dashboard/exams/${examId}`);
-  revalidatePath(`/dashboard/exams/${examId}/proctor`);
+  if (incidentExamId) {
+    revalidatePath(`/dashboard/exams/${incidentExamId}`);
+    revalidatePath(`/dashboard/exams/${incidentExamId}/proctor`);
+  }
   redirect(back === "/dashboard/proctoring" ? `${back}?ok=reviewed` : `${back}?incident_ok=reviewed`);
 }
 

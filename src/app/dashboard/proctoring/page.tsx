@@ -73,7 +73,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
 
   let pendingQuery = supabase
     .from("proctoring_incidents")
-    .select("*, exams(title), exam_candidates(full_name), profiles(email)")
+    .select("*, exams(title), exam_candidates(full_name), profiles(email), quiz_sessions(title), session_participants(display_name)")
     .eq("organization_id", org.id)
     .in("status", ["open", "investigating"])
     .order("created_at", { ascending: false })
@@ -114,8 +114,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   return (
     <>
       <PageTitle
-        title="Proctoring review"
-        subtitle="Every observation and every reviewer decision in this workspace, with who decided, what they decided and when. Observations are reports for human review — never automatic proof of misconduct."
+        title="Assessment integrity review"
+        subtitle="Review observations and decisions across examinations, live competitions, quizzes and other timed activities. Incidents are evidence for human review, never automatic proof of misconduct or a reason to end an attempt."
         action={
           <div className="flex gap-2">
             <ButtonLink href="/dashboard/exams" variant="outline">Examinations</ButtonLink>
@@ -201,7 +201,9 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
         <div className="mb-8 space-y-3">
           {(pending ?? []).map((i) => {
             const ex = i.exams as { title?: string } | null;
+            const liveSession = i.quiz_sessions as { title?: string } | null;
             const cand = i.exam_candidates as { full_name?: string } | null;
+            const liveParticipant = i.session_participants as { display_name?: string } | null;
             const reporter = i.profiles as { email?: string } | null;
             return (
               <Card key={i.id} className="p-5">
@@ -209,14 +211,15 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
                   <Badge tone={i.severity === "high" ? "red" : i.severity === "medium" ? "amber" : "gray"}>{i.severity}</Badge>
                   <Badge tone={statusTone(i.status)}>{i.status === "open" ? "awaiting review" : i.status}</Badge>
                   <span className="font-medium text-evergreen-950">{describeIncidentType(String(i.type))}</span>
-                  <span className="text-sm text-ink-soft">· {cand?.full_name ?? "Unassigned candidate"}</span>
-                  <span className="text-sm text-ink-soft">· {ex?.title ?? "—"}</span>
+                  <span className="text-sm text-ink-soft">· {cand?.full_name ?? liveParticipant?.display_name ?? "Unassigned candidate"}</span>
+                  <span className="text-sm text-ink-soft">· {ex?.title ?? liveSession?.title ?? "—"}</span>
                   <span className="ml-auto text-xs text-ink-soft">{fmtDateTime(i.created_at)}</span>
                 </div>
                 {i.note && <p className="mt-2 rounded-lg bg-cream px-3 py-2 text-sm text-ink">{i.note}</p>}
                 <p className="mt-1 text-xs text-ink-soft">Reported by {reporter?.email ?? "unknown user"}</p>
                 <form action={reviewIncident} className="mt-3 grid gap-2 sm:grid-cols-[170px_1fr_auto]">
-                  <input type="hidden" name="exam_id" value={i.exam_id} />
+                  <input type="hidden" name="exam_id" value={i.exam_id ?? ""} />
+                  <input type="hidden" name="session_id" value={i.session_id ?? ""} />
                   <input type="hidden" name="id" value={i.id} />
                   <input type="hidden" name="expected_status" value={i.status} />
                   <input type="hidden" name="return_to" value="/dashboard/proctoring" />
@@ -241,7 +244,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
             <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
               <th className="px-4 py-3 font-semibold">When</th>
               <th className="px-4 py-3 font-semibold">Decision</th>
-              <th className="px-4 py-3 font-semibold">Examination / candidate</th>
+              <th className="px-4 py-3 font-semibold">Activity / participant</th>
               <th className="px-4 py-3 font-semibold">Reviewer</th>
               <th className="px-4 py-3 font-semibold">Source</th>
               <th className="px-4 py-3 font-semibold">Note</th>
@@ -265,8 +268,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
                   )}
                 </td>
                 <td className="px-4 py-2.5">
-                  <span className="block">{h.exams?.title ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? "Unassigned candidate"}</span>
+                  <span className="block">{h.exams?.title ?? h.quiz_sessions?.title ?? h.quizzes?.title ?? "—"}</span>
+                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? h.session_participants?.display_name ?? "Unassigned candidate / participant"}</span>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.reviewer_email ?? "—"}</span>

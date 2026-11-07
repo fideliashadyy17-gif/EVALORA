@@ -76,6 +76,13 @@ export class IntegrityMonitor {
       void this.emit("focus_back", {});
     });
 
+    // Some browsers report the Windows/OS key as `Meta`; others report `OS`.
+    // A key event is only another reviewable signal — it is never a submit action.
+    this.on(window, "keydown", (raw) => {
+      const key = (raw as { key?: unknown } | null)?.key;
+      if (key === "Meta" || key === "OS") void this.emit("meta_key", { key: "meta" });
+    });
+
     this.on(document, "fullscreenchange", () => {
       const active = Boolean((document as { fullscreenElement?: unknown }).fullscreenElement);
       if (!active) void this.emit("fullscreen_exit", {});

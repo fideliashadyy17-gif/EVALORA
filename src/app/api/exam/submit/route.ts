@@ -3,11 +3,21 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-const Body = z.object({ attempt_id: z.string().uuid(), token: z.string().uuid() });
+const Body = z.object({
+  attempt_id: z.string().uuid(),
+  token: z.string().uuid(),
+  confirmation: z.literal("candidate_confirmed"),
+});
 
 /**
- * Final submission: grades objective items on the server and locks the
- * attempt. The official deadline is computed here from started_at, the
+ * Candidate-confirmed final submission: this endpoint accepts only the
+ * explicit confirmation payload sent by the submit-confirmation button. It is
+ * deliberately separate from integrity-event recording; incidents never call
+ * or authorize this endpoint. Deadline auto-submission is handled separately
+ * by the state route and only after its server-verified deadline.
+ *
+ * This endpoint grades objective items on the server and locks the attempt.
+ * The official deadline is computed here from started_at, the
  * examination duration/window and any authorized extension. A request
  * received after that instant cannot be recorded as an on-time manual
  * submission: only previously autosaved answers are graded, and the
@@ -29,7 +39,7 @@ export async function POST(request: Request) {
 
   const now = new Date();
   const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
-  const late = now > deadline;
+  const late = now.getTime() >= deadline.getTime();
   const finalStatus = late ? "auto_submitted" : "submitted";
   const submittedAt = late ? deadline : now;
 
@@ -44,7 +54,13 @@ export async function POST(request: Request) {
 
   const { data: closed, error } = await admin
     .from("exam_attempts")
-    .update({ status: finalStatus, submitted_at: submittedAt.toISOString(), score, max_score: max })
+    .update({
+      status: finalStatus,
+      submitted_at: submittedAt.toISOString(),
+      submission_reason: late ? "deadline" : "candidate_confirmed",
+      score,
+      max_score: max,
+    })
     .eq("id", attempt.id)
     .eq("status", "in_progress").select("id").maybeSingle();
   if (error || !closed) return NextResponse.json({ error: "Could not submit this attempt." }, { status: 500 });
@@ -55,6 +71,7 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     status: finalStatus,
+    submission_reason: late ? "deadline" : "candidate_confirmed",
     auto_submitted: late,
     submitted_at: submittedAt.toISOString(),
     deadline: deadline.toISOString(),
