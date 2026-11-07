@@ -269,8 +269,16 @@ export function publicQuestion(
   }
   if (q.type === "matching") {
     const pairs = (cfg.pairs as { left: string; right: string }[]) ?? [];
-    out.matching_lefts = pairs.map((p) => p.left);
-    out.matching_rights = seededShuffle(pairs.map((p) => p.right), `${opts.seed ?? ""}:${q.id}:mat`);
+    const mode = cfg.match_mode === "sort" ? "sort" : "match";
+    out.match_mode = mode;
+    if (mode === "sort") {
+      // Tiles are dragged into categories: shuffle the tiles, list each category once.
+      out.matching_lefts = seededShuffle(pairs.map((p) => p.left), `${opts.seed ?? ""}:${q.id}:tiles`);
+      out.matching_rights = [...new Set(pairs.map((p) => p.right))];
+    } else {
+      out.matching_lefts = pairs.map((p) => p.left);
+      out.matching_rights = seededShuffle(pairs.map((p) => p.right), `${opts.seed ?? ""}:${q.id}:mat`);
+    }
   }
   return out;
 }

@@ -5,7 +5,8 @@ import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
 import { Button, Input, Textarea } from "./ui";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
+import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 
 export interface PublicQuestion {
   quiz_question_id: string;
@@ -19,6 +20,8 @@ export interface PublicQuestion {
   options: { id: string; label: string; content_doc?: RichDoc | null }[];
   matching_lefts?: string[];
   matching_rights?: string[];
+  /** "match": one choice per row. "sort": tiles dropped into categories. */
+  match_mode?: "match" | "sort";
   reveal?: {
     correct_option_ids: string[];
     accepted_answers: string[];
@@ -91,6 +94,7 @@ export function QuestionRunner({
   const [num, setNum] = useState(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
   const [order, setOrder] = useState<string[]>(orderFromSaved);
   const [pairs, setPairs] = useState<Record<string, string>>(pairsFromSaved);
+  const [selectedChip, setSelectedChip] = useState<string | null>(null);
 
   useEffect(() => {
     setSelected(selectedFromSaved());
@@ -98,6 +102,7 @@ export function QuestionRunner({
     setNum(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
     setOrder(orderFromSaved());
     setPairs(pairsFromSaved());
+    setSelectedChip(null);
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
@@ -212,14 +217,28 @@ export function QuestionRunner({
 
         {t === "ordering" && (
           <div>
-            <p className="mb-2 text-sm text-ink-soft">Use the arrows to put the items in the correct order.</p>
+            <p className="mb-2 text-sm text-ink-soft">Drag each item onto the position where it belongs, or use the arrows.</p>
             <ol className="space-y-2">
               {order.map((label, i) => (
-                <li key={`${label}-${i}`} className="flex items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3">
+                <li
+                  key={`${label}-${i}`}
+                  draggable={!disabled}
+                  onDragStart={(e) => { if (disabled) return; e.dataTransfer.setData("text/plain", String(i)); e.dataTransfer.effectAllowed = "move"; }}
+                  onDragOver={(e) => { if (!disabled) e.preventDefault(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (disabled) return;
+                    const from = Number(e.dataTransfer.getData("text/plain"));
+                    if (!Number.isInteger(from) || from === i) return;
+                    changed();
+                    setOrder((p) => moveItem(p, from, i));
+                  }}
+                  className={cn("flex items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3", !disabled && "cursor-grab active:cursor-grabbing")}
+                >
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-evergreen-100 text-xs font-bold text-evergreen-800">{i + 1}</span>
                   <span className="flex-1 font-medium"><MathText text={label} /></span>
-                  <button disabled={disabled || i === 0} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => { const n = [...p]; [n[i - 1], n[i]] = [n[i], n[i - 1]]; return n; }); }}>↑</button>
-                  <button disabled={disabled || i === order.length - 1} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => { const n = [...p]; [n[i + 1], n[i]] = [n[i], n[i + 1]]; return n; }); }}>↓</button>
+                  <button aria-label={`Move ${label} up`} disabled={disabled || i === 0} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => moveItem(p, i, i - 1)); }}>↑</button>
+                  <button aria-label={`Move ${label} down`} disabled={disabled || i === order.length - 1} className="rounded px-2 py-1 text-ink-soft hover:bg-cream disabled:opacity-30" onClick={() => { changed(); setOrder((p) => moveItem(p, i, i + 1)); }}>↓</button>
                 </li>
               ))}
             </ol>
@@ -227,36 +246,117 @@ export function QuestionRunner({
           </div>
         )}
 
-        {t === "matching" && (
-          <div>
-            <div className="space-y-2">
-              {(question.matching_lefts ?? []).map((left) => (
-                <div key={left} className="flex flex-wrap items-center gap-2 rounded-xl border border-evergreen-900/25 bg-white px-4 py-3">
-                  <span className="min-w-32 flex-1 font-medium"><MathText text={left} /></span>
-                  <span className="text-ink-soft">→</span>
-                  <select
+        {t === "matching" && (() => {
+          const mode = normaliseMatchMode(question.match_mode);
+          const chips = mode === "sort" ? (question.matching_lefts ?? []) : (question.matching_rights ?? []);
+          const zones = mode === "sort" ? (question.matching_rights ?? []) : (question.matching_lefts ?? []);
+          const bank = bankChips(pairs, mode, chips);
+          const placedIn = (zone: string) => mode === "sort"
+            ? Object.keys(pairs).filter((key) => pairs[key] === zone)
+            : (pairs[zone] ? [pairs[zone]] : []);
+          const chipClass = (active: boolean) => cn(
+            "select-none rounded-lg border px-3 py-2 text-sm font-medium",
+            !disabled && "cursor-grab active:cursor-grabbing",
+            active ? "border-evergreen-700 bg-evergreen-100 ring-2 ring-evergreen-600" : "border-evergreen-900/25 bg-white",
+          );
+          const dropOn = (zone: string) => (e: DragEvent<HTMLDivElement>) => {
+            e.preventDefault();
+            if (disabled) return;
+            const chip = e.dataTransfer.getData("text/plain");
+            if (!chip) return;
+            changed();
+            setPairs((p) => placeChip(p, mode, chip, zone));
+            setSelectedChip(null);
+          };
+          return (
+            <div>
+              <p className="mb-2 text-sm text-ink-soft">
+                {mode === "sort"
+                  ? "Drag each tile into its group. Touch: tap a tile, then tap a group."
+                  : "Drag each choice onto its row, using each choice once. Touch: tap a choice, then tap a row."}
+              </p>
+              <div
+                aria-label="Tiles and choices still to place"
+                onDragOver={(e) => { if (!disabled) e.preventDefault(); }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  if (disabled) return;
+                  const chip = e.dataTransfer.getData("text/plain");
+                  if (!chip) return;
+                  changed();
+                  setPairs((p) => removeChip(p, mode, chip));
+                }}
+                className="mb-4 flex min-h-14 flex-wrap gap-2 rounded-xl border border-dashed border-evergreen-900/30 bg-cream/50 p-3"
+              >
+                {bank.map((chip) => (
+                  <button
+                    type="button"
+                    key={chip}
                     disabled={disabled}
-                    value={pairs[left] ?? ""}
-                    onChange={(e) => { changed(); setPairs((p) => ({ ...p, [left]: e.target.value })); }}
-                    className="rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm"
+                    draggable={!disabled}
+                    aria-pressed={selectedChip === chip}
+                    onDragStart={(e) => { e.dataTransfer.setData("text/plain", chip); e.dataTransfer.effectAllowed = "move"; }}
+                    onClick={() => setSelectedChip((c) => (c === chip ? null : chip))}
+                    className={chipClass(selectedChip === chip)}
                   >
-                    <option value="">Choose a match…</option>
-                    {(question.matching_rights ?? []).map((r) => (
-                      <option key={r} value={r}>{r}</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+                    <MathText text={chip} />
+                  </button>
+                ))}
+                {bank.length === 0 && <span className="text-sm text-ink-soft">Everything is placed. Drag a tile here to take it back.</span>}
+              </div>
+              <div className="space-y-2">
+                {zones.map((zone) => {
+                  const items = placedIn(zone);
+                  return (
+                    <div
+                      key={zone}
+                      role="group"
+                      aria-label={mode === "sort" ? `Group ${zone}` : `Row ${zone}`}
+                      onDragOver={(e) => { if (!disabled) e.preventDefault(); }}
+                      onDrop={dropOn(zone)}
+                      onClick={() => {
+                        if (disabled || !selectedChip) return;
+                        changed();
+                        setPairs((p) => placeChip(p, mode, selectedChip, zone));
+                        setSelectedChip(null);
+                      }}
+                      className={cn(
+                        "flex min-h-12 flex-wrap items-center gap-2 rounded-xl border bg-white px-4 py-3",
+                        selectedChip && !disabled ? "border-evergreen-700" : "border-evergreen-900/25",
+                      )}
+                    >
+                      <span className="min-w-32 flex-1 font-medium"><MathText text={zone} /></span>
+                      {mode === "sort" ? (
+                        items.map((chip) => (
+                          <span key={chip} draggable={!disabled} onDragStart={(e) => { e.dataTransfer.setData("text/plain", chip); }} className={cn("inline-flex items-center gap-1 rounded-lg border border-evergreen-900/25 bg-evergreen-50 px-2 py-1 text-sm", !disabled && "cursor-grab")}>
+                            <MathText text={chip} />
+                            {!disabled && <button type="button" aria-label={`Remove ${chip}`} className="rounded px-1 text-ink-soft hover:bg-white" onClick={(e) => { e.stopPropagation(); changed(); setPairs((p) => removeChip(p, mode, chip)); }}>×</button>}
+                          </span>
+                        ))
+                      ) : items.length ? (
+                        items.map((chip) => (
+                          <span key={chip} draggable={!disabled} onDragStart={(e) => { e.dataTransfer.setData("text/plain", chip); }} className={cn("inline-flex items-center gap-1 rounded-lg border border-evergreen-900/25 bg-evergreen-50 px-2 py-1 text-sm", !disabled && "cursor-grab")}>
+                            <MathText text={chip} />
+                            {!disabled && <button type="button" aria-label={`Remove ${chip}`} className="rounded px-1 text-ink-soft hover:bg-white" onClick={(e) => { e.stopPropagation(); changed(); setPairs((p) => removeChip(p, mode, chip)); }}>×</button>}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-sm text-ink-soft">Drop a choice here</span>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+              <Button
+                className="mt-4"
+                disabled={disabled || Object.values(pairs).filter(Boolean).length === 0}
+                onClick={() => emit({ pairs: toPairs(pairs) })}
+              >
+                {submitLabel}
+              </Button>
             </div>
-            <Button
-              className="mt-4"
-              disabled={disabled || Object.values(pairs).filter(Boolean).length === 0}
-              onClick={() => emit({ pairs: Object.entries(pairs).filter(([, v]) => v).map(([left, right]) => ({ left, right })) })}
-            >
-              {submitLabel}
-            </Button>
-          </div>
-        )}
+          );
+        })()}
 
         {t === "open_ended" && (
           <div>

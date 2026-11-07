@@ -16,6 +16,13 @@ Module._load = function(request, parent) {
     if (request === './MathText') return { MathText: ({text}) => text };
     if (request === './RichContent') return { RichContent: ({text}) => text };
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };
+    if (request === '@/lib/matchDnd') {
+      const dndFile = path.resolve('scripts/__virtual_match_dnd.cjs');
+      const dndJs = ts.transpileModule(readFileSync('src/lib/matchDnd.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+      const dndModule = new Module(dndFile); dndModule.filename = dndFile; dndModule.paths = Module._nodeModulePaths(path.dirname(dndFile));
+      dndModule._compile(dndJs, dndFile);
+      return dndModule.exports;
+    }
   }
   return originalLoad.apply(this, arguments);
 };
@@ -44,7 +51,7 @@ await test('ordering and matching edits are marked and saved', async () => {
   for (const type of ['ordering','matching']) {
     const changes=[], answers=[]; const tree=await render(type, (a) => {answers.push(a); return true;}, (d) => changes.push(d));
     if (type==='ordering') await click(buttons(tree).find((b) => b.props.children==='↓' && !b.props.disabled));
-    else await act(() => tree.root.findByType('select').props.onChange({target:{value:'R'}}));
+    else { await click(tree.root.findAll((n) => n.type==='button' && n.props['aria-pressed']!==undefined)[0]); await click(tree.root.findByProps({'aria-label':'Row L'})); }
     await click(saveButton(tree)); assert.deepEqual(changes,[true,false]); assert.deepEqual(answers[0], type==='ordering'? {order:['B','A']} : {pairs:[{left:'L',right:'R'}]}); await act(() => tree.unmount());
   }
 });
@@ -82,7 +89,7 @@ await test('valid previously saved answers are restored without a warning', asyn
   for(const [type,initial] of [['multiple_select',{option_ids:['a']}],['ordering',{order:['B','A']}],['matching',{pairs:[{left:'L',right:'R'}]}],['short_answer',{text:'saved'}],['numeric',{value:2.5}]]){
     let tree;await act(()=>{tree=TestRenderer.create(React.createElement(QuestionRunner,{question:question(type),initial,onAnswer:()=>{}}));});
     assert.equal(tree.root.findAllByProps({role:'alert'}).length,0,type);
-    if(type==='matching')assert.equal(tree.root.findByType('select').props.value,'R');
+    if(type==='matching')assert.equal(tree.root.findAllByProps({'aria-label':'Remove R'}).length,1);
     if(type==='short_answer')assert.equal(tree.root.findByType('input').props.value,'saved');
     if(type==='numeric')assert.equal(tree.root.findByType('input').props.value,'2.5');
     if(type==='multiple_select')assert.equal(saveButton(tree).props.disabled,false);
