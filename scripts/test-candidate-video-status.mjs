@@ -8,8 +8,9 @@ import TestRenderer,{act} from 'react-test-renderer';
 import ts from 'typescript';
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 function compile(source,dest){const f=path.resolve(dest),m=new Module(f);m.filename=f;m.paths=Module._nodeModulePaths(path.dirname(f));m._compile(ts.transpileModule(readFileSync(source,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,f);return m.exports;}
-const queue=compile('src/lib/examSaveQueue.ts','scripts/__vid_queue.cjs');const file=path.resolve('scripts/__vid_exam.cjs');let connection='connecting',camera=false,microphone=false, screen=false,roomProps;
-const original=Module._load;Module._load=function(req,parent){if(parent?.filename===file){
+const queue=compile('src/lib/examSaveQueue.ts','scripts/__vid_queue.cjs');const file=path.resolve('scripts/__vid_exam.cjs');const proctorFile=path.resolve('scripts/__vid_proctored_room.cjs');let connection='connecting',camera=false,microphone=false, screen=false,roomProps;
+const original=Module._load;Module._load=function(req,parent){if(parent?.filename===file||parent?.filename===proctorFile){
+ if(req==='next/dynamic'&&parent.filename===file)return {default:()=>roomVirtual.ProctoredExamRoom};
  if(req==='@/components/QuestionRunner')return {QuestionRunner:props=>{const [draft,setDraft]=React.useState('');return React.createElement('input',{'data-draft':true,value:draft,onChange:e=>{setDraft(e.target.value);props.onDirtyChange(true);}});}};
  if(req==='@/components/Logo'||req==='@/components/RichContent')return {Logo:()=>null,RichContent:()=>null};
  if(req==='@/components/ExamCorrige')return {ExamCorrige:()=>null};
@@ -24,6 +25,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='livekit-client')return {Track:{Source:{Camera:'camera'}}};
  if(req==='lucide-react')return {Flag:()=>null,ShieldAlert:()=>null,X:()=>null};
 }return original.apply(this,arguments);};
+const roomVirtual=compile('src/components/ProctoredExamRoom.tsx',proctorFile);
 const {TakeExamClient}=compile('src/app/take-exam/[attemptId]/TakeExamClient.tsx',file);Module._load=original;
 const store=new Map();globalThis.sessionStorage={getItem:k=>store.get(k)??null,setItem:(k,v)=>store.set(k,v),removeItem:k=>store.delete(k)};globalThis.localStorage={getItem:()=>JSON.stringify({token:'attempt-token'})};globalThis.window={addEventListener:()=>{},removeEventListener:()=>{},confirm:()=>true};
 const state={server_now:new Date().toISOString(),exam:{id:'exam',title:'Proctored Test',description:null,instructions:null,proctoring:true,require_screen_share:true,pass_mark_percent:50},candidate:{name:'Candidate',ref:null},attempt:{id:'attempt',status:'in_progress',deadline:new Date(Date.now()+600000).toISOString(),flagged:[],score:null,max_score:null,results_published:false},questions:[{question_id:'q',quiz_question_id:'qq',type:'short_answer',prompt:'Q',options:[],points:1,media_url:null,media_type:null,saved_answer:null,result:null}]};

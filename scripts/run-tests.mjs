@@ -15,7 +15,7 @@ const files = readdirSync("scripts")
 
 // These drive a real browser through Playwright, which is not installed by
 // default (`npx playwright install chromium`); they are reported, not hidden.
-const browserSuites = new Set(["test-exam-browser.mjs", "test-printable-paper-browser.mjs"]);
+const browserSuites = new Set(["test-exam-browser.mjs", "test-live-browser.mjs", "test-printable-paper-browser.mjs"]);
 
 const results = [];
 let checks = 0;

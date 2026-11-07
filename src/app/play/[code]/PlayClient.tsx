@@ -8,8 +8,10 @@ import { Badge, Button, Card, Field, Input } from "@/components/ui";
 import { AVATARS, type AvatarKey } from "@/lib/avatars";
 import type { RichDoc } from "@/lib/content";
 import { createClient } from "@/lib/supabase/client";
+import { IntegrityMonitor } from "@/lib/integrityMonitor";
+import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { mmss } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface SubmittedAnswer {
   submitted: true;
@@ -32,6 +34,7 @@ interface LiveState {
     question_started_at: string | null;
     question_deadline_at: string | null;
     time_per_question_seconds: number;
+    integrity?: IntegrityPolicy;
   };
   progress: { index: number; total: number; remaining_after_current: number };
   question: PublicQuestion | null;
@@ -48,6 +51,11 @@ interface LocalSubmission extends SubmittedAnswer {
   quiz_question_id: string;
 }
 
+interface PendingLiveAnswer {
+  quiz_question_id: string;
+  answer: Record<string, unknown>;
+}
+
 export function PlayClient({ code }: { code: string }) {
   const storeKey = `evalora-play-${code}`;
   const [identity, setIdentity] = useState<{ participant_id: string; access_token: string; session_id: string } | null>(null);
@@ -62,7 +70,10 @@ export function PlayClient({ code }: { code: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [localSubmission, setLocalSubmission] = useState<LocalSubmission | null>(null);
+  const [pendingLiveAnswer, setPendingLiveAnswer] = useState<PendingLiveAnswer | null>(null);
   const [connection, setConnection] = useState<"connecting" | "online" | "reconnecting">("connecting");
+  const connectionRef = useRef(connection);
+  const [integrityWarning, setIntegrityWarning] = useState<IntegrityWarning | null>(null);
   const [localSound, setLocalSound] = useState(true);
   const [now, setNow] = useState(Date.now());
   const offsetRef = useRef(0);
@@ -101,6 +112,20 @@ export function PlayClient({ code }: { code: string }) {
         }
         offsetRef.current = new Date(data.server_now).getTime() - Date.now();
         setState(data);
+        try {
+          const pendingKey = `evalora-play-pending-${id.participant_id}`;
+          const rawPending = sessionStorage.getItem(pendingKey);
+          const pending = rawPending ? JSON.parse(rawPending) as PendingLiveAnswer : null;
+          const validPending = pending && typeof pending.quiz_question_id === "string" && pending.answer && typeof pending.answer === "object" && !Array.isArray(pending.answer);
+          if (validPending && data.my_answer?.submitted && data.question?.quiz_question_id === pending.quiz_question_id) {
+            sessionStorage.removeItem(pendingKey);
+            setPendingLiveAnswer(null);
+          } else if (validPending) {
+            setPendingLiveAnswer(pending);
+          }
+        } catch {
+          // A corrupt local draft must not prevent the server state from loading.
+        }
         setConnection("online");
       } catch {
         setConnection("reconnecting");
@@ -112,6 +137,35 @@ export function PlayClient({ code }: { code: string }) {
   useEffect(() => {
     fetchState();
   }, [fetchState]);
+
+  const integrityPolicyJson = JSON.stringify(state?.session.integrity ?? null);
+  const activeIntegrityPolicy = useMemo(
+    () => parseIntegrityPolicy(JSON.parse(integrityPolicyJson)),
+    [integrityPolicyJson],
+  );
+  const monitorEligible = Boolean(state && ["live", "paused"].includes(state.session.status)
+    && state.participant.status === "admitted" && !state.participant.finished);
+
+  useEffect(() => {
+    if (!identity || !monitorEligible || !activeIntegrityPolicy.enabled) return;
+    const monitor = new IntegrityMonitor(
+      { document, window, now: Date.now },
+      activeIntegrityPolicy,
+      async (event, detail) => {
+        const res = await fetch("/api/live/integrity", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          keepalive: event === "page_leave" || event === "offline",
+          body: JSON.stringify({ participant_id: identity.participant_id, token: identity.access_token, event, detail }),
+        });
+        const data = await res.json().catch(() => null);
+        return res.ok && typeof data?.count === "number" ? { count: data.count } : null;
+      },
+      setIntegrityWarning,
+    );
+    monitor.start();
+    return () => monitor.stop();
+  }, [identity, monitorEligible, activeIntegrityPolicy]);
 
   useEffect(() => {
     if (!identity) return;
@@ -166,7 +220,7 @@ export function PlayClient({ code }: { code: string }) {
     }
   }
 
-  function playSubmittedTone() {
+  const playSubmittedTone = useCallback(() => {
     if (!localSound) return;
     try {
       const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
@@ -186,29 +240,33 @@ export function PlayClient({ code }: { code: string }) {
     } catch {
       // Local feedback sound is optional; submission never depends on it.
     }
-  }
+  }, [localSound]);
 
-  async function postAnswer(payload: Record<string, unknown>) {
-    if (!identity || !state?.question) throw new Error("No active question");
+  const activeQuestionId = state?.question?.quiz_question_id;
+  const postAnswer = useCallback(async (payload: Record<string, unknown>) => {
+    if (!identity || !activeQuestionId) throw new Error("No active question");
     const res = await fetch("/api/live/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         participant_id: identity.participant_id,
         token: identity.access_token,
-        quiz_question_id: state.question.quiz_question_id,
+        quiz_question_id: activeQuestionId,
         answer: payload,
       }),
     });
     const data = await res.json().catch(() => null);
     return { res, data };
-  }
-
-  async function answer(payload: Record<string, unknown>) {
-    if (!identity || !state?.question || submitting || submittedForCurrent) return;
+  }, [activeQuestionId, identity]);
+  const answer = useCallback(async (payload: Record<string, unknown>) => {
+    const alreadySubmitted = Boolean(state?.my_answer?.submitted || localSubmission?.quiz_question_id === activeQuestionId);
+    if (!identity || !activeQuestionId || submitting || alreadySubmitted) return;
     setSubmitting(true);
     setSubmitMessage("Sending your answer…");
-    const quizQuestionId = state.question.quiz_question_id;
+    const quizQuestionId = activeQuestionId;
+    const pending = { quiz_question_id: quizQuestionId, answer: payload };
+    setPendingLiveAnswer(pending);
+    try { sessionStorage.setItem(`evalora-play-pending-${identity.participant_id}`, JSON.stringify(pending)); } catch { /* in-memory recovery remains */ }
     try {
       let result = await postAnswer(payload);
       if (!result.res.ok && result.res.status >= 500) {
@@ -221,6 +279,8 @@ export function PlayClient({ code }: { code: string }) {
         void fetchState();
         return;
       }
+      setPendingLiveAnswer(null);
+      try { sessionStorage.removeItem(`evalora-play-pending-${identity.participant_id}`); } catch { /* non-critical cleanup */ }
       setLocalSubmission({
         quiz_question_id: quizQuestionId,
         submitted: true,
@@ -241,6 +301,8 @@ export function PlayClient({ code }: { code: string }) {
         await new Promise((resolve) => setTimeout(resolve, 900));
         const retry = await postAnswer(payload);
         if (retry.res.ok) {
+          setPendingLiveAnswer(null);
+          try { sessionStorage.removeItem(`evalora-play-pending-${identity.participant_id}`); } catch { /* non-critical cleanup */ }
           setLocalSubmission({ quiz_question_id: quizQuestionId, submitted: true, answer: payload, response_ms: retry.data?.response_ms });
           setSubmitMessage("Answer recorded ✓");
           playSubmittedTone();
@@ -254,7 +316,17 @@ export function PlayClient({ code }: { code: string }) {
     } finally {
       setSubmitting(false);
     }
-  }
+  }, [activeQuestionId, fetchState, identity, localSubmission?.quiz_question_id, playSubmittedTone, postAnswer, state?.my_answer?.submitted, submitting]);
+
+  useEffect(() => {
+    const recovered = connectionRef.current !== "online" && connection === "online";
+    connectionRef.current = connection;
+    const currentQuestionId = state?.question?.quiz_question_id;
+    if (recovered && pendingLiveAnswer && currentQuestionId === pendingLiveAnswer.quiz_question_id
+      && !submitting && !state?.my_answer?.submitted && localSubmission?.quiz_question_id !== currentQuestionId) {
+      void answer(pendingLiveAnswer.answer);
+    }
+  }, [connection, pendingLiveAnswer, state?.question?.quiz_question_id, state?.my_answer?.submitted, submitting, localSubmission, answer]);
 
   if (removed) {
     return (
@@ -395,6 +467,31 @@ export function PlayClient({ code }: { code: string }) {
         <div className="h-full bg-evergreen-700 transition-all" style={{ width: `${progressPercent}%` }} />
       </div>
 
+      {integrityWarning && (
+        <section role="alert" className={`mb-5 rounded-xl border px-4 py-3 ${integrityWarning.level === "review" ? "border-red-300 bg-red-50 text-red-950" : "border-amber-300 bg-amber-50 text-amber-950"}`}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="font-semibold">{integrityWarning.title}</p>
+              <p className="mt-1 text-sm">{integrityWarning.body}</p>
+            </div>
+            <button type="button" onClick={() => setIntegrityWarning(null)} className="rounded px-2 py-1 text-sm font-semibold underline" aria-label="Dismiss this warning">Dismiss</button>
+          </div>
+        </section>
+      )}
+
+      {pendingLiveAnswer && (
+        <section role="status" className="mb-5 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          <p className="font-semibold">An answer is kept in this browser but is not yet confirmed by the server.</p>
+          <p className="mt-1">{pendingLiveAnswer.quiz_question_id === question?.quiz_question_id
+            ? "Reconnect and retry this same response; it will not be counted twice if the server already received it."
+            : "The activity has moved on. Keep this local copy and contact the organizer before assuming the answer was recorded."}</p>
+          <pre className="mt-2 max-h-24 overflow-auto whitespace-pre-wrap break-words rounded bg-white/70 p-2 text-xs">{JSON.stringify(pendingLiveAnswer.answer)}</pre>
+          {pendingLiveAnswer.quiz_question_id === question?.quiz_question_id && (
+            <button type="button" disabled={submitting || connection !== "online"} onClick={() => void answer(pendingLiveAnswer.answer)} className="mt-2 rounded-lg border border-amber-700 px-3 py-1.5 font-semibold disabled:opacity-50">Retry saved answer</button>
+          )}
+        </section>
+      )}
+
       {participant.status === "pending" ? (
         <CenterState
           icon="⏳"
@@ -425,9 +522,10 @@ export function PlayClient({ code }: { code: string }) {
             Question {progress.index + 1} of {progress.total} · {question.points} point(s)
           </p>
           <QuestionRunner
-            key={question.quiz_question_id}
+            key={`${question.quiz_question_id}:${state.my_answer?.submitted ? "saved" : pendingLiveAnswer?.quiz_question_id === question.quiz_question_id ? "pending" : "fresh"}`}
             question={question}
             onAnswer={answer}
+            initial={state.my_answer?.answer ?? (pendingLiveAnswer?.quiz_question_id === question.quiz_question_id ? pendingLiveAnswer.answer : null)}
             disabled={submitting || session.phase === "time_expired" || (remaining !== null && remaining <= 0)}
           />
           {submitMessage && <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{submitMessage}</p>}

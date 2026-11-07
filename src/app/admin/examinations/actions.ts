@@ -557,28 +557,27 @@ export async function reviewProctoringIncidentAsAdmin(formData: FormData) {
   const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const incidentId = String(formData.get("incident_id") ?? "");
+  const expected = String(formData.get("expected_status") ?? "");
   const status = String(formData.get("status") ?? "");
   const back = safeBack(formData, "/admin/examinations/monitoring");
-  if (!["open", "valid", "invalid", "investigating"].includes(status)) go(back, "e=status");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incidentId)
+    || !["open", "investigating"].includes(expected)
+    || !["valid", "invalid", "investigating"].includes(status) || status === expected) go(back, "e=status");
 
-  const { data: incident } = await admin
-    .from("proctoring_incidents")
-    .select("*, exams(organization_id)")
-    .eq("id", incidentId)
-    .maybeSingle();
+  const { data: incident } = await admin.from("proctoring_incidents")
+    .select("id, organization_id, exam_id, quiz_id, session_id, participant_id, status")
+    .eq("id", incidentId).maybeSingle();
   if (!incident) go(back, "e=incident");
-
-  const { error } = await admin
-    .from("proctoring_incidents")
+  const { data: updated, error } = await admin.from("proctoring_incidents")
     .update({ status, reviewed_by: ctx.user.id })
-    .eq("id", incidentId);
-  if (error) go(back, "e=failed");
+    .eq("id", incidentId).eq("organization_id", incident.organization_id).eq("status", expected)
+    .select("id").maybeSingle();
+  if (error || !updated) go(back, "e=failed");
 
-  await audit(ctx, "exam.proctoring_incident_reviewed", "proctoring_incidents", incidentId,
-    (incident!.exams as unknown as { organization_id: string } | null)?.organization_id, {
-      exam_id: incident!.exam_id,
-      status,
-    });
+  await audit(ctx, "exam.proctoring_incident_reviewed", "proctoring_incidents", incidentId, incident.organization_id, {
+    exam_id: incident.exam_id, quiz_id: incident.quiz_id, session_id: incident.session_id,
+    participant_id: incident.participant_id, status,
+  });
   revalidatePath("/admin/examinations/monitoring");
   revalidatePath("/admin/proctoring");
   go(back, "ok=incident_reviewed");

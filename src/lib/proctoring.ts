@@ -202,8 +202,11 @@ export interface ReviewFilters {
 export interface ReviewHistoryRow {
   id: string;
   incident_id: string;
-  exam_id: string;
+  exam_id: string | null;
   candidate_id: string | null;
+  quiz_id?: string | null;
+  session_id?: string | null;
+  participant_id?: string | null;
   decision: string;
   previous_status: string | null;
   new_status: string;
@@ -215,6 +218,9 @@ export interface ReviewHistoryRow {
   created_at: string;
   exams?: { title?: string } | null;
   exam_candidates?: { full_name?: string } | null;
+  quizzes?: { title?: string } | null;
+  quiz_sessions?: { title?: string } | null;
+  session_participants?: { display_name?: string } | null;
 }
 
 /**
@@ -228,7 +234,7 @@ export async function loadReviewHistory(
   let query = admin
     .from("proctoring_incident_reviews")
     .select(
-      "id, incident_id, exam_id, candidate_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name)",
+      "id, incident_id, organization_id, exam_id, candidate_id, quiz_id, session_id, participant_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), quizzes(title), quiz_sessions(title), session_participants(display_name)",
     )
     .eq("organization_id", filters.organizationId)
     .order("created_at", { ascending: false })
@@ -264,7 +270,7 @@ export async function loadPlatformReviewHistory(
   let query = admin
     .from("proctoring_incident_reviews")
     .select(
-      "id, incident_id, organization_id, exam_id, candidate_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), organizations(name)",
+      "id, incident_id, organization_id, exam_id, candidate_id, quiz_id, session_id, participant_id, decision, previous_status, new_status, note, reviewer_id, reviewer_email, reviewer_role, source, created_at, exams(title), exam_candidates(full_name), quizzes(title), quiz_sessions(title), session_participants(display_name), organizations(name)",
     )
     .order("created_at", { ascending: false })
     .limit(Math.min(Math.max(filters.limit ?? 100, 1), 500));
@@ -295,8 +301,8 @@ export function reviewHistoryCsv(rows: ReviewHistoryRow[]) {
     "decision",
     "previous_status",
     "new_status",
-    "examination",
-    "candidate",
+    "activity",
+    "candidate / participant",
     "reviewer_email",
     "reviewer_role",
     "source",
@@ -309,8 +315,8 @@ export function reviewHistoryCsv(rows: ReviewHistoryRow[]) {
       r.decision,
       r.previous_status ?? "",
       r.new_status,
-      r.exams?.title ?? "",
-      r.exam_candidates?.full_name ?? "",
+      r.exams?.title ?? r.quiz_sessions?.title ?? r.quizzes?.title ?? "",
+      r.exam_candidates?.full_name ?? r.session_participants?.display_name ?? "",
       r.reviewer_email ?? "",
       r.reviewer_role ?? "",
       r.source,

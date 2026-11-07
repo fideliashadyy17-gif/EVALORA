@@ -32,16 +32,23 @@ export async function GET(request: Request) {
     rows = await attemptRows(admin, exam, attempt);
     // Auto-submit only after the paper and saved answers were loaded and all
     // grading writes succeeded. These operations are not yet transactional.
-    if (attempt.status === "in_progress" && new Date() > deadline) {
+    if (attempt.status === "in_progress" && new Date().getTime() >= deadline.getTime()) {
       const { score, max } = await gradeAttempt(admin, attempt.id, rows);
       const { data: closed, error: closeError } = await admin
         .from("exam_attempts")
-        .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
+        .update({
+          status: "auto_submitted",
+          submitted_at: deadline.toISOString(),
+          submission_reason: "deadline",
+          score,
+          max_score: max,
+        })
         .eq("id", attempt.id).eq("status", "in_progress").select("id").maybeSingle();
       if (closeError || !closed) return NextResponse.json({ error: "Could not confirm the examination submission. Reload or contact your invigilator." }, { status: 500, headers });
       const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
       if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500, headers });
       attempt.status = "auto_submitted";
+      attempt.submission_reason = "deadline";
       attempt.score = score;
       attempt.max_score = max;
     }
@@ -81,6 +88,7 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      submission_reason: attempt.submission_reason ?? null,
       started_at: attempt.started_at,
       deadline: deadline.toISOString(),
       flagged: attempt.flagged ?? [],

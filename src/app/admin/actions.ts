@@ -274,12 +274,27 @@ export async function adminSetExamStatus(formData: FormData) {
 export async function adminReviewIncident(formData: FormData) {
   const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
-  const id = String(formData.get("id"));
-  const status = String(formData.get("status"));
-  if (!["open", "valid", "invalid", "investigating"].includes(status)) redirect("/admin/proctoring");
+  const id = String(formData.get("id") ?? "");
+  const expected = String(formData.get("expected_status") ?? "");
+  const status = String(formData.get("status") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
+    || !["open", "investigating"].includes(expected)
+    || !["valid", "invalid", "investigating"].includes(status) || status === expected)
+    redirect("/admin/proctoring?e=review");
+  const { data: observation } = await admin.from("proctoring_incidents")
+    .select("id, organization_id, exam_id, quiz_id, session_id, participant_id, status")
+    .eq("id", id).maybeSingle();
+  if (!observation || observation.status !== expected) redirect("/admin/proctoring?e=stale");
   const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
-  await admin.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", id);
-  await audit(`incident.${status}`, "proctoring_incidents", id);
+  const { data: updated, error } = await admin.from("proctoring_incidents")
+    .update({ status, reviewed_by: ctx.user.id, review_note: reviewNote })
+    .eq("id", id).eq("organization_id", observation.organization_id).eq("status", expected)
+    .select("id").maybeSingle();
+  if (error || !updated) redirect("/admin/proctoring?e=stale");
+  await audit(`incident.${status}`, "proctoring_incidents", id, observation.organization_id, {
+    exam_id: observation.exam_id, quiz_id: observation.quiz_id, session_id: observation.session_id,
+    participant_id: observation.participant_id,
+  });
   revalidatePath("/admin/proctoring");
   redirect("/admin/proctoring?saved=1");
 }

@@ -19,6 +19,7 @@ export const INTEGRITY_EVENTS = [
   "tab_visible",
   "focus_lost",
   "focus_back",
+  "meta_key",
   "fullscreen_exit",
   "copy",
   "paste",
@@ -103,6 +104,7 @@ export function isEventEnabled(event: IntegrityEvent, policy: IntegrityPolicy): 
     case "tab_hidden":
       return policy.tabSwitch;
     case "focus_lost":
+    case "meta_key":
       return policy.focusLoss;
     case "fullscreen_exit":
       return policy.fullscreen;
@@ -137,6 +139,7 @@ const SEVERITY: Record<IntegrityEvent, "low" | "medium" | "high"> = {
   tab_visible: "low",
   focus_lost: "low",
   focus_back: "low",
+  meta_key: "low",
   fullscreen_exit: "high",
   copy: "high",
   paste: "high",
@@ -171,6 +174,7 @@ const EVENT_TEXT: Record<IntegrityEvent, string> = {
   tab_visible: "You returned to the assessment tab",
   focus_lost: "The assessment window lost focus",
   focus_back: "You returned to the assessment window",
+  meta_key: "An operating-system modifier key was pressed",
   fullscreen_exit: "You left full-screen mode",
   copy: "A copy action was detected",
   paste: "A paste action was detected",
@@ -203,7 +207,7 @@ export function warningFor(event: IntegrityEvent, count: number, policy: Integri
       event,
       count,
       title: "This has been flagged for your invigilator",
-      body: `${what}. That is ${count} recorded incidents in this paper. Your answers are safe; an invigilator will review the events, and you may be asked about them. Keep the assessment window in front of you until you submit.`,
+      body: `${what}. This has been recorded for authorized review. It does not submit or stop your paper. Your saved answers are safe; return to the assessment and continue until the timer ends.`,
     };
   }
   if (level === "strong") {
@@ -212,15 +216,15 @@ export function warningFor(event: IntegrityEvent, count: number, policy: Integri
       event,
       count,
       title: "Repeated activity recorded",
-      body: `${what}. That is ${count} incidents in this paper. Stay on this tab, in this window, until you submit — further incidents are reported to your invigilator.`,
+      body: `${what}. This is incident ${count} for this paper. It does not submit or stop your work. Return to the assessment and continue until the timer ends; repeated incidents remain available for review.`,
     };
   }
   return {
     level,
     event,
     count,
-    title: "Stay on the assessment",
-    body: `${what}. This event was recorded for your invigilator. One departure is not a sanction, but repeated events are reviewed. Return to the assessment window and continue.`,
+    title: "You can continue your assessment",
+    body: `${what}. This event was recorded for authorized review. It does not submit or stop your paper. Return to the assessment and continue until the timer ends.`,
   };
 }
 

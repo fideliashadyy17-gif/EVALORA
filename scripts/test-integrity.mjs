@@ -85,11 +85,11 @@ ok("reaching warnAfter makes the warning persistent", rules.escalationLevel(3, p
 ok("reaching reviewAfter escalates to the invigilator", rules.escalationLevel(5, policy) === "review");
 ok("the warning copy names the count and never accuses", (() => {
   const w = rules.warningFor("tab_hidden", 4, policy);
-  return w.title === "Repeated activity recorded" && w.body.includes("4 incidents") && !/cheat|fraud|guilty|disqualif/i.test(w.body);
+  return w.title === "Repeated activity recorded" && w.body.includes("incident 4") && /does not submit or stop your work/i.test(w.body) && !/cheat|fraud|guilty|disqualif/i.test(w.body);
 })());
 ok("the review copy explains what happens next", (() => {
   const w = rules.warningFor("copy", 5, policy);
-  return w.level === "review" && /invigilator will review/i.test(w.body);
+  return w.level === "review" && /recorded for authorized review/i.test(w.body) && /does not submit or stop/i.test(w.body);
 })());
 
 /* ── Monitor ── */
@@ -175,6 +175,9 @@ function harness({ policyOverrides = {}, reportResult = null, reportThrows = fal
   h.document.fire("fullscreenchange");
   await tick();
   ok("clipboard, context menu and full-screen exit are all reported", ["copy", "paste", "context_menu", "fullscreen_exit"].every((e) => h.sent.some((s) => s.event === e)));
+  h.window.fire("keydown", { key: "Meta" });
+  await tick();
+  ok("Windows/OS modifier key signals are reviewable and do not call submission", h.sent.some((s) => s.event === "meta_key") && !h.sent.some((s) => String(s.event).includes("submit")));
 }
 
 {
@@ -236,6 +239,13 @@ ok("audio is attempted only when the policy allows it and is safely guarded", /A
 ok("events travel to the dedicated endpoint, never straight to the database", /\/api\/exam\/integrity/.test(client) && !/from\("proctoring_incidents"\)/.test(client));
 const state = readFileSync("src/app/api/exam/state/route.ts", "utf8");
 ok("the candidate client receives the policy but never an answer key", /integrity: parseIntegrityPolicy\(settings\.integrity\)/.test(state) && !/settings\.integrity.*is_correct/.test(state));
+const liveRoute = readFileSync("src/app/api/live/integrity/route.ts", "utf8");
+const liveState = readFileSync("src/app/api/live/state/route.ts", "utf8");
+const liveClient = readFileSync("src/app/play/[code]/PlayClient.tsx", "utf8");
+ok("live observations resolve session and participant scope from the access token", /eq\("access_token", token\)/.test(liveRoute) && /participant\.session_id/.test(liveRoute) && /organization_id: session\.organization_id/.test(liveRoute));
+ok("live incident writes only create review observations", /from\("proctoring_incidents"\)\.insert/.test(liveRoute) && !/from\("(exam_attempts|session_participants|quiz_sessions)"\)\s*\.update/.test(liveRoute) && !/api\/(exam|live)\/(submit|finish)/.test(liveRoute));
+ok("live state exposes the same integrity policy", /integrity: parseIntegrityPolicy/.test(liveState));
+ok("the live answer screen observes interruptions and tells participants to continue", /new IntegrityMonitor/.test(liveClient) && /\/api\/live\/integrity/.test(liveClient) && /does not submit or stop/i.test(rules.warningFor("focus_lost", 1, policy).body));
 
 /* ── Teacher consoles ── */
 const examConsole = readFileSync("src/app/dashboard/exams/[id]/page.tsx", "utf8");

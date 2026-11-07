@@ -59,7 +59,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
 
   let incidentQuery = admin
     .from("proctoring_incidents")
-    .select("*, exams(title, organizations(name)), exam_candidates(full_name), profiles(email)")
+    .select("*, exams(title), organizations(name), quiz_sessions(title), quizzes(title), exam_candidates(full_name), session_participants(display_name), profiles(email)")
     .order("created_at", { ascending: false })
     .limit(100);
   if (sp.org && isUuid(sp.org)) incidentQuery = incidentQuery.eq("organization_id", sp.org);
@@ -180,7 +180,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
           <thead>
             <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
               <th className="px-4 py-3 font-semibold">Observation</th>
-              <th className="px-4 py-3 font-semibold">Examination / organization</th>
+              <th className="px-4 py-3 font-semibold">Activity / organization</th>
               <th className="px-4 py-3 font-semibold">Candidate</th>
               <th className="px-4 py-3 font-semibold">Severity</th>
               <th className="px-4 py-3 font-semibold">Reported</th>
@@ -195,8 +195,12 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
               </tr>
             )}
             {(incidents.data ?? []).map((i) => {
-              const ex = i.exams as { title?: string; organizations?: { name?: string } | null } | null;
+              const ex = i.exams as { title?: string } | null;
+              const liveSession = i.quiz_sessions as { title?: string } | null;
+              const quiz = i.quizzes as { title?: string } | null;
+              const organization = i.organizations as { name?: string } | null;
               const cand = i.exam_candidates as { full_name?: string } | null;
+              const participant = i.session_participants as { display_name?: string } | null;
               const reporter = i.profiles as { email?: string } | null;
               return (
                 <tr key={i.id} className="border-b border-evergreen-900/10 align-top">
@@ -210,10 +214,10 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
                     <span className="block text-[11px] text-ink-soft">by {reporter?.email ?? "unknown"}</span>
                   </td>
                   <td className="px-4 py-2.5 text-ink-soft">
-                    {ex?.title ?? "—"}
-                    {ex?.organizations?.name ? ` · ${ex.organizations.name}` : ""}
+                    {ex?.title ?? liveSession?.title ?? quiz?.title ?? "—"}
+                    {organization?.name ? ` · ${organization.name}` : ""}
                   </td>
-                  <td className="px-4 py-2.5 text-ink-soft">{cand?.full_name ?? "—"}</td>
+                  <td className="px-4 py-2.5 text-ink-soft">{cand?.full_name ?? participant?.display_name ?? "—"}</td>
                   <td className="px-4 py-2.5"><Badge tone={sevTone(i.severity)}>{i.severity}</Badge></td>
                   <td className="whitespace-nowrap px-4 py-2.5 text-ink-soft">{fmtDateTime(i.created_at)}</td>
                   <td className="px-4 py-2.5">
@@ -221,19 +225,21 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
                     {i.reviewed_at && <span className="mt-1 block text-[11px] text-ink-soft">reviewed {fmtDateTime(i.reviewed_at)}</span>}
                   </td>
                   <td className="px-4 py-2.5">
-                    <form action={adminReviewIncident} className="flex flex-col gap-1.5">
-                      <input type="hidden" name="id" value={i.id} />
-                      <div className="flex items-center gap-1.5">
-                        <Select name="status" defaultValue={i.status} className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
-                          <option value="open">open</option>
-                          <option value="investigating">investigating</option>
-                          <option value="valid">confirm</option>
-                          <option value="invalid">dismiss</option>
-                        </Select>
-                        <Button type="submit" variant="outline">Save</Button>
-                      </div>
-                      <Input name="review_note" placeholder="Decision rationale (audited)" className="text-xs" maxLength={2000} />
-                    </form>
+                    {["open", "investigating"].includes(i.status) ? (
+                      <form action={adminReviewIncident} className="flex flex-col gap-1.5">
+                        <input type="hidden" name="id" value={i.id} />
+                        <input type="hidden" name="expected_status" value={i.status} />
+                        <div className="flex items-center gap-1.5">
+                          <Select name="status" defaultValue={i.status === "open" ? "investigating" : "valid"} className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
+                            {i.status === "open" && <option value="investigating">investigating</option>}
+                            <option value="valid">confirm</option>
+                            <option value="invalid">dismiss</option>
+                          </Select>
+                          <Button type="submit" variant="outline">Save</Button>
+                        </div>
+                        <Input name="review_note" placeholder="Decision rationale (audited)" className="text-xs" maxLength={2000} />
+                      </form>
+                    ) : <Badge tone={stTone(i.status)}>{i.status === "valid" ? "confirmed" : "dismissed"}</Badge>}
                   </td>
                 </tr>
               );
@@ -272,7 +278,8 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.organizations?.name ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exams?.title ?? "—"}</span>
+                  <span className="block text-xs text-ink-soft">{h.exams?.title ?? h.quiz_sessions?.title ?? h.quizzes?.title ?? "—"}</span>
+                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? h.session_participants?.display_name ?? ""}</span>
                 </td>
                 <td className="px-4 py-2.5">
                   <span className="block">{h.reviewer_email ?? "—"}</span>
