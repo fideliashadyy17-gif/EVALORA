@@ -169,7 +169,7 @@ parts.append(f"""  insert into public.quiz_questions (quiz_id, question_id, posi
     'draft',
     '{ACCESS_CODE}',
     false,
-    {dj({"randomize_questions": False, "randomize_options": False, "parts": [{"name": "Part A", "questions": "1-30", "minutes": 45, "calculator": False}, {"name": "Part B", "questions": "31-50", "minutes": 30, "calculator": True}]})}
+    {dj({"randomize_questions": False, "randomize_options": False, "track_selection": True, "track_policy": {"AB": "questions 1-44 (bc_only items excluded)", "BC": "questions 1-50"}, "scoring": "ap_mcq_no_penalty", "parts": [{"name": "Part A", "questions": "1-30", "minutes": 45, "calculator": False}, {"name": "Part B", "questions": "31-50", "minutes": 30, "calculator": True}]})}
   )
   returning id into v_exam;
 

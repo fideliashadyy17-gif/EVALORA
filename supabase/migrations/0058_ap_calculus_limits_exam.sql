@@ -949,7 +949,7 @@ select q_50.id, v.label, v.ok, v.pos
     'draft',
     'AP-LIM-2026',
     false,
-    $zj${"randomize_questions":false,"randomize_options":false,"parts":[{"name":"Part A","questions":"1-30","minutes":45,"calculator":false},{"name":"Part B","questions":"31-50","minutes":30,"calculator":true}]}$zj$::jsonb
+    $zj${"randomize_questions":false,"randomize_options":false,"track_selection":true,"track_policy":{"AB":"questions 1-44 (bc_only items excluded)","BC":"questions 1-50"},"scoring":"ap_mcq_no_penalty","parts":[{"name":"Part A","questions":"1-30","minutes":45,"calculator":false},{"name":"Part B","questions":"31-50","minutes":30,"calculator":true}]}$zj$::jsonb
   )
   returning id into v_exam;
 
