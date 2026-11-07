@@ -2,7 +2,7 @@
 """Generates supabase/migrations/0060_g10_examination.sql from g10_sequences_spec.py.
 
 Usage: python3 build_g10_sequences_migration.py [output_path]
-The migration is idempotent (an existing 'G10 Examination — MYP 5 Sequences & Series (100 marks)' stops the block) and atomic
+The migration is idempotent (an existing 'MYP5 Examination' stops the block) and atomic
 (any failed count check raises, which rolls the whole migration back).
 """
 import importlib.util, json, os, sys
@@ -111,15 +111,15 @@ declare
   v_qq int;
   v_points numeric;
 begin
-  if exists (select 1 from public.exams where organization_id = v_org and title = $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$) then
-    raise notice 'G10 Examination — MYP 5 Sequences & Series (100 marks) already exists, nothing to do.';
+  if exists (select 1 from public.exams where organization_id = v_org and title = $zq$MYP5 Examination$zq$) then
+    raise notice 'MYP5 Examination already exists, nothing to do.';
     return;
   end if;
 
   insert into public.quizzes (organization_id, title, description, status, settings)
   values (
     v_org,
-    $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$,
+    $zq$MYP5 Examination$zq$,
     $zq${exam_desc}$zq$,
     'published',
     $zj${{"randomize_questions":false,"randomize_options":false}}$zj$::jsonb
@@ -162,7 +162,7 @@ begin
     v_org,
     v_quiz,
     null,
-    $zq$G10 Examination — MYP 5 Sequences & Series (100 marks)$zq$,
+    $zq$MYP5 Examination$zq$,
     $zq${exam_desc}$zq$,
     $zq${instructions}$zq$,
     90,
