@@ -251,7 +251,9 @@ export async function POST(request: Request) {
         exam_id: exam.id,
         candidate_id: candidate.id,
         question_order: ordered.map((r) => r.id),
-        track: tracked && track ? track : null,
+        // Only sent for track-selection examinations, so examinations without it
+        // never reference the exam_attempts.track column.
+        ...(tracked && track ? { track } : {}),
         first_name,
         last_name,
         class_id: selectedClassId,
