@@ -86,7 +86,7 @@ export class ExamSaveQueue {
     }
   }
 
-  enqueue(questionId: string, quizQuestionId: string, answer: Record<string, unknown>, flagged: string[]) {
+  enqueue(questionId: string, quizQuestionId: string, answer: Record<string, unknown>, flagged: string[], flushImmediately = true) {
     if (this.recoveryBlocked) { this.notify(); return false; }
     const entry: ExamPendingSave = { sequence: this.nextSequence++, questionId, quizQuestionId, answer, flagged: [...flagged] };
     // A later answer replaces any unsent answer to that same question. An
@@ -96,7 +96,7 @@ export class ExamSaveQueue {
     this.error = null;
     this.persist();
     this.notify();
-    void this.flush();
+    if (flushImmediately) void this.flush();
     return true;
   }
 

@@ -23,7 +23,7 @@ const virtual = new Module(file); virtual.filename = file; virtual.paths = Modul
 Module._load = originalLoad;
 const { QuestionRunner } = virtual.exports;
 const question = (type) => ({quiz_question_id:'qq', question_id:'q', type, prompt:'Question', points:1, media_url:null, media_type:null, options:[{id:'a',label:'A'},{id:'b',label:'B'}], matching_lefts:['L'], matching_rights:['R']});
-async function render(type, onAnswer, dirty) { let tree; await act(() => { tree = TestRenderer.create(React.createElement(QuestionRunner, { question:question(type), onAnswer, ...(dirty ? {onDirtyChange:dirty} : {}) })); }); return tree; }
+async function render(type, onAnswer, dirty, onDraft) { let tree; await act(() => { tree = TestRenderer.create(React.createElement(QuestionRunner, { question:question(type), onAnswer, ...(dirty ? {onDirtyChange:dirty} : {}), ...(onDraft ? {onDraft} : {}) })); }); return tree; }
 async function click(node) { await act(() => node.props.onClick()); }
 const buttons = (tree) => tree.root.findAllByType('button');
 const saveButton = (tree) => buttons(tree).find((node) => node.props.children === 'Submit answer');
@@ -58,6 +58,24 @@ await test('older asynchronous acceptance does not clear newer edits', async () 
   const input=tree.root.findByType('input'); await act(() => input.props.onChange({target:{value:'old'}})); await click(saveButton(tree));
   await act(() => input.props.onChange({target:{value:'new'}})); await act(async () => {resolve(true); await promise;});
   assert.deepEqual(changes,[true,true]); await act(() => tree.unmount());
+});
+await test('draft callback receives typed input immediately and accepted local queue clears dirty state', async () => {
+  const changes=[], drafts=[]; const tree=await render('short_answer', () => {}, (dirty) => changes.push(dirty), (payload) => { drafts.push(payload); return true; });
+  await act(() => tree.root.findByType('input').props.onChange({target:{value:'offline draft'}}));
+  assert.deepEqual(drafts,[{text:'offline draft'}]); assert.deepEqual(changes,[true,false]);
+  await act(() => tree.unmount());
+});
+await test('exam autosave draft captures every supported answer interaction shape', async () => {
+  for (const [type, edit, expected] of [
+    ['single_choice', async (tree) => click(buttons(tree)[1]), {option_id:'b'}],
+    ['multiple_select', async (tree) => click(buttons(tree)[0]), {option_ids:['a']}],
+    ['numeric', async (tree) => act(() => tree.root.findByType('input').props.onChange({target:{value:'3.25'}})), {value:'3.25'}],
+    ['ordering', async (tree) => click(buttons(tree).find((button) => button.props.children==='↓' && !button.props.disabled)), {order:['B','A']}],
+    ['matching', async (tree) => act(() => tree.root.findByType('select').props.onChange({target:{value:'R'}})), {pairs:[{left:'L',right:'R'}]}],
+  ]) {
+    const drafts=[]; const tree=await render(type, () => {}, () => {}, (payload) => {drafts.push(payload); return true;});
+    await edit(tree); assert.deepEqual(drafts,[expected],type); await act(() => tree.unmount());
+  }
 });
 await test('live session without draft tracking still sends tap and typed answers', async () => {
   const answers=[]; let tree=await render('single_choice', (a) => answers.push(a)); await click(buttons(tree)[0]); await act(() => tree.unmount());
