@@ -348,6 +348,7 @@ export default async function ExamDetailPage({
                   <th className="py-2 pr-2 font-medium">Candidate</th>
                   <th className="py-2 pr-2 font-medium">Started</th>
                   <th className="py-2 pr-2 font-medium">Status</th>
+                  <th className="py-2 pr-2 font-medium">Track</th>
                   <th className="py-2 font-medium">Score</th>
                 </tr>
               </thead>
@@ -357,6 +358,7 @@ export default async function ExamDetailPage({
                     <td className="py-2 pr-2 font-medium">{(a.exam_candidates as { full_name: string } | null)?.full_name}</td>
                     <td className="py-2 pr-2 text-ink-soft">{fmtDateTime(a.started_at)}</td>
                     <td className="py-2 pr-2"><Badge tone={a.status === "in_progress" ? "amber" : "green"}>{a.status.replace(/_/g, " ")}</Badge></td>
+                    <td className="py-2 pr-2 text-ink-soft">{a.track === "AB" ? "AB (max 44)" : a.track === "BC" ? "BC (max 50)" : "—"}</td>
                     <td className="py-2 tabular-nums">{a.score !== null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
                   </tr>
                 ))}

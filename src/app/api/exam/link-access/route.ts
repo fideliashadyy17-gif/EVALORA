@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { EXAM_TRACKS, paperForTrack, parseTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import {
   examAccessAvailability,
   identityDataEqual,
@@ -22,6 +23,7 @@ const Body = z.object({
   guest_key: z.string().min(16).max(120),
   identity: z.record(z.string(), z.unknown()).optional(),
   consent: z.literal(true),
+  track: z.enum(EXAM_TRACKS).optional(),
 });
 
 function sha256(value: string) {
@@ -44,7 +46,7 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
-  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity } = parsed.data;
+  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity, track: rawTrack } = parsed.data;
   const admin = createAdminClient();
   const supabase = await createClient();
 
@@ -108,6 +110,7 @@ export async function POST(request: Request) {
     if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClasses.add(row.class_id);
   }
   if (exam.class_id) baseEligibleClasses.add(exam.class_id);
+  for (const id of access.linkedClassIds) baseEligibleClasses.add(id);
   const eligibleClasses = new Set(mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds));
   if (eligibleClasses.size === 0)
     return NextResponse.json({ error: "No eligible class is configured for this examination." }, { status: 409 });
@@ -231,8 +234,16 @@ export async function POST(request: Request) {
     if (updatedAttempt) attempt = updatedAttempt;
   }
   if (!attempt) {
-    const rows = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const settings = (exam.settings ?? {}) as Record<string, unknown>;
+    const tracked = trackSelectionEnabled(settings);
+    const track = parseTrack(rawTrack);
+    if (tracked && !track)
+      return NextResponse.json(
+        { error: "Choose Calculus AB or Calculus BC to start this examination.", requires_track: true },
+        { status: 409 },
+      );
+    const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
+    const rows = tracked && track ? paperForTrack(rows0, track) : rows0;
     const ordered = settings.randomize_questions ? seededShuffle(rows, `${exam.id}:${candidate.id}`) : rows;
     const { data, error } = await admin
       .from("exam_attempts")
@@ -240,6 +251,9 @@ export async function POST(request: Request) {
         exam_id: exam.id,
         candidate_id: candidate.id,
         question_order: ordered.map((r) => r.id),
+        // Only sent for track-selection examinations, so examinations without it
+        // never reference the exam_attempts.track column.
+        ...(tracked && track ? { track } : {}),
         first_name,
         last_name,
         class_id: selectedClassId,

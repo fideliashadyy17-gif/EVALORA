@@ -87,6 +87,7 @@ export async function GET(request: Request) {
       score: submitted && resultsPublished ? (attempt.score !== null ? Number(attempt.score) : null) : null,
       max_score: submitted && resultsPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,
       results_published: resultsPublished,
+      track: (attempt.track as "AB" | "BC" | null | undefined) ?? null,
     },
     questions: rows.map((row) => {
       const pub = publicQuestion(row, {

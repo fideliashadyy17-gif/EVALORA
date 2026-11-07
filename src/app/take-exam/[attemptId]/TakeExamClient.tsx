@@ -21,7 +21,7 @@ interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
+  attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
     result: {
@@ -535,6 +535,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <h1 className="mt-3 font-display text-3xl font-semibold text-evergreen-950">
                 {attempt.status === "auto_submitted" ? "Time expired — paper submitted automatically" : "Your paper has been submitted"}
               </h1>
+              {attempt.track && (
+                <p className="mt-3 text-sm text-ink-soft" data-testid="exam-track">
+                  Track: <strong className="text-evergreen-900">{attempt.track === "AB" ? "Calculus AB" : "Calculus BC"}</strong>
+                  {attempt.track === "AB" ? " · questions 1–44" : " · questions 1–50"}
+                </p>
+              )}
               {attempt.results_published && attempt.score !== null ? (
                 <div className="mt-4">
                   <p className="text-lg">Score: <strong className="text-evergreen-800">{attempt.score} / {attempt.max_score}</strong> ({pct?.toFixed(1)}%)</p>
