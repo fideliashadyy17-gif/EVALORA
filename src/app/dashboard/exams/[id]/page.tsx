@@ -12,7 +12,7 @@ import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
+  proposeAiMarks, publishResults, removeCandidate, retryExamGrading, reviewIncident, saveExamPublicationSettings, setExamStatus, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -23,7 +23,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string; publication_ok?: string; publication_error?: string; grading_ok?: string; grading_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -222,6 +222,10 @@ export default async function ExamDetailPage({
       )}
       {sp.moderation_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Moderation decision recorded — {MODERATION_LABEL[sp.moderation_ok]?.toLowerCase() ?? sp.moderation_ok}. Both the decision and the resulting mark change are in the grade history.</p>}
       {sp.moderation_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{moderationErrors[sp.moderation_error] ?? "The moderation decision could not be recorded."}</p>}
+      {sp.publication_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Result publication settings saved.</p>}
+      {sp.publication_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{sp.publication_error === "locked" ? "Publication settings are locked after an attempt exists so submitted work and published results cannot be affected." : "Publication settings could not be saved; reload and verify the current setting."}</p>}
+      {sp.grading_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Grading retry completed. Automatic mode has published any complete objective result.</p>}
+      {sp.grading_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{sp.grading_error === "failed" ? "Grading still needs staff review; the saved submission remains intact." : "This attempt is no longer awaiting a grading retry."}</p>}
       {exam.grades_published_at && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Grades were released to candidates on {fmtDateTime(exam.grades_published_at)}.</p>}
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
       {sp.room_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The examination was created, but its proctoring room could not be confirmed. Contact an administrator before opening it.</p>}
@@ -245,6 +249,23 @@ export default async function ExamDetailPage({
         />
       </div>
 
+      {can(ctx, org.id, CREATOR_ROLES) && (
+        <Card className="mb-6 p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Result publication settings</h2>
+          <p className="mt-1 text-sm text-ink-soft">Mode and correction visibility can be changed only before the first candidate attempt.</p>
+          <form action={saveExamPublicationSettings} className="mt-4 space-y-4">
+            <input type="hidden" name="exam_id" value={id} />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" defaultChecked={exam.result_publication_mode !== "automatic"} disabled={(attempts ?? []).length > 0} className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">Results appear only after an authorized teacher validates and publishes them.</span></span></label>
+              <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" defaultChecked={exam.result_publication_mode === "automatic"} disabled={(attempts ?? []).length > 0} className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Fully objective results publish after server grading. Written responses wait for teacher marking.</span></span></label>
+            </div>
+            <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="checkbox" name="corrections_published" defaultChecked={settings.corrections_published !== false} disabled={(attempts ?? []).length > 0} className="mt-0.5 accent-evergreen-700" /><span><strong>Release corrections with the result</strong><span className="block text-xs text-ink-soft">Answer keys and explanations remain protected unless this setting is enabled.</span></span></label>
+            <Button type="submit" variant="outline" disabled={(attempts ?? []).length > 0}>Save publication settings</Button>
+            {(attempts ?? []).length > 0 && <p className="text-xs text-amber-800">Locked because this assessment already has {(attempts ?? []).length} attempt(s).</p>}
+          </form>
+        </Card>
+      )}
+
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone={exam.status === "open" ? "amber" : "gray"}>{exam.status}</Badge>
@@ -266,13 +287,17 @@ export default async function ExamDetailPage({
             ) : (
               <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="closed" /><Button type="submit" variant="danger">Close examination</Button></form>
             )}
-            <form action={publishResults}>
-              <input type="hidden" name="exam_id" value={id} />
-              <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
-              <Button type="submit" variant="outline">
-                {settings.results_published ? "Unpublish results" : "Publish results"}
-              </Button>
-            </form>
+            {exam.result_publication_mode === "automatic" ? (
+              <Badge tone="green">Automatic when grading is complete</Badge>
+            ) : (
+              <form action={publishResults}>
+                <input type="hidden" name="exam_id" value={id} />
+                <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
+                <Button type="submit" variant="outline">
+                  {settings.results_published ? "Unpublish results" : "Validate and publish results"}
+                </Button>
+              </form>
+            )}
             <form action={deleteExam}>
               <input type="hidden" name="id" value={id} />
               <Button type="submit" variant="ghost" className="text-red-700">Delete</Button>
@@ -280,7 +305,11 @@ export default async function ExamDetailPage({
           </div>
         </div>
         <p className="mt-3 text-sm text-ink-soft">
-          Results are currently <strong>{settings.results_published ? "visible to candidates" : "hidden from candidates"}</strong>.
+          {exam.result_publication_mode === "automatic" ? (
+            <>Automatic publication is enabled; each attempt becomes visible after grading is complete.</>
+          ) : (
+            <>Results are currently <strong>{settings.results_published ? "visible to candidates" : "hidden from candidates"}</strong>.</>
+          )}{" "}
           Objective questions are marked automatically on submission; written answers appear in the marking queue below.
         </p>
       </Card>
@@ -356,7 +385,16 @@ export default async function ExamDetailPage({
                   <tr key={a.id} className="border-b border-evergreen-900/5">
                     <td className="py-2 pr-2 font-medium">{(a.exam_candidates as { full_name: string } | null)?.full_name}</td>
                     <td className="py-2 pr-2 text-ink-soft">{fmtDateTime(a.started_at)}</td>
-                    <td className="py-2 pr-2"><Badge tone={a.status === "in_progress" ? "amber" : "green"}>{a.status.replace(/_/g, " ")}</Badge></td>
+                    <td className="py-2 pr-2">
+                      <Badge tone={a.status === "in_progress" ? "amber" : a.grading_status === "grading_failed" ? "red" : "green"}>{a.status.replace(/_/g, " ")}</Badge>
+                      {a.grading_status && a.grading_status !== "not_started" && <span className="mt-1 block text-xs text-ink-soft">{String(a.grading_status).replace(/_/g, " ")}{Number(a.pending_manual_count ?? 0) > 0 ? ` · ${a.pending_manual_count} manual` : ""}</span>}
+                      {a.grading_status === "grading_failed" && (canMark || can(ctx, org.id, CREATOR_ROLES)) && (
+                        <form action={retryExamGrading} className="mt-1">
+                          <input type="hidden" name="exam_id" value={id} /><input type="hidden" name="attempt_id" value={a.id} />
+                          <Button type="submit" variant="outline" className="text-xs">Retry grading</Button>
+                        </form>
+                      )}
+                    </td>
                     <td className="py-2 tabular-nums">{a.score !== null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
                   </tr>
                 ))}

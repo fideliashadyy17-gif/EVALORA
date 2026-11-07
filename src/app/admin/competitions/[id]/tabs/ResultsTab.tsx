@@ -13,6 +13,7 @@ interface CompRow {
   quiz_id: string | null;
   results_published: boolean;
   status: string;
+  result_publication_mode?: "manual" | "automatic" | null;
 }
 
 export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string } }) {
@@ -96,6 +97,11 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
         messages={{
           results_published: "Results published — rankings are now official.",
           results_unpublished: "Results unpublished.",
+          no_session: "A live session must be created before results can be published.",
+          automatic_mode: "This competition is in automatic publication mode; manual publication is disabled.",
+          awaiting_marking: "Results remain unpublished because written responses still need manual grading.",
+          not_ready: "The session must end successfully before final results can be published.",
+          failed: "Result publication state could not be saved. Reload and verify.",
         }}
       />
 
@@ -103,16 +109,20 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
         <span className="text-sm text-ink-soft">
           Publication state:{" "}
           <strong className={comp.results_published ? "text-evergreen-700" : "text-amber-700"}>
-            {comp.results_published ? "Published" : "Under review (not published)"}
+            {comp.results_published ? "Published" : comp.result_publication_mode === "automatic" ? "Automatic — awaiting completion and grading" : "Under review (not published)"}
           </strong>
         </span>
-        <form action={setResultsPublished}>
-          <input type="hidden" name="id" value={comp.id} />
-          <input type="hidden" name="published" value={comp.results_published ? "0" : "1"} />
-          <Button type="submit" variant={comp.results_published ? "outline" : "gold"}>
-            {comp.results_published ? "Unpublish results" : "Validate & publish rankings"}
-          </Button>
-        </form>
+        {comp.result_publication_mode === "automatic" ? (
+          <span className="rounded-lg bg-evergreen-50 px-3 py-2 text-sm text-evergreen-900">Automatic publication runs after the ended session is fully graded; no administrator approval is needed.</span>
+        ) : (
+          <form action={setResultsPublished}>
+            <input type="hidden" name="id" value={comp.id} />
+            <input type="hidden" name="published" value={comp.results_published ? "0" : "1"} />
+            <Button type="submit" variant={comp.results_published ? "outline" : "gold"}>
+              {comp.results_published ? "Unpublish results" : "Validate and publish rankings"}
+            </Button>
+          </form>
+        )}
         <ExportButton filename="competition-results.csv" csv={csv} label="Export results CSV" />
         <PrintButton />
         <Link href={`/dashboard/reports/session/${comp.session_id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">

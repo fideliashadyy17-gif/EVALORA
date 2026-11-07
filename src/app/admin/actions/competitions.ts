@@ -6,6 +6,7 @@ import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { parseCsvRecords } from "@/lib/csv";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
+import { finalizeLiveSessionResults, unpublishLiveSessionResults } from "@/lib/liveResults";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -57,6 +58,7 @@ function competitionPayload(formData: FormData) {
     instructions: fstr(formData, "instructions", 4000),
     rules: fstr(formData, "rules", 4000),
     quiz_id: fstr(formData, "quiz_id", 60),
+    result_publication_mode: String(formData.get("result_publication_mode") ?? "manual") === "automatic" ? "automatic" : "manual",
     scoring: {
       points_per_correct: fint(formData, "scoring_points") ?? 100,
       time_bonus: formData.get("scoring_time_bonus") === "on",
@@ -108,7 +110,12 @@ export async function updateCompetition(formData: FormData) {
   const id = String(formData.get("id"));
   const payload = competitionPayload(formData);
   if (!payload.title) redirect(`/admin/competitions/${id}?tab=settings&e=title`);
-  const { data: comp0 } = await admin.from("competitions").select("organization_id").eq("id", id).maybeSingle();
+  const { data: comp0 } = await admin.from("competitions").select("organization_id, result_publication_mode, session_id, results_published").eq("id", id).maybeSingle();
+  if (!comp0) redirect(`/admin/competitions/${id}?tab=settings&e=not_found`);
+  const oldMode = comp0.result_publication_mode ?? "manual";
+  if (payload.result_publication_mode !== oldMode && (comp0.session_id || comp0.results_published)) {
+    redirect(`/admin/competitions/${id}?tab=settings&e=mode_locked`);
+  }
   if (payload.quiz_id && comp0) {
     const { data: q } = await admin.from("quizzes").select("organization_id").eq("id", payload.quiz_id).maybeSingle();
     if (!q || q.organization_id !== comp0.organization_id) redirect(`/admin/competitions/${id}?tab=settings&e=quiz_org`);
@@ -144,6 +151,7 @@ export async function setCompetitionStatus(formData: FormData) {
     }
   }
   await admin.from("competitions").update({ status, updated_at: new Date().toISOString() }).eq("id", id);
+  if (status === "ended" && comp.session_id) await finalizeLiveSessionResults(admin, comp.session_id);
   await audit(ctx, `competition.status_${status}`, "competitions", id, comp!.organization_id);
   revalidatePath(`/admin/competitions/${id}`);
   redirect(`/admin/competitions/${id}?ok=status_${status}`);
@@ -163,6 +171,8 @@ export async function duplicateCompetition(formData: FormData) {
       title: `${comp!.title} (copy)`,
       status: "draft",
       results_published: false,
+      results_published_at: null,
+      result_publication_mode: "manual",
       session_id: null,
       created_by: ctx.user.id,
     })
@@ -209,10 +219,10 @@ export async function startCompetitionSession(formData: FormData) {
   if (!comp) redirect("/admin/competitions");
   if (!comp!.quiz_id) redirect(`/admin/competitions/${id}?e=no_quiz`);
 
-  const { count: qCount } = await admin
-    .from("quiz_questions")
-    .select("id", { count: "exact", head: true })
-    .eq("quiz_id", comp!.quiz_id);
+  const [{ count: qCount }, { data: linkedQuiz }] = await Promise.all([
+    admin.from("quiz_questions").select("id", { count: "exact", head: true }).eq("quiz_id", comp!.quiz_id),
+    admin.from("quizzes").select("settings").eq("id", comp!.quiz_id).maybeSingle(),
+  ]);
   if (!qCount) redirect(`/admin/competitions/${id}?e=no_questions`);
 
   const { data: phaseClass, error: phaseClassError } = await admin.from("competition_phase_classes")
@@ -252,6 +262,10 @@ export async function startCompetitionSession(formData: FormData) {
               showLeaderboard: (comp!.scoring as Record<string, unknown>)?.show_leaderboard === true,
             }),
             public_instructions: comp!.instructions ?? undefined,
+            result_publication_mode: comp!.result_publication_mode
+              ?? ((linkedQuiz?.settings ?? {}) as Record<string, unknown>).result_publication_mode
+              ?? "legacy",
+            corrections_published: ((linkedQuiz?.settings ?? {}) as Record<string, unknown>).corrections_published !== false,
           },
         })
         .select("id")
@@ -522,11 +536,18 @@ export async function setResultsPublished(formData: FormData) {
   const admin = createAdminClient();
   const id = String(formData.get("id"));
   const published = String(formData.get("published")) === "1";
-  const { data: comp } = await admin.from("competitions").select("organization_id").eq("id", id).maybeSingle();
-  await admin
-    .from("competitions")
-    .update({ results_published: published, updated_at: new Date().toISOString() })
-    .eq("id", id);
-  await audit(ctx, published ? "competition.results_published" : "competition.results_unpublished", "competitions", id, comp?.organization_id);
+  const { data: comp } = await admin.from("competitions")
+    .select("organization_id, session_id, result_publication_mode")
+    .eq("id", id).maybeSingle();
+  if (!comp?.session_id) redirect(`/admin/competitions/${id}?tab=results&e=no_session`);
+  if (comp.result_publication_mode === "automatic") redirect(`/admin/competitions/${id}?tab=results&e=automatic_mode`);
+  if (published) {
+    const result = await finalizeLiveSessionResults(admin, comp.session_id, { actorId: ctx.user.id, manualPublish: true });
+    if (!result.published) redirect(`/admin/competitions/${id}?tab=results&e=${result.pending ? "awaiting_marking" : "not_ready"}`);
+  } else {
+    const ok = await unpublishLiveSessionResults(admin, comp.session_id, { organizationId: comp.organization_id, actorId: ctx.user.id });
+    if (!ok) redirect(`/admin/competitions/${id}?tab=results&e=failed`);
+  }
+  await audit(ctx, published ? "competition.results_published" : "competition.results_unpublished", "competitions", id, comp.organization_id);
   redirect(`/admin/competitions/${id}?tab=results&ok=${published ? "results_published" : "results_unpublished"}`);
 }

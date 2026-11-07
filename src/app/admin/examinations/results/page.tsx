@@ -18,6 +18,8 @@ const MESSAGES: Record<string, string> = {
   results_unpublished: "Results unpublished and hidden from candidates.",
   exam: "That examination no longer exists.",
   failed: "Result publication could not be changed.",
+  automatic_mode: "Automatic mode publishes each fully graded attempt itself; manual publication is disabled.",
+  awaiting_marking: "At least one submitted attempt still has a written response awaiting grading.",
 };
 const round = (n: number) => Math.round(n * 10) / 10;
 
@@ -27,6 +29,7 @@ interface ExamRow {
   status: string;
   organization_id: string;
   settings: Record<string, unknown> | null;
+  result_publication_mode?: "manual" | "automatic";
   organizations: { name: string } | null;
 }
 
@@ -52,7 +55,7 @@ export default async function ExaminationResultsPage({
 
   const { data: rawExams } = await admin
     .from("exams")
-    .select("id, title, status, organization_id, settings, organizations(name)")
+    .select("id, title, status, organization_id, settings, result_publication_mode, organizations(name)")
     .order("created_at", { ascending: false })
     .limit(300);
   const exams = (rawExams ?? []) as unknown as ExamRow[];
@@ -144,12 +147,16 @@ export default async function ExaminationResultsPage({
 
           <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-evergreen-900/15 bg-paper p-4">
             <Badge tone={published ? "green" : "amber"}>{published ? "Results visible to candidates" : "Results under review"}</Badge>
-            <form action={setExamResultsPublishedAsAdmin}>
-              <input type="hidden" name="exam_id" value={selected.id} />
-              <input type="hidden" name="published" value={published ? "0" : "1"} />
-              <input type="hidden" name="back" value={back} />
-              <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish results" : "Validate & publish results"}</Button>
-            </form>
+            {selected.result_publication_mode === "automatic" ? (
+              <span className="rounded-lg bg-evergreen-50 px-3 py-2 text-sm text-evergreen-900">Automatic — each fully graded attempt is published immediately.</span>
+            ) : (
+              <form action={setExamResultsPublishedAsAdmin}>
+                <input type="hidden" name="exam_id" value={selected.id} />
+                <input type="hidden" name="published" value={published ? "0" : "1"} />
+                <input type="hidden" name="back" value={back} />
+                <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish results" : "Validate and publish results"}</Button>
+              </form>
+            )}
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
             <form action={enterOrgWorkspace}>
               <input type="hidden" name="organization_id" value={selected.organization_id} />

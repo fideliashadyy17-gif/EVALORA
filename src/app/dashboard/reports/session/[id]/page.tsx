@@ -1,9 +1,11 @@
 import { RichContent } from "@/components/RichContent";
-import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, Button, Card, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
-import { activeOrg, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { markLiveAnswer } from "@/app/dashboard/sessions/[id]/host/actions";
 import { createClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/utils";
+import { hasAnswerContent } from "@/lib/scoring";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
@@ -22,11 +24,21 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
   const [{ data: participants }, { data: answers }, { data: qq }] = await Promise.all([
     supabase.from("session_participants").select("*").eq("session_id", id).order("score", { ascending: false }),
     supabase.from("participant_answers").select("*").eq("session_id", id),
-    supabase.from("quiz_questions").select("id, position, questions(prompt, prompt_doc, type, topic, difficulty, points)").eq("quiz_id", session.quiz_id).order("position"),
+    supabase.from("quiz_questions").select("id, position, points, questions(prompt, prompt_doc, type, topic, difficulty, points)").eq("quiz_id", session.quiz_id).order("position"),
   ]);
 
   const parts = (participants ?? []).filter((p) => !["rejected", "blocked"].includes(p.status));
   const allAnswers = answers ?? [];
+  const questionById = new Map((qq ?? []).map((row) => [row.id, row]));
+  const participantName = new Map(parts.map((participant) => [participant.id, participant.display_name]));
+  const pendingWritten = allAnswers.flatMap((answer) => {
+    if (answer.is_correct !== null || !hasAnswerContent(answer.answer)) return [];
+    const quizQuestion = questionById.get(answer.quiz_question_id);
+    const question = quizQuestion?.questions as unknown as { type: string; prompt: string; points: number } | null;
+    if (question?.type !== "open_ended") return [];
+    return [{ answer, quizQuestion, question }];
+  });
+  const mayMark = can(ctx, org.id, MARKER_ROLES) || can(ctx, org.id, CREATOR_ROLES);
   const avg = parts.length ? parts.reduce((s, p) => s + Number(p.score), 0) / parts.length : 0;
   const correctCount = allAnswers.filter((a) => a.is_correct === true).length;
   const graded = allAnswers.filter((a) => a.is_correct !== null);
@@ -101,6 +113,38 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
           </div>
         </Card>
       </div>
+
+      {pendingWritten.length > 0 && (
+        <Card className="mt-6 p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Written responses awaiting manual grading ({pendingWritten.length})</h2>
+          <p className="mt-1 text-sm text-ink-soft">These responses have no final mark. They are excluded from automatic final publication until an authorized marker completes grading.</p>
+          {mayMark ? (
+            <div className="mt-4 space-y-3">
+              {pendingWritten.map(({ answer, quizQuestion, question }) => {
+                const max = Number(quizQuestion?.points ?? question.points);
+                const payload = answer.answer as { text?: unknown } | null;
+                return (
+                  <form key={answer.id} action={markLiveAnswer} className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
+                    <input type="hidden" name="session_id" value={session.id} />
+                    <input type="hidden" name="answer_id" value={answer.id} />
+                    <div className="grid gap-3 sm:grid-cols-[1fr_130px_auto] sm:items-end">
+                      <div>
+                        <p className="text-xs font-semibold text-evergreen-700">{participantName.get(answer.participant_id) ?? "Participant"} · up to {max} mark(s)</p>
+                        <p className="mt-1 text-sm font-medium"><RichContent text={question.prompt} /></p>
+                        <pre className="mt-2 whitespace-pre-wrap break-words rounded-lg bg-white p-3 text-sm">{typeof payload?.text === "string" ? payload.text : JSON.stringify(answer.answer ?? {})}</pre>
+                      </div>
+                      <label className="block text-sm font-medium text-evergreen-900">Marks awarded
+                        <input name="points" type="number" min={0} max={max} step="0.01" defaultValue={0} required className="mt-1 w-full rounded-lg border border-evergreen-900/15 bg-white px-3 py-2" />
+                      </label>
+                      <Button type="submit" variant="gold">Save mark</Button>
+                    </div>
+                  </form>
+                );
+              })}
+            </div>
+          ) : <p className="mt-4 text-sm text-amber-800">An authorized marker can review these responses in this workspace.</p>}
+        </Card>
+      )}
     </>
   );
 }

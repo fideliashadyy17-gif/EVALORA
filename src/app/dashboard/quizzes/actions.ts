@@ -17,6 +17,8 @@ const QuizSchema = z.object({
   status: z.enum(["draft", "published", "archived"]),
   randomize_questions: z.boolean(),
   randomize_options: z.boolean(),
+  result_publication_mode: z.enum(["manual", "automatic"]).default("manual"),
+  corrections_published: z.boolean().default(true),
   time_per_question_seconds: z.number().int().min(5).max(3600),
   question_ids: z.array(z.string()),
 });
@@ -29,6 +31,20 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   if (!parsed.success) return { error: "Please check the form." };
   const q = parsed.data;
   const supabase = await createClient();
+  let existingSettings: Record<string, unknown> = {};
+  if (q.id) {
+    const { data: existing, error: existingError } = await supabase.from("quizzes")
+      .select("id, settings, organization_id").eq("id", q.id).eq("organization_id", org.id).maybeSingle();
+    if (existingError || !existing) return { error: "This quiz is unavailable in the active workspace." };
+    existingSettings = (existing.settings ?? {}) as Record<string, unknown>;
+    const previousMode = existingSettings.result_publication_mode === "automatic" ? "automatic" : "manual";
+    if (previousMode !== q.result_publication_mode) {
+      const { data: activeSession, error: sessionError } = await supabase.from("quiz_sessions")
+        .select("id").eq("quiz_id", q.id).in("status", ["live", "paused"]).limit(1).maybeSingle();
+      if (sessionError) return { error: "The running session could not be verified. Mode was not changed." };
+      if (activeSession) return { error: "Publication mode is locked while a session is live or paused. End it first; previous attempts are never reinterpreted." };
+    }
+  }
 
   if (!q.id) {
     const ent = await getEntitlementFor(supabase, ctx, org.id);
@@ -46,6 +62,8 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
       randomize_questions: q.randomize_questions,
       randomize_options: q.randomize_options,
       time_per_question_seconds: q.time_per_question_seconds,
+      result_publication_mode: q.result_publication_mode,
+      corrections_published: q.corrections_published,
     },
     created_by: ctx.user.id,
     updated_at: new Date().toISOString(),
@@ -162,7 +180,15 @@ export async function startSession(formData: FormData) {
         phase: "waiting",
         admission_open: true,
         require_approval: false,
-        settings: defaultLiveSessionSettings(maxP === -1 ? 1000 : maxP),
+        settings: {
+          ...defaultLiveSessionSettings(maxP === -1 ? 1000 : maxP),
+          // Missing setting means a pre-feature quiz: preserve its historical
+          // live-result visibility instead of silently converting it to auto.
+          result_publication_mode: ((quiz.settings ?? {}) as Record<string, unknown>).result_publication_mode === "automatic"
+            ? "automatic"
+            : ((quiz.settings ?? {}) as Record<string, unknown>).result_publication_mode === "manual" ? "manual" : "legacy",
+          corrections_published: ((quiz.settings ?? {}) as Record<string, unknown>).corrections_published !== false,
+        },
       })
       .select("id").single();
     if (!error && data) session = data;

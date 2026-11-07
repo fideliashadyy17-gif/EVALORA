@@ -17,7 +17,7 @@ export function QuizBuilder({
   initial?: {
     id?: string; title: string; description: string; status: string;
     randomize_questions: boolean; randomize_options: boolean; time_per_question_seconds: number;
-    question_ids: string[];
+    result_publication_mode?: "manual" | "automatic"; corrections_published?: boolean; question_ids: string[];
   };
   bank: BankQ[];
 }) {
@@ -28,6 +28,8 @@ export function QuizBuilder({
   const [randQ, setRandQ] = useState(initial?.randomize_questions ?? false);
   const [randO, setRandO] = useState(initial?.randomize_options ?? false);
   const [tpq, setTpq] = useState(initial?.time_per_question_seconds ?? 30);
+  const [resultPublicationMode, setResultPublicationMode] = useState<"manual" | "automatic">(initial?.result_publication_mode ?? "manual");
+  const [correctionsPublished, setCorrectionsPublished] = useState(initial?.corrections_published ?? true);
   const [selected, setSelected] = useState<string[]>(initial?.question_ids ?? []);
   const [filter, setFilter] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -60,6 +62,8 @@ export function QuizBuilder({
       randomize_questions: randQ,
       randomize_options: randO,
       time_per_question_seconds: tpq,
+      result_publication_mode: resultPublicationMode,
+      corrections_published: correctionsPublished,
       question_ids: selected,
     });
     setBusy(false);
@@ -100,6 +104,13 @@ export function QuizBuilder({
             Randomize answer options
           </label>
         </div>
+        <Field label="Result publication mode" hint="Used for live quiz sessions and competitions launched from this quiz. Existing sessions retain their saved mode.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" checked={resultPublicationMode === "manual"} onChange={() => setResultPublicationMode("manual")} className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">An authorized organizer validates and publishes the final result.</span></span></label>
+            <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" checked={resultPublicationMode === "automatic"} onChange={() => setResultPublicationMode("automatic")} className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Objective results publish when the participant/session finishes; subjective answers wait for marking.</span></span></label>
+          </div>
+        </Field>
+        <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="checkbox" checked={correctionsPublished} onChange={(e) => setCorrectionsPublished(e.target.checked)} className="mt-0.5 accent-evergreen-700" /><span><strong>Show correct answers and explanations after an authorized reveal</strong><span className="block text-xs text-ink-soft">Turn off to keep answer keys and explanations hidden from participants.</span></span></label>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">

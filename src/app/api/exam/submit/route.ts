@@ -1,18 +1,16 @@
-import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
+import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { submitAndGradeExamAttempt } from "@/lib/examSubmission";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-const Body = z.object({ attempt_id: z.string().uuid(), token: z.string().uuid() });
+const Body = z.object({
+  attempt_id: z.string().uuid(),
+  token: z.string().uuid(),
+  confirmation: z.literal("candidate_confirmed"),
+});
 
-/**
- * Final submission: grades objective items on the server and locks the
- * attempt. The official deadline is computed here from started_at, the
- * examination duration/window and any authorized extension. A request
- * received after that instant cannot be recorded as an on-time manual
- * submission: only previously autosaved answers are graded, and the
- * attempt is closed as auto_submitted at the deadline itself.
- */
+/** Candidate-confirmed submission; only the server calculates and persists marks. */
 export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -22,44 +20,41 @@ export async function POST(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404 });
   const { attempt, exam, candidate } = ctx;
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500 });
-
   if (attempt.status !== "in_progress") {
-    return NextResponse.json({ ok: true, already_submitted: true, status: attempt.status });
+    return NextResponse.json({
+      ok: true,
+      already_submitted: true,
+      status: attempt.status,
+      grading_status: attempt.grading_status,
+      results_published: Boolean(attempt.published_at) || Boolean((exam.settings as Record<string, unknown>)?.results_published),
+    });
   }
 
-  const now = new Date();
   const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
-  const late = now > deadline;
-  const finalStatus = late ? "auto_submitted" : "submitted";
-  const submittedAt = late ? deadline : now;
+  const late = Date.now() >= deadline.getTime();
+  const result = await submitAndGradeExamAttempt({
+    admin,
+    exam,
+    attempt,
+    candidateId: candidate.id,
+    finalStatus: late ? "auto_submitted" : "submitted",
+    submittedAt: late ? deadline : new Date(),
+    reason: late ? "deadline" : "candidate_confirmed",
+  }).catch(() => null);
+  if (!result) return NextResponse.json({ error: "Could not persist this submission. Your saved answers remain available; retry or contact your invigilator." }, { status: 500 });
 
-  let result: Awaited<ReturnType<typeof gradeAttempt>>;
-  try {
-    const rows = await attemptRows(admin, exam, attempt);
-    result = await gradeAttempt(admin, attempt.id, rows);
-  } catch {
-    return NextResponse.json({ error: "Could not confirm grading. Reload or contact your invigilator." }, { status: 500 });
-  }
-  const { score, max } = result;
-
-  const { data: closed, error } = await admin
-    .from("exam_attempts")
-    .update({ status: finalStatus, submitted_at: submittedAt.toISOString(), score, max_score: max })
-    .eq("id", attempt.id)
-    .eq("status", "in_progress").select("id").maybeSingle();
-  if (error || !closed) return NextResponse.json({ error: "Could not submit this attempt." }, { status: 500 });
-  const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
-  if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500 });
-
-  const resultsPublished = Boolean((exam.settings as Record<string, unknown>)?.results_published);
   return NextResponse.json({
     ok: true,
-    status: finalStatus,
+    status: result.status ?? result.latest?.status ?? (late ? "auto_submitted" : "submitted"),
+    grading_status: result.gradingStatus ?? result.latest?.grading_status ?? attempt.grading_status ?? "grading_failed",
+    already_submitted: result.alreadySubmitted,
+    submission_reason: late ? "deadline" : "candidate_confirmed",
     auto_submitted: late,
-    submitted_at: submittedAt.toISOString(),
+    submitted_at: (late ? deadline : new Date()).toISOString(),
     deadline: deadline.toISOString(),
-    score: resultsPublished ? score : null,
-    max_score: resultsPublished ? max : null,
-    results_published: resultsPublished,
+    results_published: result.published ?? Boolean(result.latest?.published_at),
+    manual_pending_count: result.pendingManualCount ?? result.latest?.pending_manual_count ?? 0,
+    grading_error: result.gradingError ?? null,
+    processing_ms: result.processingMs ?? null,
   });
 }

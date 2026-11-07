@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 
 const outDir = "/tmp/evalora-rich-test";
 execSync(
-  `npx tsc src/lib/content.ts src/lib/exam.ts src/lib/questionValidation.ts src/components/editor/mathKeyboard.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --esModuleInterop --skipLibCheck --moduleResolution node`,
+  `npx --yes --package=typescript@^5 tsc src/lib/content.ts src/lib/exam.ts src/lib/questionValidation.ts src/components/editor/mathKeyboard.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --esModuleInterop --skipLibCheck --moduleResolution node`,
   { stdio: "inherit" },
 );
 execSync(`ln -sfn "$(pwd)/node_modules" ${outDir}/node_modules`, { stdio: "inherit" });
@@ -183,7 +183,7 @@ ok(
 
 const submitSource = readFileSync("src/app/api/exam/submit/route.ts", "utf8");
 ok("direct late submit is recorded as auto_submitted", submitSource.includes('late ? "auto_submitted" : "submitted"'));
-ok("direct late submit timestamp is the deadline, not request time", submitSource.includes("const submittedAt = late ? deadline : now"));
+ok("direct late submit timestamp is the deadline, not request time", submitSource.includes('submittedAt: late ? deadline : new Date()'));
 for (const route of ["access", "save", "state", "submit"]) {
   const source = readFileSync(`src/app/api/exam/${route}/route.ts`, "utf8");
   ok(`/api/exam/${route} uses extension-aware deadline`, source.includes("attemptDeadline") && source.includes("extension_minutes"));

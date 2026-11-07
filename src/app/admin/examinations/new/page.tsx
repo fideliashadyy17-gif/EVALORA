@@ -130,6 +130,14 @@ export default async function CreateExaminationPage({
                   </Field>
                 </div>
 
+                <Field label="Result publication mode">
+                  <div className="grid gap-3 rounded-xl bg-cream p-4 sm:grid-cols-2">
+                    <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" defaultChecked className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">Staff validate and publish final results.</span></span></label>
+                    <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Objective results publish immediately; written responses wait for marking.</span></span></label>
+                  </div>
+                </Field>
+                <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="checkbox" name="corrections_published" defaultChecked className="mt-0.5 accent-evergreen-700" /><span><strong>Release answer corrections with the result</strong><span className="block text-xs text-ink-soft">Answer keys and explanations remain hidden unless enabled.</span></span></label>
+
                 <div className="grid gap-4 md:grid-cols-2">
                   <Field label="Window opens (optional)" hint="Candidates cannot start before this time.">
                     <Input name="starts_at" type="datetime-local" />

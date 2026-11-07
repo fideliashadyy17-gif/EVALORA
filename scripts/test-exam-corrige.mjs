@@ -128,7 +128,7 @@ await act(() => tree.unmount());
 /* ── The exam screen wires it in ── */
 const client = readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf8");
 ok("the results card opens the full corrigé", /setCorrigeAll\(true\)/.test(client) && /Voir le corrigé complet/.test(client));
-ok("the full corrigé only renders once results are published", /corrigeAll && showCorrige \?/.test(client) && /const showCorrige = submitted && attempt\.results_published;/.test(client));
+ok("the full corrigé only renders once results are published", /corrigeAll && showCorrige \?/.test(client) && /const showCorrige = submitted && attempt\.results_published && attempt\.corrections_published !== false;/.test(client));
 ok("the single-question view steps aside for the full corrigé", /submitted && !corrigeAll/.test(client) && /current && !corrigeAll/.test(client));
 ok("the exam screen hides its chrome when printing", /print:hidden/.test(client));
 const component = readFileSync("src/components/ExamCorrige.tsx", "utf8");

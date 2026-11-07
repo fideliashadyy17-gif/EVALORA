@@ -15,7 +15,7 @@ const files = readdirSync("scripts")
 
 // These drive a real browser through Playwright, which is not installed by
 // default (`npx playwright install chromium`); they are reported, not hidden.
-const browserSuites = new Set(["test-exam-browser.mjs", "test-printable-paper-browser.mjs"]);
+const browserSuites = new Set(["test-exam-browser.mjs", "test-live-browser.mjs", "test-printable-paper-browser.mjs"]);
 
 const results = [];
 let checks = 0;
@@ -26,7 +26,9 @@ for (const file of files) {
     continue;
   }
   const started = Date.now();
-  const run = spawnSync(process.execPath, [path], { encoding: "utf8" });
+  const preload = `--require=${process.cwd()}/scripts/test-publication-dependency-shims.cjs`;
+  const nodeOptions = [process.env.NODE_OPTIONS, preload].filter(Boolean).join(" ");
+  const run = spawnSync(process.execPath, [path], { encoding: "utf8", env: { ...process.env, NODE_OPTIONS: nodeOptions } });
   const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
   const counts = [...output.matchAll(/(\d+)\s+(?:checks?|interaction checks?|…?\s*checks?)\s+passed/g)];
   const found = counts.reduce((n, match) => n + Number(match[1]), 0);

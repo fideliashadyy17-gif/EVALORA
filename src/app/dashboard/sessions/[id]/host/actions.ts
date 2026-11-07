@@ -1,9 +1,11 @@
 "use server";
 
-import { can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { can, CREATOR_ROLES, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { finalizeLiveSessionResults, publishFinishedLiveParticipant, recordLiveResultEvent } from "@/lib/liveResults";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 type LivePhase = "waiting" | "question" | "answer_reveal" | "leaderboard" | "podium" | "completed";
 type ParticipantModerationStatus = "pending" | "admitted" | "rejected" | "blocked";
@@ -119,6 +121,7 @@ export async function hostNext(sessionId: string) {
     });
     if ("error" in res) return res;
     await syncCompetitionStatus(supabase, session.id, "ended");
+    await finalizeLiveSessionResults(createAdminClient(), session.id);
   } else {
     const startsAt = new Date(Date.now() + 2000);
     const deadline = new Date(startsAt.getTime() + durationSeconds * 1000);
@@ -207,8 +210,76 @@ export async function hostEnd(sessionId: string) {
   });
   if ("error" in res) return res;
   await syncCompetitionStatus(supabase, session.id, "ended");
+  await finalizeLiveSessionResults(createAdminClient(), session.id);
   revalidate(sessionId);
   return { ok: true };
+}
+
+export async function hostPublishResults(sessionId: string) {
+  const own = await loadOwnedSession(sessionId);
+  if (!own) return { error: "Session not found." };
+  if (own.session.status !== "ended") return { error: "End the assessment before publishing final results." };
+  const result = await finalizeLiveSessionResults(createAdminClient(), sessionId, {
+    actorId: own.ctx.user.id,
+    manualPublish: true,
+  });
+  if (result.pending) return { error: "Written answers still need manual grading. No result was published." };
+  if (result.error || !result.published) return { error: result.error ?? "Result publication is not available in the selected mode." };
+  revalidate(sessionId);
+  return { ok: true };
+}
+
+export async function markLiveAnswer(formData: FormData): Promise<void> {
+  const ctx = await requireUser();
+  const sessionId = String(formData.get("session_id") ?? "");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const back = `/dashboard/reports/session/${encodeURIComponent(sessionId)}`;
+  const fail = (code: string): never => redirect(`${back}?mark_error=${code}`);
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sessionId)) redirect("/dashboard");
+  const rawPoints = String(formData.get("points") ?? "").trim();
+  const points = Number(rawPoints);
+  const supabase = await createClient();
+  const { data: session } = await supabase.from("quiz_sessions").select("id, organization_id, host_id, status, quiz_id")
+    .eq("id", sessionId).maybeSingle();
+  if (!session || (!can(ctx, session.organization_id, MARKER_ROLES) && !can(ctx, session.organization_id, CREATOR_ROLES) && session.host_id !== ctx.user.id))
+    return fail("permission");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(answerId) || rawPoints === "" || !Number.isFinite(points) || points < 0)
+    return fail("invalid");
+  const { data: answer } = await supabase.from("participant_answers")
+    .select("id, participant_id, quiz_question_id, session_id, points_awarded, is_correct, questions(type, points, organization_id)")
+    .eq("id", answerId).eq("session_id", sessionId).maybeSingle();
+  const question = answer?.questions as unknown as { type: string; points: number; organization_id: string } | null;
+  if (!answer || !question || question.organization_id !== session.organization_id || question.type !== "open_ended" || answer.is_correct !== null) return fail("not_pending");
+  if (session.status !== "ended") {
+    const { data: participant } = await supabase.from("session_participants").select("status").eq("id", answer.participant_id).maybeSingle();
+    if (participant?.status !== "finished") return fail("not_finished");
+  }
+  const { data: quizQuestion, error: quizQuestionError } = await supabase.from("quiz_questions").select("points")
+    .eq("id", answer.quiz_question_id).eq("quiz_id", session.quiz_id).maybeSingle();
+  if (quizQuestionError || !quizQuestion) return fail("invalid");
+  const maximum = Number(quizQuestion.points);
+  if (!Number.isFinite(maximum) || points > maximum) return fail("points");
+  const { data: updated, error } = await supabase.from("participant_answers")
+    .update({ points_awarded: points, is_correct: points > 0 })
+    .eq("id", answer.id).eq("session_id", sessionId).is("is_correct", null).select("id").maybeSingle();
+  if (error || !updated) return fail("changed");
+  const { data: allAnswers, error: scoreError } = await supabase.from("participant_answers")
+    .select("points_awarded").eq("participant_id", answer.participant_id).eq("session_id", sessionId);
+  if (scoreError || !allAnswers) return fail("partial");
+  const score = Math.round(allAnswers.reduce((sum, row) => sum + Number(row.points_awarded ?? 0), 0) * 100) / 100;
+  const { error: participantError } = await supabase.from("session_participants")
+    .update({ score }).eq("id", answer.participant_id).eq("session_id", sessionId);
+  if (participantError) return fail("partial");
+  const admin = createAdminClient();
+  await recordLiveResultEvent(admin, {
+    organizationId: session.organization_id, sessionId, participantId: answer.participant_id,
+    actorId: ctx.user.id, eventType: "manual_grading_completed", metadata: { answer_id: answer.id, score },
+  });
+  await publishFinishedLiveParticipant(admin, sessionId, answer.participant_id, ctx.user.id);
+  if (session.status === "ended") await finalizeLiveSessionResults(admin, sessionId);
+  revalidate(sessionId);
+  revalidatePath(back);
+  redirect(`${back}?mark_ok=1`);
 }
 
 export async function hostSetPhase(sessionId: string, phase: LivePhase) {

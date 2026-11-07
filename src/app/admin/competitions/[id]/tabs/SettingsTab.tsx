@@ -28,6 +28,9 @@ interface CompRow {
   instructions: string | null;
   rules: string | null;
   scoring: Record<string, unknown> | null;
+  result_publication_mode: "manual" | "automatic" | null;
+  session_id: string | null;
+  results_published: boolean;
 }
 
 export async function SettingsTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string } }) {
@@ -54,6 +57,8 @@ export async function SettingsTab({ comp, sp }: { comp: CompRow; sp: { ok?: stri
           confirm: "Tick the confirmation box to delete.",
           live_delete: "End the competition before deleting it.",
           duplicate_failed: "Duplication failed.",
+          mode_locked: "Publication mode cannot change after a session has been created or results have been published.",
+          not_found: "Competition no longer exists.",
         }}
       />
 
@@ -113,6 +118,15 @@ export async function SettingsTab({ comp, sp }: { comp: CompRow; sp: { ok?: stri
             <label className="flex items-end gap-2 pb-2.5 text-sm text-ink">
               <input type="checkbox" name="scoring_negative" defaultChecked={Boolean(scoring.negative_marking)} className="h-4 w-4 accent-evergreen-700" /> Negative marking
             </label>
+          </div>
+
+          <div>
+            <p className="mb-2 text-sm font-medium text-evergreen-900">Result publication mode</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" defaultChecked={comp.result_publication_mode !== "automatic"} disabled={Boolean(comp.session_id || comp.results_published)} className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">Organizer validates and publishes official rankings.</span></span></label>
+              <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" defaultChecked={comp.result_publication_mode === "automatic"} disabled={Boolean(comp.session_id || comp.results_published)} className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Objective results publish automatically after completion.</span></span></label>
+            </div>
+            {(comp.session_id || comp.results_published) && <p className="mt-2 text-xs text-amber-800">Mode is locked because a live session exists or results have already been published.</p>}
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2">

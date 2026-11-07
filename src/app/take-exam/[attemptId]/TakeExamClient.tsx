@@ -5,23 +5,27 @@ import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
 import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
+import { createClient as createBrowserSupabaseClient } from "@/lib/supabase/client";
 import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
 import { ExamSaveQueue, type ExamQueueState } from "@/lib/examSaveQueue";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
-import "@livekit/components-styles";
-import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
-import { Track } from "livekit-client";
+import dynamic from "next/dynamic";
 import { Flag, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+const ProctoredExamRoom = dynamic(
+  () => import("@/components/ProctoredExamRoom").then((module) => module.ProctoredExamRoom),
+  { ssr: false, loading: () => <p className="text-xs text-ink-soft">Loading video supervision…</p> },
+);
+
 interface ExamState {
   server_now: string;
-  exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
+  exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; result_publication_mode?: "manual" | "automatic"; corrections_published?: boolean; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean };
+  attempt: { id: string; status: string; submission_reason?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; corrections_published?: boolean; grading_status?: string; pending_manual_count?: number; result_channel?: string | null };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
     result: {
@@ -35,55 +39,6 @@ interface ExamState {
     } | null;
     reveal?: { correct_option_ids: string[]; summary: string[] } | null;
   })[];
-}
-
-function LocalCamera() {
-  const tracks = useTracks([Track.Source.Camera]);
-  const local = tracks.find((t) => t.participant.isLocal);
-  if (!local) return <div className="flex h-28 items-center justify-center rounded-xl bg-evergreen-950 text-xs text-white">Starting camera…</div>;
-  return (
-    <div className="overflow-hidden rounded-xl border-2 border-gold-500">
-      <VideoTrack trackRef={local} className="h-28 w-full object-cover" />
-    </div>
-  );
-}
-
-function ScreenShareButton() {
-  const { localParticipant, isScreenShareEnabled } = useLocalParticipant();
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  async function toggle() {
-    setBusy(true);
-    try {
-      await localParticipant.setScreenShareEnabled(!isScreenShareEnabled);
-      setErr(null);
-    } catch {
-      setErr("Screen sharing could not be changed. Contact your invigilator if it is required.");
-    } finally { setBusy(false); }
-  }
-  return (
-    <div>
-      <Button variant="outline" className="w-full text-xs" disabled={busy} onClick={toggle}>
-        {isScreenShareEnabled ? "Stop sharing screen" : "Share my screen"}
-      </Button>
-      {err && <p role="alert" className="mt-1 text-xs text-red-700">{err}</p>}
-    </div>
-  );
-}
-
-function CandidateVideoStatus({ onRetry, mediaError }: { onRetry: () => void; mediaError: string | null }) {
-  const connection = useConnectionState();
-  const { isCameraEnabled, isMicrophoneEnabled } = useLocalParticipant();
-  const connected = connection === "connected";
-  const status = connected ? "Video room connected" : connection === "reconnecting" || connection === "signalReconnecting"
-    ? "Video room reconnecting" : connection === "connecting" ? "Connecting to video room" : "Video room disconnected";
-  return <div className="space-y-2" aria-live="polite">
-    <p className="text-xs font-semibold text-evergreen-900">{status}</p>
-    {connected && <p className="text-xs text-ink-soft">Camera {isCameraEnabled ? "enabled" : "not enabled"} · Microphone {isMicrophoneEnabled ? "enabled" : "not enabled"} on this device.</p>}
-    {mediaError && <p role="alert" className="text-xs text-red-700">{mediaError}</p>}
-    {(connection === "disconnected" || mediaError) && <Button variant="outline" className="w-full text-xs" onClick={onRetry}>Retry video connection</Button>}
-    <LocalCamera />
-  </div>;
 }
 
 /** Glyph, colour and label for one question in the post-submission navigator. */
@@ -115,8 +70,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [queueState, setQueueState] = useState<ExamQueueState>({ pending: 0, syncing: false, error: null, durable: true });
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [resultNotice, setResultNotice] = useState(false);
+  const previousResultPublished = useRef<boolean | null>(null);
   const queueRef = useRef<ExamSaveQueue | null>(null);
+  const draftFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeRef = useRef(false);
+  const [online, setOnline] = useState(true);
   const dirtyRef = useRef(false);
   const [answerDirty, setAnswerDirtyState] = useState(false);
   const [draftWarning, setDraftWarning] = useState(false);
@@ -140,10 +99,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
-  const [mediaError, setMediaError] = useState<string | null>(null);
   const [videoRetry, setVideoRetry] = useState(0);
   const retryVideo = useCallback(() => {
-    setLk(null); setVideoError(null); setMediaError(null); setVideoRetry((n) => n + 1);
+    setLk(null); setVideoError(null); setVideoRetry((n) => n + 1);
   }, []);
   const offset = useRef(0);
 
@@ -241,6 +199,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     if (!res.ok || !data) { setError("Could not load the examination. Please contact your invigilator."); return; }
     setError(null);
     activeRef.current = data.attempt.status === "in_progress";
+    const previousPublished = previousResultPublished.current;
+    if (previousPublished === false && data.attempt.results_published) setResultNotice(true);
+    previousResultPublished.current = data.attempt.results_published;
     if (!queueRef.current) {
       // sessionStorage survives refresh in this tab but is cleared when the
       // tab closes; no attempt token is included in the recovery queue.
@@ -275,6 +236,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       });
     }
     offset.current = new Date(data.server_now).getTime() - Date.now();
+    try {
+      const savedPosition = Number(sessionStorage.getItem(`evalora-exam-position-${attemptId}`));
+      if (Number.isInteger(savedPosition) && savedPosition >= 0) {
+        setIndex(Math.min(savedPosition, Math.max(0, data.questions.length - 1)));
+      }
+    } catch {
+      // A denied session store does not prevent the paper from loading.
+    }
     setState(data);
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
     setSavedIds(new Set(data.questions.filter((q) => q.saved_answer && !pending.some((entry) => entry.questionId === q.question_id)).map((q) => q.question_id)));
@@ -282,20 +251,59 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   }, [attemptId, token]);
 
   useEffect(() => { void load(); }, [load]);
+
+  // The event contains no score or answer data. This candidate-scoped channel
+  // wakes the page; the capability-protected state endpoint remains the source
+  // of truth and is re-read on subscription recovery, reconnect, and tab return.
+  useEffect(() => {
+    const channelName = state?.attempt.result_channel;
+    if (!token || !channelName) return;
+    const supabase = createBrowserSupabaseClient();
+    const channel = supabase.channel(channelName)
+      .on("broadcast", { event: "result-published" }, () => { void load(); })
+      .on("broadcast", { event: "result-unpublished" }, () => { void load(); })
+      .subscribe((status) => {
+        if (status === "SUBSCRIBED" && state.attempt.status !== "in_progress") void load();
+      });
+    const onOnline = () => { void load(); };
+    const onVisible = () => { if (document.visibilityState === "visible") void load(); };
+    window.addEventListener("online", onOnline);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("online", onOnline);
+      document.removeEventListener("visibilitychange", onVisible);
+      void supabase.removeChannel(channel);
+    };
+  }, [token, state?.attempt.result_channel, state?.attempt.status, load]);
+
+  useEffect(() => {
+    if (!state) return;
+    try { sessionStorage.setItem(`evalora-exam-position-${attemptId}`, String(index)); } catch { /* optional recovery hint */ }
+  }, [attemptId, index, state]);
+  useEffect(() => {
+    setOnline(navigator.onLine);
+    const wentOnline = () => { setOnline(true); if (activeRef.current) void queueRef.current?.flush(); };
+    const wentOffline = () => setOnline(false);
+    window.addEventListener("online", wentOnline);
+    window.addEventListener("offline", wentOffline);
+    return () => { window.removeEventListener("online", wentOnline); window.removeEventListener("offline", wentOffline); };
+  }, []);
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
   useEffect(() => {
-    const retry = () => { if (activeRef.current) void queueRef.current?.flush(); };
     const warn = (event: BeforeUnloadEvent) => {
       if (dirtyRef.current || queueRef.current?.state().pending) { event.preventDefault(); event.returnValue = ""; }
     };
-    window.addEventListener("online", retry);
     window.addEventListener("beforeunload", warn);
-    return () => { window.removeEventListener("online", retry); window.removeEventListener("beforeunload", warn); };
+    return () => { window.removeEventListener("beforeunload", warn); };
   }, []);
-  useEffect(() => () => { queueRef.current?.dispose(); queueRef.current = null; }, []);
+  useEffect(() => () => {
+    if (draftFlushRef.current) clearTimeout(draftFlushRef.current);
+    queueRef.current?.dispose();
+    queueRef.current = null;
+  }, []);
 
   // A token is not a connection. Report failures and allow an explicit retry.
   useEffect(() => {
@@ -318,7 +326,24 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     return () => { cancelled = true; };
   }, [state?.exam.proctoring, state?.exam.id, state?.attempt.status, token, attemptId, videoRetry]);
 
+  function draft(questionId: string, quizQuestionId: string, payload: Record<string, unknown>) {
+    const queue = queueRef.current;
+    if (!queue || !activeRef.current || !queue.enqueue(questionId, quizQuestionId, payload, flagged, false)) return false;
+    setSavedIds((previous) => { const next = new Set(previous); next.delete(questionId); return next; });
+    setState((previous) => previous ? { ...previous, questions: previous.questions.map((question) =>
+      question.question_id === questionId ? { ...question, saved_answer: payload } : question) } : previous);
+    if (draftFlushRef.current) clearTimeout(draftFlushRef.current);
+    // Debounce network writes while the queue persists each edit synchronously
+    // in tab-scoped storage. A reconnect event can flush it sooner.
+    draftFlushRef.current = setTimeout(() => {
+      draftFlushRef.current = null;
+      if (activeRef.current) void queue.flush();
+    }, 450);
+    return true;
+  }
+
   function save(questionId: string, quizQuestionId: string, payload: Record<string, unknown>, newFlagged = flagged) {
+    if (draftFlushRef.current) { clearTimeout(draftFlushRef.current); draftFlushRef.current = null; }
     const queue = queueRef.current;
     if (!queue || !activeRef.current || !queue.enqueue(questionId, quizQuestionId, payload, newFlagged)) return false;
     setSavedIds((previous) => { const next = new Set(previous); next.delete(questionId); return next; });
@@ -355,10 +380,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       const response = await fetch("/api/exam/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attempt_id: attemptId, token }),
+        body: JSON.stringify({ attempt_id: attemptId, token, confirmation: "candidate_confirmed" }),
       });
       if (!response.ok) {
-        setSubmitError("Submission was not confirmed. Please retry or contact your invigilator.");
+        setSubmitError(response.status === 400
+          ? "This assessment page is out of date. Refresh it before submitting; your saved answers remain on the server."
+          : "Submission was not confirmed. Please retry or contact your invigilator.");
         return;
       }
       setConfirmSubmit(false);
@@ -387,7 +414,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
   const currentKeyLine = answerKeyLine(current?.reveal?.summary);
-  const showCorrige = submitted && attempt.results_published;
+  const showCorrige = submitted && attempt.results_published && attempt.corrections_published !== false;
   const answeredCount = questions.filter((q) => q.result && q.result.answered !== false).length;
   const correctCount = questions.filter((q) => q.result?.is_correct === true).length;
 
@@ -416,18 +443,21 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
         </div>
       </header>
+      {resultNotice && (
+        <div role="status" aria-live="polite" className="mx-auto mt-4 max-w-7xl px-4 sm:px-6">
+          <p className="rounded-xl border border-evergreen-700/20 bg-evergreen-50 px-4 py-3 text-sm font-semibold text-evergreen-900">Your result is now available!</p>
+        </div>
+      )}
 
       <main className={cn("mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]", corrigeAll && "block")}>
         <aside className={cn("space-y-4 lg:sticky lg:top-24 lg:h-fit print:hidden", corrigeAll && "hidden")}>
+          {!submitted && <p role="status" aria-live="polite" className={`rounded-xl px-3 py-2 text-xs ${online ? "bg-evergreen-50 text-evergreen-900" : "bg-amber-50 text-amber-900"}`}>
+            {online ? "Internet connected. Answer changes are saved automatically." : "Internet connection interrupted. Your recent answers are kept in this tab and will sync when connection returns. Live supervision may be interrupted."}
+          </p>}
           {exam.proctoring && !submitted && (
             <Card className="space-y-2 p-3">
               <p className="text-xs font-semibold text-evergreen-900">Video supervision</p>
-              {lk ? <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video audio data-lk-theme="default"
-                onError={() => setMediaError("Video connection failed. Retry or contact your invigilator.")}
-                onMediaDeviceFailure={() => setMediaError("Camera or microphone could not be enabled. Check permissions and contact your invigilator.")}>
-                <CandidateVideoStatus onRetry={retryVideo} mediaError={mediaError} />
-                {exam.require_screen_share && <ScreenShareButton />}
-              </LiveKitRoom> : videoError ? <>
+              {lk ? <ProctoredExamRoom token={lk.token} serverUrl={lk.serverUrl} requireScreenShare={exam.require_screen_share} onRetry={retryVideo} /> : videoError ? <>
                 <p role="alert" className="text-xs text-red-700">{videoError}</p>
                 <Button variant="outline" className="w-full text-xs" onClick={retryVideo}>Retry video connection</Button>
               </> : <p className="text-xs text-ink-soft">Requesting video access…</p>}
@@ -477,7 +507,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             {queueState.error && <p role="alert" className="mt-2 text-xs text-red-700">{queueState.error}</p>}
             {!queueState.durable && <p role="alert" className="mt-2 text-xs text-red-700">Local recovery is unavailable. Do not refresh or close this tab while answers are waiting.</p>}
             {queueState.pending > 0 && !queueState.syncing && !submitted && <Button variant="outline" className="mt-2 w-full text-xs" onClick={() => void queueRef.current?.flush()}>Retry saving</Button>}
-            <p className="mt-2 text-xs text-ink-soft">For typed or multi-part answers, select Save answer before moving on. Flags are sent when an answer is saved. Waiting answers are stored in this tab for refresh recovery; closing the tab can remove them. Use a private device.</p>
+            <p className="mt-2 text-xs text-ink-soft">Answer edits are saved locally as you work and synchronized automatically. The Save answer button can send immediately. Waiting answers and the current question position are stored in this tab for refresh recovery; closing the tab can remove them. Use a private device.</p>
           </Card>
           {exam.instructions && (
             <Card className="p-4">
@@ -541,14 +571,25 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   <Badge tone={(pct ?? 0) >= exam.pass_mark_percent ? "green" : "red"} className="mt-2 px-3 py-1">
                     {(pct ?? 0) >= exam.pass_mark_percent ? "PASS" : "Below pass mark"} · pass mark {exam.pass_mark_percent}%
                   </Badge>
-                  <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and the official explanation. Blank answers score 0 and are shown too.</p>
-                  <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
-                    <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
-                    <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
-                  </div>
+                  {showCorrige ? (
+                    <>
+                      <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and official explanation. Blank answers score 0 and are shown too.</p>
+                      <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
+                        <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
+                        <Button variant="outline" onClick={() => window.print()}>Imprimer / PDF</Button>
+                      </div>
+                    </>
+                  ) : <p className="mt-3 text-sm text-ink-soft">Corrections and model answers are not released yet.</p>}
                 </div>
+              ) : attempt.grading_status === "awaiting_manual_grading" ? (
+                <div className="mt-3 space-y-2 text-sm text-ink-soft">
+                  <Badge tone="amber">Awaiting manual grading</Badge>
+                  <p>{attempt.pending_manual_count ?? 1} written response(s) still require teacher marking. No final score has been published.</p>
+                </div>
+              ) : attempt.grading_status === "grading_failed" ? (
+                <p role="status" className="mt-3 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Your submission is safely saved, but automatic grading needs staff review. No score has been published.</p>
               ) : (
-                <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
+                <p className="mt-3 text-ink-soft">Results will appear here once your institution validates and publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about unconfirmed recovery data."}</p>
               )}
             </Card>
           ) : null}
@@ -580,6 +621,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 disabled={submitted || submitting}
                 submitLabel="Save answer"
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
+                onDraft={(payload) => draft(current.question_id, current.quiz_question_id, payload)}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
               />

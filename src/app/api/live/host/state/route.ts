@@ -41,7 +41,7 @@ export async function GET(request: Request) {
     await Promise.all([
       admin
         .from("competitions")
-        .select("id, title, status, instructions")
+        .select("id, title, status, instructions, result_publication_mode, results_published")
         .eq("session_id", session.id)
         .maybeSingle(),
       admin.from("quizzes").select("title, settings").eq("id", session.quiz_id).maybeSingle(),
@@ -169,6 +169,8 @@ export async function GET(request: Request) {
       require_approval: Boolean(session.require_approval),
       display_token_version: Number(session.display_token_version ?? 1),
       settings: session.settings ?? {},
+      results_published: Boolean(session.results_published) || Boolean(competition?.results_published),
+      result_publication_status: session.result_publication_status ?? "not_ready",
       created_at: session.created_at,
       ended_at: session.ended_at,
     },

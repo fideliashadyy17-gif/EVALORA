@@ -1,6 +1,19 @@
 /** Server-side objective scoring for examinations and live quizzes. */
 export type AnswerPayload = Record<string, unknown>;
 
+export function isAutoGradableQuestion(type: string): boolean {
+  return ["single_choice", "multiple_select", "true_false", "short_answer", "numeric", "ordering", "matching"].includes(type);
+}
+
+export function hasAnswerContent(answer: unknown): boolean {
+  if (!answer || typeof answer !== "object" || Array.isArray(answer)) return false;
+  return Object.values(answer as Record<string, unknown>).some((value) => {
+    if (typeof value === "string") return value.trim().length > 0;
+    if (Array.isArray(value)) return value.length > 0;
+    return value !== null && value !== undefined;
+  });
+}
+
 export interface ScorableOption {
   id: string;
   label: string;
@@ -71,6 +84,12 @@ export function scoreAnswer(
     case "numeric": {
       const expected = validNumber(cfg.numeric_answer);
       const tolerance = cfg.tolerance == null || cfg.tolerance === "" ? 0 : validNumber(cfg.tolerance);
+      // An intentionally blank numeric response is a valid unanswered item,
+      // not a malformed grading payload. This is important for autosaved
+      // drafts that are cleared before submission.
+      if (answer.value === null || answer.value === undefined || typeof answer.value === "string" && answer.value.trim() === "") {
+        return { isCorrect: false, points: 0 };
+      }
       const got = validNumber(answer.value);
       if (expected === null || tolerance === null || tolerance < 0 || got === null) throw new ScoringError();
       const ok = Math.abs(got - expected) <= tolerance;

@@ -65,6 +65,13 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                 <Input name="ends_at" type="datetime-local" />
               </Field>
             </div>
+            <Field label="Result publication mode">
+              <div className="grid gap-3 rounded-xl bg-cream p-4 sm:grid-cols-2">
+                <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" defaultChecked className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">Results become visible after an authorized teacher validates and publishes them.</span></span></label>
+                <label className="flex items-start gap-2 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Objectively gradable submissions are scored and published immediately. Written responses wait for marking.</span></span></label>
+              </div>
+            </Field>
+            <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="checkbox" name="corrections_published" defaultChecked className="mt-0.5 accent-evergreen-700" /><span><strong>Release answer corrections with the result</strong><span className="block text-xs text-ink-soft">Correct answers and explanations stay hidden until this is authorized.</span></span></label>
             <Field label="Description">
               <Textarea name="description" rows={2} placeholder="Shown to candidates before they start." />
             </Field>

@@ -46,6 +46,15 @@ await test("failed in-flight request retains the newer replacement", async () =>
   assert.equal(await queue.flush(), false); assert.equal(queue.snapshot()[0].answer.text, "new");
   assert.equal(await queue.flush(), true); assert.equal(queue.state().pending, 0);
 });
+await test("draft edits persist locally before a debounced network flush", async () => {
+  const store = storage(); let sent = 0;
+  const queue = new ExamSaveQueue(store, "q", async () => { sent++; }, quiet, quiet);
+  assert.equal(queue.enqueue("q1", "qq1", { text: "draft" }, [], false), true);
+  assert.equal(sent, 0);
+  assert.equal(JSON.parse(store.values.get("q"))[0].answer.text, "draft");
+  assert.equal(await queue.flush(), true);
+  assert.equal(sent, 1); assert.equal(queue.state().pending, 0);
+});
 await test("different questions flush in update order", async () => {
   const first = deferred(); const sent = [];
   const queue = new ExamSaveQueue(storage(), "q", async (e) => { sent.push(e.questionId + e.answer.text); if (e.answer.text === "1") await first.promise; }, quiet, quiet);

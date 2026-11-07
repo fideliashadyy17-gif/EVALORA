@@ -59,6 +59,8 @@ export default async function EditQuizPage({
           randomize_questions: Boolean(settings.randomize_questions),
           randomize_options: Boolean(settings.randomize_options),
           time_per_question_seconds: Number(settings.time_per_question_seconds ?? 30),
+          result_publication_mode: settings.result_publication_mode === "automatic" ? "automatic" : "manual",
+          corrections_published: settings.corrections_published !== false,
           question_ids: ordered,
         }}
       />

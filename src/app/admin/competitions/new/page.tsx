@@ -110,6 +110,14 @@ export default async function NewCompetitionPage({
         </Card>
 
         <Card className="p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Result publication mode</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="manual" defaultChecked className="mt-1 accent-evergreen-700" /><span><strong>Manual Result Publication</strong><span className="block text-xs text-ink-soft">Organizer validates and publishes official rankings.</span></span></label>
+            <label className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 p-3 text-sm text-evergreen-900"><input type="radio" name="result_publication_mode" value="automatic" className="mt-1 accent-evergreen-700" /><span><strong>Automatic Result Publication</strong><span className="block text-xs text-ink-soft">Objective results publish after completion; written answers require marking first.</span></span></label>
+          </div>
+        </Card>
+
+        <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Scoring, instructions & rules</h2>
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             <Field label="Points per correct answer" hint="Applied by organizers in results review; quiz question points remain the raw score basis.">

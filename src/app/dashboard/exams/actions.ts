@@ -4,6 +4,8 @@ import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities } from "@/lib/capabilities";
 import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
+import { broadcastExamManualPublication, hasAnswerContent, publishAutomaticExamAttempt, recordExamResultEvent, resultPublicationMode } from "@/lib/resultPublication";
+import { attemptRows, gradeAttempt } from "@/lib/exam";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "node:crypto";
@@ -66,12 +68,14 @@ export async function createExam(formData: FormData) {
     starts_at: start?.toISOString() ?? null,
     ends_at: end?.toISOString() ?? null,
     status: "draft",
+    result_publication_mode: formData.get("result_publication_mode") === "automatic" ? "automatic" : "manual",
     settings: {
       proctoring: proctoringWanted,
       require_screen_share: proctoringWanted && formData.get("require_screen_share") === "on",
       randomize_questions: formData.get("randomize_questions") === "on",
       randomize_options: formData.get("randomize_options") === "on",
       pass_mark_percent: passMark,
+      corrections_published: formData.get("corrections_published") === "on",
       results_published: false,
       access_mode: "shared_link", identity_fields: [], eligible_class_ids: [], attempt_policy: "single_resume",
     },
@@ -222,14 +226,7 @@ export async function markAnswer(formData: FormData) {
     .eq("id", answerId).eq("attempt_id", attempt.id).select("id").maybeSingle();
   if (updateError || !updated) return fail("failed");
 
-  const { data: answers, error: answersError } = await supabase.from("exam_answers").select("points_awarded, is_correct").eq("attempt_id", attempt.id);
-  if (answersError || !answers) return fail("partial");
-  const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
-  const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
-  const { data: updatedAttempt, error: totalError } = await supabase.from("exam_attempts")
-    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) }).eq("id", attempt.id).eq("exam_id", exam.id)
-    .in("status", ["submitted", "auto_submitted", "marked"]).select("id").maybeSingle();
-  if (totalError || !updatedAttempt) return fail("partial");
+  if ((await recomputeAttempt(supabase, attempt.id, exam.id, ctx.user.id)) === null) return fail("partial");
   revalidatePath(back);
   redirect(`${back}?mark_ok=1`);
 }
@@ -239,23 +236,52 @@ async function recomputeAttempt(
   supabase: Awaited<ReturnType<typeof createClient>>,
   attemptId: string,
   examId: string,
+  actorId?: string,
 ): Promise<number | null> {
-  const { data: answers, error } = await supabase
-    .from("exam_answers")
-    .select("points_awarded, is_correct")
-    .eq("attempt_id", attemptId);
+  const [{ data: answers, error }, { data: previous }] = await Promise.all([
+    supabase.from("exam_answers").select("points_awarded, is_correct, answer, questions(type)").eq("attempt_id", attemptId),
+    supabase.from("exam_attempts").select("pending_manual_count, grading_status").eq("id", attemptId).eq("exam_id", examId).maybeSingle(),
+  ]);
   if (error || !answers) return null;
   const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
-  const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
+  const pendingManualCount = answers.filter((answer) => {
+    const question = answer.questions as unknown as { type: string } | null;
+    return question?.type === "open_ended" && answer.is_correct === null && hasAnswerContent(answer.answer);
+  }).length;
+  const allMarked = pendingManualCount === 0;
   const { data: updated, error: totalError } = await supabase
     .from("exam_attempts")
-    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) })
+    .update({
+      score: total,
+      grading_status: previous?.grading_status === "grading_failed" ? "grading_failed" : pendingManualCount ? "awaiting_manual_grading" : "graded",
+      pending_manual_count: pendingManualCount,
+      ...(allMarked ? { status: "marked" } : {}),
+    })
     .eq("id", attemptId)
     .eq("exam_id", examId)
     .in("status", ["submitted", "auto_submitted", "marked"])
     .select("id")
     .maybeSingle();
   if (totalError || !updated) return null;
+
+  const admin = createAdminClient();
+  if (previous?.grading_status === "awaiting_manual_grading" && Number(previous.pending_manual_count ?? 0) > 0 && pendingManualCount === 0) {
+    const { data: exam } = await supabase.from("exams").select("organization_id, result_publication_mode").eq("id", examId).maybeSingle();
+    if (exam) await recordExamResultEvent(admin, {
+      organization_id: exam.organization_id, exam_id: examId, attempt_id: attemptId, actor_id: actorId ?? null,
+      event_type: "manual_grading_completed", metadata: { final_score: total },
+    });
+  }
+  const { data: exam } = await supabase.from("exams")
+    .select("organization_id, result_publication_mode").eq("id", examId).maybeSingle();
+  if (exam && previous?.grading_status !== "grading_failed" && pendingManualCount === 0 && resultPublicationMode(exam.result_publication_mode) === "automatic") {
+    await publishAutomaticExamAttempt(admin, {
+      organizationId: exam.organization_id,
+      examId,
+      attemptId,
+      actorId: actorId ?? null,
+    });
+  }
   return total;
 }
 
@@ -408,7 +434,7 @@ export async function markWithRubric(formData: FormData) {
     .eq("id", answerRowId).eq("attempt_id", attemptRowId).select("id").maybeSingle();
   if (updateError || !updated) return fail("failed");
 
-  if ((await recomputeAttempt(supabase, attemptRowId, examRowId)) === null) return fail("partial");
+  if ((await recomputeAttempt(supabase, attemptRowId, examRowId, ctx.user.id)) === null) return fail("partial");
   revalidatePath(back);
   revalidatePath(`/dashboard/exams/${examRowId}/grades`);
   redirect(`${back}?mark_ok=rubric`);
@@ -469,10 +495,101 @@ export async function moderateAnswer(formData: FormData) {
   });
   if (insertError) return fail("failed");
 
-  if ((await recomputeAttempt(supabase, answer.attempt_id, exam.id)) === null) return fail("partial");
+  if ((await recomputeAttempt(supabase, answer.attempt_id, exam.id, ctx.user.id)) === null) return fail("partial");
   revalidatePath(back);
   revalidatePath(`/dashboard/exams/${exam.id}/grades`);
   redirect(`${back}?moderation_ok=${decision}`);
+}
+
+export async function retryExamGrading(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const examId = String(formData.get("exam_id") ?? "");
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  const fail = (code: string): never => redirect(`${back}?grading_error=${code}`);
+  if (!org || (!can(ctx, org.id, CREATOR_ROLES) && !can(ctx, org.id, MARKER_ROLES)) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId)) redirect("/dashboard/exams");
+  const admin = createAdminClient();
+  const [{ data: exam }, { data: attempt }] = await Promise.all([
+    admin.from("exams").select("id, organization_id, quiz_id, settings, result_publication_mode").eq("id", examId).eq("organization_id", org.id).maybeSingle(),
+    admin.from("exam_attempts").select("*").eq("id", attemptId).eq("exam_id", examId).maybeSingle(),
+  ]);
+  if (!exam || !attempt || attempt.grading_status !== "grading_failed" || !["submitted", "auto_submitted", "marked"].includes(attempt.status)) return fail("state");
+  try {
+    const rows = await attemptRows(admin, exam, attempt);
+    const grade = await gradeAttempt(admin, attempt.id, rows);
+    const gradingStatus = grade.pendingManualCount > 0 ? "awaiting_manual_grading" : "graded";
+    const { data: updated, error } = await admin.from("exam_attempts").update({
+      score: grade.score, max_score: grade.max, auto_score: grade.autoScore, auto_max_score: grade.autoMax,
+      pending_manual_count: grade.pendingManualCount, grading_status: gradingStatus, grading_error: null,
+    }).eq("id", attempt.id).eq("grading_status", "grading_failed").select("id").maybeSingle();
+    if (error || !updated) return fail("state");
+    await recordExamResultEvent(admin, {
+      organization_id: org.id, exam_id: exam.id, attempt_id: attempt.id, actor_id: ctx.user.id,
+      event_type: "grading_retried", metadata: { pending_manual_count: grade.pendingManualCount },
+    });
+    await recordExamResultEvent(admin, {
+      organization_id: org.id, exam_id: exam.id, attempt_id: attempt.id, actor_id: ctx.user.id,
+      event_type: grade.pendingManualCount ? "awaiting_manual_grading" : "auto_graded",
+      metadata: { auto_score: grade.autoScore, auto_max_score: grade.autoMax },
+    });
+    if (!grade.pendingManualCount && resultPublicationMode(exam.result_publication_mode) === "automatic") {
+      await publishAutomaticExamAttempt(admin, { organizationId: org.id, examId, attemptId, actorId: ctx.user.id });
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message.slice(0, 500) : "Automatic grading retry failed.";
+    await admin.from("exam_attempts").update({ grading_error: message }).eq("id", attemptId).eq("exam_id", examId);
+    await recordExamResultEvent(admin, {
+      organization_id: org.id, exam_id: examId, attempt_id: attemptId, actor_id: ctx.user.id,
+      event_type: "grading_failed", metadata: { error: message, retry: true },
+    });
+    return fail("failed");
+  }
+  revalidatePath(back);
+  redirect(`${back}?grading_ok=1`);
+}
+
+export async function saveExamPublicationSettings(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const examId = String(formData.get("exam_id") ?? "");
+  const back = `/dashboard/exams/${encodeURIComponent(examId)}`;
+  if (!org || !can(ctx, org.id, CREATOR_ROLES) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
+  const rawMode = String(formData.get("result_publication_mode") ?? "");
+  if (!["manual", "automatic"].includes(rawMode)) redirect(`${back}?publication_error=mode`);
+  const supabase = await createClient();
+  const { data: exam, error: readError } = await supabase.from("exams")
+    .select("id, organization_id, settings, result_publication_mode")
+    .eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect("/dashboard/exams");
+  const { data: attempt, error: attemptError } = await supabase.from("exam_attempts")
+    .select("id").eq("exam_id", examId).limit(1).maybeSingle();
+  if (attemptError) redirect(`${back}?publication_error=check`);
+  const settings = { ...((exam.settings as Record<string, unknown>) ?? {}) };
+  const correctionsPublished = formData.get("corrections_published") === "on";
+  const modeChanged = resultPublicationMode(exam.result_publication_mode) !== rawMode;
+  const correctionsChanged = settings.corrections_published !== correctionsPublished;
+  if (attempt && (modeChanged || correctionsChanged)) redirect(`${back}?publication_error=locked`);
+  settings.corrections_published = correctionsPublished;
+  const { error: updateError } = await supabase.from("exams")
+    .update({ result_publication_mode: rawMode, settings })
+    .eq("id", examId).eq("organization_id", org.id);
+  if (updateError) redirect(`${back}?publication_error=save`);
+  if (modeChanged || correctionsChanged) {
+    const admin = createAdminClient();
+    if (modeChanged) await recordExamResultEvent(admin, {
+      organization_id: org.id, exam_id: examId, actor_id: ctx.user.id,
+      event_type: "publication_mode_changed", metadata: { from: exam.result_publication_mode ?? "manual", to: rawMode },
+    });
+    if (correctionsChanged) await recordExamResultEvent(admin, {
+      organization_id: org.id, exam_id: examId, actor_id: ctx.user.id,
+      event_type: "correction_visibility_changed", metadata: { released: correctionsPublished },
+    });
+  }
+  revalidatePath(back);
+  redirect(`${back}?publication_ok=1`);
 }
 
 export async function publishResults(formData: FormData) {
@@ -486,13 +603,54 @@ export async function publishResults(formData: FormData) {
   const value = String(formData.get("publish") ?? "");
   if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
   const supabase = await createClient();
-  const { data: exam, error: readError } = await supabase.from("exams").select("settings")
+  const { data: exam, error: readError } = await supabase.from("exams").select("id, organization_id, quiz_id, settings, result_publication_mode")
     .eq("id", examId).eq("organization_id", org.id).maybeSingle();
   if (readError || !exam) redirect(`${back}?publish_error=1`);
-  const settings = { ...((exam.settings as object) ?? {}), results_published: value === "1" };
+  const published = value === "1";
+  if (published && resultPublicationMode(exam.result_publication_mode) === "automatic") redirect(`${back}?publish_error=1`);
+  if (published) {
+    // Legacy attempts predate persisted grading columns. Grade every completed
+    // attempt server-side before official release; any failure keeps results hidden.
+    const admin = createAdminClient();
+    const { data: attempts, error: attemptsError } = await admin.from("exam_attempts")
+      .select("*").eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"]);
+    if (attemptsError || !attempts) redirect(`${back}?publish_error=1`);
+    for (const attempt of attempts) {
+      if (attempt.grading_status === "graded" ||
+          (attempt.grading_status === "awaiting_manual_grading" && Number(attempt.pending_manual_count ?? 0) > 0)) continue;
+      try {
+        const rows = await attemptRows(admin, { ...exam, quiz_id: exam.quiz_id, settings: (exam.settings ?? {}) as Record<string, unknown> }, attempt);
+        const grade = await gradeAttempt(admin, attempt.id, rows);
+        const gradingStatus = grade.pendingManualCount ? "awaiting_manual_grading" : "graded";
+        const { data: graded, error: gradeError } = await admin.from("exam_attempts").update({
+          score: grade.score, max_score: grade.max, auto_score: grade.autoScore, auto_max_score: grade.autoMax,
+          pending_manual_count: grade.pendingManualCount, grading_status: gradingStatus, grading_error: null,
+        }).eq("id", attempt.id).eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"])
+          .select("id").maybeSingle();
+        if (gradeError || !graded) redirect(`${back}?publish_error=1`);
+        await recordExamResultEvent(admin, {
+          organization_id: org.id, exam_id: examId, attempt_id: attempt.id, actor_id: ctx.user.id,
+          event_type: grade.pendingManualCount ? "awaiting_manual_grading" : "auto_graded",
+          metadata: { auto_score: grade.autoScore, auto_max_score: grade.autoMax, pending_manual_count: grade.pendingManualCount },
+        });
+      } catch {
+        await admin.from("exam_attempts").update({ grading_status: "grading_failed", grading_error: "Grading could not be confirmed before result publication." })
+          .eq("id", attempt.id).eq("exam_id", examId);
+        await recordExamResultEvent(admin, {
+          organization_id: org.id, exam_id: examId, attempt_id: attempt.id, actor_id: ctx.user.id,
+          event_type: "grading_failed", metadata: { publication_blocked: true },
+        });
+        redirect(`${back}?publish_error=1`);
+      }
+    }
+    const { data: pending, error: pendingError } = await admin.from("exam_attempts")
+      .select("id").eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"])
+      .gt("pending_manual_count", 0).limit(1).maybeSingle();
+    if (pendingError || pending) redirect(`${back}?publish_error=1`);
+  }
+  const settings = { ...((exam.settings as Record<string, unknown>) ?? {}), results_published: published };
   // Publishing stamps who released the marks; the audit log keeps every change
   // that led to them.
-  const published = value === "1";
   const { data: updated, error: updateError } = await supabase.from("exams")
     .update({
       settings,
@@ -501,6 +659,13 @@ export async function publishResults(formData: FormData) {
     })
     .eq("id", examId).eq("organization_id", org.id).select("id").maybeSingle();
   if (updateError || !updated) redirect(`${back}?publish_error=1`);
+  const admin = createAdminClient();
+  await broadcastExamManualPublication(admin, {
+    organizationId: org.id,
+    examId,
+    actorId: ctx.user.id,
+    published,
+  });
   revalidatePath(back);
   redirect(`${back}?publish_ok=1`);
 }
@@ -538,35 +703,54 @@ export async function logIncident(formData: FormData): Promise<{ ok: boolean; me
   return { ok: true, message: "Observation recorded for human review." };
 }
 
-/** Review only an incident belonging to the verified workspace examination. */
+/** Review a tenant-scoped examination or live-session incident. */
 export async function reviewIncident(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const examId = String(formData.get("exam_id") ?? "");
+  const sessionId = String(formData.get("session_id") ?? "");
   const incidentId = String(formData.get("id") ?? "");
   const expected = String(formData.get("expected_status") ?? "");
   const status = String(formData.get("status") ?? "");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)) redirect("/dashboard/exams");
-  // The review console and the exam page share this action; only a known,
-  // same-application destination is honoured.
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(incidentId)) redirect("/dashboard/proctoring");
   const back = String(formData.get("return_to") ?? "") === "/dashboard/proctoring"
     ? "/dashboard/proctoring"
-    : `/dashboard/exams/${examId}`;
+    : uuid.test(examId) ? `/dashboard/exams/${examId}` : "/dashboard/proctoring";
   if (!["open", "investigating"].includes(expected) || !["valid", "invalid", "investigating"].includes(status) || status === expected) redirect(`${back}?incident_error=invalid`);
+
   const supabase = await createClient();
-  const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
-  if (examError || !exam) redirect("/dashboard/exams?e=incident");
-  // The reviewer narrative is stored with the decision; the database trigger
-  // (migration 0035) copies it into the append-only review history so the
-  // reasoning survives even if the observation is later redacted by retention.
+  const { data: scopedIncident, error: loadError } = await supabase.from("proctoring_incidents")
+    .select("id, exam_id, session_id").eq("id", incidentId).eq("organization_id", org.id).maybeSingle();
+  if (loadError || !scopedIncident) redirect(`${back}?incident_error=review`);
+  const incidentExamId = scopedIncident.exam_id as string | null;
+  const incidentSessionId = scopedIncident.session_id as string | null;
+  if (incidentExamId) {
+    if (examId && examId !== incidentExamId) redirect(`${back}?incident_error=scope`);
+    const { data: exam, error } = await supabase.from("exams").select("id")
+      .eq("id", incidentExamId).eq("organization_id", org.id).maybeSingle();
+    if (error || !exam) redirect(`${back}?incident_error=scope`);
+  } else if (incidentSessionId) {
+    if (sessionId && sessionId !== incidentSessionId) redirect(`${back}?incident_error=scope`);
+    const { data: session, error } = await supabase.from("quiz_sessions").select("id")
+      .eq("id", incidentSessionId).eq("organization_id", org.id).maybeSingle();
+    if (error || !session) redirect(`${back}?incident_error=scope`);
+  } else {
+    redirect(`${back}?incident_error=scope`);
+  }
+
+  // The database trigger appends reviewer, decision and note to immutable history.
   const reviewNote = String(formData.get("review_note") ?? "").trim().slice(0, 2000) || null;
-  const { data: incident, error } = await supabase.from("proctoring_incidents")
-    .update({ status, reviewed_by: ctx.user.id, review_note: reviewNote }).eq("id", incidentId).eq("exam_id", examId).eq("status", expected).select("id").maybeSingle();
+  let update = supabase.from("proctoring_incidents").update({ status, reviewed_by: ctx.user.id, review_note: reviewNote })
+    .eq("id", incidentId).eq("organization_id", org.id).eq("status", expected);
+  update = incidentExamId ? update.eq("exam_id", incidentExamId) : update.eq("session_id", incidentSessionId!);
+  const { data: incident, error } = await update.select("id").maybeSingle();
   if (error || !incident) redirect(`${back}?incident_error=review`);
   revalidatePath(back);
-  revalidatePath(`/dashboard/exams/${examId}`);
-  revalidatePath(`/dashboard/exams/${examId}/proctor`);
+  if (incidentExamId) {
+    revalidatePath(`/dashboard/exams/${incidentExamId}`);
+    revalidatePath(`/dashboard/exams/${incidentExamId}/proctor`);
+  }
   redirect(back === "/dashboard/proctoring" ? `${back}?ok=reviewed` : `${back}?incident_ok=reviewed`);
 }
 
@@ -794,7 +978,7 @@ export async function decideAiProposal(formData: FormData) {
     .eq("id", proposal.answer_id).eq("attempt_id", attemptRowId).select("id").maybeSingle();
   if (updateError || !updated) return fail("partial");
 
-  if ((await recomputeAttempt(supabase, attemptRowId, proposal.exam_id)) === null) return fail("partial");
+  if ((await recomputeAttempt(supabase, attemptRowId, proposal.exam_id, ctx.user.id)) === null) return fail("partial");
   revalidatePath(back);
   revalidatePath(`/dashboard/exams/${proposal.exam_id}/grades`);
   done("accepted");

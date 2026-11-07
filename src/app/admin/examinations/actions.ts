@@ -2,8 +2,9 @@
 
 import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib/admin";
 import { isEmail, parseCsv } from "@/lib/csv";
-import { attemptDeadline } from "@/lib/exam";
+import { attemptDeadline, attemptRows, gradeAttempt } from "@/lib/exam";
 import { isFeatureEnabledFor } from "@/lib/platform";
+import { broadcastExamManualPublication, recordExamResultEvent, resultPublicationMode } from "@/lib/resultPublication";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -106,12 +107,14 @@ export async function createExamAsAdmin(formData: FormData) {
       starts_at: startsAt,
       ends_at: endsAt,
       status,
+      result_publication_mode: formData.get("result_publication_mode") === "automatic" ? "automatic" : "manual",
       settings: {
         proctoring,
         require_screen_share: proctoring && formData.get("require_screen_share") === "on",
         randomize_questions: formData.get("randomize_questions") === "on",
         randomize_options: formData.get("randomize_options") === "on",
         pass_mark_percent: passMark,
+        corrections_published: formData.get("corrections_published") === "on",
         results_published: false,
         access_mode: "shared_link",
         identity_fields: [],
@@ -541,12 +544,56 @@ export async function setExamResultsPublishedAsAdmin(formData: FormData) {
   if (!exam) go("/admin/examinations/results", "e=exam");
 
   const published = String(formData.get("published") ?? "") === "1";
+  if (published && resultPublicationMode(exam!.result_publication_mode) === "automatic") go(back, "e=automatic_mode");
+  if (published) {
+    const { data: attempts, error: attemptsError } = await admin.from("exam_attempts")
+      .select("*").eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"]);
+    if (attemptsError || !attempts) go(back, "e=grading_unavailable");
+    for (const attempt of attempts) {
+      if (attempt.grading_status === "graded" ||
+          (attempt.grading_status === "awaiting_manual_grading" && Number(attempt.pending_manual_count ?? 0) > 0)) continue;
+      try {
+        const rows = await attemptRows(admin, exam!, attempt);
+        const grade = await gradeAttempt(admin, attempt.id, rows);
+        const gradingStatus = grade.pendingManualCount ? "awaiting_manual_grading" : "graded";
+        const { data: graded, error: gradeError } = await admin.from("exam_attempts").update({
+          score: grade.score, max_score: grade.max, auto_score: grade.autoScore, auto_max_score: grade.autoMax,
+          pending_manual_count: grade.pendingManualCount, grading_status: gradingStatus, grading_error: null,
+        }).eq("id", attempt.id).eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"])
+          .select("id").maybeSingle();
+        if (gradeError || !graded) throw new Error("Grading persistence failed.");
+        await recordExamResultEvent(admin, {
+          organization_id: exam!.organization_id, exam_id: examId, attempt_id: attempt.id, actor_id: ctx.user.id,
+          event_type: grade.pendingManualCount ? "awaiting_manual_grading" : "auto_graded",
+          metadata: { auto_score: grade.autoScore, auto_max_score: grade.autoMax, pending_manual_count: grade.pendingManualCount },
+        });
+      } catch {
+        await admin.from("exam_attempts").update({ grading_status: "grading_failed", grading_error: "Grading could not be confirmed before result publication." })
+          .eq("id", attempt.id).eq("exam_id", examId);
+        await recordExamResultEvent(admin, {
+          organization_id: exam!.organization_id, exam_id: examId, attempt_id: attempt.id, actor_id: ctx.user.id,
+          event_type: "grading_failed", metadata: { publication_blocked: true },
+        });
+        go(back, "e=grading_failed");
+      }
+    }
+    const { data: pending, error: pendingError } = await admin.from("exam_attempts")
+      .select("id").eq("exam_id", examId).in("status", ["submitted", "auto_submitted", "marked"])
+      .gt("pending_manual_count", 0).limit(1).maybeSingle();
+    if (pendingError || pending) go(back, "e=awaiting_marking");
+  }
   const settings = {
     ...((exam!.settings as Record<string, unknown>) ?? {}),
     results_published: published,
   };
   const { error } = await admin.from("exams").update({ settings }).eq("id", examId);
   if (error) go(back, "e=failed");
+  await broadcastExamManualPublication(admin, {
+    organizationId: exam!.organization_id,
+    examId,
+    actorId: ctx.user.id,
+    published,
+  });
 
   await audit(ctx, published ? "exam.results_published" : "exam.results_unpublished", "exams", examId, exam!.organization_id);
   revalidatePath("/admin/examinations/results");
@@ -557,28 +604,27 @@ export async function reviewProctoringIncidentAsAdmin(formData: FormData) {
   const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const incidentId = String(formData.get("incident_id") ?? "");
+  const expected = String(formData.get("expected_status") ?? "");
   const status = String(formData.get("status") ?? "");
   const back = safeBack(formData, "/admin/examinations/monitoring");
-  if (!["open", "valid", "invalid", "investigating"].includes(status)) go(back, "e=status");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(incidentId)
+    || !["open", "investigating"].includes(expected)
+    || !["valid", "invalid", "investigating"].includes(status) || status === expected) go(back, "e=status");
 
-  const { data: incident } = await admin
-    .from("proctoring_incidents")
-    .select("*, exams(organization_id)")
-    .eq("id", incidentId)
-    .maybeSingle();
+  const { data: incident } = await admin.from("proctoring_incidents")
+    .select("id, organization_id, exam_id, quiz_id, session_id, participant_id, status")
+    .eq("id", incidentId).maybeSingle();
   if (!incident) go(back, "e=incident");
-
-  const { error } = await admin
-    .from("proctoring_incidents")
+  const { data: updated, error } = await admin.from("proctoring_incidents")
     .update({ status, reviewed_by: ctx.user.id })
-    .eq("id", incidentId);
-  if (error) go(back, "e=failed");
+    .eq("id", incidentId).eq("organization_id", incident.organization_id).eq("status", expected)
+    .select("id").maybeSingle();
+  if (error || !updated) go(back, "e=failed");
 
-  await audit(ctx, "exam.proctoring_incident_reviewed", "proctoring_incidents", incidentId,
-    (incident!.exams as unknown as { organization_id: string } | null)?.organization_id, {
-      exam_id: incident!.exam_id,
-      status,
-    });
+  await audit(ctx, "exam.proctoring_incident_reviewed", "proctoring_incidents", incidentId, incident.organization_id, {
+    exam_id: incident.exam_id, quiz_id: incident.quiz_id, session_id: incident.session_id,
+    participant_id: incident.participant_id, status,
+  });
   revalidatePath("/admin/examinations/monitoring");
   revalidatePath("/admin/proctoring");
   go(back, "ok=incident_reviewed");

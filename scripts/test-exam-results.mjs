@@ -84,7 +84,7 @@ ok("blank key strings are ignored", answerKeyLine(["", "  "]) === null);
 /* ── The API contract this depends on ── */
 const route = readFileSync("src/app/api/exam/state/route.ts", "utf8");
 ok("state route reveals answers only after submission AND publication",
-  /const reveal = submitted && resultsPublished \? answerReveal\(row\) : null;/.test(route));
+  /const reveal = submitted && correctionsPublished \? answerReveal\(row\) : null;/.test(route));
 ok("state route builds a result for every question, not only saved ones",
   /result: reveal\s*\n?\s*\? buildExamResult\(\{/.test(route) && !/submitted && resultsPublished && s\s*\n?\s*\? \{ is_correct/.test(route));
 

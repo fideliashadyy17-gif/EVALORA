@@ -1,5 +1,5 @@
 import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./live";
-import { scoreAnswer } from "./scoring";
+import { hasAnswerContent, isAutoGradableQuestion, scoreAnswer } from "./scoring";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -40,7 +40,7 @@ export async function attemptRows(
   return exam.settings.randomize_questions ? seededShuffle(rows, attempt.id) : rows;
 }
 
-/** Grade every saved answer; returns totals. Manual items stay unmarked. */
+/** Grade every saved answer; subjective marks remain null until a teacher scores them. */
 export async function gradeAttempt(
   admin: SupabaseClient,
   attemptId: string,
@@ -51,15 +51,21 @@ export async function gradeAttempt(
   const byQuestion = new Map(answers.map((a) => [a.question_id, a]));
   let score = 0;
   let max = 0;
+  let autoScore = 0;
+  let autoMax = 0;
+  let pendingManualCount = 0;
 
   // Calculate every objective result before any writes. A stale option ID or
-  // malformed marking key must not partially grade earlier answers.
+  // malformed marking key must never silently become a zero or partial grade.
   const updates: { id: string; is_correct: boolean | null; points_awarded: number | null }[] = [];
   for (const row of rows) {
     const q = row.questions;
     const maxPoints = Number(row.points ?? q.points);
     if (!Number.isFinite(maxPoints) || maxPoints < 0) throw new Error("Invalid examination question points.");
-    max += maxPoints;
+    const objectivelyGradable = isAutoGradableQuestion(q.type);
+    // Slides and polls are not scored items; do not inflate a test's denominator.
+    if (q.type !== "slide" && q.type !== "poll") max += maxPoints;
+    if (objectivelyGradable) autoMax += maxPoints;
     const saved = byQuestion.get(q.id);
     if (!saved) continue;
     if (saved.marked_by) {
@@ -69,10 +75,18 @@ export async function gradeAttempt(
       score += humanPoints;
       continue;
     }
+    if (q.type === "open_ended" && !hasAnswerContent(saved.answer)) {
+      // An empty written response is unambiguously unanswered, not a pending essay.
+      updates.push({ id: saved.id, is_correct: false, points_awarded: 0 });
+      continue;
+    }
     const scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
       (saved.answer ?? {}) as Record<string, unknown>, row.points);
     updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
-    score += scored.isCorrect === null ? 0 : scored.points;
+    if (scored.isCorrect === null && q.type === "open_ended") pendingManualCount++;
+    const earned = scored.isCorrect === null ? 0 : scored.points;
+    score += earned;
+    if (objectivelyGradable) autoScore += earned;
   }
   for (const update of updates) {
     const { data: updated, error: updateError } = await admin
@@ -82,10 +96,16 @@ export async function gradeAttempt(
       .is("marked_by", null)
       .select("id")
       .maybeSingle();
-    // Separate DB writes remain non-atomic if a later write fails.
+    // Separate writes are retryable: a later retry safely overwrites the same objective marks.
     if (updateError || !updated) throw new Error("Could not persist examination grading.");
   }
-  return { score: Math.round(score * 100) / 100, max };
+  return {
+    score: Math.round(score * 100) / 100,
+    max: Math.round(max * 100) / 100,
+    autoScore: Math.round(autoScore * 100) / 100,
+    autoMax: Math.round(autoMax * 100) / 100,
+    pendingManualCount,
+  };
 }
 
 export async function loadAttemptContext(admin: SupabaseClient, attemptId: string, token: string) {

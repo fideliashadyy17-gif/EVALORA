@@ -9,6 +9,7 @@ import {
   revealedQuestion,
   seededShuffle,
 } from "@/lib/live";
+import { parseIntegrityPolicy } from "@/lib/integrity";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -66,8 +67,17 @@ export async function GET(request: Request) {
   }
   await admin.from("session_participants").update(presencePatch).eq("id", participant.id);
 
-  const { data: quiz } = await admin.from("quizzes").select("settings, title").eq("id", session.quiz_id).single();
+  const [{ data: quiz }, { data: competition }] = await Promise.all([
+    admin.from("quizzes").select("settings, title").eq("id", session.quiz_id).single(),
+    admin.from("competitions").select("result_publication_mode, title").eq("session_id", session.id).maybeSingle(),
+  ]);
   const quizSettings = (quiz?.settings ?? {}) as Record<string, unknown>;
+  const sessionSettings = (session.settings ?? {}) as Record<string, unknown>;
+  const correctionsVisible = typeof sessionSettings.corrections_published === "boolean"
+    ? sessionSettings.corrections_published
+    : quizSettings.corrections_published !== false;
+  const resultPublicationMode = competition?.result_publication_mode
+    ?? (typeof sessionSettings.result_publication_mode === "string" ? sessionSettings.result_publication_mode : "legacy");
   const liveSettings = parseLiveSettings(session.settings);
   const rows = await loadQuizQuestions(admin, session.quiz_id);
 
@@ -106,8 +116,8 @@ export async function GET(request: Request) {
     }
   }
 
-  const feedbackReleased =
-    session.mode === "self_paced" || phase === "answer_reveal" || session.status === "ended";
+  const feedbackReleased = correctionsVisible &&
+    (session.mode === "self_paced" || phase === "answer_reveal" || session.status === "ended");
   const myAnswer = myAnswerRow
     ? {
         submitted: true,
@@ -120,10 +130,16 @@ export async function GET(request: Request) {
       }
     : null;
 
-  // Before an authorized reveal, do not let the live score leak whether
-  // the current synchronized answer was correct.
-  const displayedScore =
-    session.mode === "synchronized" && !feedbackReleased && myAnswerRow && phase !== "leaderboard"
+  const legacyResultVisible = resultPublicationMode === "legacy" && (session.status === "ended" || participantStatus === "finished");
+  const sessionResultsPublished = Boolean(session.results_published);
+  const resultPublished = legacyResultVisible || sessionResultsPublished || Boolean(participant.results_published_at);
+  // Intermediate live play may still show the opted-in live score; once a
+  // candidate finishes, manual mode withholds the official total until release.
+  const finalResultPending = !resultPublished && resultPublicationMode !== "legacy" &&
+    (session.status === "ended" || participantStatus === "finished");
+  const displayedScore = finalResultPending
+    ? null
+    : session.mode === "synchronized" && !feedbackReleased && myAnswerRow && phase !== "leaderboard"
       ? Math.max(0, Number(participant.score) - myAnswerRow.points_awarded)
       : Number(participant.score);
 
@@ -133,12 +149,13 @@ export async function GET(request: Request) {
     .eq("session_id", session.id)
     .in("status", ["admitted", "finished"]);
 
-  const showBoard =
-    participantStatus !== "pending" &&
-    (phase === "leaderboard" ||
-      phase === "podium" ||
-      (session.status === "ended" && liveSettings.show_leaderboard) ||
-      (session.mode === "self_paced" && participantStatus === "finished" && liveSettings.show_leaderboard));
+  const boardRequested =
+    phase === "leaderboard" || phase === "podium" ||
+    (session.status === "ended" && liveSettings.show_leaderboard) ||
+    (session.mode === "self_paced" && participantStatus === "finished" && liveSettings.show_leaderboard);
+  const showBoard = participantStatus !== "pending" && boardRequested &&
+    (session.status !== "ended" || resultPublished) &&
+    (resultPublicationMode === "legacy" || session.mode !== "self_paced" || participantStatus !== "finished" || sessionResultsPublished);
 
   let leaderboard: { display_name: string; avatar_key: string; score: number; is_me: boolean }[] | null = null;
   let myRank: number | null = null;
@@ -166,7 +183,7 @@ export async function GET(request: Request) {
     participantStatus !== "pending" && session.status === "live" && currentRow &&
     (session.mode === "self_paced" || ["question", "time_expired", "answer_reveal"].includes(phase));
   const question = canSeeQuestion
-    ? phase === "answer_reveal" && session.mode === "synchronized"
+    ? phase === "answer_reveal" && session.mode === "synchronized" && correctionsVisible
       ? revealedQuestion(currentRow, {
           randomizeOptions: Boolean(quizSettings.randomize_options),
           seed: session.id,
@@ -188,9 +205,14 @@ export async function GET(request: Request) {
       status: session.status,
       mode: session.mode,
       phase,
+      result_publication_mode: resultPublicationMode,
+      result_publication_status: session.result_publication_status ?? "not_ready",
+      results_published: sessionResultsPublished || legacyResultVisible,
+      corrections_published: correctionsVisible,
       question_started_at: session.question_started_at,
       question_deadline_at: deadline,
       time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
+      integrity: parseIntegrityPolicy((session.settings as Record<string, unknown> | null)?.integrity),
     },
     progress: {
       index,
@@ -207,6 +229,8 @@ export async function GET(request: Request) {
       status: participantStatus,
       score: displayedScore,
       finished: participantStatus === "finished",
+      result_published: resultPublished,
+      result_publication_status: participant.result_publication_status ?? session.result_publication_status ?? "not_ready",
       reconnect_count: Number(presencePatch.reconnect_count ?? participant.reconnect_count ?? 0),
     },
     participant_count: participantCount ?? 0,

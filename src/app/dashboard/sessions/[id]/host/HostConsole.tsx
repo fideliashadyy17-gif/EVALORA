@@ -13,6 +13,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   hostEnd,
   hostNext,
+  hostPublishResults,
   hostPauseToggle,
   hostRevokeDisplayToken,
   hostRotateDisplayToken,
@@ -38,6 +39,8 @@ interface Session {
   require_approval?: boolean;
   display_token_version?: number;
   settings: Record<string, unknown>;
+  results_published?: boolean;
+  result_publication_status?: string;
 }
 
 interface QRow {
@@ -331,6 +334,14 @@ export function HostConsole({
                   >
                     End competition
                   </Button>
+                )}
+                {session.status === "ended" && !session.results_published && session.settings.result_publication_mode !== "automatic" && (
+                  <Button variant="gold" disabled={busy} onClick={() => act(() => hostPublishResults(session.id))} className="px-6 py-3">
+                    Validate and publish results
+                  </Button>
+                )}
+                {session.status === "ended" && session.result_publication_status === "awaiting_manual_grading" && (
+                  <span role="status" className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Written answers remain in the manual grading queue.</span>
                 )}
                 {session.status === "ended" && phase !== "podium" && (
                   <Button variant="gold" disabled={busy} onClick={() => act(() => hostSetPhase(session.id, "podium"))} className="px-6 py-3">

@@ -5,8 +5,10 @@ import {
   questionDurationSeconds,
   seededShuffle,
 } from "@/lib/live";
-import { scoreAnswer, type AnswerPayload } from "@/lib/scoring";
+import { hasAnswerContent, scoreAnswer, type AnswerPayload } from "@/lib/scoring";
+import { publishFinishedLiveParticipant } from "@/lib/liveResults";
 import { createAdminClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -18,6 +20,29 @@ const Body = z.object({
 });
 
 const GRACE_MS = 2000;
+
+async function persistParticipantProgress(
+  admin: SupabaseClient,
+  input: { sessionId: string; participantId: string; mode: string; questionIndex: number; totalQuestions: number; currentIndex: number },
+) {
+  const { data: answers, error: answersError } = await admin.from("participant_answers")
+    .select("points_awarded").eq("session_id", input.sessionId).eq("participant_id", input.participantId);
+  if (answersError || !answers) throw new Error("Could not confirm participant score.");
+  const patch: Record<string, unknown> = {
+    score: Math.round(answers.reduce((sum, row) => sum + Number(row.points_awarded ?? 0), 0) * 100) / 100,
+    last_seen_at: new Date().toISOString(),
+  };
+  if (input.mode === "self_paced") {
+    const next = Math.max(input.currentIndex, input.questionIndex + 1);
+    patch.current_index = next;
+    if (next >= input.totalQuestions) patch.status = "finished";
+  }
+  const { data: updated, error } = await admin.from("session_participants")
+    .update(patch).eq("id", input.participantId).eq("session_id", input.sessionId)
+    .select("id, status").maybeSingle();
+  if (error || !updated) throw new Error("Could not persist participant progress.");
+  return updated;
+}
 
 /**
  * Server-authoritative answer submission:
@@ -57,11 +82,40 @@ export async function POST(request: Request) {
 
   const { data: quiz } = await admin.from("quizzes").select("settings").eq("id", session.quiz_id).single();
   const quizSettings = (quiz?.settings ?? {}) as Record<string, unknown>;
+  const sessionSettings = (session.settings ?? {}) as Record<string, unknown>;
+  const correctionsPublished = typeof sessionSettings.corrections_published === "boolean"
+    ? sessionSettings.corrections_published
+    : quizSettings.corrections_published !== false;
   const rows = await loadQuizQuestions(admin, session.quiz_id);
   const effectiveRows =
     session.mode === "self_paced" && quizSettings.randomize_questions
       ? seededShuffle(rows, participant.id)
       : rows;
+
+  const { data: priorAnswer } = await admin.from("participant_answers")
+    .select("is_correct, points_awarded, answer")
+    .eq("participant_id", participant.id).eq("quiz_question_id", quiz_question_id).maybeSingle();
+  if (priorAnswer) {
+    const priorIndex = effectiveRows.findIndex((item) => item.id === quiz_question_id);
+    if (priorIndex >= 0) {
+      const updated = await persistParticipantProgress(admin, {
+        sessionId: session.id, participantId: participant.id, mode: session.mode,
+        questionIndex: priorIndex, totalQuestions: effectiveRows.length, currentIndex: Number(participant.current_index ?? 0),
+      }).catch(() => null);
+      if (!updated) return NextResponse.json({ error: "Your answer is saved, but progress could not be confirmed. Reconnect and retry." }, { status: 500 });
+      if (updated.status === "finished") await publishFinishedLiveParticipant(admin, session.id, participant.id);
+    }
+    if (session.mode === "synchronized") return NextResponse.json({ ok: true, duplicate: true, submitted: true });
+    return NextResponse.json({
+      ok: true, duplicate: true, submitted: true,
+      ...(correctionsPublished ? {
+        is_correct: priorAnswer.is_correct,
+        points_awarded: Number(priorAnswer.points_awarded),
+        explanation: effectiveRows.find((item) => item.id === quiz_question_id)?.questions.explanation ?? null,
+        explanation_doc: effectiveRows.find((item) => item.id === quiz_question_id)?.questions.explanation_doc ?? null,
+      } : {}),
+    });
+  }
 
   const expectedIndex =
     session.mode === "synchronized" ? session.current_question_index : participant.current_index;
@@ -105,8 +159,10 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "This answer could not be verified. Contact the organizer." }, { status: 409 });
   }
-  const awarded =
-    scored.isCorrect === null ? 0 : Math.round(scored.points * speedFactor * 100) / 100;
+  const correct = scored.isCorrect === null && q.type === "open_ended" && !hasAnswerContent(answer)
+    ? false
+    : scored.isCorrect;
+  const awarded = correct === null ? 0 : Math.round(scored.points * speedFactor * 100) / 100;
 
   const { error } = await admin.from("participant_answers").insert({
     session_id: session.id,
@@ -114,7 +170,7 @@ export async function POST(request: Request) {
     quiz_question_id: row.id,
     question_id: q.id,
     answer,
-    is_correct: scored.isCorrect,
+    is_correct: correct,
     points_awarded: awarded,
     response_ms: responseMs,
   });
@@ -128,31 +184,30 @@ export async function POST(request: Request) {
       .eq("quiz_question_id", row.id)
       .maybeSingle();
     if (existing) {
-      if (session.mode === "synchronized") {
-        return NextResponse.json({ ok: true, duplicate: true, submitted: true });
-      }
+      const updated = await persistParticipantProgress(admin, {
+        sessionId: session.id, participantId: participant.id, mode: session.mode,
+        questionIndex: expectedIndex, totalQuestions: effectiveRows.length, currentIndex: Number(participant.current_index ?? 0),
+      }).catch(() => null);
+      if (updated?.status === "finished") await publishFinishedLiveParticipant(admin, session.id, participant.id);
+      if (session.mode === "synchronized") return NextResponse.json({ ok: true, duplicate: true, submitted: true });
       return NextResponse.json({
-        ok: true,
-        duplicate: true,
-        submitted: true,
-        is_correct: existing.is_correct,
-        points_awarded: Number(existing.points_awarded),
-        explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
+        ok: true, duplicate: true, submitted: true,
+        ...(correctionsPublished ? {
+          is_correct: existing.is_correct,
+          points_awarded: Number(existing.points_awarded),
+          explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
+        } : {}),
       });
     }
     return NextResponse.json({ error: "Could not record your answer." }, { status: 500 });
   }
 
-  const patch: Record<string, unknown> = {
-    score: Number(participant.score) + awarded,
-    last_seen_at: new Date().toISOString(),
-  };
-  if (session.mode === "self_paced") {
-    const next = participant.current_index + 1;
-    patch.current_index = next;
-    if (next >= effectiveRows.length) patch.status = "finished";
-  }
-  await admin.from("session_participants").update(patch).eq("id", participant.id);
+  const updatedParticipant = await persistParticipantProgress(admin, {
+    sessionId: session.id, participantId: participant.id, mode: session.mode,
+    questionIndex: expectedIndex, totalQuestions: effectiveRows.length, currentIndex: Number(participant.current_index ?? 0),
+  }).catch(() => null);
+  if (!updatedParticipant) return NextResponse.json({ error: "Your answer is saved, but progress could not be confirmed. Reconnect and retry." }, { status: 500 });
+  if (updatedParticipant.status === "finished") await publishFinishedLiveParticipant(admin, session.id, participant.id);
 
   if (session.mode === "synchronized") {
     // Correctness, earned points and the explanation are released by
@@ -163,9 +218,11 @@ export async function POST(request: Request) {
   return NextResponse.json({
     ok: true,
     submitted: true,
-    is_correct: scored.isCorrect,
-    points_awarded: awarded,
-    explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
-    needs_marking: scored.isCorrect === null && q.type === "open_ended",
+    ...(correctionsPublished ? {
+      is_correct: scored.isCorrect,
+      points_awarded: awarded,
+      explanation: q.explanation, explanation_doc: q.explanation_doc ?? null,
+    } : {}),
+    needs_marking: correct === null && q.type === "open_ended",
   });
 }

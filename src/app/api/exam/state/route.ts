@@ -1,7 +1,9 @@
-import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
+import { attemptDeadline, attemptRows, loadAttemptContext } from "@/lib/exam";
+import { submitAndGradeExamAttempt } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseIntegrityPolicy } from "@/lib/integrity";
+import { examResultChannelName } from "@/lib/resultPublication";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -29,24 +31,38 @@ export async function GET(request: Request) {
 
   let rows: Awaited<ReturnType<typeof attemptRows>>;
   try {
-    rows = await attemptRows(admin, exam, attempt);
-    // Auto-submit only after the paper and saved answers were loaded and all
-    // grading writes succeeded. These operations are not yet transactional.
-    if (attempt.status === "in_progress" && new Date() > deadline) {
-      const { score, max } = await gradeAttempt(admin, attempt.id, rows);
-      const { data: closed, error: closeError } = await admin
-        .from("exam_attempts")
-        .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
-        .eq("id", attempt.id).eq("status", "in_progress").select("id").maybeSingle();
-      if (closeError || !closed) return NextResponse.json({ error: "Could not confirm the examination submission. Reload or contact your invigilator." }, { status: 500, headers });
-      const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
-      if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500, headers });
-      attempt.status = "auto_submitted";
-      attempt.score = score;
-      attempt.max_score = max;
+    // Even deadline submission preserves the paper if grading fails. The failed
+    // attempt is closed with grading_status=grading_failed for authorized retry.
+    if (attempt.status === "in_progress" && Date.now() >= deadline.getTime()) {
+      const result = await submitAndGradeExamAttempt({
+        admin,
+        exam,
+        attempt,
+        candidateId: candidate.id,
+        finalStatus: "auto_submitted",
+        submittedAt: deadline,
+        reason: "deadline",
+      });
+      if (result.alreadySubmitted && result.latest) {
+        attempt.status = result.latest.status;
+        attempt.grading_status = result.latest.grading_status;
+        attempt.pending_manual_count = result.latest.pending_manual_count;
+        attempt.published_at = result.latest.published_at;
+      } else {
+        attempt.status = "auto_submitted";
+        attempt.submission_reason = "deadline";
+        attempt.grading_status = result.gradingStatus;
+        attempt.pending_manual_count = result.pendingManualCount;
+        attempt.score = result.published ? attempt.score : null;
+        attempt.max_score = result.published ? attempt.max_score : null;
+        // Reload authoritative values after grading/publication persistence.
+        const { data: refreshed } = await admin.from("exam_attempts").select("score, max_score, grading_status, pending_manual_count, published_at, grading_error").eq("id", attempt.id).maybeSingle();
+        if (refreshed) Object.assign(attempt, refreshed);
+      }
     }
+    rows = await attemptRows(admin, exam, attempt);
   } catch {
-    return NextResponse.json({ error: "Examination data or grading is unavailable. Reload or contact your invigilator." }, { status: 500, headers });
+    return NextResponse.json({ error: "Examination data or submission state is unavailable. Reload or contact your invigilator." }, { status: 500, headers });
   }
 
   const { data: saved, error: savedError } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
@@ -54,7 +70,11 @@ export async function GET(request: Request) {
   const savedByQ = new Map((saved ?? []).map((a) => [a.question_id, a]));
 
   const submitted = attempt.status !== "in_progress";
-  const resultsPublished = Boolean(settings.results_published);
+  const gradingStatus = String(attempt.grading_status ?? "not_started");
+  const gradingComplete = gradingStatus === "graded" || gradingStatus === "not_started";
+  const resultPublished = submitted && gradingComplete && Number(attempt.pending_manual_count ?? 0) === 0 &&
+    (Boolean(attempt.published_at) || Boolean(settings.results_published));
+  const correctionsPublished = resultPublished && settings.corrections_published !== false;
 
   return NextResponse.json({
     server_now: new Date().toISOString(),
@@ -66,6 +86,8 @@ export async function GET(request: Request) {
       proctoring: Boolean(settings.proctoring),
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
+      result_publication_mode: exam.result_publication_mode === "automatic" ? "automatic" : "manual",
+      corrections_published: settings.corrections_published !== false,
       // The candidate client needs the assessment's integrity policy to know
       // which browser events to report and when to warn. Only thresholds and
       // switches travel here — never an answer, never another candidate.
@@ -81,12 +103,17 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      submission_reason: attempt.submission_reason ?? null,
       started_at: attempt.started_at,
       deadline: deadline.toISOString(),
       flagged: attempt.flagged ?? [],
-      score: submitted && resultsPublished ? (attempt.score !== null ? Number(attempt.score) : null) : null,
-      max_score: submitted && resultsPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,
-      results_published: resultsPublished,
+      grading_status: gradingStatus,
+      pending_manual_count: Number(attempt.pending_manual_count ?? 0),
+      score: resultPublished ? (attempt.score !== null ? Number(attempt.score) : null) : null,
+      max_score: resultPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,
+      results_published: resultPublished,
+      corrections_published: correctionsPublished,
+      result_channel: resultPublished ? null : examResultChannelName(attempt.id, token),
     },
     questions: rows.map((row) => {
       const pub = publicQuestion(row, {
@@ -99,7 +126,7 @@ export async function GET(request: Request) {
       // its worked solution, including the ones the candidate left blank, so a
       // candidate can revise from a complete marking scheme instead of only the
       // questions they happened to answer.
-      const reveal = submitted && resultsPublished ? answerReveal(row) : null;
+      const reveal = submitted && correctionsPublished ? answerReveal(row) : null;
       return {
         ...pub,
         ...(reveal ? { reveal } : {}),
