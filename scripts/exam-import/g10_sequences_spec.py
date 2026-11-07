@@ -19,7 +19,7 @@ from decimal import Decimal, ROUND_DOWN
 ORG = "0a400000-0000-4000-8000-000000000001"
 SRC = "myp5-sequences-series-e-assessment"
 EXAM_TITLE = "G10 Examination"
-ACCESS_CODE = "MYP5-SEQ-2026"
+ACCESS_CODE = "MYP5-SEQ100-2026"
 TOTAL_MARKS = 100
 
 CHAPTERS = [

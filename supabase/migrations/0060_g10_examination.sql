@@ -82,7 +82,7 @@ begin
     $zq$Answer every part. Show your working where it is asked for. Give units and follow the rounding instruction in each question. A calculator is allowed. Sort and match questions: drag each item onto its target (on a touch screen, tap an item and then tap its target). Ordering questions: drag the steps into order, or use the arrows. Written parts are marked against the criteria shown to the examiner.$zq$,
     90,
     'draft',
-    'MYP5-SEQ-2026',
+    'MYP5-SEQ100-2026',
     false,
     $zj${"randomize_questions":false,"randomize_options":false,"total_marks":100}$zj$::jsonb
   )
