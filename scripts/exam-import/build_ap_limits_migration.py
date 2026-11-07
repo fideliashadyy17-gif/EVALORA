@@ -22,6 +22,20 @@ ACCESS_CODE = "AP-LIM-2026"
 FIG_DIR = "/exam-figures/ap-limits/"
 TEST = "--test" in sys.argv
 
+# Items whose key was checked by independent calculation after the first derivation.
+KEY_STATUS = {
+    5: "verified_by_limit_analysis",
+    44: "verified_by_limit_analysis",
+}
+KEY_NOTES = {
+    5: ("f(x)=sin(pi/x) oscillates between -1 and 1 on every interval containing 0, so the two-sided limit does not exist. "
+        "Option B is the only correct statement; A, C and D claim a limit of 0 or 1 that is not supported. "
+        "Checked: at x=1/(k+1/2) the value is (-1)^k, so f takes both 1 and -1 arbitrarily close to 0."),
+    44: ("(2x+sin x)/x = 2 + (sin x)/x tends to 2 because |sin x / x| <= 1/x tends to 0. "
+         "Applying L'Hopital once gives (2+cos x)/1, which takes the values 1 and 3 for large x, so it has no limit; "
+         "the rule cannot conclude. Option B is the only correct statement."),
+}
+
 
 def split_inline(text):
     """Split '$…$' / '$$…$$' text into rich nodes. '\\$' is a literal dollar sign."""
@@ -85,9 +99,11 @@ def question_sql(q):
         "source": SRC, "question_number": n, "part": "A" if n <= 30 else "B",
         "chapter": chapter(n), "printed_level": q["lvl"], "bc_only": q["bc"],
         "figure": (FIG_DIR + fig_keys[0] + ".png") if fig_keys else None,
-        "answer_key": q["ans"], "answer_key_status": "derived_and_checked_on_page_images",
+        "answer_key": q["ans"], "answer_key_status": KEY_STATUS.get(n, "derived_and_checked_on_page_images"),
         "marks_printed_in_pdf": False,
     }
+    if n in KEY_NOTES:
+        config["answer_key_note"] = KEY_NOTES[n]
     rows = []
     for i, opt in enumerate(q["opts"]):
         letter = "ABCD"[i]
