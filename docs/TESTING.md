@@ -651,3 +651,13 @@ Fixes made so the suite is actually runnable and green:
   `href="/dashboard/notifications"`; the bell now takes `allHref` (same default)
   and the suite checks the default, the override used by the platform console,
   and that the console no longer navigates away on click.
+
+## Grade 7 (MYP 2) summative assessment
+
+| Suite | Checks | Result |
+|---|---|---|
+| `node scripts/test-grade7-summative.mjs` | 35 | pass — 50 questions numbered 1–50, prompts free of figure captions, chapter/criterion/level/objective on every row, 200 options, exactly four per question and one key each, keys identical to the printed quick key, 23 figure files present and non-empty, exam settings and integrity policy |
+| `node scripts/validate.mjs` (stand-in schema, pglite) | — | the five migrations apply cleanly, produce 50/200/50 with 23 figures, build a 50-question paper, and a second run changes nothing |
+| `npm test` | 70 suites / 356 checks | green |
+
+Cross-check performed before writing the SQL: the printed quick key (page 22) and the detailed solutions (pages 23–36) were parsed independently — 50/50 keys agree and, for all fifty questions, the lettered solution text equals the lettered option text.
