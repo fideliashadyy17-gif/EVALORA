@@ -1,0 +1,100 @@
+{
+  "mathematics": {
+    "q19": {
+      "src": "/exam-figures/grade4/mathematics/q19.png",
+      "alt": "Mathematics question 19 diagram, reproduced from the examination paper",
+      "page": 3
+    },
+    "q21": {
+      "src": "/exam-figures/grade4/mathematics/q21.png",
+      "alt": "Mathematics question 21 diagram, reproduced from the examination paper",
+      "page": 3
+    },
+    "q22": {
+      "src": "/exam-figures/grade4/mathematics/q22.png",
+      "alt": "Mathematics question 22 diagram, reproduced from the examination paper",
+      "page": 3
+    },
+    "q24": {
+      "src": "/exam-figures/grade4/mathematics/q24.png",
+      "alt": "Mathematics question 24 diagram, reproduced from the examination paper",
+      "page": 4
+    },
+    "q26": {
+      "src": "/exam-figures/grade4/mathematics/q26.png",
+      "alt": "Mathematics question 26 diagram, reproduced from the examination paper",
+      "page": 4
+    },
+    "q30": {
+      "src": "/exam-figures/grade4/mathematics/q30.png",
+      "alt": "Mathematics question 30 diagram, reproduced from the examination paper",
+      "page": 4
+    }
+  },
+  "science": {
+    "q22": {
+      "src": "/exam-figures/grade4/science/q22.png",
+      "alt": "Science question 22 diagram, reproduced from the examination paper",
+      "page": 6
+    },
+    "q24": {
+      "src": "/exam-figures/grade4/science/q24.png",
+      "alt": "Science question 24 diagram, reproduced from the examination paper",
+      "page": 7
+    },
+    "q26": {
+      "src": "/exam-figures/grade4/science/q26.png",
+      "alt": "Science question 26 diagram, reproduced from the examination paper",
+      "page": 7
+    },
+    "q29": {
+      "src": "/exam-figures/grade4/science/q29.png",
+      "alt": "Science question 29 diagram, reproduced from the examination paper",
+      "page": 7
+    }
+  },
+  "language-arts": {
+    "passage-1": {
+      "src": "/exam-figures/grade4/language-arts/passage-1.png",
+      "alt": "Reading passage, reproduced from the examination paper",
+      "page": 8
+    },
+    "passage-2": {
+      "src": "/exam-figures/grade4/language-arts/passage-2.png",
+      "alt": "Reading passage, reproduced from the examination paper",
+      "page": 8
+    },
+    "q29": {
+      "src": "/exam-figures/grade4/language-arts/q29.png",
+      "alt": "Language Arts question 29 diagram, reproduced from the examination paper",
+      "page": 10
+    },
+    "q30": {
+      "src": "/exam-figures/grade4/language-arts/q30.png",
+      "alt": "Language Arts question 30 diagram, reproduced from the examination paper",
+      "page": 10
+    }
+  },
+  "social-science": {
+    "q22": {
+      "src": "/exam-figures/grade4/social-science/q22.png",
+      "alt": "Social Science question 22 diagram, reproduced from the examination paper",
+      "page": 12
+    },
+    "q23": {
+      "src": "/exam-figures/grade4/social-science/q23.png",
+      "alt": "Social Science question 23 diagram, reproduced from the examination paper",
+      "page": 13
+    },
+    "q25": {
+      "src": "/exam-figures/grade4/social-science/q25.png",
+      "alt": "Social Science question 25 diagram, reproduced from the examination paper",
+      "page": 13
+    },
+    "q26": {
+      "src": "/exam-figures/grade4/social-science/q26.png",
+      "alt": "Social Science question 26 diagram, reproduced from the examination paper",
+      "page": 13
+    }
+  }
+}
