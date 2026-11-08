@@ -6,6 +6,7 @@ import path from 'node:path';
 import ts from 'typescript';
 const file=path.resolve('scripts/__virtual_exam_state.cjs');
 let observed=[];
+const attemptWindow=(exam,attempt)=>({deadlineMs:Date.now()+600000,deadline:new Date(Date.now()+600000).toISOString(),reached:false,remainingMs:600000,boundBy:'duration',nowMs:Date.now()});
 const context={attempt:{id:'a',status:'in_progress',started_at:new Date().toISOString(),extension_minutes:0,flagged:[],score:null,max_score:null},exam:{id:'e',title:'Exam',settings:{}},candidate:{id:'c',full_name:'Candidate'}};
 const admin={from:()=>({select:()=>({eq:async()=>({data:[]})})})};
 const original=Module._load;
@@ -15,6 +16,11 @@ Module._load=function(request,parent){
   if(request==='@/lib/live') return {publicQuestion:()=>({})};
   if(request==='@/lib/examResults') return {buildExamResult:()=>({})};
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:()=>({enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
+  // The deadline and submission rules live in their own modules so that no route
+  // can hold a private copy of them; this suite only exercises credentials, so it
+  // supplies a deadline that is always in the future.
+  if(request==='@/lib/examDeadline') return {submissionWindow:(exam,attempt)=>attemptWindow(exam,attempt),attemptDeadlineInstant:()=>Date.now()+600000,deadlineReached:()=>false};
+  if(request==='@/lib/examSubmission') return {applyDeadlineSubmission:async()=>({outcome:'already_closed',status:'in_progress',submittedAt:null,deadline:new Date(Date.now()+600000).toISOString(),autoSubmitted:false,score:null,max:null,window:attemptWindow(context.exam,context.attempt)})};
   if(request==='@/lib/supabase/server') return {createAdminClient:()=>admin};
   if(request==='next/server') return {NextResponse:{json:(body,options)=>({body,status:options?.status??200,headers:options?.headers??{}})}};
  }

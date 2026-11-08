@@ -181,12 +181,23 @@ ok(
   attemptDeadline({ duration_minutes: 120, ends_at: "2026-01-01T10:30:00.000Z" }, started, 15).toISOString() === "2026-01-01T10:45:00.000Z",
 );
 
+// The closing rules now live in one module (src/lib/examSubmission.ts) rather than
+// inline in the submit route, so these assertions read the module that owns them.
 const submitSource = readFileSync("src/app/api/exam/submit/route.ts", "utf8");
-ok("direct late submit is recorded as auto_submitted", submitSource.includes('late ? "auto_submitted" : "submitted"'));
-ok("direct late submit timestamp is the deadline, not request time", submitSource.includes("const submittedAt = late ? deadline : now"));
+const submissionSource = readFileSync("src/lib/examSubmission.ts", "utf8");
+ok("a late submission is recorded as auto_submitted", submissionSource.includes('const finalStatus = isDeadline ? "auto_submitted" : "submitted"'));
+ok(
+  "a late submission is stamped at the deadline, never at the request time",
+  submissionSource.includes("const submittedInstant = isDeadline ? window.deadlineMs : options.nowMs"),
+);
+ok("an automatic closure before the deadline is refused", submissionSource.includes("refused_premature"));
 for (const route of ["access", "save", "state", "submit"]) {
   const source = readFileSync(`src/app/api/exam/${route}/route.ts`, "utf8");
-  ok(`/api/exam/${route} uses extension-aware deadline`, source.includes("attemptDeadline") && source.includes("extension_minutes"));
+  ok(
+    `/api/exam/${route} uses the authoritative extension-aware deadline`,
+    (source.includes("attemptDeadline") || source.includes("submissionWindow")) &&
+      (source.includes("extension_minutes") || source.includes("submissionWindow")),
+  );
 }
 
 /* ─── A–H navigation and route existence ─────────────────────────── */

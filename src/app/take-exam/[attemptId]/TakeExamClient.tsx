@@ -296,6 +296,24 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
+
+  // When the displayed countdown reaches zero, ask the server to check the
+  // official deadline. This never submits anything itself: `/api/exam/state`
+  // recomputes the deadline from `started_at` + duration + extension on the
+  // server and closes the attempt only once that instant has truly passed, so a
+  // suspended tab, a device clock running fast, a throttled interval or a
+  // manipulated countdown can cause at most one extra read of the paper — never
+  // an early submission. Polling stops the moment the server reports the attempt
+  // closed, and is throttled so a stalled screen cannot flood the route.
+  const lastDeadlineCheckAt = useRef(0);
+  useEffect(() => {
+    if (!state || state.attempt.status !== "in_progress") return;
+    const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
+    if (!Number.isFinite(remaining) || remaining > 0) return;
+    if (now - lastDeadlineCheckAt.current < 2000) return;
+    lastDeadlineCheckAt.current = now;
+    void load();
+  }, [now, state, load]);
   useEffect(() => {
     const retry = () => { if (activeRef.current) void queueRef.current?.flush(); };
     const warn = (event: BeforeUnloadEvent) => {
@@ -420,7 +438,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           {!submitted && (
             <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
               <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>Time remaining</p>
-              <p className="font-display text-2xl font-bold tabular-nums leading-none">{mmss(Math.ceil(remaining))}</p>
+              <p className="font-display text-2xl font-bold tabular-nums leading-none">{Number.isFinite(remaining) ? mmss(Math.ceil(remaining)) : "—"}</p>
             </div>
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>

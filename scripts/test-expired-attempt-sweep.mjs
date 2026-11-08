@@ -13,6 +13,11 @@ const compile = (src) => ts.transpileModule(src, {
 
 const dir = mkdtempSync(path.join(tmpdir(), 'expired-sweep-'));
 writeFileSync(path.join(dir, 'exam.js'), compile(readFileSync('src/lib/exam.ts', 'utf8')));
+// The sweep no longer owns a private copy of the closing logic: it calls the same
+// lifecycle and the same deadline rule the candidate routes use, so both are
+// compiled from source here too.
+writeFileSync(path.join(dir, 'examDeadline.js'), compile(readFileSync('src/lib/examDeadline.ts', 'utf8')));
+writeFileSync(path.join(dir, 'examSubmission.js'), compile(readFileSync('src/lib/examSubmission.ts', 'utf8')));
 writeFileSync(path.join(dir, 'expiredAttempts.js'), compile(readFileSync('src/lib/expiredAttempts.ts', 'utf8')));
 // Stubs for the two modules exam.ts imports from. Grading rule for the fixture: a saved answer
 // {text:'ok'} is correct and earns the question's points; anything else earns nothing.
@@ -135,12 +140,15 @@ await check('an attempt still inside its time is never touched', async () => {
   console.log('  ✓ attempt inside its time is untouched');
 });
 
-await check('the deadline is strict: equal to the deadline is not expired, one millisecond later is', async () => {
+await check('the deadline is strict and always waits for the clock margin', async () => {
   const deadline = NOW - 60 * MIN;
   seed([attempt({id: 'a1', started_at: iso(deadline - 120 * MIN)})]);
-  assert.equal(isPastDeadline(db.attempts[0], exam(), deadline), false);
-  assert.equal(isPastDeadline(db.attempts[0], exam(), deadline + 1), true);
-  console.log('  ✓ deadline boundary is strict');
+  // The recorded deadline instant itself is never a closure: the sweep waits for
+  // SUBMISSION_CLOCK_MARGIN_MS on top of it, so it can only ever close LATE.
+  assert.equal(isPastDeadline(db.attempts[0], exam(), deadline), false, 'the deadline instant itself is still open');
+  assert.equal(isPastDeadline(db.attempts[0], exam(), deadline + 1), false, 'one millisecond later is still open');
+  assert.equal(isPastDeadline(db.attempts[0], exam(), deadline + 2_000), true, 'the margin elapses and closure follows');
+  console.log('  ✓ deadline boundary is strict and margin-guarded');
 });
 
 await check('an authorized extension moves the deadline, and removing it closes the attempt again', async () => {
