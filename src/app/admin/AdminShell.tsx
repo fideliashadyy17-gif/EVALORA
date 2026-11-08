@@ -141,7 +141,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/examinations/invitations", label: "Share Links & Access Codes", icon: Link2 },
       { href: "/admin/examinations/schedule", label: "Schedule", icon: CalendarClock },
       { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", icon: Clock3 },
-      { href: "/admin/examinations/monitoring", label: "Monitoring", icon: Activity },
+      { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", icon: Activity },
       { href: "/admin/examinations/marking", label: "Marking & Grading", icon: ClipboardList },
       { href: "/admin/examinations/results", label: "Examination Results", icon: TrendingUp },
       { href: "/admin/examinations/reports", label: "Reports & Exports", icon: ScrollText },
