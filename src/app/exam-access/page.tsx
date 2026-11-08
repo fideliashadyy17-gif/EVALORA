@@ -13,20 +13,17 @@ export default function ExamAccessPage() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const [needsTrack, setNeedsTrack] = useState(false);
-
-  async function submit(e: React.FormEvent | null, track?: "AB" | "BC") {
+  async function submit(e: React.FormEvent | null) {
     e?.preventDefault();
     setBusy(true);
     setError(null);
     const res = await fetch("/api/exam/access", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exam_code: examCode.trim(), candidate_code: candidateCode.trim(), ...(track ? { track } : {}) }),
+      body: JSON.stringify({ exam_code: examCode.trim(), candidate_code: candidateCode.trim() }),
     });
     const data = await res.json().catch(() => null);
     setBusy(false);
-    if (data?.requires_track) return setNeedsTrack(true);
     if (!res.ok) return setError(data?.error ?? "Access denied.");
     localStorage.setItem(
       `evalora-attempt-${data.attempt_id}`,
@@ -60,20 +57,9 @@ export default function ExamAccessPage() {
               duration of the paper.
             </span>
           </label>
-          {needsTrack ? (
-            <div className="space-y-3 rounded-xl border border-evergreen-900/25 bg-evergreen-50 p-4" role="group" aria-label="Choose your Calculus track">
-              <p className="text-sm font-semibold text-evergreen-950">Which AP Calculus course are you taking?</p>
-              <p className="text-xs text-ink-soft">Questions 45–50 are for BC students only. AB students receive questions 1–44.</p>
-              <div className="grid grid-cols-2 gap-3">
-                <Button type="button" variant="gold" disabled={busy} onClick={() => submit(null, "AB")}>Calculus AB</Button>
-                <Button type="button" variant="gold" disabled={busy} onClick={() => submit(null, "BC")}>Calculus BC</Button>
-              </div>
-            </div>
-          ) : (
-            <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent}>
-              {busy ? "Verifying…" : "Verify & begin"}
-            </Button>
-          )}
+          <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent}>
+            {busy ? "Verifying…" : "Verify & begin"}
+          </Button>
           <p className="text-center text-xs text-ink-soft">
             Returning after a disconnection? Enter the same codes — you will resume with your saved
             answers and your original deadline.

@@ -1,5 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
-import { EXAM_TRACKS, paperForTrack, parseTrack, trackSelectionEnabled } from "@/lib/examTrack";
+import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -8,7 +8,6 @@ import { z } from "zod";
 const Body = z.object({
   exam_code: z.string().min(4).max(16),
   candidate_code: z.string().min(4).max(20),
-  track: z.enum(EXAM_TRACKS).optional(),
 });
 
 /**
@@ -56,15 +55,15 @@ export async function POST(request: Request) {
   if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
     return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
   if (!attempt) {
-    const tracked = trackSelectionEnabled(settings);
-    const track = parseTrack(parsed.data.track);
-    if (tracked && !track)
-      return NextResponse.json(
-        { error: "Choose Calculus AB or Calculus BC to start this examination.", requires_track: true },
-        { status: 409 },
-      );
+    // The track comes from the candidate's class in the database, never from the browser.
+    const { data: candidateClass } = candidate.class_id
+      ? await admin.from("classes").select("id,curriculum_track").eq("id", candidate.class_id).maybeSingle()
+      : { data: null };
+    const decision = admissionTrack(trackSelectionEnabled(settings), candidateClass);
+    if (!decision.ok) return NextResponse.json({ error: decision.error }, { status: 409 });
+    const track = decision.track;
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
-    const rows = tracked && track ? paperForTrack(rows0, track) : rows0;
+    const rows = track ? paperForTrack(rows0, track) : rows0;
     const ordered = settings.randomize_questions
       ? seededShuffle(rows, `${exam.id}:${candidate.id}`)
       : rows;
@@ -76,7 +75,7 @@ export async function POST(request: Request) {
         question_order: ordered.map((r) => r.id),
         // Only sent for track-selection examinations, so examinations without it
         // never reference the exam_attempts.track column.
-        ...(tracked && track ? { track } : {}),
+        ...(track ? { track } : {}),
       })
       .select()
       .single();
