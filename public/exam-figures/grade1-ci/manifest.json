@@ -1,0 +1,1934 @@
+{
+  "language-arts": {
+    "1": {
+      "band": [
+        38.0,
+        441.4,
+        102.0,
+        505.4
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q01.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "2": {
+      "band": [
+        311.1,
+        441.4,
+        375.1,
+        505.4
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q02.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "3": {
+      "band": [
+        49.9,
+        574.9,
+        272.3,
+        657.3
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q03.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        928,
+        344
+      ],
+      "shared_with": []
+    },
+    "4": {
+      "band": [
+        323.0,
+        574.9,
+        545.4,
+        657.3
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q04.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        928,
+        344
+      ],
+      "shared_with": []
+    },
+    "5": {
+      "band": [
+        38.0,
+        712.9,
+        102.0,
+        776.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q05.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "6": {
+      "band": [
+        311.1,
+        712.9,
+        375.1,
+        776.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q06.png",
+      "has_pictures": true,
+      "page": 10,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "7": {
+      "band": [
+        38.0,
+        131.4,
+        102.0,
+        195.4
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q07.png",
+      "has_pictures": true,
+      "page": 11,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "8": {
+      "band": [
+        321.5,
+        127.9,
+        546.9,
+        213.3
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q08.png",
+      "has_pictures": true,
+      "page": 11,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "9": {
+      "band": [
+        38.0,
+        348.9,
+        102.0,
+        412.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q09.png",
+      "has_pictures": true,
+      "page": 11,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "10": {
+      "band": [
+        311.1,
+        357.4,
+        375.1,
+        421.4
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q10.png",
+      "has_pictures": true,
+      "page": 11,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "11": {
+      "band": [
+        48.4,
+        505.9,
+        273.8,
+        591.3
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q11.png",
+      "has_pictures": true,
+      "page": 11,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "12": {
+      "band": [
+        307.1,
+        490.9,
+        561.3,
+        589.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q12.png",
+      "has_pictures": false,
+      "page": 11,
+      "px": [
+        1060,
+        413
+      ],
+      "shared_with": []
+    },
+    "13": {
+      "band": [
+        34.0,
+        627.9,
+        288.1,
+        741.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q13.png",
+      "has_pictures": false,
+      "page": 11,
+      "px": [
+        1060,
+        476
+      ],
+      "shared_with": []
+    },
+    "14": {
+      "band": [
+        307.1,
+        642.9,
+        561.3,
+        741.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q14.png",
+      "has_pictures": false,
+      "page": 11,
+      "px": [
+        1060,
+        414
+      ],
+      "shared_with": []
+    },
+    "15": {
+      "band": [
+        34.0,
+        97.9,
+        288.1,
+        209.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q15.png",
+      "has_pictures": false,
+      "page": 12,
+      "px": [
+        1060,
+        468
+      ],
+      "shared_with": []
+    },
+    "16": {
+      "band": [
+        311.1,
+        130.4,
+        375.1,
+        194.4
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q16.png",
+      "has_pictures": true,
+      "page": 12,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "17": {
+      "band": [
+        38.0,
+        271.9,
+        102.0,
+        335.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q17.png",
+      "has_pictures": true,
+      "page": 12,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "18": {
+      "band": [
+        321.5,
+        275.9,
+        546.9,
+        361.3
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q18.png",
+      "has_pictures": true,
+      "page": 12,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "19": {
+      "band": [
+        38.0,
+        447.9,
+        102.0,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q19.png",
+      "has_pictures": true,
+      "page": 12,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "20": {
+      "band": [
+        311.1,
+        447.9,
+        375.1,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q20.png",
+      "has_pictures": true,
+      "page": 12,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "21": {
+      "band": [
+        34.0,
+        636.9,
+        288.1,
+        745.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q21.png",
+      "has_pictures": false,
+      "page": 12,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "22": {
+      "band": [
+        307.1,
+        636.9,
+        561.3,
+        745.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q22.png",
+      "has_pictures": false,
+      "page": 12,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "23": {
+      "band": [
+        34.0,
+        97.9,
+        288.1,
+        199.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q23.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        426
+      ],
+      "shared_with": []
+    },
+    "24": {
+      "band": [
+        307.1,
+        112.9,
+        561.3,
+        199.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q24.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        363
+      ],
+      "shared_with": []
+    },
+    "25": {
+      "band": [
+        34.0,
+        237.9,
+        288.1,
+        349.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q25.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        467
+      ],
+      "shared_with": []
+    },
+    "26": {
+      "band": [
+        307.1,
+        252.9,
+        561.3,
+        349.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q26.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        405
+      ],
+      "shared_with": []
+    },
+    "27": {
+      "band": [
+        70.5,
+        401.9,
+        251.6,
+        461.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q27.png",
+      "has_pictures": true,
+      "page": 13,
+      "px": [
+        756,
+        251
+      ],
+      "shared_with": []
+    },
+    "28": {
+      "band": [
+        307.1,
+        402.9,
+        561.3,
+        495.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q28.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        389
+      ],
+      "shared_with": []
+    },
+    "29": {
+      "band": [
+        34.0,
+        548.9,
+        288.1,
+        647.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q29.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        413
+      ],
+      "shared_with": []
+    },
+    "30": {
+      "band": [
+        307.1,
+        548.9,
+        561.3,
+        647.9
+      ],
+      "file": "/exam-figures/grade1-ci/language-arts/q30.png",
+      "has_pictures": false,
+      "page": 13,
+      "px": [
+        1060,
+        413
+      ],
+      "shared_with": []
+    }
+  },
+  "mathematics": {
+    "1": {
+      "band": [
+        34.0,
+        339.9,
+        288.1,
+        463.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q01.png",
+      "has_pictures": false,
+      "page": 2,
+      "px": [
+        1060,
+        517
+      ],
+      "shared_with": []
+    },
+    "2": {
+      "band": [
+        311.1,
+        378.4,
+        375.1,
+        442.4
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q02.png",
+      "has_pictures": true,
+      "page": 2,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "3": {
+      "band": [
+        34.0,
+        518.9,
+        288.1,
+        627.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q03.png",
+      "has_pictures": false,
+      "page": 2,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "4": {
+      "band": [
+        307.1,
+        518.9,
+        561.3,
+        627.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q04.png",
+      "has_pictures": false,
+      "page": 2,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "5": {
+      "band": [
+        38.0,
+        697.9,
+        102.0,
+        761.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q05.png",
+      "has_pictures": true,
+      "page": 2,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "6": {
+      "band": [
+        307.1,
+        667.9,
+        561.3,
+        791.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q06.png",
+      "has_pictures": false,
+      "page": 2,
+      "px": [
+        1060,
+        518
+      ],
+      "shared_with": []
+    },
+    "7": {
+      "band": [
+        34.0,
+        97.9,
+        288.1,
+        233.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q07.png",
+      "has_pictures": false,
+      "page": 3,
+      "px": [
+        1060,
+        568
+      ],
+      "shared_with": []
+    },
+    "8": {
+      "band": [
+        311.1,
+        142.4,
+        375.1,
+        206.4
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q08.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "9": {
+      "band": [
+        38.0,
+        318.4,
+        102.0,
+        382.4
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q09.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "10": {
+      "band": [
+        311.1,
+        309.9,
+        375.1,
+        373.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q10.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "11": {
+      "band": [
+        48.4,
+        501.9,
+        273.8,
+        587.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q11.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "12": {
+      "band": [
+        321.5,
+        501.9,
+        546.9,
+        587.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q12.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "13": {
+      "band": [
+        48.4,
+        677.9,
+        273.8,
+        763.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q13.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "14": {
+      "band": [
+        321.5,
+        677.9,
+        546.9,
+        763.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q14.png",
+      "has_pictures": true,
+      "page": 3,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "15": {
+      "band": [
+        38.0,
+        122.9,
+        102.0,
+        186.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q15.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "16": {
+      "band": [
+        321.5,
+        127.9,
+        546.9,
+        213.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q16.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "17": {
+      "band": [
+        48.4,
+        279.9,
+        273.8,
+        365.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q17.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "18": {
+      "band": [
+        311.1,
+        274.9,
+        375.1,
+        338.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q18.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "19": {
+      "band": [
+        38.0,
+        453.9,
+        102.0,
+        517.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q19.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "20": {
+      "band": [
+        311.1,
+        453.9,
+        375.1,
+        517.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q20.png",
+      "has_pictures": true,
+      "page": 4,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "21": {
+      "band": [
+        34.0,
+        646.9,
+        288.1,
+        753.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q21.png",
+      "has_pictures": false,
+      "page": 4,
+      "px": [
+        1060,
+        447
+      ],
+      "shared_with": []
+    },
+    "22": {
+      "band": [
+        307.1,
+        646.9,
+        561.3,
+        753.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q22.png",
+      "has_pictures": false,
+      "page": 4,
+      "px": [
+        1060,
+        447
+      ],
+      "shared_with": []
+    },
+    "23": {
+      "band": [
+        34.0,
+        112.9,
+        288.1,
+        195.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q23.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        347
+      ],
+      "shared_with": []
+    },
+    "24": {
+      "band": [
+        307.1,
+        112.9,
+        561.3,
+        195.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q24.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        347
+      ],
+      "shared_with": []
+    },
+    "25": {
+      "band": [
+        34.0,
+        248.9,
+        288.1,
+        341.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q25.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        388
+      ],
+      "shared_with": []
+    },
+    "26": {
+      "band": [
+        307.1,
+        248.9,
+        561.3,
+        341.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q26.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        388
+      ],
+      "shared_with": []
+    },
+    "27": {
+      "band": [
+        40.0,
+        391.9,
+        104.0,
+        455.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q27.png",
+      "has_pictures": true,
+      "page": 5,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "28": {
+      "band": [
+        312.8,
+        405.9,
+        555.6,
+        489.3
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q28.png",
+      "has_pictures": true,
+      "page": 5,
+      "px": [
+        1013,
+        348
+      ],
+      "shared_with": []
+    },
+    "29": {
+      "band": [
+        34.0,
+        540.9,
+        288.1,
+        643.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q29.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        430
+      ],
+      "shared_with": []
+    },
+    "30": {
+      "band": [
+        307.1,
+        540.9,
+        561.3,
+        643.9
+      ],
+      "file": "/exam-figures/grade1-ci/mathematics/q30.png",
+      "has_pictures": false,
+      "page": 5,
+      "px": [
+        1060,
+        430
+      ],
+      "shared_with": []
+    }
+  },
+  "science": {
+    "1": {
+      "band": [
+        48.4,
+        379.9,
+        273.8,
+        465.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q01.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "2": {
+      "band": [
+        321.5,
+        379.9,
+        546.9,
+        465.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q02.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "3": {
+      "band": [
+        48.4,
+        543.9,
+        273.8,
+        629.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q03.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "4": {
+      "band": [
+        311.1,
+        542.4,
+        375.1,
+        606.4
+      ],
+      "file": "/exam-figures/grade1-ci/science/q04.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "5": {
+      "band": [
+        38.0,
+        697.9,
+        102.0,
+        761.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q05.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "6": {
+      "band": [
+        321.5,
+        707.9,
+        546.9,
+        793.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q06.png",
+      "has_pictures": true,
+      "page": 6,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "7": {
+      "band": [
+        48.4,
+        149.9,
+        273.8,
+        235.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q07.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "8": {
+      "band": [
+        311.1,
+        142.4,
+        375.1,
+        206.4
+      ],
+      "file": "/exam-figures/grade1-ci/science/q08.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "9": {
+      "band": [
+        38.0,
+        309.9,
+        102.0,
+        373.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q09.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "10": {
+      "band": [
+        311.1,
+        309.9,
+        375.1,
+        373.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q10.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "11": {
+      "band": [
+        48.4,
+        501.9,
+        273.8,
+        587.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q11.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "12": {
+      "band": [
+        321.5,
+        501.9,
+        546.9,
+        587.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q12.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "13": {
+      "band": [
+        48.4,
+        677.9,
+        273.8,
+        763.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q13.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "14": {
+      "band": [
+        311.1,
+        670.4,
+        375.1,
+        734.4
+      ],
+      "file": "/exam-figures/grade1-ci/science/q14.png",
+      "has_pictures": true,
+      "page": 7,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "15": {
+      "band": [
+        38.0,
+        121.9,
+        102.0,
+        185.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q15.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "16": {
+      "band": [
+        321.5,
+        125.9,
+        546.9,
+        211.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q16.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        940,
+        359
+      ],
+      "shared_with": []
+    },
+    "17": {
+      "band": [
+        48.4,
+        275.9,
+        273.8,
+        361.3
+      ],
+      "file": "/exam-figures/grade1-ci/science/q17.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "18": {
+      "band": [
+        311.1,
+        280.4,
+        375.1,
+        344.4
+      ],
+      "file": "/exam-figures/grade1-ci/science/q18.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "19": {
+      "band": [
+        38.0,
+        447.9,
+        102.0,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q19.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "20": {
+      "band": [
+        311.1,
+        447.9,
+        375.1,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q20.png",
+      "has_pictures": true,
+      "page": 8,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "21": {
+      "band": [
+        34.0,
+        621.9,
+        561.3,
+        757.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q21.png",
+      "has_pictures": false,
+      "page": 8,
+      "px": [
+        2198,
+        567
+      ],
+      "shared_with": [
+        22
+      ]
+    },
+    "22": {
+      "band": [
+        34.0,
+        621.9,
+        561.3,
+        757.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q22.png",
+      "has_pictures": false,
+      "page": 8,
+      "px": [
+        2198,
+        567
+      ],
+      "shared_with": [
+        21
+      ]
+    },
+    "23": {
+      "band": [
+        34.0,
+        112.9,
+        288.1,
+        203.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q23.png",
+      "has_pictures": false,
+      "page": 9,
+      "px": [
+        1060,
+        380
+      ],
+      "shared_with": []
+    },
+    "24": {
+      "band": [
+        307.1,
+        112.9,
+        561.3,
+        203.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q24.png",
+      "has_pictures": false,
+      "page": 9,
+      "px": [
+        1060,
+        380
+      ],
+      "shared_with": []
+    },
+    "25": {
+      "band": [
+        38.0,
+        275.9,
+        102.0,
+        339.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q25.png",
+      "has_pictures": true,
+      "page": 9,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "26": {
+      "band": [
+        311.1,
+        275.9,
+        375.1,
+        339.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q26.png",
+      "has_pictures": true,
+      "page": 9,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "27": {
+      "band": [
+        34.0,
+        400.9,
+        288.1,
+        499.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q27.png",
+      "has_pictures": false,
+      "page": 9,
+      "px": [
+        1060,
+        413
+      ],
+      "shared_with": []
+    },
+    "28": {
+      "band": [
+        307.1,
+        400.9,
+        561.3,
+        499.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q28.png",
+      "has_pictures": false,
+      "page": 9,
+      "px": [
+        1060,
+        413
+      ],
+      "shared_with": []
+    },
+    "29": {
+      "band": [
+        38.0,
+        571.9,
+        102.0,
+        635.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q29.png",
+      "has_pictures": true,
+      "page": 9,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "30": {
+      "band": [
+        311.1,
+        571.9,
+        375.1,
+        635.9
+      ],
+      "file": "/exam-figures/grade1-ci/science/q30.png",
+      "has_pictures": true,
+      "page": 9,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    }
+  },
+  "social-science": {
+    "1": {
+      "band": [
+        48.4,
+        379.9,
+        273.8,
+        465.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q01.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "2": {
+      "band": [
+        321.5,
+        379.9,
+        546.9,
+        465.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q02.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "3": {
+      "band": [
+        48.4,
+        543.9,
+        273.8,
+        629.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q03.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "4": {
+      "band": [
+        311.1,
+        533.9,
+        375.1,
+        597.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q04.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "5": {
+      "band": [
+        38.0,
+        697.9,
+        102.0,
+        761.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q05.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "6": {
+      "band": [
+        321.5,
+        707.9,
+        546.9,
+        793.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q06.png",
+      "has_pictures": true,
+      "page": 14,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "7": {
+      "band": [
+        48.4,
+        149.9,
+        273.8,
+        235.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q07.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "8": {
+      "band": [
+        321.5,
+        149.9,
+        546.9,
+        235.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q08.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "9": {
+      "band": [
+        38.0,
+        318.4,
+        102.0,
+        382.4
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q09.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "10": {
+      "band": [
+        311.1,
+        309.9,
+        375.1,
+        373.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q10.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "11": {
+      "band": [
+        38.0,
+        494.4,
+        102.0,
+        558.4
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q11.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "12": {
+      "band": [
+        321.5,
+        501.9,
+        546.9,
+        587.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q12.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        940,
+        356
+      ],
+      "shared_with": []
+    },
+    "13": {
+      "band": [
+        38.0,
+        670.4,
+        102.0,
+        734.4
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q13.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "14": {
+      "band": [
+        311.1,
+        661.9,
+        375.1,
+        725.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q14.png",
+      "has_pictures": true,
+      "page": 15,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "15": {
+      "band": [
+        38.0,
+        121.9,
+        102.0,
+        185.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q15.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        267,
+        268
+      ],
+      "shared_with": []
+    },
+    "16": {
+      "band": [
+        321.5,
+        125.9,
+        546.9,
+        211.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q16.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "17": {
+      "band": [
+        48.4,
+        275.9,
+        273.8,
+        361.3
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q17.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        940,
+        357
+      ],
+      "shared_with": []
+    },
+    "18": {
+      "band": [
+        311.1,
+        280.4,
+        375.1,
+        344.4
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q18.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "19": {
+      "band": [
+        38.0,
+        447.9,
+        102.0,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q19.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        267,
+        267
+      ],
+      "shared_with": []
+    },
+    "20": {
+      "band": [
+        311.1,
+        447.9,
+        375.1,
+        511.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q20.png",
+      "has_pictures": true,
+      "page": 16,
+      "px": [
+        268,
+        267
+      ],
+      "shared_with": []
+    },
+    "21": {
+      "band": [
+        34.0,
+        636.9,
+        288.1,
+        745.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q21.png",
+      "has_pictures": false,
+      "page": 16,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "22": {
+      "band": [
+        307.1,
+        636.9,
+        561.3,
+        745.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q22.png",
+      "has_pictures": false,
+      "page": 16,
+      "px": [
+        1060,
+        455
+      ],
+      "shared_with": []
+    },
+    "23": {
+      "band": [
+        70.5,
+        111.9,
+        251.6,
+        171.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q23.png",
+      "has_pictures": true,
+      "page": 17,
+      "px": [
+        756,
+        251
+      ],
+      "shared_with": []
+    },
+    "24": {
+      "band": [
+        307.1,
+        112.9,
+        561.3,
+        205.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q24.png",
+      "has_pictures": false,
+      "page": 17,
+      "px": [
+        1060,
+        388
+      ],
+      "shared_with": []
+    },
+    "25": {
+      "band": [
+        34.0,
+        258.9,
+        288.1,
+        355.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q25.png",
+      "has_pictures": false,
+      "page": 17,
+      "px": [
+        1060,
+        405
+      ],
+      "shared_with": []
+    },
+    "26": {
+      "band": [
+        311.1,
+        283.9,
+        375.1,
+        347.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q26.png",
+      "has_pictures": true,
+      "page": 17,
+      "px": [
+        268,
+        268
+      ],
+      "shared_with": []
+    },
+    "27": {
+      "band": [
+        34.0,
+        408.9,
+        288.1,
+        501.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q27.png",
+      "has_pictures": false,
+      "page": 17,
+      "px": [
+        1060,
+        389
+      ],
+      "shared_with": []
+    },
+    "28": {
+      "band": [
+        343.7,
+        407.9,
+        524.7,
+        467.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q28.png",
+      "has_pictures": true,
+      "page": 17,
+      "px": [
+        756,
+        251
+      ],
+      "shared_with": []
+    },
+    "29": {
+      "band": [
+        34.0,
+        554.9,
+        288.1,
+        651.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q29.png",
+      "has_pictures": false,
+      "page": 17,
+      "px": [
+        1060,
+        405
+      ],
+      "shared_with": []
+    },
+    "30": {
+      "band": [
+        311.1,
+        583.9,
+        371.1,
+        643.9
+      ],
+      "file": "/exam-figures/grade1-ci/social-science/q30.png",
+      "has_pictures": true,
+      "page": 17,
+      "px": [
+        251,
+        251
+      ],
+      "shared_with": []
+    }
+  }
+}
