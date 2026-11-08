@@ -22,6 +22,7 @@ const browserSuites = new Set([
   "test-assessment-lockdown-browser.mjs",
   "test-exam-messaging-browser.mjs",
   "test-exam-messaging-routes.mjs",
+  "test-cron-sweep-routes.mjs",
 ]);
 
 const results = [];
