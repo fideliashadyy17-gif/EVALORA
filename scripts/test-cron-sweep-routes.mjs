@@ -12,8 +12,8 @@ const SECRET = process.env.CRON_SECRET_TEST ?? 'test-secret-value-with-more-than
 const URL_PATH = '/api/cron/close-expired-attempts';
 let checks = 0;
 
-async function post(headers = {}) {
-  const response = await fetch(`${BASE}${URL_PATH}`, { method: 'POST', headers, redirect: 'manual' });
+async function post(headers = {}, method = 'POST') {
+  const response = await fetch(`${BASE}${URL_PATH}`, { method, headers, redirect: 'manual' });
   const text = await response.text();
   let json = null;
   try { json = JSON.parse(text); } catch { /* not JSON */ }
@@ -21,6 +21,17 @@ async function post(headers = {}) {
 }
 
 if (HAS_SECRET) {
+  {
+    // Vercel cron calls the route with GET and the bearer secret.
+    const r = await post({}, 'GET');
+    assert.equal(r.status, 401, 'GET without bearer is refused (Vercel cron path)');
+    checks += 1;
+  }
+  {
+    const r = await post({ authorization: `Bearer ${SECRET}` }, 'GET');
+    assert.notEqual(r.status, 401, 'GET with the configured secret is accepted (Vercel cron path)');
+    checks += 1;
+  }
   {
     const r = await post();
     assert.equal(r.status, 401, 'no bearer token is refused');
@@ -55,6 +66,11 @@ if (HAS_SECRET) {
     const r = await post({ authorization: 'Bearer anything' });
     assert.equal(r.status, 503, 'without a configured secret the endpoint refuses to run');
     assert.match(r.headers.get('cache-control') ?? '', /no-store/);
+    checks += 1;
+  }
+  {
+    const r = await post({}, 'GET');
+    assert.equal(r.status, 503, 'GET without a configured secret never runs');
     checks += 1;
   }
   {

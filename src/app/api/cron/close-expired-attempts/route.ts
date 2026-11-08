@@ -15,6 +15,14 @@ export const dynamic = "force-dynamic";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
+/**
+ * Vercel cron jobs call the route with GET and the bearer secret; the GitHub workflow uses POST.
+ * Both run the same authorised sweep.
+ */
+export async function GET(request: Request) {
+  return POST(request);
+}
+
 export async function POST(request: Request) {
   const secret = process.env.CRON_SECRET ?? "";
   if (secret.length < 32) {
