@@ -1,0 +1,40 @@
+# Closes examination attempts whose deadline has passed and that the candidate never closed.
+# Calls POST /api/cron/close-expired-attempts on production every 5 minutes.
+#
+# Requires the repository secret EVALORA_CRON_SECRET, which must equal the CRON_SECRET
+# environment variable of the production Vercel project (at least 32 characters).
+# GitHub's scheduler can start a run late, so timing is approximate. The sweep is idempotent.
+name: Close expired examination attempts
+
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: close-expired-attempts
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Run the sweep
+        env:
+          CRON_SECRET: ${{ secrets.EVALORA_CRON_SECRET }}
+          SWEEP_URL: https://evalora-six.vercel.app/api/cron/close-expired-attempts
+        run: |
+          set -euo pipefail
+          if [ -z "${CRON_SECRET}" ]; then
+            echo "EVALORA_CRON_SECRET is not set" >&2
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --max-time 120 \
+            -X POST \
+            -H "Authorization: Bearer ${CRON_SECRET}" \
+            "${SWEEP_URL}"
+          echo
