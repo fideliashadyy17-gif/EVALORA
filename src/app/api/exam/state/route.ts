@@ -1,11 +1,22 @@
-import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
+import { attemptRows, loadAttemptContext } from "@/lib/exam";
+import { submissionWindow } from "@/lib/examDeadline";
+import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseIntegrityPolicy } from "@/lib/integrity";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
-/** Full candidate view of an attempt (answers restored for recovery). */
+/**
+ * Full candidate view of an attempt (answers restored for recovery).
+ *
+ * Reading the paper also performs the one legitimate automatic closure: when the
+ * server clock has passed the official deadline (plus the clock margin), the
+ * attempt is closed as `auto_submitted` at the deadline instant and the response
+ * reports it. That decision is made only by `submissionWindow`/
+ * `applyDeadlineSubmission` — never by a timer, an incident or a browser event —
+ * and it can only ever happen *after* the deadline, never before it.
+ */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const attemptId = searchParams.get("attempt_id");
@@ -25,28 +36,35 @@ export async function GET(request: Request) {
   const { attempt, exam, candidate } = ctx;
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
+  const nowMs = Date.now();
+  const window = submissionWindow(exam, attempt, nowMs);
+  // The client renders its countdown against this instant. It is display-only:
+  // a wrong device clock or a stalled countdown cannot change the decision below.
+  // A record that cannot produce a deadline reports the largest representable
+  // instant, which the client renders as "no countdown" rather than as an expiry.
+  const deadlineIso = window.deadline ?? new Date(8.64e15).toISOString();
 
   let rows: Awaited<ReturnType<typeof attemptRows>>;
   try {
     rows = await attemptRows(admin, exam, attempt);
-    // Auto-submit only after the paper and saved answers were loaded and all
-    // grading writes succeeded. These operations are not yet transactional.
-    if (attempt.status === "in_progress" && new Date() > deadline) {
-      const { score, max } = await gradeAttempt(admin, attempt.id, rows);
-      const { data: closed, error: closeError } = await admin
-        .from("exam_attempts")
-        .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
-        .eq("id", attempt.id).eq("status", "in_progress").select("id").maybeSingle();
-      if (closeError || !closed) return NextResponse.json({ error: "Could not confirm the examination submission. Reload or contact your invigilator." }, { status: 500, headers });
-      const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", candidate.id);
-      if (candidateError) return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500, headers });
-      attempt.status = "auto_submitted";
-      attempt.score = score;
-      attempt.max_score = max;
-    }
   } catch {
     return NextResponse.json({ error: "Examination data or grading is unavailable. Reload or contact your invigilator." }, { status: 500, headers });
+  }
+
+  // Automatic closure — only ever after the official deadline. The whole rule,
+  // including grading the answers saved before that instant, lives in one place.
+  if (attempt.status === "in_progress" && window.reached) {
+    const closed = await applyDeadlineSubmission(admin, attempt, exam, { reason: "deadline", nowMs });
+    if (closed.outcome === "closed" || closed.outcome === "already_closed") {
+      attempt.status = closed.status;
+      attempt.score = closed.score;
+      attempt.max_score = closed.max;
+      attempt.submitted_at = closed.submittedAt;
+    } else if (closed.outcome === "candidate_status_failed") {
+      return NextResponse.json({ error: "The examination closed but its status could not be fully confirmed. Reload or contact your invigilator." }, { status: 500, headers });
+    } else {
+      return NextResponse.json({ error: "Could not confirm the examination submission. Reload or contact your invigilator." }, { status: 500, headers });
+    }
   }
 
   const { data: saved, error: savedError } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
@@ -57,7 +75,7 @@ export async function GET(request: Request) {
   const resultsPublished = Boolean(settings.results_published);
 
   return NextResponse.json({
-    server_now: new Date().toISOString(),
+    server_now: new Date(nowMs).toISOString(),
     exam: {
       id: exam.id,
       title: exam.title,
@@ -82,7 +100,7 @@ export async function GET(request: Request) {
       id: attempt.id,
       status: attempt.status,
       started_at: attempt.started_at,
-      deadline: deadline.toISOString(),
+      deadline: deadlineIso,
       flagged: attempt.flagged ?? [],
       score: submitted && resultsPublished ? (attempt.score !== null ? Number(attempt.score) : null) : null,
       max_score: submitted && resultsPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,

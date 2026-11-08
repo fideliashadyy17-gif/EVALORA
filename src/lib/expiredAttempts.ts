@@ -5,14 +5,19 @@
  * /api/exam/state or /api/exam/submit after the deadline. A candidate who leaves the paper
  * never makes that call, so the attempt stayed `in_progress` indefinitely.
  *
- * This module runs the same closure as the candidate route (grade the saved answers, close as
- * auto_submitted at the deadline instant, mark the candidate submitted). It is triggered by
- * the scheduled sweep route, never by a candidate, and it writes only to attempts already past
- * their server deadline. Nothing here changes an attempt that is still within its time.
+ * The sweep no longer owns a copy of the closing logic. It calls the same
+ * `applyDeadlineSubmission` the candidate routes call, with the same
+ * `reason: "deadline"` guard, so it is structurally incapable of closing an
+ * attempt before its official deadline: the guard refuses, and the refusal is
+ * reported rather than retried into a write. It is triggered by the scheduled
+ * sweep route, never by a candidate, and it writes only to attempts already past
+ * their server deadline. Nothing here changes an attempt that is still within
+ * its time.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, timingSafeEqual } from "node:crypto";
-import { attemptDeadline, attemptRows, gradeAttempt } from "./exam";
+import { submissionWindow } from "./examDeadline";
+import { applyDeadlineSubmission } from "./examSubmission";
 
 /** Maximum in-progress attempts examined per sweep. Bounded so one run stays short. */
 export const SWEEP_BATCH = 200;
@@ -34,7 +39,19 @@ export interface ExamForDeadline {
   settings: Record<string, unknown> | null;
 }
 
-export type SweepFailure = { attempt_id: string; reason: "exam_missing" | "paper_unavailable" | "grading_failed" | "close_failed" | "candidate_status_failed" };
+export type SweepFailure = {
+  attempt_id: string;
+  reason:
+    | "exam_missing"
+    | "paper_unavailable"
+    | "grading_failed"
+    | "close_failed"
+    | "candidate_status_failed"
+    /** The attempt is still within its official time: never a reason to close it. */
+    | "not_yet_due"
+    /** The lifecycle itself refused the closure because the deadline had not passed. */
+    | "refused_premature";
+};
 
 export interface SweepResult {
   checked: number;
@@ -45,12 +62,16 @@ export interface SweepResult {
 }
 
 /**
- * The server's deadline rule, exactly as the candidate route applies it. The instant of equality is
- * not yet expired (strictly after the deadline), matching `new Date() > deadline` in the candidate route.
+ * The server's deadline rule. The instant of equality is not yet expired: the
+ * deadline plus the submission clock margin must have elapsed, matching the
+ * candidate route exactly because both read `submissionWindow`.
  */
-export function isPastDeadline(attempt: Pick<OpenAttemptRow, "started_at" | "extension_minutes">, exam: Pick<ExamForDeadline, "duration_minutes" | "ends_at">, nowMs: number): boolean {
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
-  return nowMs > deadline.getTime();
+export function isPastDeadline(
+  attempt: Pick<OpenAttemptRow, "started_at" | "extension_minutes">,
+  exam: Pick<ExamForDeadline, "duration_minutes" | "ends_at">,
+  nowMs: number,
+): boolean {
+  return submissionWindow(exam, attempt, nowMs).reached;
 }
 
 /** Constant-time check of `Authorization: Bearer <secret>`. Digests make the comparison length-independent. */
@@ -63,48 +84,9 @@ export function cronAuthorized(header: string | null, secret: string): boolean {
 }
 
 /**
- * Closes one expired attempt. The status update is conditional on `in_progress`, so a candidate
- * submission that lands at the same moment is never overwritten, and a second sweep is a no-op.
- */
-async function closeExpiredAttempt(
-  admin: SupabaseClient,
-  attempt: OpenAttemptRow,
-  exam: ExamForDeadline & { settings: Record<string, unknown> },
-): Promise<"closed" | "already_closed" | SweepFailure["reason"]> {
-  let rows: Awaited<ReturnType<typeof attemptRows>>;
-  try {
-    rows = await attemptRows(admin, exam, attempt);
-  } catch {
-    // The paper is missing or no longer matches the stored question order: nothing is graded or closed.
-    return "paper_unavailable";
-  }
-  let score: number;
-  let max: number;
-  try {
-    ({ score, max } = await gradeAttempt(admin, attempt.id, rows));
-  } catch {
-    return "grading_failed";
-  }
-
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
-  const { data: closed, error } = await admin
-    .from("exam_attempts")
-    .update({ status: "auto_submitted", submitted_at: deadline.toISOString(), score, max_score: max })
-    .eq("id", attempt.id)
-    .eq("status", "in_progress")
-    .select("id")
-    .maybeSingle();
-  if (error) return "close_failed";
-  if (!closed) return "already_closed";
-
-  // The attempt is closed at this point. A failure here is reported so an operator can check the candidate's status.
-  const { error: candidateError } = await admin.from("exam_candidates").update({ status: "submitted" }).eq("id", attempt.candidate_id);
-  return candidateError ? "candidate_status_failed" : "closed";
-}
-
-/**
  * One sweep: finds in-progress attempts (oldest first, bounded), keeps only those past their server
- * deadline, and closes each. A failure on one attempt is recorded and does not stop the others.
+ * deadline, and closes each through the shared submission lifecycle. A failure on one attempt is
+ * recorded and does not stop the others. An attempt that is not yet due is skipped silently.
  */
 export async function sweepExpiredAttempts(admin: SupabaseClient, nowMs: number = Date.now()): Promise<SweepResult> {
   const { data: open, error: openError } = await admin
@@ -132,10 +114,15 @@ export async function sweepExpiredAttempts(admin: SupabaseClient, nowMs: number 
     }
     if (!isPastDeadline(attempt, exam, nowMs)) continue;
     result.expired += 1;
-    const outcome = await closeExpiredAttempt(admin, attempt, { ...exam, settings: exam.settings ?? {} });
-    if (outcome === "closed") result.closed.push(attempt.id);
-    else if (outcome === "already_closed") result.already_closed.push(attempt.id);
-    else result.failed.push({ attempt_id: attempt.id, reason: outcome });
+    const outcome = await applyDeadlineSubmission(
+      admin,
+      { ...attempt, status: "in_progress" },
+      { ...exam, settings: exam.settings ?? {} },
+      { reason: "deadline", nowMs },
+    );
+    if (outcome.outcome === "closed") result.closed.push(attempt.id);
+    else if (outcome.outcome === "already_closed") result.already_closed.push(attempt.id);
+    else result.failed.push({ attempt_id: attempt.id, reason: outcome.outcome });
   }
   return result;
 }

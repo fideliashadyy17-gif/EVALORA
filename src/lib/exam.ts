@@ -1,5 +1,6 @@
 import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./live";
 import { scoreAnswer } from "./scoring";
+import { attemptDeadline } from "./examDeadline";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -8,16 +9,32 @@ import type { SupabaseClient } from "@supabase/supabase-js";
  * and the exam window end for that candidate, so "extra time" always means
  * exactly that many additional minutes — enforced here on the server, never
  * by a frontend countdown.
+ *
+ * The rule itself lives in `./examDeadline`, together with the margin that must
+ * also elapse before an attempt may be closed automatically. It is re-exported
+ * here because this module is the one every route already imports; there is a
+ * single implementation either way.
  */
-export function attemptDeadline(
-  exam: { duration_minutes: number; ends_at: string | null },
-  startedAt: string,
-  extensionMinutes = 0,
-) {
-  const ext = Math.max(0, Math.floor(extensionMinutes) || 0) * 60000;
-  const byDuration = new Date(startedAt).getTime() + exam.duration_minutes * 60000 + ext;
-  const byWindow = exam.ends_at ? new Date(exam.ends_at).getTime() + ext : Infinity;
-  return new Date(Math.min(byDuration, byWindow));
+export { attemptDeadline };
+
+/** The shape `loadAttemptContext` resolves, used by the submission lifecycle. */
+export interface AttemptContext {
+  attempt: Record<string, unknown> & {
+    id: string;
+    status: string;
+    started_at: string;
+    extension_minutes?: number | null;
+    question_order?: unknown;
+  };
+  exam: {
+    id: string;
+    duration_minutes: number;
+    ends_at: string | null;
+    quiz_id: string | null;
+    settings: Record<string, unknown> | null;
+    organization_id?: string;
+  };
+  candidate: { id: string; status?: string };
 }
 
 /** Ordered rows for an attempt, honoring its stored question order. */
