@@ -28,7 +28,7 @@ interface AttemptRow {
   status: string;
   extension_minutes: number;
   exam_candidates: { full_name: string; candidate_ref: string | null } | null;
-  exams: { title: string; duration_minutes: number; ends_at: string | null; quiz_id: string | null } | null;
+  exams: { title: string; duration_minutes: number; ends_at: string | null; quiz_id: string | null; organization_id: string } | null;
   exam_answers: { count: number }[];
 }
 
@@ -43,7 +43,7 @@ export default async function ExaminationMonitoringPage({
 
   let attemptQuery = admin
     .from("exam_attempts")
-    .select("id, exam_id, started_at, submitted_at, status, extension_minutes, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id), exam_answers(count)")
+    .select("id, exam_id, started_at, submitted_at, status, extension_minutes, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id, organization_id), exam_answers(count)")
     .order("started_at", { ascending: false })
     .limit(500);
   if (sp.exam) attemptQuery = attemptQuery.eq("exam_id", sp.exam);
@@ -148,6 +148,13 @@ export default async function ExaminationMonitoringPage({
                     <div className="flex flex-wrap gap-x-3 gap-y-1">
                       <Link href={`/admin/examinations/time-limits?exam=${a.exam_id}`} className="font-medium text-evergreen-700 hover:underline">Time / extension</Link>
                       <Link href={`/admin/examinations/candidates?exam=${a.exam_id}`} className="font-medium text-evergreen-700 hover:underline">Candidates</Link>
+                      {a.status === "in_progress" && a.exams?.organization_id && (
+                        <form action={enterOrgWorkspace} className="inline">
+                          <input type="hidden" name="organization_id" value={a.exams.organization_id} />
+                          <input type="hidden" name="next" value={`/dashboard/exams/${a.exam_id}/monitor`} />
+                          <button type="submit" className="font-medium text-evergreen-700 hover:underline">Live supervision</button>
+                        </form>
+                      )}
                       {a.status !== "in_progress" && <Link href={`/admin/examinations/results?exam=${a.exam_id}`} className="font-medium text-evergreen-700 hover:underline">Result</Link>}
                     </div>
                   </td>
