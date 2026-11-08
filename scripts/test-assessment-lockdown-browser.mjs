@@ -173,6 +173,12 @@ await context.route("**/api/**", async (route) => {
     const count = server.integrity.length;
     return route.fulfill({ status: 200, json: { ok: true, recorded: true, count, level: count >= 3 ? "strong" : "warn" } });
   }
+  // Candidate messenger (ExamMessenger): an empty thread. Counted separately, never as unexpected.
+  if (path === "/api/exam/messages" && request.method() === "GET") {
+    server.messagingPolls = (server.messagingPolls ?? 0) + 1;
+    return route.fulfill({ status: 200, json: { server_now: new Date().toISOString(), messages: [], unread_from_teacher: 0 } });
+  }
+  if (path === "/api/exam/presence") return route.fulfill({ status: 200, json: { ok: true } });
   if (path === "/api/live/state") return route.fulfill({ status: 200, json: liveQuizState() });
   if (path === "/api/live/answer") return route.fulfill({ status: 200, json: { ok: true } });
   if (path === "/api/live/screen") return route.fulfill({ status: 200, json: publicScreenState() });

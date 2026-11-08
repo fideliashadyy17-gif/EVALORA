@@ -17,6 +17,7 @@ import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTr
 import { Track } from "livekit-client";
 import { Flag, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ExamMessenger } from "./ExamMessenger";
 
 interface ExamState {
   server_now: string;
@@ -648,7 +649,23 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     </div>
   );
 
-  return examBody;
+  // The messenger is a sibling of the paper: it never wraps, replaces or remounts it.
+  return (
+    <>
+      {examBody}
+      {token ? (
+        <ExamMessenger
+          attemptId={attemptId}
+          token={token}
+          active={!submitted}
+          questionNumber={index + 1}
+          totalQuestions={questions.length}
+          savedCount={savedIds.size}
+          pendingSaves={queueState.pending}
+        />
+      ) : null}
+    </>
+  );
 }
 
 function Centered({ children }: { children: React.ReactNode }) {

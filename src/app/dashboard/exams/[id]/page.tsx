@@ -175,6 +175,7 @@ export default async function ExamDetailPage({
             {Boolean(settings.proctoring) && (
               <ButtonLink href={`/dashboard/exams/${id}/proctor`} variant="gold">🎥 Proctoring room</ButtonLink>
             )}
+            <ButtonLink href={`/dashboard/exams/${id}/monitor`} variant="outline">Live monitor</ButtonLink>
             <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline">Grade history</ButtonLink>
             <ButtonLink href={`/dashboard/reports/exam/${id}`} variant="outline">Report</ButtonLink>
             <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>
