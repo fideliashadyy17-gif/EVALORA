@@ -20,6 +20,9 @@ await page.route('**/api/exam/**',async route=>{const request=route.request();co
  if(url.pathname==='/api/exam/submit'){server.submits++;server.status='submitted';return route.fulfill({status:200,json:{ok:true}});}
  // The integrity monitor reports page_leave when the page unloads (the reload below). Accept it.
  if(url.pathname==='/api/exam/integrity'){return route.fulfill({status:200,json:{ok:true,recorded:false,count:0,level:'none',reason:'duplicate'}});}
+ // Candidate messenger (ExamMessenger): an empty thread and an accepted heartbeat.
+ if(url.pathname==='/api/exam/messages'){return route.fulfill({status:200,json:{server_now:new Date().toISOString(),messages:[],unread_from_teacher:0}});}
+ if(url.pathname==='/api/exam/presence'){return route.fulfill({status:200,json:{ok:true}});}
  throw Error('Unexpected request '+url.pathname);
 });
 try {
