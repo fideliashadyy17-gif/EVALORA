@@ -1,5 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
-import { EXAM_TRACKS, paperForTrack, parseTrack, trackSelectionEnabled } from "@/lib/examTrack";
+import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import {
   examAccessAvailability,
   identityDataEqual,
@@ -23,7 +23,6 @@ const Body = z.object({
   guest_key: z.string().min(16).max(120),
   identity: z.record(z.string(), z.unknown()).optional(),
   consent: z.literal(true),
-  track: z.enum(EXAM_TRACKS).optional(),
 });
 
 function sha256(value: string) {
@@ -46,7 +45,7 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
-  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity, track: rawTrack } = parsed.data;
+  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity } = parsed.data;
   const admin = createAdminClient();
   const supabase = await createClient();
 
@@ -120,7 +119,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Select an eligible class for this examination." }, { status: 403 });
   const { data: classRow } = await admin
     .from("classes")
-    .select("id,organization_id")
+    .select("id,organization_id,curriculum_track")
     .eq("id", selectedClassId)
     .maybeSingle();
   if (!classRow || classRow.organization_id !== exam.organization_id)
@@ -235,15 +234,12 @@ export async function POST(request: Request) {
   }
   if (!attempt) {
     const settings = (exam.settings ?? {}) as Record<string, unknown>;
-    const tracked = trackSelectionEnabled(settings);
-    const track = parseTrack(rawTrack);
-    if (tracked && !track)
-      return NextResponse.json(
-        { error: "Choose Calculus AB or Calculus BC to start this examination.", requires_track: true },
-        { status: 409 },
-      );
+    // The track comes from the candidate's class in the database, never from the browser.
+    const decision = admissionTrack(trackSelectionEnabled(settings), classRow);
+    if (!decision.ok) return NextResponse.json({ error: decision.error }, { status: 409 });
+    const track = decision.track;
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
-    const rows = tracked && track ? paperForTrack(rows0, track) : rows0;
+    const rows = track ? paperForTrack(rows0, track) : rows0;
     const ordered = settings.randomize_questions ? seededShuffle(rows, `${exam.id}:${candidate.id}`) : rows;
     const { data, error } = await admin
       .from("exam_attempts")
@@ -253,7 +249,7 @@ export async function POST(request: Request) {
         question_order: ordered.map((r) => r.id),
         // Only sent for track-selection examinations, so examinations without it
         // never reference the exam_attempts.track column.
-        ...(tracked && track ? { track } : {}),
+        ...(track ? { track } : {}),
         first_name,
         last_name,
         class_id: selectedClassId,

@@ -1,4 +1,5 @@
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { attemptAllowsQuizRow, parseTrack } from "@/lib/examTrack";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -37,6 +38,10 @@ export async function POST(request: Request) {
   if (!belongs) return NextResponse.json({ error: "Question not in this paper." }, { status: 400 });
   if (quiz_question_id && quiz_question_id !== belongs.id)
     return NextResponse.json({ error: "Question does not match this paper." }, { status: 400 });
+  // The question must also be part of THIS candidate's paper (track-filtered order),
+  // so an AB attempt cannot store an answer to a BC-only item.
+  if (!attemptAllowsQuizRow(attempt.question_order, belongs.id, parseTrack(attempt.track)))
+    return NextResponse.json({ error: "Question not in this candidate's paper." }, { status: 400 });
 
   const { error } = await admin.from("exam_answers").upsert(
     {
