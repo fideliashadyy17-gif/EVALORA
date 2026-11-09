@@ -54,6 +54,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   // menu are cancelled, and the displayed text is not selectable.
   useAssessmentLockdown(true);
   const offset = useRef(0);
+  const hasData = useRef(false);
   const audioContext = useRef<AudioContext | null>(null);
   const playedEvents = useRef(new Set<string>());
   const musicIndex = useRef(0);
@@ -69,19 +70,20 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
       });
       const json = await res.json().catch(() => null);
       if (!res.ok) {
-        if (!data) setError(json?.error ?? "This public screen is unavailable.");
+        if (!hasData.current) setError(json?.error ?? "This public screen is unavailable.");
         else setReconnecting(true);
         return;
       }
       offset.current = new Date(json.server_now).getTime() - Date.now();
+      hasData.current = true;
       setData(json);
       setError(null);
       setReconnecting(false);
     } catch {
-      if (data) setReconnecting(true);
+      if (hasData.current) setReconnecting(true);
       else setError("Could not connect to the live screen. Retrying…");
     }
-  }, [liveId, token, data]);
+  }, [liveId, token]);
 
   useEffect(() => {
     load();
@@ -106,9 +108,10 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
       .catch(() => setQr(""));
   }, [data?.join_code]);
 
+  const audioVolume = data?.audio.volume;
   const playTone = useCallback(
     (frequency: number, delay = 0, duration = 0.28, volumeScale = 0.07, type: OscillatorType = "sine") => {
-      if (!soundUnlocked || !audioContext.current || !data) return;
+      if (!soundUnlocked || !audioContext.current || audioVolume === undefined || audioVolume <= 0) return;
       try {
         const ctx = audioContext.current;
         const start = ctx.currentTime + delay;
@@ -117,7 +120,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
         osc.type = type;
         osc.frequency.setValueAtTime(frequency, start);
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, data.audio.volume * volumeScale), start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, audioVolume * volumeScale), start + 0.025);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
         osc.connect(gain).connect(ctx.destination);
         osc.start(start);
@@ -126,7 +129,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
         // Presentation audio must never break the visual screen.
       }
     },
-    [data, soundUnlocked],
+    [audioVolume, soundUnlocked],
   );
 
   // Original generated background music, only on this projection device.
@@ -159,7 +162,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
     if (data.phase === "question") once(`question:${q}`, () => { playTone(659.25, 0, 0.2, 0.08); playTone(880, 0.11, 0.28, 0.08); });
     if (data.phase === "time_expired") once(`expired:${q}`, () => playTone(196, 0, 0.5, 0.09, "sawtooth"));
     if (data.phase === "answer_reveal") once(`reveal:${q}`, () => { playTone(523.25, 0, 0.22, 0.08); playTone(783.99, 0.13, 0.35, 0.08); });
-    if (data.phase === "leaderboard") once(`board:${q}:${data.joined}`, () => playTone(587.33, 0, 0.3, 0.07));
+    if (data.phase === "leaderboard") once(`board:${q}`, () => playTone(587.33, 0, 0.3, 0.07));
     if (data.phase === "podium") once("podium", () => { [392, 523.25, 659.25, 783.99].forEach((f, i) => playTone(f, i * 0.13, 0.38, 0.09, "triangle")); });
     if (data.phase === "countdown" && startsIn !== null && startsIn <= 3 && startsIn > 0) {
       once(`countdown:${q}:${startsIn}`, () => playTone(startsIn === 1 ? 880 : 587.33, 0, 0.16, 0.08));
