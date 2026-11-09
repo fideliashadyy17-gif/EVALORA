@@ -119,7 +119,9 @@ export function HostConsole({
   const [actionError, setActionError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [volume, setVolume] = useState(() => Math.round(parseLiveSettings(initial.settings).audio.volume * 100));
+  const [masterVolume, setMasterVolume] = useState(() => Math.round(parseLiveSettings(initial.settings).audio.master_volume * 100));
+  const [musicVolume, setMusicVolume] = useState(() => Math.round(parseLiveSettings(initial.settings).audio.music_volume * 100));
+  const [effectsVolume, setEffectsVolume] = useState(() => Math.round(parseLiveSettings(initial.settings).audio.effects_volume * 100));
   const supabaseRef = useRef(createClient());
   const offsetRef = useRef(0);
   const displayVersionRef = useRef(Number(initial.display_token_version ?? 1));
@@ -128,6 +130,11 @@ export function HostConsole({
   const screenUrl = screenPath.startsWith("http") ? screenPath : `${appUrl}${screenPath}`;
   const current = questions[session.current_question_index] ?? null;
   const settings = useMemo(() => parseLiveSettings(session.settings), [session.settings]);
+  useEffect(() => {
+    setMasterVolume(Math.round(settings.audio.master_volume * 100));
+    setMusicVolume(Math.round(settings.audio.music_volume * 100));
+    setEffectsVolume(Math.round(settings.audio.effects_volume * 100));
+  }, [settings.audio.master_volume, settings.audio.music_volume, settings.audio.effects_volume]);
   const participants = hostData?.participants ?? [];
   const counts = hostData?.counts;
   const phase = hostData?.session.phase ?? session.phase ?? "waiting";
@@ -484,14 +491,21 @@ export function HostConsole({
         )}
 
         <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Public-screen sound & presentation</h2>
-          <p className="mt-1 text-sm text-ink-soft">
-            Sound plays from the projection computer after its operator presses “Enable sound”. Student devices never start background music.
-          </p>
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Live-game sound & presentation</h2>
+              <p className="mt-1 max-w-2xl text-sm text-ink-soft">
+                Original EVALORA music and musical cues play from the public screen only, after its operator enables audio. Student devices play optional, personal answer feedback; this organizer monitor stays silent to prevent duplicate room audio.
+              </p>
+            </div>
+            <Button variant="outline" disabled={busy} onClick={() => act(() => hostUpdateLiveSettings(session.id, { audio: { enabled: true, muted: false, sound_effects: true, master_volume: 0.75, music_volume: 0.7, effects_volume: 0.9 } }))}>
+              Restore sound defaults
+            </Button>
+          </div>
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
             <Toggle
               label="Background music"
-              checked={settings.audio.enabled && settings.audio.theme !== "off"}
+              checked={settings.audio.enabled}
               disabled={busy}
               onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { enabled: v } }))}
             />
@@ -501,39 +515,15 @@ export function HostConsole({
               disabled={busy}
               onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { sound_effects: v } }))}
             />
-            <label className="block">
-              <span className="text-sm font-semibold text-evergreen-950">Music theme</span>
-              <select
-                className="mt-2 w-full rounded-xl border border-evergreen-900/20 bg-white px-3 py-2.5"
-                value={settings.audio.theme}
-                disabled={busy}
-                onChange={(e) => act(() => hostUpdateLiveSettings(session.id, { audio: { theme: e.target.value as typeof settings.audio.theme } }))}
-              >
-                <option value="evergreen">Evergreen — warm classroom energy</option>
-                <option value="focus">Focus — calm concentration</option>
-                <option value="celebration">Celebration — finals & winners</option>
-                <option value="off">Off</option>
-              </select>
-            </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-evergreen-950">Volume: {volume}%</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={volume}
-                disabled={busy}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                onMouseUp={() => act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }))}
-                onTouchEnd={() => act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }))}
-                onBlur={() => {
-                  if (Math.abs(settings.audio.volume - volume / 100) > 0.001) {
-                    act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }));
-                  }
-                }}
-                className="mt-3 w-full accent-evergreen-700"
-              />
-            </label>
+            <Toggle
+              label="Mute all sounds"
+              checked={settings.audio.muted}
+              disabled={busy}
+              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { muted: v } }))}
+            />
+            <VolumeSlider label="Master volume" value={masterVolume} disabled={busy} onChange={setMasterVolume} onCommit={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { master_volume: v / 100 } }))} />
+            <VolumeSlider label="Background music volume" value={musicVolume} disabled={busy} onChange={setMusicVolume} onCommit={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { music_volume: v / 100 } }))} />
+            <VolumeSlider label="Sound effects volume" value={effectsVolume} disabled={busy} onChange={setEffectsVolume} onCommit={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { effects_volume: v / 100 } }))} />
             <Toggle
               label="Public-screen animations"
               checked={settings.presentation.animations_enabled}
@@ -661,6 +651,26 @@ function ParticipantActions({
         </button>
       )}
     </div>
+  );
+}
+
+function VolumeSlider({ label, value, disabled, onChange, onCommit }: { label: string; value: number; disabled: boolean; onChange: (value: number) => void; onCommit: (value: number) => void }) {
+  const latest = useRef(value);
+  const committed = useRef(value);
+  latest.current = value;
+  const commit = () => {
+    if (latest.current === committed.current) return;
+    committed.current = latest.current;
+    onCommit(latest.current);
+  };
+  return (
+    <label className="block">
+      <span className="flex justify-between text-sm font-semibold text-evergreen-950"><span>{label}</span><span>{value}%</span></span>
+      <input type="range" min="0" max="100" value={value} disabled={disabled}
+        onChange={(e) => { const next = Number(e.target.value); latest.current = next; onChange(next); }}
+        onPointerUp={commit} onKeyUp={commit} onBlur={commit}
+        className="mt-3 w-full accent-evergreen-700" aria-label={label} />
+    </label>
   );
 }
 

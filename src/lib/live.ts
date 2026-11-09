@@ -21,7 +21,11 @@ export interface LiveSessionTiming {
 
 export interface LiveAudioSettings {
   enabled: boolean;
-  volume: number; // 0..1
+  muted: boolean;
+  volume: number; // backwards-compatible master volume, 0..1
+  master_volume: number;
+  music_volume: number;
+  effects_volume: number;
   theme: "evergreen" | "focus" | "celebration" | "off";
   sound_effects: boolean;
 }
@@ -49,7 +53,11 @@ export function defaultLiveSessionSettings(
     max_participants: maxParticipants,
     audio: {
       enabled: true,
-      volume: 0.6,
+      muted: false,
+      volume: 0.75,
+      master_volume: 0.75,
+      music_volume: 0.7,
+      effects_volume: 0.9,
       theme: "evergreen",
       sound_effects: true,
     },
@@ -69,7 +77,9 @@ export function parseLiveSettings(raw: unknown): ParsedLiveSettings {
   const theme = ["evergreen", "focus", "celebration", "off"].includes(String(audio.theme))
     ? (String(audio.theme) as LiveAudioSettings["theme"])
     : "evergreen";
-  const volumeRaw = Number(audio.volume ?? 0.6);
+  const volumeRaw = Number(audio.master_volume ?? audio.volume ?? 0.6);
+  const musicVolumeRaw = Number(audio.music_volume ?? 0.7);
+  const effectsVolumeRaw = Number(audio.effects_volume ?? 0.9);
   return {
     // Legacy sessions defaulted show_leaderboard to true. New sessions
     // explicitly write false unless the organizer authorizes a reveal.
@@ -78,7 +88,11 @@ export function parseLiveSettings(raw: unknown): ParsedLiveSettings {
     max_participants: Math.max(1, Number(settings.max_participants ?? 200) || 200),
     audio: {
       enabled: audio.enabled !== false,
+      muted: audio.muted === true,
       volume: Number.isFinite(volumeRaw) ? Math.min(1, Math.max(0, volumeRaw)) : 0.6,
+      master_volume: Number.isFinite(volumeRaw) ? Math.min(1, Math.max(0, volumeRaw)) : 0.6,
+      music_volume: Number.isFinite(musicVolumeRaw) ? Math.min(1, Math.max(0, musicVolumeRaw)) : 0.7,
+      effects_volume: Number.isFinite(effectsVolumeRaw) ? Math.min(1, Math.max(0, effectsVolumeRaw)) : 0.9,
       theme,
       sound_effects: audio.sound_effects !== false,
     },

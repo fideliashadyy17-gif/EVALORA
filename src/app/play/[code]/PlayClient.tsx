@@ -11,6 +11,7 @@ import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
+import { LiveAudioPlayer } from "@/lib/liveAudio";
 
 interface SubmittedAnswer {
   submitted: true;
@@ -64,7 +65,8 @@ export function PlayClient({ code }: { code: string }) {
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [localSubmission, setLocalSubmission] = useState<LocalSubmission | null>(null);
   const [connection, setConnection] = useState<"connecting" | "online" | "reconnecting">("connecting");
-  const [localSound, setLocalSound] = useState(true);
+  const [localSound, setLocalSound] = useState(false);
+  const [audioUnlocked, setAudioUnlocked] = useState(false);
   const [now, setNow] = useState(Date.now());
   // Once the participant has joined, the live question is an assessment surface:
   // copy, cut, paste and the context menu are cancelled and the text is not
@@ -73,7 +75,15 @@ export function PlayClient({ code }: { code: string }) {
   // the participant can paste a code or name.
   useAssessmentLockdown(Boolean(identity));
   const offsetRef = useRef(0);
-  const audioRef = useRef<AudioContext | null>(null);
+  const audioRef = useRef<LiveAudioPlayer | null>(null);
+  const feedbackEvent = useRef<string | null>(null);
+  audioRef.current ??= new LiveAudioPlayer();
+
+  useEffect(() => {
+    setLocalSound(localStorage.getItem(`evalora-live-sound-${code}`) === "on");
+  }, [code]);
+
+  useEffect(() => () => audioRef.current?.dispose(), []);
 
   useEffect(() => {
     try {
@@ -173,27 +183,41 @@ export function PlayClient({ code }: { code: string }) {
     }
   }
 
-  function playSubmittedTone() {
-    if (!localSound) return;
-    try {
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioRef.current ??= new AudioCtor();
-      const ctx = audioRef.current;
-      if (ctx.state === "suspended") void ctx.resume();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.09);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.24);
-    } catch {
-      // Local feedback sound is optional; submission never depends on it.
+  async function toggleLocalSound() {
+    const player = audioRef.current;
+    if (!player) return;
+    if (!audioUnlocked) {
+      const unlocked = await player.unlock();
+      if (!unlocked) return;
+      setAudioUnlocked(true);
+      setLocalSound(true);
+      localStorage.setItem(`evalora-live-sound-${code}`, "on");
+      void player.preload(["answer-submitted", "answer-reveal", "answer-correct", "answer-try-again"]);
+      return;
     }
+    setLocalSound((enabled) => {
+      const next = !enabled;
+      localStorage.setItem(`evalora-live-sound-${code}`, next ? "on" : "off");
+      player.setVolumes(next ? 1 : 0, 0, next ? 0.9 : 0);
+      return next;
+    });
   }
+
+  function playSubmittedTone() {
+    if (localSound && audioUnlocked) void audioRef.current?.play("answer-submitted");
+  }
+
+  useEffect(() => {
+    const answer = state?.my_answer;
+    const questionId = state?.question?.quiz_question_id;
+    if (!localSound || !audioUnlocked || state?.session.phase !== "answer_reveal" || !questionId || !answer) return;
+    const key = `${questionId}:${answer.is_correct}`;
+    if (feedbackEvent.current === key) return;
+    feedbackEvent.current = key;
+    if (answer.is_correct === true) void audioRef.current?.play("answer-correct");
+    else if (answer.is_correct === false) void audioRef.current?.play("answer-try-again");
+    else void audioRef.current?.play("answer-reveal");
+  }, [state, localSound, audioUnlocked]);
 
   async function postAnswer(payload: Record<string, unknown>) {
     if (!identity || !state?.question) throw new Error("No active question");
@@ -373,11 +397,11 @@ export function PlayClient({ code }: { code: string }) {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setLocalSound((v) => !v)}
+            onClick={toggleLocalSound}
             className="rounded-full border border-evergreen-900/15 bg-white px-3 py-1.5 text-sm"
-            aria-label={localSound ? "Turn local feedback sound off" : "Turn local feedback sound on"}
+            aria-label={!audioUnlocked ? "Enable answer sounds" : localSound ? "Turn answer sounds off" : "Turn answer sounds on"}
           >
-            {localSound ? "🔊" : "🔇"}
+            {!audioUnlocked ? (localSound ? "▶ Tap to enable sound" : "🔇 Sound off") : localSound ? "🔊 Sound on" : "🔇 Sound off"}
           </button>
           {remaining !== null && session.status === "live" && session.phase === "question" && (
             <Badge tone={remaining <= 5 ? "red" : "gold"} className="px-3 py-1 text-base font-bold tabular-nums">

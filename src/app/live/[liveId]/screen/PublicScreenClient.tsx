@@ -8,6 +8,8 @@ import { mmss } from "@/lib/utils";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
+import { LiveAudioPlayer } from "@/lib/liveAudio";
+import type { LiveAudioSettings } from "@/lib/live";
 
 interface ScreenState {
   server_now: string;
@@ -26,21 +28,15 @@ interface ScreenState {
   joined: number;
   answered_current: number;
   leaderboard: { display_name: string; avatar_key: string; score: number }[] | null;
-  audio: { enabled: boolean; volume: number; theme: "evergreen" | "focus" | "celebration" | "off"; sound_effects: boolean };
+  audio: LiveAudioSettings;
   presentation: { animations_enabled: boolean; show_join_code_on_screen: boolean };
 }
-
-const THEME_NOTES: Record<string, number[]> = {
-  evergreen: [261.63, 329.63, 392.0, 523.25, 392.0, 329.63],
-  focus: [220.0, 261.63, 329.63, 392.0],
-  celebration: [392.0, 523.25, 659.25, 783.99, 659.25, 523.25],
-};
 
 /**
  * Dedicated Public Live Screen. It has no organizer data and renders
  * only the scoped payload authorized by the signed display token.
- * Generated WebAudio tones/music are original, require an explicit
- * operator click, and event keys prevent repeat playback on reconnect.
+ * Original buffered EVALORA audio requires an explicit operator gesture;
+ * event keys prevent repeat playback on reconnect.
  */
 export function PublicScreenClient({ liveId, token }: { liveId: string; token: string }) {
   const [data, setData] = useState<ScreenState | null>(null);
@@ -54,9 +50,10 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   // menu are cancelled, and the displayed text is not selectable.
   useAssessmentLockdown(true);
   const offset = useRef(0);
-  const audioContext = useRef<AudioContext | null>(null);
+  const audioPlayer = useRef<LiveAudioPlayer | null>(null);
   const playedEvents = useRef(new Set<string>());
-  const musicIndex = useRef(0);
+  const lastRankOrder = useRef<string | null>(null);
+  audioPlayer.current ??= new LiveAudioPlayer();
 
   const load = useCallback(async () => {
     if (!token) {
@@ -96,6 +93,11 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
     };
   }, [load]);
 
+  useEffect(() => () => {
+    audioPlayer.current?.dispose();
+    audioPlayer.current = null;
+  }, []);
+
   useEffect(() => {
     if (!data?.join_code) {
       setQr("");
@@ -106,74 +108,68 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
       .catch(() => setQr(""));
   }, [data?.join_code]);
 
-  const playTone = useCallback(
-    (frequency: number, delay = 0, duration = 0.28, volumeScale = 0.07, type: OscillatorType = "sine") => {
-      if (!soundUnlocked || !audioContext.current || !data) return;
-      try {
-        const ctx = audioContext.current;
-        const start = ctx.currentTime + delay;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(frequency, start);
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, data.audio.volume * volumeScale), start + 0.025);
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + duration + 0.03);
-      } catch {
-        // Presentation audio must never break the visual screen.
-      }
-    },
-    [data, soundUnlocked],
-  );
-
-  // Original generated background music, only on this projection device.
   useEffect(() => {
-    if (!soundUnlocked || !data?.audio.enabled || data.audio.theme === "off" || !["waiting", "countdown", "question", "leaderboard", "podium"].includes(data.phase)) return;
-    const notes = THEME_NOTES[data.audio.theme] ?? THEME_NOTES.evergreen;
-    const intervalMs = data.audio.theme === "focus" ? 720 : data.audio.theme === "celebration" ? 440 : 540;
-    const timer = setInterval(() => {
-      const note = notes[musicIndex.current % notes.length];
-      playTone(note, 0, 0.42, 0.038, "triangle");
-      if (musicIndex.current % 4 === 0) playTone(note / 2, 0, 0.55, 0.025, "sine");
-      musicIndex.current += 1;
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [data?.audio.enabled, data?.audio.theme, data?.phase, playTone, soundUnlocked]);
+    if (!soundUnlocked || !data) return;
+    const audio = data.audio;
+    audioPlayer.current?.setVolumes(audio.muted ? 0 : audio.master_volume, audio.enabled ? audio.music_volume : 0, audio.sound_effects ? audio.effects_volume : 0);
+  }, [data, soundUnlocked]);
+
+  // Music is deliberately confined to the public screen to avoid the organizer
+  // and projector accidentally doubling the same room soundtrack.
+  useEffect(() => {
+    if (!soundUnlocked || !data || data.audio.muted || !data.audio.enabled) {
+      void audioPlayer.current?.setMusic(null);
+      return;
+    }
+    const track = data.phase === "waiting" || data.phase === "countdown" ? "lobby-loop"
+      : data.phase === "question" ? "question-loop" : null;
+    void audioPlayer.current?.setMusic(track);
+  }, [data, soundUnlocked]);
 
   const serverNow = now + offset.current;
   const startsAt = data?.question_started_at ? new Date(data.question_started_at).getTime() : null;
   const startsIn = startsAt && serverNow < startsAt ? Math.ceil((startsAt - serverNow) / 1000) : null;
 
-  // One-shot, state-synchronized sound effects.
+  // Audio cues follow server-reported phases and the server deadline clock.
+  // Event keys make reconnect/poll duplicates harmless.
   useEffect(() => {
-    if (!data || !soundUnlocked || !data.audio.sound_effects) return;
-    const once = (key: string, fn: () => void) => {
+    if (!data || !soundUnlocked || data.audio.muted || !data.audio.sound_effects) return;
+    const once = (key: string, name: Parameters<LiveAudioPlayer["play"]>[0], offsetSeconds = 0) => {
       if (playedEvents.current.has(key)) return;
       playedEvents.current.add(key);
-      fn();
+      void audioPlayer.current?.play(name, "effects", offsetSeconds);
     };
     const q = data.progress.index;
-    if (data.phase === "question") once(`question:${q}`, () => { playTone(659.25, 0, 0.2, 0.08); playTone(880, 0.11, 0.28, 0.08); });
-    if (data.phase === "time_expired") once(`expired:${q}`, () => playTone(196, 0, 0.5, 0.09, "sawtooth"));
-    if (data.phase === "answer_reveal") once(`reveal:${q}`, () => { playTone(523.25, 0, 0.22, 0.08); playTone(783.99, 0.13, 0.35, 0.08); });
-    if (data.phase === "leaderboard") once(`board:${q}:${data.joined}`, () => playTone(587.33, 0, 0.3, 0.07));
-    if (data.phase === "podium") once("podium", () => { [392, 523.25, 659.25, 783.99].forEach((f, i) => playTone(f, i * 0.13, 0.38, 0.09, "triangle")); });
-    if (data.phase === "countdown" && startsIn !== null && startsIn <= 3 && startsIn > 0) {
-      once(`countdown:${q}:${startsIn}`, () => playTone(startsIn === 1 ? 880 : 587.33, 0, 0.16, 0.08));
+    if (data.phase === "countdown") once(`start:${liveId}`, "game-start");
+    if (data.phase === "question") once(`question:${q}`, q === 0 ? "question-transition" : "question-transition");
+    if (data.phase === "answer_reveal") once(`reveal:${q}`, "answer-reveal");
+    if (data.phase === "leaderboard") {
+      once(`board:${q}`, "leaderboard");
+      const order = (data.leaderboard ?? []).map((person) => person.display_name).join("|");
+      if (lastRankOrder.current !== null && order && order !== lastRankOrder.current) {
+        once(`rank-shift:${q}:${order}`, "rank-shift");
+      }
+      lastRankOrder.current = order;
     }
-  }, [data, playTone, soundUnlocked, startsIn]);
+    if (data.phase === "podium") once(`podium:${liveId}`, "podium-victory");
+    if (data.phase === "completed" || data.status === "ended" && data.phase !== "podium") once(`complete:${liveId}`, "game-complete");
+
+    if (["question", "time_expired"].includes(data.phase) && data.question_deadline_at) {
+      const deadline = new Date(data.question_deadline_at).getTime();
+      const secondsLeft = Math.max(0, (deadline - serverNow) / 1000);
+      if (secondsLeft <= 10 && secondsLeft > 0) {
+        once(`suspense:${q}`, "countdown-suspense", Math.max(0, 10 - secondsLeft));
+      }
+      if (secondsLeft <= 0) once(`expired:${q}`, "time-up");
+    }
+  }, [data, liveId, serverNow, soundUnlocked]);
 
   async function enablePresentation() {
-    try {
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioContext.current ??= new AudioCtor();
-      await audioContext.current.resume();
+    const player = audioPlayer.current;
+    const unlocked = player ? await player.unlock() : false;
+    if (unlocked) {
       setSoundUnlocked(true);
-    } catch {
-      setSoundUnlocked(false);
+      void player?.preload(["lobby-loop", "question-loop", "game-start", "question-transition", "countdown-suspense", "time-up", "answer-reveal", "leaderboard", "podium-victory", "game-complete"]);
     }
     try {
       if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
