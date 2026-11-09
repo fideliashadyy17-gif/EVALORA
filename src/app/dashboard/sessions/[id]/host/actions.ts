@@ -311,6 +311,9 @@ export interface LiveSettingsPatch {
   audio?: {
     enabled?: boolean;
     volume?: number;
+    music_volume?: number;
+    effects_volume?: number;
+    muted?: boolean;
     theme?: "evergreen" | "focus" | "celebration" | "off";
     sound_effects?: boolean;
   };
@@ -335,8 +338,10 @@ export async function hostUpdateLiveSettings(sessionId: string, patch: LiveSetti
   if (patch.audio) {
     if (typeof patch.audio.enabled === "boolean") audio.enabled = patch.audio.enabled;
     if (typeof patch.audio.sound_effects === "boolean") audio.sound_effects = patch.audio.sound_effects;
-    if (typeof patch.audio.volume === "number" && Number.isFinite(patch.audio.volume)) {
-      audio.volume = Math.min(1, Math.max(0, patch.audio.volume));
+    if (typeof patch.audio.muted === "boolean") audio.muted = patch.audio.muted;
+    for (const key of ["volume", "music_volume", "effects_volume"] as const) {
+      const value = patch.audio[key];
+      if (typeof value === "number" && Number.isFinite(value)) audio[key] = Math.min(1, Math.max(0, value));
     }
     if (patch.audio.theme && ["evergreen", "focus", "celebration", "off"].includes(patch.audio.theme)) {
       audio.theme = patch.audio.theme;

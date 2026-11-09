@@ -47,7 +47,13 @@ Controls include admission open/close, approval requirement, participant
 approve/reject/block/restore, explicit start, pause with deadline-preserving
 resume, answer reveal, intermediate leaderboard, next question, end, final
 podium, public-screen enable/rotate/revoke, animation controls, join-code
-visibility while waiting, music/sound-effect enablement, theme and volume.
+visibility while waiting, music/sound-effect enablement, theme and volume. The host can also set a
+master level, separate music and effects levels, mute all, or restore sound
+defaults. Press **Save volumes** after adjusting the sliders. These settings are
+stored with the session (not as personal device preferences), and apply to the
+public projection screen only; channel levels are relative to the master.
+Older sessions retain their previous master level with both channels at full.
+The current generated tones are placeholders, not a mastered sound library.
 
 Every host mutation is a server action that re-checks the signed-in user's
 creator/host authorization for the session's organization. Host monitoring data

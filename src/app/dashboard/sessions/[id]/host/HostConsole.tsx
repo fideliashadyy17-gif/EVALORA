@@ -3,7 +3,7 @@
 import { ParticipantAvatar } from "@/components/ParticipantAvatar";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
-import { parseLiveSettings } from "@/lib/live";
+import { defaultLiveAudioSettings, parseLiveSettings } from "@/lib/live";
 import { Badge, Button, Card } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
@@ -119,7 +119,6 @@ export function HostConsole({
   const [actionError, setActionError] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [volume, setVolume] = useState(() => Math.round(parseLiveSettings(initial.settings).audio.volume * 100));
   const supabaseRef = useRef(createClient());
   const offsetRef = useRef(0);
   const displayVersionRef = useRef(Number(initial.display_token_version ?? 1));
@@ -493,7 +492,7 @@ export function HostConsole({
               label="Background music"
               checked={settings.audio.enabled && settings.audio.theme !== "off"}
               disabled={busy}
-              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { enabled: v } }))}
+              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { enabled: v, ...(v && settings.audio.theme === "off" ? { theme: "evergreen" as const } : {}) } }))}
             />
             <Toggle
               label="Sound effects"
@@ -515,25 +514,43 @@ export function HostConsole({
                 <option value="off">Off</option>
               </select>
             </label>
-            <label className="block">
-              <span className="text-sm font-semibold text-evergreen-950">Volume: {volume}%</span>
-              <input
-                type="range"
-                min="0"
-                max="100"
-                value={volume}
-                disabled={busy}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                onMouseUp={() => act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }))}
-                onTouchEnd={() => act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }))}
-                onBlur={() => {
-                  if (Math.abs(settings.audio.volume - volume / 100) > 0.001) {
-                    act(() => hostUpdateLiveSettings(session.id, { audio: { volume: volume / 100 } }));
-                  }
-                }}
-                className="mt-3 w-full accent-evergreen-700"
-              />
-            </label>
+            <Toggle
+              label="Mute all sounds"
+              checked={settings.audio.muted}
+              disabled={busy}
+              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { muted: v } }))}
+            />
+            <form
+              key={`${settings.audio.volume}:${settings.audio.music_volume}:${settings.audio.effects_volume}`}
+              className="space-y-4 md:col-span-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const values = new FormData(event.currentTarget);
+                act(() => hostUpdateLiveSettings(session.id, { audio: {
+                  volume: Number(values.get("volume")) / 100,
+                  music_volume: Number(values.get("music_volume")) / 100,
+                  effects_volume: Number(values.get("effects_volume")) / 100,
+                } }));
+              }}
+            >
+              <div className="grid gap-4 md:grid-cols-3">
+                {([
+                  ["volume", "Master volume", settings.audio.volume],
+                  ["music_volume", "Music volume", settings.audio.music_volume],
+                  ["effects_volume", "Effects volume", settings.audio.effects_volume],
+                ] as const).map(([name, label, value]) => (
+                  <label className="block" key={name}>
+                    <span className="text-sm font-semibold text-evergreen-950">{label}</span>
+                    <input type="range" name={name} min="0" max="100" defaultValue={Math.round(value * 100)} disabled={busy} className="mt-3 w-full accent-evergreen-700" />
+                  </label>
+                ))}
+              </div>
+              <div className="flex flex-wrap gap-3">
+                <button type="submit" disabled={busy} className="rounded-xl bg-evergreen-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Save volumes</button>
+                <button type="button" disabled={busy} onClick={(event) => { event.currentTarget.form?.reset(); act(() => hostUpdateLiveSettings(session.id, { audio: defaultLiveAudioSettings() })); }} className="rounded-xl border border-evergreen-900/20 px-4 py-2 text-sm font-bold text-evergreen-950 disabled:opacity-50">Restore sound defaults</button>
+              </div>
+              <p className="text-sm text-ink-soft">These settings are saved with this live session and control the public screen. Music and effects volumes are relative to the master volume.</p>
+            </form>
             <Toggle
               label="Public-screen animations"
               checked={settings.presentation.animations_enabled}

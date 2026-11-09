@@ -21,7 +21,10 @@ export interface LiveSessionTiming {
 
 export interface LiveAudioSettings {
   enabled: boolean;
-  volume: number; // 0..1
+  volume: number; // master, 0..1
+  music_volume: number; // 0..1, relative to master
+  effects_volume: number; // 0..1, relative to master
+  muted: boolean;
   theme: "evergreen" | "focus" | "celebration" | "off";
   sound_effects: boolean;
 }
@@ -39,6 +42,10 @@ export interface ParsedLiveSettings {
   presentation: LivePresentationSettings;
 }
 
+export function defaultLiveAudioSettings(): LiveAudioSettings {
+  return { enabled: true, volume: 0.6, music_volume: 1, effects_volume: 1, muted: false, theme: "evergreen", sound_effects: true };
+}
+
 export function defaultLiveSessionSettings(
   maxParticipants: number,
   opts: { showLeaderboard?: boolean } = {},
@@ -47,12 +54,7 @@ export function defaultLiveSessionSettings(
     show_leaderboard: Boolean(opts.showLeaderboard),
     projector_enabled: true,
     max_participants: maxParticipants,
-    audio: {
-      enabled: true,
-      volume: 0.6,
-      theme: "evergreen",
-      sound_effects: true,
-    },
+    audio: defaultLiveAudioSettings(),
     presentation: {
       animations_enabled: true,
       show_join_code_on_screen: true,
@@ -69,7 +71,10 @@ export function parseLiveSettings(raw: unknown): ParsedLiveSettings {
   const theme = ["evergreen", "focus", "celebration", "off"].includes(String(audio.theme))
     ? (String(audio.theme) as LiveAudioSettings["theme"])
     : "evergreen";
-  const volumeRaw = Number(audio.volume ?? 0.6);
+  const volume = (value: unknown, fallback: number) => {
+    const raw = Number(value ?? fallback);
+    return Number.isFinite(raw) ? Math.min(1, Math.max(0, raw)) : fallback;
+  };
   return {
     // Legacy sessions defaulted show_leaderboard to true. New sessions
     // explicitly write false unless the organizer authorizes a reveal.
@@ -78,7 +83,10 @@ export function parseLiveSettings(raw: unknown): ParsedLiveSettings {
     max_participants: Math.max(1, Number(settings.max_participants ?? 200) || 200),
     audio: {
       enabled: audio.enabled !== false,
-      volume: Number.isFinite(volumeRaw) ? Math.min(1, Math.max(0, volumeRaw)) : 0.6,
+      volume: volume(audio.volume, 0.6),
+      music_volume: volume(audio.music_volume, 1),
+      effects_volume: volume(audio.effects_volume, 1),
+      muted: audio.muted === true,
       theme,
       sound_effects: audio.sound_effects !== false,
     },

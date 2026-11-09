@@ -132,6 +132,13 @@ ok("new sessions do not publish leaderboard by accident", parsedDefaults.show_le
 ok("new sessions enable secure projector by default", parsedDefaults.projector_enabled === true);
 ok("audio volume is clamped", live.parseLiveSettings({ audio: { volume: 9 } }).audio.volume === 1);
 ok("unknown audio theme falls back", live.parseLiveSettings({ audio: { theme: "unknown" } }).audio.theme === "evergreen");
+const legacyAudio = live.parseLiveSettings({ audio: { volume: 0.4 } }).audio;
+ok("legacy audio keeps its master and defaults independent channels to full", legacyAudio.volume === 0.4 && legacyAudio.music_volume === 1 && legacyAudio.effects_volume === 1 && !legacyAudio.muted);
+const mixedAudio = live.parseLiveSettings({ audio: { volume: 0.5, music_volume: -1, effects_volume: 9, muted: true, sound_effects: false } }).audio;
+ok("independent channels are clamped and mute is preserved", mixedAudio.volume === 0.5 && mixedAudio.music_volume === 0 && mixedAudio.effects_volume === 1 && mixedAudio.muted && !mixedAudio.sound_effects);
+const invalidAudio = live.parseLiveSettings({ audio: { music_volume: "bad", effects_volume: "bad" } }).audio;
+ok("invalid independent volumes use safe defaults", invalidAudio.music_volume === 1 && invalidAudio.effects_volume === 1);
+ok("new session audio defaults match restore defaults", JSON.stringify(parsedDefaults.audio) === JSON.stringify(live.defaultLiveAudioSettings()));
 ok("fresh heartbeat is connected", live.isParticipantConnected(new Date(now.getTime() - 5000).toISOString(), now.getTime()));
 ok("stale heartbeat is disconnected", !live.isParticipantConnected(new Date(now.getTime() - 20000).toISOString(), now.getTime()));
 

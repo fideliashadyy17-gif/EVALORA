@@ -5,6 +5,7 @@ import { ParticipantAvatar } from "@/components/ParticipantAvatar";
 import { RichContent } from "@/components/RichContent";
 import type { PublicQuestion } from "@/components/QuestionRunner";
 import { mmss } from "@/lib/utils";
+import type { LiveAudioSettings } from "@/lib/live";
 import QRCode from "qrcode";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
@@ -26,7 +27,7 @@ interface ScreenState {
   joined: number;
   answered_current: number;
   leaderboard: { display_name: string; avatar_key: string; score: number }[] | null;
-  audio: { enabled: boolean; volume: number; theme: "evergreen" | "focus" | "celebration" | "off"; sound_effects: boolean };
+  audio: LiveAudioSettings;
   presentation: { animations_enabled: boolean; show_join_code_on_screen: boolean };
 }
 
@@ -108,10 +109,13 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
       .catch(() => setQr(""));
   }, [data?.join_code]);
 
-  const audioVolume = data?.audio.volume;
+  const audioVolume = data?.audio.muted ? 0 : data?.audio.volume;
+  const musicVolume = data?.audio.music_volume ?? 1;
+  const effectsVolume = data?.audio.effects_volume ?? 1;
   const playTone = useCallback(
-    (frequency: number, delay = 0, duration = 0.28, volumeScale = 0.07, type: OscillatorType = "sine") => {
-      if (!soundUnlocked || !audioContext.current || audioVolume === undefined || audioVolume <= 0) return;
+    (frequency: number, delay = 0, duration = 0.28, volumeScale = 0.07, type: OscillatorType = "sine", channel: "music" | "effects" = "effects") => {
+      const channelVolume = channel === "music" ? musicVolume : effectsVolume;
+      if (!soundUnlocked || !audioContext.current || audioVolume === undefined || audioVolume <= 0 || channelVolume <= 0) return;
       try {
         const ctx = audioContext.current;
         const start = ctx.currentTime + delay;
@@ -120,7 +124,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
         osc.type = type;
         osc.frequency.setValueAtTime(frequency, start);
         gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, audioVolume * volumeScale), start + 0.025);
+        gain.gain.exponentialRampToValueAtTime(Math.max(0.0002, audioVolume * channelVolume * volumeScale), start + 0.025);
         gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
         osc.connect(gain).connect(ctx.destination);
         osc.start(start);
@@ -129,7 +133,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
         // Presentation audio must never break the visual screen.
       }
     },
-    [audioVolume, soundUnlocked],
+    [audioVolume, musicVolume, effectsVolume, soundUnlocked],
   );
 
   // Original generated background music, only on this projection device.
@@ -139,8 +143,8 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
     const intervalMs = data.audio.theme === "focus" ? 720 : data.audio.theme === "celebration" ? 440 : 540;
     const timer = setInterval(() => {
       const note = notes[musicIndex.current % notes.length];
-      playTone(note, 0, 0.42, 0.038, "triangle");
-      if (musicIndex.current % 4 === 0) playTone(note / 2, 0, 0.55, 0.025, "sine");
+      playTone(note, 0, 0.42, 0.038, "triangle", "music");
+      if (musicIndex.current % 4 === 0) playTone(note / 2, 0, 0.55, 0.025, "sine", "music");
       musicIndex.current += 1;
     }, intervalMs);
     return () => clearInterval(timer);
