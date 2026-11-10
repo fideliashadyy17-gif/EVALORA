@@ -99,6 +99,8 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      attempt_number: Number(attempt.attempt_number ?? 1),
+      previous_attempt_id: (attempt.previous_attempt_id as string | null | undefined) ?? null,
       started_at: attempt.started_at,
       deadline: deadlineIso,
       flagged: attempt.flagged ?? [],

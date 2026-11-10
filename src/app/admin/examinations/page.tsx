@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select } from "@/components/ui";
 import { registerClassForExam } from "../actions/academics";
 import { enterOrgWorkspace } from "../actions/orgs";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -42,15 +42,19 @@ export default async function AdminExaminations({
         title="Examination management"
         subtitle="Create and run formal examinations in any workspace, register whole classes as candidates, and control exam windows platform-wide."
         action={
-          <form action={enterOrgWorkspace} className="flex items-end gap-2">
-            <input type="hidden" name="next" value="/dashboard/exams/new" />
-            <Select name="organization_id" className="w-52" aria-label="Organization for new examination">
-              {(orgList ?? []).map((o) => (
-                <option key={o.id} value={o.id}>{o.name}</option>
-              ))}
-            </Select>
-            <Button type="submit" variant="gold">+ Create examination</Button>
-          </form>
+          <div className="flex flex-wrap items-end gap-2">
+            <ButtonLink href="/admin/examinations/retakes" variant="outline">Retake requests</ButtonLink>
+            <ButtonLink href="/admin/examinations/links" variant="outline">Link expiration</ButtonLink>
+            <form action={enterOrgWorkspace} className="flex items-end gap-2">
+              <input type="hidden" name="next" value="/dashboard/exams/new" />
+              <Select name="organization_id" className="w-52" aria-label="Organization for new examination">
+                {(orgList ?? []).map((o) => (
+                  <option key={o.id} value={o.id}>{o.name}</option>
+                ))}
+              </Select>
+              <Button type="submit" variant="gold">+ Create examination</Button>
+            </form>
+          </div>
         }
       />
       {sp.ok === "candidates_added" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Class registered — candidate access codes are ready in the workspace.</p>}

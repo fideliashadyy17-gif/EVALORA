@@ -18,12 +18,13 @@ import { Track } from "livekit-client";
 import { Flag, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
+import { RetakePanel } from "./RetakePanel";
 
 interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
+  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
   questions: (PublicQuestion & {
     saved_answer: Record<string, unknown> | null;
     result: {
@@ -563,6 +564,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <h1 className="mt-3 font-display text-3xl font-semibold text-evergreen-950">
                 {attempt.status === "auto_submitted" ? "Time expired — paper submitted automatically" : "Your paper has been submitted"}
               </h1>
+              {typeof attempt.attempt_number === "number" && (
+                <p className="mt-2 text-sm text-ink-soft" data-testid="attempt-number">
+                  {attempt.attempt_number === 1 ? "First attempt" : attempt.attempt_number === 2 ? "Second attempt" : `Attempt ${attempt.attempt_number}`}
+                  {" · "}this attempt is permanently locked
+                </p>
+              )}
               {attempt.track && (
                 <p className="mt-3 text-sm text-ink-soft" data-testid="exam-track">
                   Track: <strong className="text-evergreen-900">{attempt.track === "AB" ? "Calculus AB" : "Calculus BC"}</strong>
@@ -584,6 +591,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               ) : (
                 <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
               )}
+              <RetakePanel attemptId={attemptId} token={token} submitted={submitted} />
             </Card>
           ) : null}
 

@@ -1,6 +1,7 @@
-import { Badge, Button, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { parseExamAccessSettings } from "@/lib/exam-access";
+import { examLinkLifecycle } from "@/lib/examLink";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -101,12 +102,22 @@ export default async function ExamInvitationsPage({
                 ends_at: selected.ends_at,
                 shared_link_enabled: selected.shared_link_enabled,
                 invite_expires_at: selected.invite_expires_at,
+                invite_activates_at: (selected as unknown as { invite_activates_at?: string | null }).invite_activates_at ?? null,
+                invite_no_expiry: (selected as unknown as { invite_no_expiry?: boolean | null }).invite_no_expiry ?? false,
               }}
               settings={selected.settings}
             />
           </div>
 
-          <Section title="Access controls" hint="These settings are enforced server-side on the shared-link page and admission API. Regenerating a link or code invalidates the previous value while preserving exams, candidates, attempts, answers, scores and results.">
+          <Section title="Access controls" hint="These settings are enforced server-side on the shared-link page and admission API. Regenerating a link or code invalidates the previous value while preserving exams, candidates, attempts, answers, scores and results. Expiration presets, disable/reactivate and the full lifecycle live on the Link expiration page.">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <Badge tone={examLinkLifecycle(selected).status === "active" ? "green" : "gray"}>
+                Link {examLinkLifecycle(selected).label}
+              </Badge>
+              <ButtonLink href="/admin/examinations/links" variant="outline" className="px-3 py-2 text-xs">
+                Edit link expiration, disable or reactivate
+              </ButtonLink>
+            </div>
             <Card className="p-5">
               <div className="grid gap-4 lg:grid-cols-3">
                 <form action={updateExamInvitation} className="space-y-3">
@@ -128,7 +139,7 @@ export default async function ExamInvitationsPage({
                       <option value="1">Enabled</option><option value="0">Disabled</option>
                     </Select>
                   </Field>
-                  <Field label="Link expiry (optional)">
+                  <Field label="Link expiry (UTC)" hint="Entered in UTC. Leave empty to keep the current expiration unchanged; use the Link expiration page for 24 h / 7 d / 30 d presets, scheduled activation and no-expiry policy exemptions.">
                     <Input name="invite_expires_at" type="datetime-local" defaultValue={selected.invite_expires_at ? new Date(selected.invite_expires_at).toISOString().slice(0, 16) : ""} />
                   </Field>
                   <Field label="Candidate access mode" hint="Shared link needs no account; registered students only requires a verified student record.">
@@ -158,7 +169,7 @@ export default async function ExamInvitationsPage({
           </Section>
 
           <Section title="All examination invitations" hint="Codes and links are shown to organizers only; candidates never receive private rosters or stored hashes.">
-            <Table head={["Examination", "Organization", "Status", "Access code", "Persisted link", "Link", "Expiry"]}>
+            <Table head={["Examination", "Organization", "Status", "Access code", "Persisted link", "Link status", "Expiry"]}>
               {exams.map((e) => (
                 <tr key={e.id}>
                   <td><a className="text-evergreen-700 underline" href={`/admin/examinations/invitations?exam=${e.id}`}>{e.title}</a></td>
@@ -166,7 +177,9 @@ export default async function ExamInvitationsPage({
                   <td><StatusBadge status={e.status} /></td>
                   <td className="font-mono text-xs">{e.access_code}</td>
                   <td className="font-mono text-xs">{e.access_link || `/exam/join/${e.invite_token}`}</td>
-                  <td>{e.shared_link_enabled ? <Badge tone="green">Enabled</Badge> : <Badge tone="gray">Disabled</Badge>}</td>
+                  <td>
+                    <Badge tone={examLinkLifecycle(e).status === "active" ? "green" : "gray"}>{examLinkLifecycle(e).label}</Badge>
+                  </td>
                   <td>{e.invite_expires_at ? new Date(e.invite_expires_at).toLocaleString() : "—"}</td>
                 </tr>
               ))}

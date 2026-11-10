@@ -361,8 +361,19 @@ export async function updateExamInvitation(formData: FormData) {
   if (action === "new_link") patch.invite_token = crypto.randomUUID();
   if (action === "settings") {
     patch.shared_link_enabled = val(formData, "shared_link_enabled", 5) === "1";
+    patch.invite_disabled_at = patch.shared_link_enabled ? null : new Date().toISOString();
+    // An empty field never means "permanent" any more: expiry is only changed
+    // when a value is supplied, or explicitly cleared with the dedicated flag.
     const expires = val(formData, "invite_expires_at", 40);
-    patch.invite_expires_at = expires ? new Date(expires).toISOString() : null;
+    if (expires) {
+      patch.invite_expires_at = new Date(expires).toISOString();
+      patch.invite_expiry_policy = "custom";
+      patch.invite_no_expiry = false;
+    } else if (formData.get("clear_invite_expires_at") === "on") {
+      patch.invite_expires_at = null;
+    }
+    patch.invite_last_edited_by = ctx.user.id;
+    patch.invite_last_edited_at = new Date().toISOString();
     const settings = { ...((exam.settings ?? {}) as Record<string, unknown>) };
     settings.attempt_policy = val(formData, "attempt_policy", 30) === "read_only_reentry"
       ? "read_only_reentry"
@@ -387,6 +398,7 @@ export async function updateExamInvitation(formData: FormData) {
   await audit(ctx, `exam.invitation.${action}`, "exams", exam.id, exam.organization_id, {
     action,
     access_link: exam.access_link ?? null,
+    invite_expires_at: patch.invite_expires_at ?? null,
   });
   revalidatePath(INVITATIONS);
   go(invitationBack, "updated");
