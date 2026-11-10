@@ -20,6 +20,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/examSaveQueue')return queue;
  if(req==='./ExamMessenger')return {ExamMessenger:()=>null};
  if(req==='./RetakePanel')return {RetakePanel:()=>null};
+ if(req==='./HintPanel')return {HintPanel:()=>null};
  if(req==='@/components/ui')return {Button:p=>React.createElement('button',p),Card:p=>React.createElement('div',p),Badge:p=>React.createElement('span',p)};
  if(req==='@/lib/utils')return {cn:(...v)=>v.filter(Boolean).join(' '),mmss:()=> '10:00'};
  if(req==='@livekit/components-styles')return {};

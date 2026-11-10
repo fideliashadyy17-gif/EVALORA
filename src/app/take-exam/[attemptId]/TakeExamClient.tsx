@@ -19,6 +19,7 @@ import { Flag, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
+import { HintPanel, type CandidateHint } from "./HintPanel";
 
 interface ExamState {
   server_now: string;
@@ -26,6 +27,8 @@ interface ExamState {
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
   questions: (PublicQuestion & {
+    /** Published pedagogical guidance, delivered with the paper. Never an answer. */
+    hints?: CandidateHint[] | null;
     saved_answer: Record<string, unknown> | null;
     result: {
       is_correct: boolean | null;
@@ -600,6 +603,17 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">Question {index + 1} of {questions.length}</Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
+                {/* Inline, keyed by question: the hint can never belong to the
+                    previous question, and opening it touches no answer, timer,
+                    save queue or submission state. */}
+                <HintPanel
+                  key={`hint-${current.question_id}`}
+                  attemptId={attemptId}
+                  token={token}
+                  questionId={current.question_id}
+                  initialHints={current.hints ?? null}
+                  disabled={submitted}
+                />
                 <button
                   disabled={submitted || submitting}
                   onClick={() => {

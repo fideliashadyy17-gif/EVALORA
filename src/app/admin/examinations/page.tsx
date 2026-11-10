@@ -45,6 +45,7 @@ export default async function AdminExaminations({
           <div className="flex flex-wrap items-end gap-2">
             <ButtonLink href="/admin/examinations/retakes" variant="outline">Retake requests</ButtonLink>
             <ButtonLink href="/admin/examinations/links" variant="outline">Link expiration</ButtonLink>
+            <ButtonLink href="/admin/examinations/hints" variant="outline">Question hints</ButtonLink>
             <form action={enterOrgWorkspace} className="flex items-end gap-2">
               <input type="hidden" name="next" value="/dashboard/exams/new" />
               <Select name="organization_id" className="w-52" aria-label="Organization for new examination">
