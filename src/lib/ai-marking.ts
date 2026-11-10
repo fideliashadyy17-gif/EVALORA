@@ -214,7 +214,12 @@ export function parseSuggestions(raw: unknown, request: MarkingRequest): Marking
   return request.criteria.map((c) => byId.get(c.id)!);
 }
 
-async function defaultTransport({ provider, model, apiKey, system, user }: Parameters<MarkingTransport>[0]): Promise<string> {
+/**
+ * The provider boundary itself, exported so other suggestion features (hints)
+ * reuse exactly one HTTP implementation. It returns raw model text and never
+ * invents content when the provider fails.
+ */
+export async function modelJsonTransport({ provider, model, apiKey, system, user }: Parameters<MarkingTransport>[0]): Promise<string> {
   if (provider === "openai") {
     const res = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -280,7 +285,7 @@ export async function suggestCriterionMarks(
   if (!config) throw new AiMarkingError("unconfigured", NOT_CONFIGURED_REASON);
 
   const { system, user } = buildPrompt(request);
-  const transport = options.transport ?? defaultTransport;
+  const transport = options.transport ?? modelJsonTransport;
   const raw = await transport({ provider: config.provider, model: config.model, apiKey: config.apiKey, system, user });
 
   const { createHash } = await import("node:crypto");

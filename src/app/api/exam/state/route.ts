@@ -4,6 +4,7 @@ import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseIntegrityPolicy } from "@/lib/integrity";
+import { loadPublishedHints } from "@/lib/examHintsServer";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -71,6 +72,21 @@ export async function GET(request: Request) {
   if (savedError || !saved) return NextResponse.json({ error: "Saved answers could not be loaded. Reload or contact your invigilator." }, { status: 500, headers });
   const savedByQ = new Map((saved ?? []).map((a) => [a.question_id, a]));
 
+  // Hints ride along with the paper in ONE extra query, so the control below
+  // each question can open instantly. A hint failure degrades to "no hints";
+  // it can never fail the examination payload. Only published guidance text is
+  // attached — never an answer, key or marking scheme.
+  let hintsByQuestion = new Map<string, { level: number; text: string; doc: unknown | null }[]>();
+  try {
+    hintsByQuestion = await loadPublishedHints(
+      admin,
+      { id: exam.id, organization_id: exam.organization_id },
+      rows.map((row) => row.questions.id),
+    );
+  } catch {
+    hintsByQuestion = new Map();
+  }
+
   const submitted = attempt.status !== "in_progress";
   const resultsPublished = Boolean(settings.results_published);
 
@@ -123,6 +139,10 @@ export async function GET(request: Request) {
       const reveal = submitted && resultsPublished ? answerReveal(row) : null;
       return {
         ...pub,
+        // Candidate-safe projection: level + text only. Published hints remain
+        // available on a submitted paper for revision, but the on-demand route
+        // refuses new reads once the attempt is closed.
+        hints: hintsByQuestion.get(row.questions.id) ?? [],
         ...(reveal ? { reveal } : {}),
         saved_answer: s?.answer ?? null,
         result: reveal

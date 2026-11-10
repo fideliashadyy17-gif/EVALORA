@@ -371,6 +371,7 @@ function loadRoutes({ admin, examModule, submission, deadline, db }) {
     "@/lib/examSubmission": { applyDeadlineSubmission: submission.applyDeadlineSubmission },
     "@/lib/examDeadline": deadline,
     "@/lib/supabase/server": { createAdminClient: () => admin },
+    "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
     "@/lib/live": { publicQuestion: (row) => ({ question_id: row.questions.id, quiz_question_id: row.id }), answerReveal: () => null },
     "@/lib/examResults": { buildExamResult: () => null },
     "@/lib/integrity": {
