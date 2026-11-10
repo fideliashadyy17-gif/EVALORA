@@ -35,7 +35,17 @@ interface CandidateRow {
     score: number | null;
     max_score: number | null;
     extension_minutes: number;
+    attempt_number?: number | null;
   }[];
+}
+
+/**
+ * A candidate may now own several attempts (an authorized retake creates a NEW
+ * attempt row). Surfaces always summarise the LATEST attempt, never an
+ * arbitrary row returned by the database.
+ */
+function latestAttempt<T extends { attempt_number?: number | null }>(attempts: T[]): T | undefined {
+  return [...attempts].sort((a, b) => (b.attempt_number ?? 1) - (a.attempt_number ?? 1))[0];
 }
 
 const MESSAGES: Record<string, string> = {
@@ -60,7 +70,7 @@ export default async function ExaminationCandidatesPage({
 
   let query = admin
     .from("exam_candidates")
-    .select("*, exams!inner(id, title, status, organization_id, organizations(name)), exam_attempts(id, status, started_at, submitted_at, score, max_score, extension_minutes)")
+    .select("*, exams!inner(id, title, status, organization_id, organizations(name)), exam_attempts(id, status, started_at, submitted_at, score, max_score, extension_minutes, attempt_number)")
     .order("created_at", { ascending: false })
     .limit(1000);
   if (sp.exam) query = query.eq("exam_id", sp.exam);
@@ -78,10 +88,11 @@ export default async function ExaminationCandidatesPage({
   const csv = toCsv([
     ["Candidate", "Email", "Reference", "Personal access code", "Examination", "Organization", "Candidate status", "Attempt status", "Score", "Extension minutes", "Registered"],
     ...candidates.map((c) => {
-      const attempt = c.exam_attempts[0];
+      const attempt = latestAttempt(c.exam_attempts);
       return [
         c.full_name, c.email ?? "", c.candidate_ref ?? "", c.access_code, c.exams?.title ?? "",
-        c.exams?.organizations?.name ?? "", c.status, attempt?.status ?? "not started",
+        c.exams?.organizations?.name ?? "", c.status,
+        attempt ? `attempt ${attempt.attempt_number ?? 1} · ${attempt.status}` : "not started",
         attempt?.score != null ? `${attempt.score}/${attempt.max_score ?? ""}` : "", attempt?.extension_minutes ?? 0,
         fmtDateTime(c.created_at),
       ];
@@ -130,7 +141,7 @@ export default async function ExaminationCandidatesPage({
       ) : (
         <Table head={["Candidate", "Examination", "Personal code", "Attempt", "Extension", "Status", "Actions"]}>
           {candidates.map((c) => {
-            const attempt = c.exam_attempts[0];
+            const attempt = latestAttempt(c.exam_attempts);
             return (
               <tr key={c.id}>
                 <td>
@@ -144,7 +155,7 @@ export default async function ExaminationCandidatesPage({
                 <td className="font-mono font-bold tracking-wider">{c.access_code}</td>
                 <td>
                   {attempt ? (
-                    <>{attempt.status.replace(/_/g, " ")}<span className="block text-xs text-ink-soft">Started {fmtDateTime(attempt.started_at)}{attempt.score != null ? ` · ${attempt.score}/${attempt.max_score ?? "?"}` : ""}</span></>
+                    <>{attempt.attempt_number && attempt.attempt_number > 1 ? `Attempt ${attempt.attempt_number} · ` : ""}{attempt.status.replace(/_/g, " ")}<span className="block text-xs text-ink-soft">Started {fmtDateTime(attempt.started_at)}{attempt.score != null ? ` · ${attempt.score}/${attempt.max_score ?? "?"}` : ""}</span></>
                   ) : "Not started"}
                 </td>
                 <td>{attempt?.extension_minutes ? <Badge tone="gold">+{attempt.extension_minutes} min</Badge> : "—"}</td>

@@ -1,5 +1,6 @@
 import { attemptDeadline } from "@/lib/exam";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
+import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -42,18 +43,70 @@ export async function POST(request: Request) {
   if (!candidate)
     return NextResponse.json({ error: "Candidate code not recognized for this examination." }, { status: 404 });
 
-  const { data: existing } = await admin
+  // A candidate may own several attempts: the first one, then one per approved
+  // retake. Resume the active attempt; a submitted paper is only followed by a
+  // NEW attempt when an approval authorizes it.
+  const { data: attemptRows } = await admin
     .from("exam_attempts")
     .select("*")
     .eq("exam_id", exam.id)
     .eq("candidate_id", candidate.id)
-    .maybeSingle();
+    .order("attempt_number", { ascending: false });
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const attemptPolicy = typeof settings.attempt_policy === "string" ? settings.attempt_policy : "single_resume";
-  let attempt = existing;
-  if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
-    return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
+  const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
+  const latestAttempt = rowsForCandidate[0] ?? null;
+  let attempt: Record<string, unknown> | null = rowsForCandidate.find((row) => row.status === "in_progress") ?? null;
+
+  if (!attempt && latestAttempt) {
+    const grant = await findUsableGrant(admin, exam.id, candidate.id);
+    if (!grant) {
+      if (attemptPolicy !== "read_only_reentry")
+        return NextResponse.json(
+          { error: "This attempt has already been submitted. Duplicate attempts are not permitted. Request a retake from your submitted examination page; only a Super Admin approval authorizes another attempt." },
+          { status: 409 },
+        );
+      const deadline = attemptDeadline(exam, String(latestAttempt.started_at ?? ""), Number(latestAttempt.extension_minutes ?? 0));
+      return NextResponse.json({
+        attempt_id: latestAttempt.id,
+        access_token: latestAttempt.access_token,
+        exam_id: exam.id,
+        title: exam.title,
+        candidate_name: candidate.full_name,
+        status: latestAttempt.status,
+        attempt_number: Number(latestAttempt.attempt_number ?? 1),
+        track: latestAttempt.track ?? null,
+        deadline: deadline.toISOString(),
+        proctoring: Boolean(settings.proctoring),
+      });
+    }
+    if (exam.status !== "open" || (exam.ends_at && Date.parse(exam.ends_at) < Date.now()))
+      return NextResponse.json(
+        { error: "Your retake is approved, but the examination window is closed. Ask your institution to reopen or extend it." },
+        { status: 403 },
+      );
+    const started = await startRetakeAttempt(admin, {
+      exam,
+      candidate: candidate as unknown as RetakeCandidateRow,
+      grant,
+    });
+    if (!started.ok) return NextResponse.json({ error: started.error }, { status: 409 });
+    const retakeDeadline = attemptDeadline(exam, started.attempt.started_at, Number((started.attempt as { extension_minutes?: number }).extension_minutes ?? 0));
+    return NextResponse.json({
+      attempt_id: started.attempt.id,
+      access_token: started.attempt.access_token,
+      exam_id: exam.id,
+      title: exam.title,
+      candidate_name: candidate.full_name,
+      status: started.attempt.status,
+      attempt_number: started.attemptNumber,
+      track: started.attempt.track ?? null,
+      deadline: retakeDeadline.toISOString(),
+      proctoring: Boolean(settings.proctoring),
+    });
+  }
+
   if (!attempt) {
     // The track comes from the candidate's class in the database, never from the browser.
     const { data: candidateClass } = candidate.class_id
@@ -84,15 +137,22 @@ export async function POST(request: Request) {
     await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
   }
 
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
+  const finalAttempt = attempt;
+  if (!finalAttempt) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
+  const deadline = attemptDeadline(
+    exam,
+    String(finalAttempt.started_at ?? ""),
+    Number(finalAttempt.extension_minutes ?? 0),
+  );
   return NextResponse.json({
-    attempt_id: attempt.id,
-    access_token: attempt.access_token,
+    attempt_id: finalAttempt.id,
+    access_token: finalAttempt.access_token,
     exam_id: exam.id,
     title: exam.title,
     candidate_name: candidate.full_name,
-    status: attempt.status,
-    track: attempt.track ?? null,
+    status: finalAttempt.status,
+    attempt_number: Number(finalAttempt.attempt_number ?? 1),
+    track: finalAttempt.track ?? null,
     deadline: deadline.toISOString(),
     proctoring: Boolean((exam.settings as Record<string, unknown>)?.proctoring),
   });

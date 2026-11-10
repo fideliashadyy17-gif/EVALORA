@@ -31,6 +31,10 @@ export interface ExamAccessExam {
   ends_at: string | null;
   shared_link_enabled: boolean | null;
   invite_expires_at: string | null;
+  /** Optional scheduled activation instant (migration 0076). */
+  invite_activates_at?: string | null;
+  /** Explicit administrator exemption from link expiry. */
+  invite_no_expiry?: boolean | null;
 }
 
 export interface ExamAccessAvailability {
@@ -143,21 +147,56 @@ export function sanitizeIdentityData(
   return { ok: true, data };
 }
 
-/** One source of truth for link-page / API availability checks. */
+/**
+ * One source of truth for link-page / API availability checks.
+ *
+ * `now` is always injected by the caller and must be the SERVER clock. The
+ * candidate's device clock is never consulted, so changing it cannot reopen an
+ * expired link.
+ *
+ * Link expiry only ever decides whether a NEW attempt may start. Nothing here
+ * looks at, closes or alters an attempt that is already in progress — that
+ * separation is what lets a paper continue after its invitation link expires.
+ */
 export function examAccessAvailability(
   exam: ExamAccessExam,
   now: Date = new Date(),
 ): ExamAccessAvailability {
   if (!exam.shared_link_enabled) return { ok: false, error: "This examination link is currently closed.", label: "Link closed" };
-  if (exam.invite_expires_at && new Date(exam.invite_expires_at) < now)
-    return { ok: false, error: "This examination link has expired.", label: "Link expired" };
+
+  const activates = exam.invite_activates_at ? Date.parse(exam.invite_activates_at) : null;
+  if (activates !== null && Number.isFinite(activates) && activates > now.getTime())
+    return {
+      ok: false,
+      error: `This examination link is scheduled to open on ${formatUtc(activates)}.`,
+      label: `Scheduled ${formatUtc(activates)}`,
+    };
+
+  if (!exam.invite_no_expiry && exam.invite_expires_at) {
+    const expires = Date.parse(exam.invite_expires_at);
+    if (!Number.isFinite(expires) || expires <= now.getTime())
+      return {
+        ok: false,
+        error: exam.invite_expires_at && Number.isFinite(expires)
+          ? `This examination link expired on ${formatUtc(expires)} and can no longer start a new attempt.`
+          : "This examination link has expired and can no longer start a new attempt.",
+        label: "Link expired",
+      };
+  }
+
   if (exam.status !== "open")
     return { ok: false, error: "This examination is not open.", label: `Status: ${exam.status}` };
-  if (exam.starts_at && new Date(exam.starts_at) > now)
-    return { ok: false, error: `This examination opens at ${exam.starts_at}.`, label: `Opens ${exam.starts_at}` };
-  if (exam.ends_at && new Date(exam.ends_at) < now)
+  if (exam.starts_at && Date.parse(exam.starts_at) > now.getTime())
+    return { ok: false, error: `This examination opens at ${formatUtc(Date.parse(exam.starts_at))}.`, label: `Opens ${formatUtc(Date.parse(exam.starts_at))}` };
+  if (exam.ends_at && Date.parse(exam.ends_at) < now.getTime())
     return { ok: false, error: "This examination window has closed.", label: "Window closed" };
   return { ok: true, label: "Open now" };
+}
+
+/** Unambiguous, server-side rendering of an instant for access messages. */
+function formatUtc(ms: number): string {
+  if (!Number.isFinite(ms)) return "an unknown time";
+  return `${new Date(ms).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
 export function buildInvitationText(input: {

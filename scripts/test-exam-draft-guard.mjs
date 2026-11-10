@@ -28,6 +28,7 @@ Module._load=function(request,parent) {
   if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
   if(request==='@/lib/examSaveQueue') return queue;
   if(request==='./ExamMessenger') return {ExamMessenger:()=>null};
+  if(request==='./RetakePanel') return {RetakePanel:()=>null};
   if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p)};
   if(request==='@/lib/utils') return {cn:(...args)=>args.filter(Boolean).join(' '),mmss:()=> '10:00'};
   if(request==='@livekit/components-styles') return {};

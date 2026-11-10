@@ -29,7 +29,7 @@ export default async function SharedExamJoinPage({
   const admin = createAdminClient();
   const { data: exam } = await admin
     .from("exams")
-    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,event_id,class_id,settings")
+    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,invite_activates_at,invite_no_expiry,event_id,class_id,settings")
     .eq("invite_token", token)
     .maybeSingle();
   if (!exam)
@@ -43,6 +43,8 @@ export default async function SharedExamJoinPage({
     ends_at: exam.ends_at,
     shared_link_enabled: exam.shared_link_enabled,
     invite_expires_at: exam.invite_expires_at,
+    invite_activates_at: exam.invite_activates_at,
+    invite_no_expiry: exam.invite_no_expiry,
   });
   if (!availability.ok)
     return <Shell title={availability.label} body={availability.error ?? exam.title} />;

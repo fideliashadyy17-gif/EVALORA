@@ -7,6 +7,7 @@ import {
   parseExamAccessSettings,
   sanitizeIdentityData,
 } from "@/lib/exam-access";
+import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -65,9 +66,52 @@ export async function POST(request: Request) {
     ends_at: exam.ends_at,
     shared_link_enabled: exam.shared_link_enabled,
     invite_expires_at: exam.invite_expires_at,
+    invite_activates_at: exam.invite_activates_at,
+    invite_no_expiry: exam.invite_no_expiry,
   });
-  if (!availability.ok)
-    return NextResponse.json({ error: availability.error }, { status: 403 });
+
+  // Link expiry / manual disable stops NEW starts — it never touches an attempt
+  // already in progress (the attempt routes do not read link state at all).
+  //
+  // An approval is a separate authorization: if this exact candidate holds a
+  // valid, unused, in-window retake approval, the link-level refusal does not
+  // apply to them. Nothing else is relaxed: the access code, the identity
+  // fields, the candidate's class and the examination's open status are still
+  // verified below.
+  let retakeGrant: Awaited<ReturnType<typeof findUsableGrant>> = null;
+  if (!availability.ok) {
+    const { data: existingByKey } = await admin
+      .from("exam_candidates")
+      .select("*")
+      .eq("exam_id", exam.id)
+      .eq("guest_key_hash", sha256(guest_key))
+      .maybeSingle();
+    const sameName = Boolean(
+      existingByKey &&
+      String(existingByKey.first_name ?? "").trim().toLowerCase() === first_name.toLowerCase() &&
+      String(existingByKey.last_name ?? "").trim().toLowerCase() === last_name.toLowerCase(),
+    );
+    if (!existingByKey || !sameName)
+      return NextResponse.json({ error: availability.error }, { status: 403 });
+    retakeGrant = await findUsableGrant(admin, exam.id, existingByKey.id);
+    if (!retakeGrant)
+      return NextResponse.json(
+        {
+          error: `${availability.error} If you have an approved retake, ask your institution for the current access window.`,
+        },
+        { status: 403 },
+      );
+    if (exam.status !== "open")
+      return NextResponse.json(
+        { error: "This examination is not open. Your institution must reopen it for an authorized retake." },
+        { status: 403 },
+      );
+    if (exam.ends_at && Date.parse(exam.ends_at) < Date.now())
+      return NextResponse.json(
+        { error: "The examination window has closed. Your institution must extend it for an authorized retake." },
+        { status: 403 },
+      );
+  }
   if (exam.access_code_hash !== sha256(normalizeCode(access_code)))
     return NextResponse.json({ error: "That access code is not correct for this examination." }, { status: 403 });
 
@@ -214,15 +258,80 @@ export async function POST(request: Request) {
     candidate = data;
   }
 
-  const { data: existingAttempt } = await admin
+  // One candidate can now legitimately own several attempts (each authorized
+  // retake is a NEW row). Resume the active one, otherwise evaluate the latest.
+  const { data: attemptRows } = await admin
     .from("exam_attempts")
     .select("*")
     .eq("exam_id", exam.id)
     .eq("candidate_id", candidate.id)
-    .maybeSingle();
-  let attempt = existingAttempt;
-  if (attempt && attempt.status !== "in_progress" && attemptPolicy !== "read_only_reentry")
-    return NextResponse.json({ error: "This attempt has already been submitted. Duplicate attempts are not permitted." }, { status: 409 });
+    .order("attempt_number", { ascending: false });
+  const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
+  const activeAttempt = rowsForCandidate.find((row) => row.status === "in_progress") ?? null;
+  const latestAttempt = rowsForCandidate[0] ?? null;
+  let attempt: Record<string, unknown> | null = activeAttempt;
+
+  if (!attempt && latestAttempt) {
+    // A submitted paper is locked. Only an explicit approval may create another
+    // attempt; `read_only_reentry` merely lets the student view the result.
+    const grant = await findUsableGrant(admin, exam.id, candidate.id);
+    if (!grant) {
+      if (attemptPolicy === "read_only_reentry") {
+        const deadline = attemptDeadline(
+          exam,
+          String(latestAttempt.started_at ?? ""),
+          Number(latestAttempt.extension_minutes ?? 0),
+        );
+        return NextResponse.json({
+          attempt_id: latestAttempt.id,
+          access_token: latestAttempt.access_token,
+          exam_id: exam.id,
+          title: exam.title,
+          candidate_name: candidate.full_name,
+          first_name: candidate.first_name ?? first_name,
+          last_name: candidate.last_name ?? last_name,
+          class_id: selectedClassId,
+          status: latestAttempt.status,
+          attempt_number: Number(latestAttempt.attempt_number ?? 1),
+          deadline: deadline.toISOString(),
+          proctoring: Boolean(examSettings.proctoring),
+        });
+      }
+      return NextResponse.json(
+        {
+          error:
+            "This attempt has already been submitted. Duplicate attempts are not permitted. You can request a retake from your submitted examination page; only a Super Admin approval authorizes another attempt.",
+        },
+        { status: 409 },
+      );
+    }
+    if (exam.status !== "open" || (exam.ends_at && Date.parse(exam.ends_at) < Date.now()))
+      return NextResponse.json(
+        { error: "Your retake is approved, but the examination window is closed. Ask your institution to reopen or extend it." },
+        { status: 403 },
+      );
+    const started = await startRetakeAttempt(admin, {
+      exam,
+      candidate: candidate as unknown as RetakeCandidateRow,
+      grant,
+    });
+    if (!started.ok) return NextResponse.json({ error: started.error }, { status: 409 });
+    return NextResponse.json({
+      attempt_id: started.attempt.id,
+      access_token: started.attempt.access_token,
+      exam_id: exam.id,
+      title: exam.title,
+      candidate_name: candidate.full_name,
+      first_name: candidate.first_name ?? first_name,
+      last_name: candidate.last_name ?? last_name,
+      class_id: selectedClassId,
+      status: started.attempt.status,
+      attempt_number: started.attemptNumber,
+      deadline: attemptDeadline(exam, started.attempt.started_at, Number((started.attempt as { extension_minutes?: number }).extension_minutes ?? 0)).toISOString(),
+      proctoring: Boolean(examSettings.proctoring),
+    });
+  }
+
   if (attempt && !identityDataEqual(attempt.identity_data ?? {}, identityData)) {
     const { data: updatedAttempt } = await admin
       .from("exam_attempts")
@@ -265,17 +374,24 @@ export async function POST(request: Request) {
     await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
   }
 
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
+  const finalAttempt = attempt;
+  if (!finalAttempt) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
+  const deadline = attemptDeadline(
+    exam,
+    String(finalAttempt.started_at ?? ""),
+    Number(finalAttempt.extension_minutes ?? 0),
+  );
   return NextResponse.json({
-    attempt_id: attempt.id,
-    access_token: attempt.access_token,
+    attempt_id: finalAttempt.id,
+    access_token: finalAttempt.access_token,
     exam_id: exam.id,
     title: exam.title,
     candidate_name: candidate.full_name,
     first_name: candidate.first_name ?? first_name,
     last_name: candidate.last_name ?? last_name,
     class_id: selectedClassId,
-    status: attempt.status,
+    status: finalAttempt.status,
+    attempt_number: Number(finalAttempt.attempt_number ?? 1),
     deadline: deadline.toISOString(),
     proctoring: Boolean(examSettings.proctoring),
   });
