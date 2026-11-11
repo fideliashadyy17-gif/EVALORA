@@ -14,6 +14,7 @@ import {
   saveRankingSnapshot,
   stageOf,
 } from "@/lib/liveControlServer";
+import { isParticipantConnected } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -21,6 +22,96 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 
 /** Commands whose effect depends on the exact question/phase they saw. */
 const CAS_COMMANDS = new Set<LiveCommand>(["start", "next", "prev", "end", "show_board", "hide_board", "finish"]);
+
+type AdminClient = ReturnType<typeof createAdminClient>;
+
+/**
+ * Resolve the public screen address to the authoritative session row.
+ *
+ * A projected screen is addressed by `/live/<id>/screen`, where `<id>` is the
+ * competition when the live session belongs to one and the session id only for
+ * legacy standalone sessions. The control endpoint must therefore accept both
+ * shapes; otherwise a competition-linked screen answers "not found" and the
+ * organizer toolbar silently never renders.
+ */
+async function loadControlSession(admin: AdminClient, id: string) {
+  if (!UUID_RE.test(id)) return null;
+  const { data: direct } = await admin.from("quiz_sessions").select("*").eq("id", id).maybeSingle();
+  if (direct) return direct as Record<string, unknown> & CommandSession & { quiz_id: string; organization_id: string };
+
+  const { data: competition } = await admin
+    .from("competitions")
+    .select("id, session_id")
+    .eq("id", id)
+    .maybeSingle();
+  const linkedId = (competition as { session_id?: string | null } | null)?.session_id ?? "";
+  if (!UUID_RE.test(linkedId)) return null;
+
+  const { data: linked } = await admin.from("quiz_sessions").select("*").eq("id", linkedId).maybeSingle();
+  return (linked as Record<string, unknown> & CommandSession & { quiz_id: string; organization_id: string } | null) ?? null;
+}
+
+interface ControlParticipant {
+  participant_id: string;
+  display_name: string;
+  avatar_key: string;
+  status: string;
+  connected: boolean;
+  answered: boolean;
+  reconnect_count: number;
+}
+
+/**
+ * Organizer-only participant view: who is in the room, who has dropped off and
+ * who has submitted for the question currently on the projector.
+ *
+ * This lives on the authorized control payload rather than the public screen
+ * payload, so an audience watching the token-scoped projection never receives
+ * individual submission state.
+ */
+async function loadControlParticipants(
+  admin: AdminClient,
+  sessionId: string,
+  currentQuestionId: string | null,
+): Promise<ControlParticipant[]> {
+  const { data: roster } = await admin
+    .from("session_participants")
+    .select("id, display_name, avatar_key, status, last_seen_at, reconnect_count, joined_at")
+    .eq("session_id", sessionId)
+    .in("status", ["admitted", "finished", "pending"])
+    .order("joined_at", { ascending: true })
+    .limit(300);
+
+  const answered = new Set<string>();
+  if (currentQuestionId) {
+    const { data: rows } = await admin
+      .from("participant_answers")
+      .select("participant_id")
+      .eq("session_id", sessionId)
+      .eq("quiz_question_id", currentQuestionId);
+    for (const row of rows ?? []) answered.add(String((row as { participant_id: string }).participant_id));
+  }
+
+  return (roster ?? []).map((row) => {
+    const participant = row as {
+      id: string;
+      display_name: string;
+      avatar_key: string | null;
+      status: string;
+      last_seen_at: string | null;
+      reconnect_count: number | null;
+    };
+    return {
+      participant_id: participant.id,
+      display_name: participant.display_name,
+      avatar_key: participant.avatar_key ?? "owl",
+      status: participant.status === "pending" ? "waiting" : participant.status,
+      connected: isParticipantConnected(participant.last_seen_at),
+      answered: answered.has(participant.id),
+      reconnect_count: participant.reconnect_count ?? 0,
+    };
+  });
+}
 
 interface LoadedSession {
   session: Record<string, unknown> & CommandSession & { quiz_id: string; organization_id: string };
@@ -37,7 +128,7 @@ async function authorize(sessionId: string): Promise<
   if (ctx.profile.status !== "active") return { ok: false, status: 403, error: "Account is not active." };
 
   const admin = createAdminClient();
-  const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
+  const session = await loadControlSession(admin, sessionId);
   if (!session) return { ok: false, status: 404, error: "Session not found." };
   // Organizer authorization is decided here, on the server, for every call.
   const isHost = session.host_id === ctx.user.id;
@@ -81,7 +172,7 @@ export async function GET(request: Request) {
   if (!ctx || ctx.profile.status !== "active") return NextResponse.json({ authorized: false }, { status: 200 });
 
   const admin = createAdminClient();
-  const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
+  const session = await loadControlSession(admin, sessionId);
   if (!session) return NextResponse.json({ authorized: false }, { status: 200 });
   const isHost = session.host_id === ctx.user.id;
   if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
@@ -89,11 +180,15 @@ export async function GET(request: Request) {
   }
 
   const timing = await loadControlTiming(admin, session.quiz_id);
+  const index = Number(session.current_question_index ?? -1);
+  const currentQuestionId = index >= 0 && index < timing.rows.length ? timing.rows[index]?.id ?? null : null;
+  const participants = await loadControlParticipants(admin, session.id, currentQuestionId);
   return NextResponse.json({
     authorized: true,
     session_id: session.id,
     commands: LIVE_COMMANDS,
     state: controlState(session as LoadedSession["session"], timing.questionCount),
+    participants,
   });
 }
 
@@ -189,11 +284,16 @@ export async function POST(request: Request) {
   }).catch(() => undefined);
 
   const { data: fresh } = await admin.from("quiz_sessions").select("*").eq("id", session.id).maybeSingle();
+  const current = (fresh ?? session) as LoadedSession["session"];
+  const freshIndex = Number(current.current_question_index ?? -1);
+  const freshQuestionId = freshIndex >= 0 && freshIndex < timing.rows.length ? timing.rows[freshIndex]?.id ?? null : null;
   return NextResponse.json({
     ok: true,
     duplicate: false,
-    state: controlState((fresh ?? session) as LoadedSession["session"], timing.questionCount),
-    stage: stageOf((fresh ?? session) as CommandSession),
+    session_id: session.id,
+    state: controlState(current, timing.questionCount),
+    stage: stageOf(current as CommandSession),
+    participants: await loadControlParticipants(admin, session.id, freshQuestionId),
     next_session: nextSession,
   });
 }

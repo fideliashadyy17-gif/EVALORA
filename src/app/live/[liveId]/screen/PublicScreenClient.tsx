@@ -44,6 +44,9 @@ interface FinalBlock {
 
 interface ScreenState {
   server_now: string;
+  /** Public screen address may be the competition; this is the live session. */
+  competition_id: string | null;
+  session_id: string;
   title: string;
   organization: { name: string; logo_url: string | null } | null;
   instructions: string | null;
@@ -81,6 +84,16 @@ interface ScreenState {
   presentation: { animations_enabled: boolean; show_join_code_on_screen: boolean };
 }
 
+interface ControlParticipant {
+  participant_id: string;
+  display_name: string;
+  avatar_key: string;
+  status: string;
+  connected: boolean;
+  answered: boolean;
+  reconnect_count: number;
+}
+
 interface ControlState {
   status: string;
   phase: string;
@@ -93,6 +106,7 @@ interface ControlState {
   paused: boolean;
   ended: boolean;
   mode: string;
+  session_id?: string;
 }
 
 type LiveCommand =
@@ -131,6 +145,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   const [now, setNow] = useState(Date.now());
   const [qr, setQr] = useState("");
   const [control, setControl] = useState<ControlState | null>(null);
+  const [participants, setParticipants] = useState<ControlParticipant[]>([]);
   const [busy, setBusy] = useState<LiveCommand | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [barOpen, setBarOpen] = useState(true);
@@ -169,19 +184,32 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
     }
   }, [liveId, token]);
 
-  // Organizer authorization probe. It returns nothing but a boolean plus the
-  // current control state for browsers that host this session.
-  const loadControl = useCallback(async () => {
+  // The screen is addressed by `/live/<id>/screen`, where <id> is the
+  // competition for competition-linked sessions and the session id only for
+  // legacy standalone ones. Host commands must address the *session*, so the
+  // probe waits for the payload and uses the session id it reports. Asking the
+  // control endpoint about the URL segment instead made it answer "not found"
+  // and silently hid the whole organizer toolbar.
+  const controlSessionId = data?.session_id ?? null;
+
+  // Organizer authorization probe. It returns a boolean, the current control
+  // state and the participant roster for browsers that host this session.
+  const loadControl = useCallback(async (sessionId: string) => {
     try {
-      const res = await fetch(`/api/live/control?session_id=${encodeURIComponent(liveId)}`, { cache: "no-store" });
+      const res = await fetch(`/api/live/control?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json().catch(() => null);
-      if (json?.authorized) setControl(json.state as ControlState);
-      else setControl(null);
+      if (json?.authorized) {
+        setControl(json.state as ControlState);
+        setParticipants((json.participants as ControlParticipant[] | undefined) ?? []);
+      } else {
+        setControl(null);
+        setParticipants([]);
+      }
     } catch {
       // The public presentation must never depend on the control probe.
     }
-  }, [liveId]);
+  }, []);
 
   useEffect(() => {
     load();
@@ -197,25 +225,29 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   }, [load]);
 
   useEffect(() => {
-    loadControl();
-    const timer = setInterval(loadControl, 15000);
+    if (!controlSessionId) return;
+    void loadControl(controlSessionId);
+    // Keeps the toolbar and participant panel in step with the host console
+    // (or a second organizer device) and restores them after a refresh.
+    const timer = setInterval(() => void loadControl(controlSessionId), 5000);
     return () => clearInterval(timer);
-  }, [loadControl]);
+  }, [controlSessionId, loadControl]);
 
   const send = useCallback(
     async (command: LiveCommand) => {
-      if (busy) return;
+      if (busy || !controlSessionId) return;
       setBusy(command);
       setCommandError(null);
       try {
         const res = await fetch("/api/live/control", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: liveId, command }),
+          body: JSON.stringify({ session_id: controlSessionId, command }),
         });
         const json = await res.json().catch(() => null);
         if (!res.ok) setCommandError(json?.error ?? "That command was not accepted.");
         else if (json?.state) setControl(json.state as ControlState);
+        if (Array.isArray(json?.participants)) setParticipants(json.participants as ControlParticipant[]);
         await load();
       } catch {
         setCommandError("Connection problem — the command was not sent. Try again.");
@@ -223,7 +255,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
         setBusy(null);
       }
     },
-    [busy, liveId, load],
+    [busy, controlSessionId, load],
   );
 
   useEffect(() => {
@@ -503,6 +535,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
           setOpen={setBarOpen}
           state={control}
           data={data}
+          participants={participants}
           busy={busy}
           error={commandError}
           onCommand={command}
@@ -529,6 +562,7 @@ function OrganizerBar({
   setOpen,
   state,
   data,
+  participants,
   busy,
   error,
   onCommand,
@@ -537,11 +571,16 @@ function OrganizerBar({
   setOpen: (open: boolean) => void;
   state: ControlState;
   data: ScreenState;
+  participants: ControlParticipant[];
   busy: LiveCommand | null;
   error: string | null;
   onCommand: (command: LiveCommand) => void;
 }) {
+  const [showPeople, setShowPeople] = useState(false);
+  const [confirmEnd, setConfirmEnd] = useState(false);
   if (!open) return null;
+  const connectedCount = participants.filter((p) => p.connected).length;
+  const answeredCount = participants.filter((p) => p.answered).length;
   const total = state.question_count;
   const index = state.current_question_index;
   const isLastQuestion = index >= total - 1;
@@ -576,6 +615,9 @@ function OrganizerBar({
             <span className="rounded bg-white/10 px-2 py-0.5 font-semibold normal-case tracking-normal text-evergreen-100">
               Q {Math.max(index, 0) + 1}/{total} · {state.phase} · {state.paused ? "paused" : state.status}
             </span>
+            <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-semibold normal-case tracking-normal text-emerald-100">
+              Participants connected: {connectedCount}/{participants.length}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             {error && <span className="max-w-xs truncate text-xs font-semibold text-red-300" role="status">{error}</span>}
@@ -605,8 +647,16 @@ function OrganizerBar({
           <CtrlButton onClick={() => onCommand(state.answer_locked ? "unlock" : "lock")} busy={busy === "lock" || busy === "unlock"} disabled={state.status === "lobby" || state.ended}>
             {state.answer_locked ? "🔓 Unlock answers" : "🔒 Lock answers"}
           </CtrlButton>
-          <CtrlButton onClick={() => onCommand(state.admission_open ? "close_join" : "open_join")} busy={busy === "open_join" || busy === "close_join"} disabled={state.ended}>
-            {state.admission_open ? "Close registration" : "Open registration"}
+          <CtrlButton
+            onClick={() => onCommand(state.admission_open ? "close_join" : "open_join")}
+            busy={busy === "open_join" || busy === "close_join"}
+            disabled={state.ended}
+            title="Stop or allow new participants. Everyone already in the room stays connected and keeps their answers; the competition is not paused."
+          >
+            {state.admission_open ? "Close joining" : "Open joining"}
+          </CtrlButton>
+          <CtrlButton onClick={() => setShowPeople((open) => !open)} disabled={false} tone={showPeople ? "gold" : "default"}>
+            👥 Participants ({participants.length})
           </CtrlButton>
           <CtrlButton
             onClick={() => onCommand(state.phase === "leaderboard" ? "hide_board" : "show_board")}
@@ -617,15 +667,34 @@ function OrganizerBar({
           </CtrlButton>
           <span className="mx-1 h-6 w-px bg-white/20" aria-hidden="true" />
           {!state.ended ? (
-            <CtrlButton
-              onClick={() => onCommand("end")}
-              busy={busy === "end"}
-              tone="danger"
-              disabled={state.status === "lobby"}
-              title="Close the competition now, lock answers and prepare the reveal"
-            >
-              🏁 End competition
-            </CtrlButton>
+            confirmEnd ? (
+              <span className="flex flex-wrap items-center gap-1.5 rounded-lg border border-red-400/60 bg-red-500/15 px-2 py-1">
+                <span className="text-xs font-bold text-red-100">
+                  End now? Answers stay saved — no data is deleted.
+                </span>
+                <CtrlButton
+                  onClick={() => {
+                    setConfirmEnd(false);
+                    onCommand("end");
+                  }}
+                  busy={busy === "end"}
+                  tone="danger"
+                >
+                  Yes, end competition
+                </CtrlButton>
+                <CtrlButton onClick={() => setConfirmEnd(false)}>Cancel</CtrlButton>
+              </span>
+            ) : (
+              <CtrlButton
+                onClick={() => setConfirmEnd(true)}
+                busy={busy === "end"}
+                tone="danger"
+                disabled={state.status === "lobby"}
+                title="Close the competition now, lock answers and prepare the results reveal. Every submitted answer is preserved."
+              >
+                🏁 End competition
+              </CtrlButton>
+            )
           ) : (
             <>
               {!state.results_revealed ? (
@@ -653,7 +722,92 @@ function OrganizerBar({
           </span>
         </div>
       </div>
+      {showPeople && (
+        <ParticipantPanel
+          participants={participants}
+          connectedCount={connectedCount}
+          answeredCount={answeredCount}
+          admissionOpen={state.admission_open}
+          onClose={() => setShowPeople(false)}
+        />
+      )}
     </div>
+  );
+}
+
+/**
+ * Organizer-only roster. Names, avatars and connection state come from the
+ * authorized control payload (never from the public projection), and the rows
+ * refresh with the same poll as the toolbar — including who has just joined,
+ * who dropped off and who has submitted for the question on screen.
+ */
+function ParticipantPanel({
+  participants,
+  connectedCount,
+  answeredCount,
+  admissionOpen,
+  onClose,
+}: {
+  participants: ControlParticipant[];
+  connectedCount: number;
+  answeredCount: number;
+  admissionOpen: boolean;
+  onClose: () => void;
+}) {
+  return (
+    <aside className="fixed bottom-24 right-3 top-3 z-40 flex w-[min(23rem,calc(100vw-1.5rem))] flex-col rounded-2xl border border-white/20 bg-evergreen-950/95 p-3 text-white shadow-2xl backdrop-blur">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.16em] text-gold-300">Participants</p>
+          <p className="mt-1 text-sm text-evergreen-100">
+            Connected: {connectedCount}/{participants.length} · Answered this question: {answeredCount}
+          </p>
+          <p className="mt-0.5 text-xs text-evergreen-200">
+            {admissionOpen ? "Joining is open to new participants." : "Joining is closed — existing participants remain."}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-full border border-white/20 px-2.5 py-1 text-xs font-bold text-evergreen-100 hover:bg-white/10"
+          aria-label="Close participant panel"
+        >
+          ✕
+        </button>
+      </div>
+      <ul className="mt-3 flex-1 space-y-1.5 overflow-y-auto pr-1 scroll-slim">
+        {participants.length === 0 && <li className="text-sm text-evergreen-200">Nobody has joined yet.</li>}
+        {participants.map((p) => (
+          <li
+            key={p.participant_id}
+            className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${
+              p.status === "waiting" ? "border-amber-300/40 bg-amber-400/10" : "border-white/15 bg-white/[0.06]"
+            }`}
+          >
+            <span className="relative">
+              <ParticipantAvatar avatarKey={p.avatar_key} name={p.display_name} size={32} />
+              <span
+                className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border border-evergreen-950 ${p.connected ? "bg-emerald-400" : "bg-slate-400"}`}
+                aria-label={p.connected ? "connected" : "disconnected"}
+              />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{p.display_name}</span>
+              <span className="block text-[11px] text-evergreen-200">
+                {p.connected ? "connected" : "disconnected"}
+                {p.status === "waiting" ? " · awaiting approval" : ""}
+                {p.reconnect_count > 0 ? ` · ${p.reconnect_count} reconnect(s)` : ""}
+              </span>
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${p.answered ? "bg-emerald-500 text-emerald-950" : "bg-white/10 text-evergreen-100"}`}
+            >
+              {p.answered ? "answered" : "waiting"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </aside>
   );
 }
 
