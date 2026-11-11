@@ -4,6 +4,7 @@ import { getSessionContext } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { organizationPlatformUrl, tenantPortalLabel } from "@/lib/tenant";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -57,7 +58,15 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
     <div className="min-h-screen bg-cream">
       <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
         <Logo href={null} />
-        <span className="text-xs font-medium text-ink-soft">{tenantPortalLabel(org.slug)}</span>
+        <div className="flex items-center gap-3">
+          <span className="hidden text-xs font-medium text-ink-soft sm:inline">{tenantPortalLabel(org.slug)}</span>
+          <Link
+            href={`/login?next=/dashboard&switch=1&org=${org.slug}`}
+            className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-evergreen-50"
+          >
+            Staff &amp; student sign in
+          </Link>
+        </div>
       </header>
 
       <main className="mx-auto max-w-5xl px-4 pb-16">
@@ -107,8 +116,17 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
                     {isMember || isSuperAdmin ? (
                       <ButtonLink href="/dashboard" variant="gold" className="mt-3">Open my workspace</ButtonLink>
                     ) : (
-                      <ButtonLink href="/login?next=/dashboard" variant="gold" className="mt-3">Sign in</ButtonLink>
+                      <ButtonLink
+                        href={`/login?next=/dashboard&switch=1&org=${org.slug}`}
+                        variant="gold"
+                        className="mt-3"
+                      >
+                        Sign in
+                      </ButtonLink>
                     )}
+                    <p className="mt-2 text-xs text-ink-soft">
+                      Staff and students sign in with their {org.name} account.
+                    </p>
                   </div>
                   <div className="rounded-xl border border-evergreen-900/15 p-4">
                     <p className="font-semibold text-evergreen-950">Live competition</p>

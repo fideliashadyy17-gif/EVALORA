@@ -3,6 +3,7 @@
 import { audit, fint, fstr, requireSuperAdmin, uniqueOrgSlug } from "@/lib/admin";
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
+import { generateSetupCode, hashSetupCode, setupExpiryFrom, SETUP_CODE_TTL_HOURS } from "@/lib/orgAdminSetup";
 import { createAdminClient } from "@/lib/supabase/server";
 import { rootDomain, subdomainSuggestions, validateSubdomain } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
@@ -481,4 +482,57 @@ export async function updateOrganizationPlatformDomain(formData: FormData) {
   revalidatePath("/admin/organizations/access");
   revalidatePath("/dashboard/platform");
   redirect(`${back}?tab=platform&ok=domain_saved`);
+}
+
+/**
+ * Issue a one-time owner set-up link for an institution.
+ *
+ * The plaintext code is returned to the operator once, through a short-lived
+ * HttpOnly cookie, and only its SHA-256 hash is stored. The institution redeems
+ * it at /portal/<slug>/admin-setup to create its own Organization Owner —
+ * without ever holding the global Super Admin role.
+ */
+export async function issueOrganizationAdminSetup(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const id = String(formData.get("id") ?? "");
+  const back = platformReturnPath(formData, id);
+  const admin = createAdminClient();
+
+  const { data: org } = await admin.from("organizations").select("id, name, slug, status").eq("id", id).maybeSingle();
+  if (!org || org.status !== "active") redirect(`${back}?tab=platform&e=setup_unavailable`);
+
+  // Any previous unused code for this organization stops working.
+  await admin
+    .from("organization_admin_setup")
+    .update({ used_at: new Date().toISOString() })
+    .eq("organization_id", id)
+    .is("used_at", null);
+
+  const code = generateSetupCode();
+  const expiresAt = setupExpiryFrom();
+  const { error } = await admin.from("organization_admin_setup").insert({
+    organization_id: id,
+    code_hash: hashSetupCode(code),
+    expires_at: expiresAt.toISOString(),
+    created_by: ctx.user.id,
+  });
+  if (error) redirect(`${back}?tab=platform&e=setup_failed`);
+
+  await audit(ctx, "organization.admin_setup_issued", "organization_admin_setup", id, id, {
+    expires_at: expiresAt.toISOString(),
+    ttl_hours: SETUP_CODE_TTL_HOURS,
+  });
+
+  // The operator copies the link out of the console; the cookie is scoped to
+  // the admin area, HttpOnly, and expires with the page view.
+  (await cookies()).set("evalora_admin_setup", code, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    path: "/admin",
+    maxAge: 300,
+  });
+
+  revalidatePath(`/admin/organizations/${id}`);
+  redirect(`${back}?tab=platform&ok=setup_issued`);
 }

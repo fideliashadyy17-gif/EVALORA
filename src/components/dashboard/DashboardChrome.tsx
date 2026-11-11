@@ -3,6 +3,7 @@
 import { Logo } from "@/components/Logo";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
+import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAccess";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
@@ -11,6 +12,7 @@ import {
   CreditCard,
   FileCheck2,
   GraduationCap,
+  KeyRound,
   Layers3,
   LayoutDashboard,
   Library,
@@ -22,6 +24,7 @@ import {
   School,
   Settings,
   ShieldCheck,
+  Trophy,
   Users,
   X,
 } from "lucide-react";
@@ -29,34 +32,46 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon: typeof LayoutDashboard; exact?: boolean }[] }[] = [
+interface NavItem {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  exact?: boolean;
+  /** Defaults to "all"; administration entries are managers-only. */
+  audience?: NavAudience;
+}
+
+const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   { items: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true }] },
   {
-    title: "Academic Management",
+    title: "Institutional Management",
     items: [
-      { href: "/dashboard/academics/classes", label: "Classes", icon: School },
-      { href: "/dashboard/students", label: "Students", icon: GraduationCap },
-      { href: "/dashboard/academics", label: "Academic Structure", icon: Layers3, exact: true },
+      { href: "/dashboard/students", label: "Students", icon: GraduationCap, audience: "staff" },
+      { href: "/dashboard/teachers", label: "Teachers", icon: BookOpenCheck, audience: "staff" },
+      { href: "/dashboard/team", label: "Staff & Members", icon: Users, audience: "staff" },
+      { href: "/dashboard/academics/classes", label: "Classes", icon: School, audience: "staff" },
+      { href: "/dashboard/academics", label: "Academic Structure", icon: Layers3, exact: true, audience: "staff" },
+      { href: "/dashboard/accounts", label: "Accounts & Permissions", icon: KeyRound, audience: "managers" },
+      { href: "/dashboard/settings", label: "Organization Settings", icon: Settings, audience: "managers" },
     ],
   },
   {
     title: "Assessment",
     items: [
-      { href: "/dashboard/quizzes", label: "Quiz Studio", icon: PenSquare },
-      { href: "/dashboard/questions", label: "Question Bank", icon: Library },
-      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2 },
-      { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks },
-      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck },
-      { href: "/dashboard/reports", label: "Reports", icon: BarChart3 },
+      { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff" },
+      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff" },
+      { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff" },
+      { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff" },
+      { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks, audience: "staff" },
+      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck, audience: "staff" },
+      { href: "/dashboard/reports", label: "Results & Reports", icon: BarChart3, audience: "staff" },
     ],
   },
   {
-    title: "Administration",
+    title: "Organization",
     items: [
-      { href: "/dashboard/platform", label: "My Platform", icon: Link2 },
-      { href: "/dashboard/team", label: "Team & Roles", icon: Users },
-      { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard },
-      { href: "/dashboard/settings", label: "Settings", icon: Settings },
+      { href: "/dashboard/platform", label: "My Platform", icon: Link2, audience: "managers" },
+      { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard, audience: "managers" },
     ],
   },
 ];
@@ -93,9 +108,16 @@ export function DashboardChrome({
     router.refresh();
   }
 
+  // Navigation is filtered by the verified organization role. Pages and server
+  // actions enforce the same rules independently.
+  const sections = NAV_SECTIONS.map((section) => ({
+    ...section,
+    items: filterNavItems(section.items, orgRole),
+  })).filter((section) => section.items.length > 0);
+
   const nav = (
     <nav className="flex flex-col gap-1">
-      {NAV_SECTIONS.map((section) => (
+      {sections.map((section) => (
         <div key={section.title ?? "top"} className="flex flex-col gap-1">
           {section.title && (
             <p className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-evergreen-700/80">
@@ -134,7 +156,7 @@ export function DashboardChrome({
         <Logo href="/dashboard" />
         <div className="mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
           <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
-          <p className="text-xs capitalize text-ink-soft">{orgRole ?? "member"}</p>
+          <p className="text-xs text-ink-soft">{workspaceLabel(orgRole)}</p>
           {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
           {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}
         </div>
