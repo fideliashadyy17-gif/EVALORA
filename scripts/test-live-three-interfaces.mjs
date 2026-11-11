@@ -12,7 +12,7 @@ process.env.LIVE_DISPLAY_TOKEN_SECRET = "test-only-display-secret";
 
 const outDir = "/tmp/evalora-live-three-test";
 execSync(
-  `npx tsc src/lib/live.ts src/lib/liveDisplayToken.ts src/lib/avatars.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --esModuleInterop --skipLibCheck --moduleResolution node`,
+  `npx tsc src/lib/live.ts src/lib/liveDisplayToken.ts src/lib/avatars.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --strict --esModuleInterop --skipLibCheck --moduleResolution node`,
   { stdio: "inherit" },
 );
 execSync(`ln -sfn "$(pwd)/node_modules" ${outDir}/node_modules`, { stdio: "inherit" });

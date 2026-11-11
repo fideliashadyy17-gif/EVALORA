@@ -636,7 +636,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             {queueState.error && <p role="alert" className="mt-2 text-xs text-red-700">{queueState.error}</p>}
             {!queueState.durable && <p role="alert" className="mt-2 text-xs text-red-700">Local recovery is unavailable. Do not refresh or close this tab while answers are waiting.</p>}
             {queueState.pending > 0 && !queueState.syncing && !submitted && <Button variant="outline" className="mt-2 w-full text-xs" onClick={() => void queueRef.current?.flush()}>Retry saving</Button>}
-            <p className="mt-2 text-xs text-ink-soft">For typed or multi-part answers, select Save answer before moving on. Flags are sent when an answer is saved. Waiting answers are stored in this tab for refresh recovery; closing the tab can remove them. Use a private device.</p>
+            <p className="mt-2 text-xs text-ink-soft">Written, mathematical and graphical answers save automatically; <strong>Save answer</strong> confirms immediately. Flags are sent when an answer is saved. Waiting answers are stored in this tab for refresh recovery; closing the tab can remove them. Use a private device.</p>
           </Card>
           {exam.instructions && (
             <Card className="p-4">
@@ -766,6 +766,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 initial={current.saved_answer}
                 disabled={submitted || submitting}
                 submitLabel="Save answer"
+                autosave
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}

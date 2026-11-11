@@ -1,6 +1,7 @@
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
 import { attemptAllowsQuizRow, parseTrack } from "@/lib/examTrack";
 import { createAdminClient } from "@/lib/supabase/server";
+import { validateAnswerPayload } from "@/lib/responseTools";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -31,11 +32,17 @@ export async function POST(request: Request) {
   // The question must belong to this exam's paper.
   const { data: belongs } = await admin
     .from("quiz_questions")
-    .select("id")
+    .select("id, questions(type)")
     .eq("quiz_id", exam.quiz_id)
     .eq("question_id", question_id)
     .maybeSingle();
   if (!belongs) return NextResponse.json({ error: "Question not in this paper." }, { status: 400 });
+  // Server-side shape validation: a malformed or oversized structured answer
+  // must not be stored, and the marking interface must never receive arbitrary
+  // JSON. Legacy objective payloads keep their historical permissive shape.
+  const questionType = (belongs as { questions?: { type?: string } | null }).questions?.type ?? "";
+  const validated = validateAnswerPayload(questionType, answer);
+  if (!validated.ok) return NextResponse.json({ error: validated.error ?? "Invalid answer." }, { status: 400 });
   if (quiz_question_id && quiz_question_id !== belongs.id)
     return NextResponse.json({ error: "Question does not match this paper." }, { status: 400 });
   // The question must also be part of THIS candidate's paper (track-filtered order),
@@ -50,7 +57,7 @@ export async function POST(request: Request) {
       // Always persist the association resolved from this examination, never
       // an unrelated quiz-question ID supplied by the client.
       quiz_question_id: belongs.id,
-      answer,
+      answer: validated.answer,
       updated_at: new Date().toISOString(),
     },
     { onConflict: "attempt_id,question_id" },

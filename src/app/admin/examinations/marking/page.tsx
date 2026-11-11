@@ -1,5 +1,6 @@
 import { Badge, Button, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { RichContent } from "@/components/RichContent";
+import { AnswerResponseView } from "@/components/AnswerResponseView";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -45,13 +46,6 @@ interface QueueRow {
     exam_candidates: { full_name: string; candidate_ref: string | null } | null;
     exams: { id: string; title: string; organization_id: string; quiz_id: string | null; organizations: { name: string } | null } | null;
   } | null;
-}
-
-function answerText(answer: Record<string, unknown> | null) {
-  if (!answer) return "(no saved response)";
-  if (typeof answer.text === "string" && answer.text.trim()) return answer.text;
-  if (typeof answer.value === "string" && answer.value.trim()) return answer.value;
-  return JSON.stringify(answer, null, 2);
 }
 
 export default async function ExaminationMarkingPage({
@@ -158,7 +152,9 @@ export default async function ExaminationMarkingPage({
                     <div className="mt-2 rounded-xl bg-cream p-4"><RichContent doc={q.prompt_doc} text={q.prompt} /></div>
 
                     <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-ink-soft">Candidate response</h3>
-                    <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-evergreen-900/15 bg-white p-4 font-sans text-sm leading-relaxed">{answerText(row.answer)}</pre>
+                    <div className="mt-2">
+                      <AnswerResponseView answer={row.answer} showComponents />
+                    </div>
                   </div>
 
                   <div>

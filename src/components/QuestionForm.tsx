@@ -4,6 +4,9 @@ import { RichContentEditor, type UploadResult } from "@/components/editor/RichCo
 import { RichContent } from "@/components/RichContent";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { QUESTION_TYPES } from "@/lib/brand";
+import { RESPONSE_TOOLS } from "@/lib/responseTools";
+import { emptyGraphSpec } from "@/lib/graphSpec";
+import { emptyGeometrySpec } from "@/lib/geometrySpec";
 import { docIsEmpty, docToLabel, docToPlainText, emptyDoc, textToDoc, type RichDoc } from "@/lib/content";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -105,6 +108,30 @@ export function QuestionForm({
   const [mediaUrl, setMediaUrl] = useState(String(cfg.media_url ?? ""));
   const [mediaType, setMediaType] = useState(String(cfg.media_type ?? "image"));
   const [markingCriteria, setMarkingCriteria] = useState(String(cfg.marking_criteria ?? ""));
+  const rawTools = cfg.response_tools;
+  const [toolMode, setToolMode] = useState<"auto" | "custom">(Array.isArray(rawTools) && rawTools.length ? "custom" : "auto");
+  const [responseTools, setResponseTools] = useState<string[]>(
+    Array.isArray(rawTools) && rawTools.length ? rawTools.filter((v): v is string => typeof v === "string") : ["rich_text", "math", "table"],
+  );
+  const rawGraph = (cfg.response_graph ?? {}) as Record<string, unknown>;
+  const graphDomain = (rawGraph.starter as { domain?: Record<string, unknown> } | undefined)?.domain ?? {};
+  const [graphTitle, setGraphTitle] = useState(String(rawGraph.title ?? "Your graph"));
+  const [graphInstructions, setGraphInstructions] = useState(String(rawGraph.instructions ?? ""));
+  const [graphAllowFunctions, setGraphAllowFunctions] = useState(rawGraph.allow_functions !== false);
+  const [graphXMin, setGraphXMin] = useState(String(graphDomain.xMin ?? -10));
+  const [graphXMax, setGraphXMax] = useState(String(graphDomain.xMax ?? 10));
+  const [graphYMin, setGraphYMin] = useState(String(graphDomain.yMin ?? -8));
+  const [graphYMax, setGraphYMax] = useState(String(graphDomain.yMax ?? 8));
+  const rawGeometry = (cfg.response_geometry ?? {}) as Record<string, unknown>;
+  const geometryDomain = (rawGeometry.starter as { domain?: Record<string, unknown> } | undefined)?.domain ?? {};
+  const [geometryTitle, setGeometryTitle] = useState(String(rawGeometry.title ?? "Your construction"));
+  const [geometryInstructions, setGeometryInstructions] = useState(String(rawGeometry.instructions ?? ""));
+  const [geometryXMin, setGeometryXMin] = useState(String(geometryDomain.xMin ?? -6));
+  const [geometryXMax, setGeometryXMax] = useState(String(geometryDomain.xMax ?? 6));
+  const [geometryYMin, setGeometryYMin] = useState(String(geometryDomain.yMin ?? -4));
+  const [geometryYMax, setGeometryYMax] = useState(String(geometryDomain.yMax ?? 4));
+  const [responseRequirement, setResponseRequirement] = useState(String(cfg.response_requirement ?? "any"));
+  const [responseGuidance, setResponseGuidance] = useState(String(cfg.response_guidance ?? ""));
   const [pairs, setPairs] = useState<{ left: string; right: string }[]>(
     (cfg.pairs as { left: string; right: string }[]) ?? [{ left: "", right: "" }, { left: "", right: "" }],
   );
@@ -169,8 +196,44 @@ export function QuestionForm({
         return;
       }
     }
-    if (type === "open_ended" && markingCriteria.trim()) {
-      config.marking_criteria = markingCriteria.trim();
+    if (type === "open_ended") {
+      if (markingCriteria.trim()) config.marking_criteria = markingCriteria.trim();
+      // Automatic mode leaves the configuration absent, so the platform derives
+      // tools from the question wording (graph language, geometry language…).
+      if (toolMode === "custom") config.response_tools = responseTools;
+      if (responseRequirement !== "any") config.response_requirement = responseRequirement;
+      if (responseGuidance.trim()) config.response_guidance = responseGuidance.trim();
+      if (toolMode === "custom" && responseTools.includes("graph")) {
+        config.response_graph = {
+          title: graphTitle.trim() || "Your graph",
+          instructions: graphInstructions.trim(),
+          allow_functions: graphAllowFunctions,
+          starter: emptyGraphSpec({
+            domain: {
+              ...emptyGraphSpec().domain,
+              xMin: Number(graphXMin) || -10,
+              xMax: Number(graphXMax) || 10,
+              yMin: Number(graphYMin) || -8,
+              yMax: Number(graphYMax) || 8,
+            },
+          }),
+        };
+      }
+      if (toolMode === "custom" && responseTools.includes("geometry")) {
+        config.response_geometry = {
+          title: geometryTitle.trim() || "Your construction",
+          instructions: geometryInstructions.trim(),
+          starter: emptyGeometrySpec({
+            domain: {
+              ...emptyGeometrySpec().domain,
+              xMin: Number(geometryXMin) || -6,
+              xMax: Number(geometryXMax) || 6,
+              yMin: Number(geometryYMin) || -4,
+              yMax: Number(geometryYMax) || 4,
+            },
+          }),
+        };
+      }
     }
 
     let finalOptions: QuestionFormOption[] = [];
@@ -284,9 +347,105 @@ export function QuestionForm({
         )}
 
         {type === "open_ended" && (
-          <Field label="Marking criteria (for markers — never shown to candidates before marking)" hint="Working steps and mark allocation for structured mathematical answers.">
-            <Textarea rows={3} value={markingCriteria} onChange={(e) => setMarkingCriteria(e.target.value)} placeholder="1 mark: correct substitution… 2 marks: valid method… 1 mark: final answer with units." />
-          </Field>
+          <div className="space-y-4 rounded-xl border border-evergreen-900/15 bg-cream/50 p-4">
+            <div>
+              <h3 className="text-sm font-semibold text-evergreen-950">Student composition environment</h3>
+              <p className="mt-1 text-xs text-ink-soft">
+                Choose <strong>Automatic</strong> and the platform supplies the right tools from the question itself: prose and mathematics for a constructed response, plus a graph workspace for graph/plot/sketch questions, a geometry workspace for construction questions and the science palette for science questions. Existing questions need no editing.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm ${toolMode === "auto" ? "border-evergreen-700 bg-evergreen-50" : "border-evergreen-900/20 bg-white"}`}>
+                  <input type="radio" name="tool_mode" checked={toolMode === "auto"} onChange={() => setToolMode("auto")} /> Automatic (recommended)
+                </label>
+                <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm ${toolMode === "custom" ? "border-evergreen-700 bg-evergreen-50" : "border-evergreen-900/20 bg-white"}`}>
+                  <input type="radio" name="tool_mode" checked={toolMode === "custom"} onChange={() => setToolMode("custom")} /> Choose tools for this question
+                </label>
+              </div>
+            </div>
+
+            {toolMode === "custom" && (
+              <div>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-evergreen-800">Response tools</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {RESPONSE_TOOLS.map((tool) => (
+                    <label key={tool.id} className="flex items-start gap-2 rounded-lg border border-evergreen-900/15 bg-white p-2.5 text-sm">
+                      <input
+                        type="checkbox"
+                        className="mt-0.5"
+                        checked={responseTools.includes(tool.id)}
+                        onChange={(e) => setResponseTools((previous) => e.target.checked
+                          ? [...new Set([...previous, tool.id])]
+                          : previous.filter((id) => id !== tool.id))}
+                      />
+                      <span>
+                        <span className="font-medium text-evergreen-950">{tool.label}</span>
+                        <span className="block text-[11px] leading-snug text-ink-soft">{tool.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+                {responseTools.length === 0 && <p className="mt-2 text-xs text-red-700">Select at least one response tool, or use Automatic.</p>}
+              </div>
+            )}
+
+            {toolMode === "custom" && responseTools.includes("graph") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Graph workspace title">
+                  <Input value={graphTitle} onChange={(e) => setGraphTitle(e.target.value)} placeholder="Your graph" />
+                </Field>
+                <Field label="Graph instructions">
+                  <Input value={graphInstructions} onChange={(e) => setGraphInstructions(e.target.value)} placeholder="Plot the first six terms…" />
+                </Field>
+                <div className="grid grid-cols-4 gap-2 sm:col-span-2">
+                  {([["xMin", "x min", graphXMin, setGraphXMin], ["xMax", "x max", graphXMax, setGraphXMax], ["yMin", "y min", graphYMin, setGraphYMin], ["yMax", "y max", graphYMax, setGraphYMax]] as const).map(([key, label, value, setter]) => (
+                    <Field key={key} label={label}>
+                      <Input type="number" step="any" value={value} onChange={(e) => setter(e.target.value)} />
+                    </Field>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input type="checkbox" checked={graphAllowFunctions} onChange={(e) => setGraphAllowFunctions(e.target.checked)} />
+                  Allow students to plot functions by equation (as well as drawing points and segments)
+                </label>
+              </div>
+            )}
+
+            {toolMode === "custom" && responseTools.includes("geometry") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Geometry workspace title">
+                  <Input value={geometryTitle} onChange={(e) => setGeometryTitle(e.target.value)} placeholder="Your construction" />
+                </Field>
+                <Field label="Geometry instructions">
+                  <Input value={geometryInstructions} onChange={(e) => setGeometryInstructions(e.target.value)} placeholder="Construct triangle ABC with AB = 4 units…" />
+                </Field>
+                <div className="grid grid-cols-4 gap-2 sm:col-span-2">
+                  {([["xMin", "x min", geometryXMin, setGeometryXMin], ["xMax", "x max", geometryXMax, setGeometryXMax], ["yMin", "y min", geometryYMin, setGeometryYMin], ["yMax", "y max", geometryYMax, setGeometryYMax]] as const).map(([key, label, value, setter]) => (
+                    <Field key={key} label={label}>
+                      <Input type="number" step="any" value={value} onChange={(e) => setter(e.target.value)} />
+                    </Field>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="What must the response contain?" hint="Shown as guidance; it never changes marking.">
+                <Select value={responseRequirement} onChange={(e) => setResponseRequirement(e.target.value)}>
+                  <option value="any">Any appropriate response</option>
+                  <option value="text">A written explanation</option>
+                  <option value="graph">A graph</option>
+                  <option value="geometry">A geometric construction</option>
+                </Select>
+              </Field>
+              <Field label="Response guidance for students">
+                <Input value={responseGuidance} onChange={(e) => setResponseGuidance(e.target.value)} placeholder="Show your method and explain each step." />
+              </Field>
+            </div>
+
+            <Field label="Marking criteria (for markers — never shown to candidates before marking)" hint="Working steps and mark allocation for structured mathematical answers.">
+              <Textarea rows={3} value={markingCriteria} onChange={(e) => setMarkingCriteria(e.target.value)} placeholder="1 mark: correct substitution… 2 marks: valid method… 1 mark: final answer with units." />
+            </Field>
+          </div>
         )}
 
         {type === "matching" && (
@@ -478,7 +637,11 @@ export function QuestionForm({
             <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">Type your answer…</div>
           )}
           {(type === "open_ended") && (
-            <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">Write your full solution…</div>
+            <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">
+              <p>Write your full solution with the mathematics editor…</p>
+              {toolMode === "custom" && responseTools.includes("graph") && <p className="mt-1 text-xs">📈 Graph workspace included</p>}
+              {toolMode === "custom" && responseTools.includes("geometry") && <p className="mt-1 text-xs">△ Geometry workspace included</p>}
+            </div>
           )}
           {type === "numeric" && (
             <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">Enter a number…</div>

@@ -1,4 +1,6 @@
 import katex from "katex";
+import { graphSpecHasWork, graphSpecSummary, normaliseGraphSpec } from "./graphSpec";
+import { geometrySpecHasWork, geometrySpecSummary, normaliseGeometrySpec } from "./geometrySpec";
 
 /**
  * Structured rich content (Tiptap JSON) used by the unified question editor.
@@ -41,6 +43,14 @@ function nodeText(node: RichNode): string {
       return "\n";
     case "image":
       return "";
+    case "graphBlock": {
+      const spec = normaliseGraphSpec(node.attrs?.spec);
+      return graphSpecHasWork(spec) ? `[Graph: ${graphSpecSummary(spec)}]` : "";
+    }
+    case "geometryBlock": {
+      const spec = normaliseGeometrySpec(node.attrs?.spec);
+      return geometrySpecHasWork(spec) ? `[Geometry: ${geometrySpecSummary(spec)}]` : "";
+    }
     default: {
       const inner = (node.content ?? []).map(nodeText).join("");
       const isBlock = [
@@ -77,7 +87,7 @@ export function docIsEmpty(doc: RichDoc | null | undefined): boolean {
   let hasContent = false;
   const walk = (n: RichNode) => {
     if (n.type === "text" && (n.text ?? "").trim()) hasContent = true;
-    if (n.type === "mathInline" || n.type === "mathBlock" || n.type === "image") hasContent = true;
+    if (n.type === "mathInline" || n.type === "mathBlock" || n.type === "image" || n.type === "graphBlock" || n.type === "geometryBlock") hasContent = true;
     (n.content ?? []).forEach(walk);
   };
   walk(doc);

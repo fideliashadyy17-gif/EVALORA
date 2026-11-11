@@ -70,11 +70,29 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
       if (new Set(lefts).size !== lefts.length) issues.push("matching prompts must be unique");
       break;
     }
-    case "open_ended":
+    case "open_ended": {
       if (!String(config.marking_criteria ?? "").trim()) {
         issues.push("marking criteria are required for a structured-response question");
       }
+      // Optional response workspace. When a teacher configures it explicitly it
+      // must be coherent: at least one tool, and a required tool must be enabled.
+      if (config.response_tools !== undefined) {
+        const rawTools = config.response_tools;
+        const tools = Array.isArray(rawTools) ? rawTools.filter((tool): tool is string => typeof tool === "string") : null;
+        if (!tools || tools.length === 0) {
+          issues.push("at least one response tool must be enabled");
+        } else {
+          const requirement = typeof config.response_requirement === "string" ? config.response_requirement : "any";
+          if ((requirement === "graph" || requirement === "geometry") && !tools.includes(requirement)) {
+            issues.push(`the response must include ${requirement === "graph" ? "a graph" : "a geometric construction"}, but that tool is not enabled`);
+          }
+          if (requirement === "text" && !tools.includes("rich_text")) {
+            issues.push("the response must include a written answer, but the writing tool is not enabled");
+          }
+        }
+      }
       break;
+    }
     case "slide":
       break;
     default:

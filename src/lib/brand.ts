@@ -71,7 +71,7 @@ export const QUESTION_TYPES = [
   { value: "ordering", label: "Ordering", auto: true },
   { value: "matching", label: "Matching", auto: true },
   { value: "poll", label: "Poll (no correct answer)", auto: false },
-  { value: "open_ended", label: "Open-ended (manually marked)", auto: false },
+  { value: "open_ended", label: "Constructed response (manually marked)", auto: false },
   { value: "slide", label: "Presentation slide", auto: false },
 ] as const;
 

@@ -5,7 +5,10 @@ import {Module} from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
 function compile(src, dest){let file=path.resolve(dest);let m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}
-const live=compile('src/lib/live.ts','scripts/__print_live.cjs');
+const responseTools={responseWorkspaceFor:()=>({tools:[],graph:{enabled:false,title:'Graph',instructions:'',allowFunctions:true,starter:null},geometry:{enabled:false,title:'Geometry',instructions:'',starter:null},guidance:'',requirement:'any',source:'native'})};
+const liveFile=path.resolve('scripts/__print_live.cjs');const liveOld=Module._load;
+Module._load=function(req,parent){if(parent?.filename===liveFile && req==='./responseTools')return responseTools;return liveOld.apply(this,arguments);};
+let live;try{live=compile('src/lib/live.ts','scripts/__print_live.cjs');}finally{Module._load=liveOld;}
 const paperFile=path.resolve('scripts/__print_paper.cjs');const orig=Module._load;
 Module._load=function(req,parent){if(parent?.filename===paperFile && req==='./live')return live;return orig.apply(this,arguments);};
 const {preparePrintableQuestions}=compile('src/lib/printablePaper.ts',paperFile);Module._load=orig;

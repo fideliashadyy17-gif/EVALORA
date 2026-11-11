@@ -70,6 +70,9 @@ virtual.require = (id) => {
   if (id === "@/lib/supabase/server") return { createAdminClient: () => admin };
   if (id === "next/server") return { NextResponse: { json: (body, init) => Response.json(body, init) } };
   if (id === "@/lib/examTrack") return examTrack;
+  if (id === "@/lib/responseTools") return {
+    validateAnswerPayload: (_type, raw) => ({ ok: true, answer: raw }),
+  };
   return require(id);
 };
 virtual._compile(compiled, filename);

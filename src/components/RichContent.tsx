@@ -1,5 +1,9 @@
 import { docIsEmpty, renderLatex, type RichDoc, type RichNode } from "@/lib/content";
+import { normaliseGraphSpec } from "@/lib/graphSpec";
+import { normaliseGeometrySpec } from "@/lib/geometrySpec";
 import { MathText } from "./MathText";
+import { GraphView } from "./graph/GraphView";
+import { GeometryView } from "./geometry/GeometryView";
 
 /**
  * Renders structured question content (rich document) identically everywhere:
@@ -75,6 +79,10 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
           dangerouslySetInnerHTML={{ __html: renderLatex(String(node.attrs?.latex ?? ""), true) }}
         />
       );
+    case "graphBlock":
+      return <GraphView key={key} spec={normaliseGraphSpec(node.attrs?.spec)} compact />;
+    case "geometryBlock":
+      return <GeometryView key={key} spec={normaliseGeometrySpec(node.attrs?.spec)} compact />;
     case "image": {
       const src = String(node.attrs?.src ?? "");
       if (!src) return null;

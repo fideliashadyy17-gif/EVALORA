@@ -11,7 +11,7 @@ import { createRequire } from "node:module";
 
 const outDir = "/tmp/evalora-rich-test";
 execSync(
-  `npx tsc src/lib/content.ts src/lib/exam.ts src/lib/questionValidation.ts src/components/editor/mathKeyboard.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --esModuleInterop --skipLibCheck --moduleResolution node`,
+  `npx tsc src/lib/content.ts src/lib/exam.ts src/lib/questionValidation.ts src/components/editor/mathKeyboard.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --strict --esModuleInterop --skipLibCheck --moduleResolution node`,
   { stdio: "inherit" },
 );
 execSync(`ln -sfn "$(pwd)/node_modules" ${outDir}/node_modules`, { stdio: "inherit" });
