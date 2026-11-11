@@ -7,7 +7,9 @@ import ts from 'typescript';
 function compile(src,dest,stubs={}){const f=path.resolve(dest),m=new Module(f),old=Module._load;m.filename=f;m.paths=Module._nodeModulePaths(path.dirname(f));Module._load=function(req,parent){if(parent?.filename===f && req in stubs)return stubs[req];return old.apply(this,arguments)};try{m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,f);return m.exports;}finally{Module._load=old;}}
 const graphStub={graphSpecHasWork:()=>false,graphSpecSummary:()=>'',normaliseGraphSpec:(v)=>v};
 const geometryStub={geometrySpecHasWork:()=>false,geometrySpecSummary:()=>'',normaliseGeometrySpec:(v)=>v};
-const content=compile('src/lib/content.ts','scripts/__option_content.cjs',{'./graphSpec':graphStub,'./geometrySpec':geometryStub});
+const statsStub={statsSpecHasWork:()=>false,statsSpecSummary:()=>'',normaliseStatsSpec:(v)=>v};
+const tableStub={dataTableHasWork:()=>false,dataTableSummary:()=>'',normaliseDataTableSpec:(v)=>v};
+const content=compile('src/lib/content.ts','scripts/__option_content.cjs',{'./graphSpec':graphStub,'./geometrySpec':geometryStub,'./statsSpec':statsStub,'./dataTableSpec':tableStub});
 const helper=compile('src/lib/questionOptions.ts','scripts/__option_helper.cjs',{'./content':content});
 const qid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',org='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';let oldOptions,readError,deleteError,writes;
 function setup(){oldOptions=[{label:'Yes',is_correct:true,position:0,content_doc:{type:'doc',content:[]}},{label:'No',is_correct:false,position:1,content_doc:null}];readError=null;deleteError=null;writes=[];}

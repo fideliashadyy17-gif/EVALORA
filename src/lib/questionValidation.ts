@@ -83,11 +83,16 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
           issues.push("at least one response tool must be enabled");
         } else {
           const requirement = typeof config.response_requirement === "string" ? config.response_requirement : "any";
-          if ((requirement === "graph" || requirement === "geometry") && !tools.includes(requirement)) {
-            issues.push(`the response must include ${requirement === "graph" ? "a graph" : "a geometric construction"}, but that tool is not enabled`);
-          }
-          if (requirement === "text" && !tools.includes("rich_text")) {
-            issues.push("the response must include a written answer, but the writing tool is not enabled");
+          const requirementTool: Record<string, { tool: string; label: string }> = {
+            graph: { tool: "graph", label: "a graph" },
+            geometry: { tool: "geometry", label: "a geometric construction" },
+            statistics: { tool: "statistics", label: "a statistics chart" },
+            data_table: { tool: "data_table", label: "a completed data table" },
+            text: { tool: "rich_text", label: "a written answer" },
+          };
+          const required = requirementTool[requirement];
+          if (required && !tools.includes(required.tool)) {
+            issues.push(`the response must include ${required.label}, but that tool is not enabled`);
           }
         }
       }

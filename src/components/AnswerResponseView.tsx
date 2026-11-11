@@ -2,9 +2,13 @@ import { RichContent } from "./RichContent";
 import { MathText } from "./MathText";
 import { GraphView } from "./graph/GraphView";
 import { GeometryView } from "./geometry/GeometryView";
+import { StatsView } from "./stats/StatsView";
+import { DataTableView } from "./stats/DataTableView";
 import type { RichDoc } from "@/lib/content";
 import { graphSpecHasWork, normaliseGraphSpec } from "@/lib/graphSpec";
 import { geometrySpecHasWork, normaliseGeometrySpec } from "@/lib/geometrySpec";
+import { normaliseStatsSpec, statsSpecHasWork } from "@/lib/statsSpec";
+import { dataTableHasWork, normaliseDataTableSpec } from "@/lib/dataTableSpec";
 import { describeAnswerComponents } from "@/lib/responseTools";
 
 /**
@@ -33,8 +37,13 @@ export function AnswerResponseView({
   const text = typeof answer.text === "string" ? answer.text : "";
   const graph = answer.graph ? normaliseGraphSpec(answer.graph) : null;
   const geometry = answer.geometry ? normaliseGeometrySpec(answer.geometry) : null;
+  const statistics = answer.statistics ? normaliseStatsSpec(answer.statistics) : null;
+  const dataTable = answer.data_table ? normaliseDataTableSpec(answer.data_table) : null;
+  const statisticsWork = statistics && statsSpecHasWork(statistics);
+  const tableWork = dataTable && dataTableHasWork(dataTable);
   const components = describeAnswerComponents(answer);
-  const structured = doc || graph || geometry || typeof answer.value === "string" || typeof answer.value === "number";
+  const structured = doc || graph || geometry || statistics || dataTable ||
+    typeof answer.value === "string" || typeof answer.value === "number";
 
   return (
     <div className={`answer-response space-y-3 ${className ?? ""}`}>
@@ -65,8 +74,21 @@ export function AnswerResponseView({
           <GeometryView spec={geometry} />
         </div>
       )}
+      {statisticsWork && statistics && (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-soft">Statistics chart submitted by the candidate</p>
+          <StatsView spec={statistics} showTable />
+        </div>
+      )}
+      {tableWork && dataTable && (
+        <div>
+          <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-soft">Data table submitted by the candidate</p>
+          <DataTableView spec={dataTable} />
+        </div>
+      )}
 
-      {!doc && !text.trim() && !(graph && graphSpecHasWork(graph)) && !(geometry && geometrySpecHasWork(geometry)) && (
+      {!doc && !text.trim() && !(graph && graphSpecHasWork(graph)) && !(geometry && geometrySpecHasWork(geometry)) &&
+        !statisticsWork && !tableWork && (
         structured ? (
           <p className="text-sm text-ink-soft">(empty response)</p>
         ) : (

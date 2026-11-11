@@ -51,7 +51,8 @@ created. The mathematics keyboard was extended (not replaced) with
 
 ### 2.4 Response workspace — `src/lib/responseTools.ts`
 - `config.response_tools` explicitly enables tools:
-  `rich_text`, `math`, `table`, `science`, `graph`, `geometry`.
+  `rich_text`, `math`, `table`, `data_table`, `science`, `graph`, `geometry`,
+  `statistics`.
 - Without explicit configuration, tools are inferred from the question wording
   (`graph`/`plot`/`sketch`/`curve`, construction vocabulary, science vocabulary).
   Objective types keep their native UI and never receive a graph workspace.
@@ -92,6 +93,45 @@ created. The mathematics keyboard was extended (not replaced) with
   it back into the same document position.
 - Question publication validation now rejects an explicitly configured
   workspace with no tools, or a required tool that is not enabled.
+
+### 2.8 Statistics charts and structured data tables
+
+- `src/lib/statsSpec.ts` adds a second, independent representation family:
+  dot plot, bar chart, histogram, box plot and cumulative-frequency chart. The
+  specification stores the observations (or categorical counts), the chosen
+  representation, axis labels, an optional bin width and a summary switch — not
+  an image.
+- The computations are pure and shared by the editor, marker and any future
+  export: Tukey quartiles (the median is excluded from each half when *n* is
+  odd), the 1.5 × IQR outlier rule, population standard deviation, mode,
+  automatic 1/2/2.5/5 × 10ⁿ bin widths, stacked dot frequencies and cumulative
+  totals. There is no charting dependency and the renderer is an SVG built from
+  those numbers, so it is server-component safe.
+- `StatsEditor` is the candidate/teacher workspace: bulk data entry (commas,
+  spaces or new lines), categorical rows for a bar chart, chart type (the
+  teacher may fix it), bin width, axis labels and a live preview. It publishes
+  the whole specification on every change, so the existing autosave queue
+  persists data rather than pixels.
+- Computed summary chips are **off by default**. A statistics workspace is a
+  representation tool, not an answer machine: a teacher who wants mean/median
+  visible can switch `showSummary` on, but a question asking for the median does
+  not have it printed by the tool.
+- `src/lib/dataTableSpec.ts` stores a bounded grid: 10 columns, 40 rows, 200
+  characters per cell, optional row headers. `DataTableEditor` keeps each value
+  in its row and column; a teacher-configured starter fixes the structure so a
+  candidate fills blanks instead of redesigning the table. `DataTableView`
+  renders real `<th scope="row">` headers for print and marking.
+- The unified rich-content editor can embed both as re-editable blocks
+  (`statsBlock`, `dataTableBlock`) beside graphs and geometry, and `RichContent`
+  renders them on every candidate, marker and print surface.
+- The response workspace gains two tools, `statistics` and `data_table`, with
+  matching `response_requirement` values. Inference recognises statistics
+  vocabulary (histogram, dot plot, box plot, quartiles, cumulative frequency,
+  mean/median, standard deviation) and table-completion wording ("complete the
+  table", "frequency table"); explicit `config.response_tools` always wins.
+- `POST /api/exam/save` validates both shapes: non-object payloads are rejected,
+  oversized value/category/row/column/cell payloads are rejected, and stored
+  values are normalised and capped. Legacy answers are untouched.
 
 ## 3. Compatibility and safety
 
@@ -143,10 +183,12 @@ Executed in this environment:
 - `npm run lint` — 0 errors (pre-existing warnings remain).
 - `npm run build` — production build succeeded with stub Supabase environment
   values (no live secrets used in the build).
-- `npm test` — **96 suites passed, 0 failed, 7 skipped; 1120 checks**.
+- `npm test` — **98 suites passed, 0 failed, 7 skipped; 1204 checks**.
   Browser suites are skipped because Playwright browsers are not installed.
-  New suites: `test-assessment-studio.mjs` (78 checks) and
-  `test-structured-response.mjs` (9 checks).
+  Relevant suites: `test-assessment-studio.mjs` (139 checks),
+  `test-structured-response.mjs` (11 checks) and the new
+  `test-data-representations.mjs` (23 checks), which renders every chart type
+  and the data table with React Test Renderer.
 - Server-render smoke test of `GraphView`, `GeometryView` and
   `AnswerResponseView` through a temporary Next.js route: 4 SVGs, KaTeX
   mathematics and the expected component summary rendered without error. The
@@ -154,6 +196,10 @@ Executed in this environment:
 - Supabase production database: the 17 questions, 19 options, 17 paper rows and
   the examination row exist with the expected marks, tools and two graph
   configurations; total paper marks = 73.
+- Statistics rendering: dot plot, bar chart, histogram, box plot and
+  cumulative-frequency chart each render their expected SVG primitives from
+  data, an empty workspace renders a prompt rather than crashing, and the data
+  table renders headers, row headers and cells.
 
 Not performed (and therefore not claimed):
 
@@ -165,6 +211,11 @@ Not performed (and therefore not claimed):
 
 ## 6. Deployment
 
-The change is committed to the working branch, then pushed and deployed. The
-final production URL and deployment id are reported in the task completion
-message; production verification is repeated after the deployment is ready.
+- Original structured-response delivery: branch `arena/fd4f6de7-evalora`,
+  commit `8ca8130`, pull request **#39**, merged to `main` as `af55314`.
+- Statistics and data-table follow-up: branch `arena/d69b8a15-evalora`,
+  commit `2939a2d`, pull request **#40**.
+- Production alias: `https://evalora-six.vercel.app` (Vercel project `evalora`).
+- Each merge triggers a production deployment from `main`; the exact merge
+  commit and deployment id are reported in the task completion message, and the
+  deployment state is confirmed there before the work is called live.

@@ -21,10 +21,14 @@ const emptyGraph = () => ({
   version: 1, title: "", domain: { xMin: -10, xMax: 10, yMin: -8, yMax: 8 }, functions: [], points: [], segments: [], annotations: [],
 });
 const emptyGeometry = () => ({ version: 1, title: "", points: [], lines: [], circles: [], polygons: [], angles: [], annotations: [] });
+const emptyStats = () => ({ version: 1, chart: "dot_plot", title: "", xLabel: "", yLabel: "Frequency", values: [], categories: [], binWidth: null, showSummary: false });
+const emptyTable = () => ({ version: 1, title: "", columns: ["Column 1", "Column 2"], rows: [["", ""], ["", ""]], rowHeaders: false });
 const hasItems = (spec) => Boolean(spec && ["points", "segments", "annotations", "functions", "lines", "circles", "polygons", "angles"].some((key) => Array.isArray(spec[key]) && spec[key].length));
 const payloads = [];
 let lastGraphChange = null;
 let lastGeometryChange = null;
+let lastStatsChange = null;
+let lastTableChange = null;
 
 const originalLoad = Module._load;
 Module._load = function (request, parent) {
@@ -56,6 +60,24 @@ Module._load = function (request, parent) {
         }, "construct"),
       };
     }
+    if (request === "@/components/stats/StatsEditor") {
+      return {
+        StatsEditor: ({ onChange, readOnly }) => React.createElement("button", {
+          "data-testid": "chart",
+          disabled: Boolean(readOnly),
+          onClick: () => { lastStatsChange = { ...emptyStats(), chart: "histogram", values: [1, 2, 2, 3] }; onChange(lastStatsChange); },
+        }, "chart"),
+      };
+    }
+    if (request === "@/components/stats/DataTableEditor") {
+      return {
+        DataTableEditor: ({ onChange, readOnly }) => React.createElement("button", {
+          "data-testid": "fill-table",
+          disabled: Boolean(readOnly),
+          onClick: () => { lastTableChange = { ...emptyTable(), rows: [["1", "2"], ["3", "4"]] }; onChange(lastTableChange); },
+        }, "fill table"),
+      };
+    }
     if (request === "@/components/RichContent") return { RichContent: () => React.createElement("div", { "data-testid": "readonly-doc" }, "answer") };
     if (request === "@/components/graph/GraphView") return { GraphView: () => null };
     if (request === "@/components/geometry/GeometryView") return { GeometryView: () => null };
@@ -82,6 +104,17 @@ Module._load = function (request, parent) {
       normaliseGeometrySpec: (raw) => (raw && typeof raw === "object" ? { ...emptyGeometry(), ...raw } : emptyGeometry()),
       geometrySpecHasWork: hasItems,
     };
+    if (request === "@/lib/statsSpec") return {
+      emptyStatsSpec: emptyStats,
+      normaliseStatsSpec: (raw) => (raw && typeof raw === "object" ? { ...emptyStats(), ...raw } : emptyStats()),
+      statsSpecHasWork: (spec) => Boolean(spec && Array.isArray(spec.values) && spec.values.length) ||
+        Boolean(spec && Array.isArray(spec.categories) && spec.categories.some((entry) => entry.label || entry.value)),
+    };
+    if (request === "@/lib/dataTableSpec") return {
+      emptyDataTableSpec: emptyTable,
+      normaliseDataTableSpec: (raw) => (raw && typeof raw === "object" ? { ...emptyTable(), ...raw } : emptyTable()),
+      dataTableHasWork: (spec) => Boolean(spec && Array.isArray(spec.rows) && spec.rows.some((row) => row.some((cell) => String(cell).trim()))),
+    };
     if (request === "@/components/ui") return { Button: ({ children, ...props }) => React.createElement("button", props, children) };
     if (request === "@/lib/utils") return { cn: (...args) => args.filter(Boolean).join(" ") };
   }
@@ -98,6 +131,8 @@ const workspace = (overrides = {}) => ({
   tools: ["rich_text", "math", "graph", "geometry"],
   graph: { enabled: true, title: "Your graph", instructions: "", allowFunctions: true, starter: emptyGraph() },
   geometry: { enabled: true, title: "Your construction", instructions: "", starter: emptyGeometry() },
+  statistics: { enabled: false, title: "Your statistics chart", instructions: "", chart: "any", starter: emptyStats() },
+  dataTable: { enabled: false, title: "Your data table", instructions: "", starter: emptyTable() },
   guidance: "",
   requirement: "any",
   source: "configured",
@@ -167,6 +202,40 @@ await test("geometry work appears in the saved payload", () => {
   act(() => byTestId(tree, "construct")[0].props.onClick());
   act(() => tab(tree, "Save answer").props.onClick());
   assert.equal(emitted[0].geometry.points[0].id, "A");
+  act(() => tree.unmount());
+});
+
+await test("statistics and data table tools save structured payloads", () => {
+  const { tree, emitted } = render({
+    workspace: workspace({
+      tools: ["rich_text", "math", "statistics", "data_table"],
+      statistics: { enabled: true, title: "Scores", instructions: "", chart: "any", starter: emptyStats() },
+      dataTable: { enabled: true, title: "Frequency table", instructions: "", starter: emptyTable() },
+    }),
+  });
+  act(() => tab(tree, "Statistics").props.onClick());
+  act(() => byTestId(tree, "chart")[0].props.onClick());
+  act(() => tab(tree, "Data table").props.onClick());
+  act(() => byTestId(tree, "fill-table")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].statistics.chart, "histogram");
+  assert.equal(emitted[0].statistics.values.length, 4);
+  assert.equal(emitted[0].data_table.rows[1][0], "3");
+  act(() => tree.unmount());
+});
+
+await test("statistics and table work is kept when the teacher disables those tools", () => {
+  const initial = {
+    version: 1,
+    statistics: { ...emptyStats(), values: [2, 4, 6] },
+    data_table: { ...emptyTable(), rows: [["a", "b"]] },
+  };
+  const { tree, emitted } = render({ initial });
+  act(() => byTestId(tree, "write")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted[0].statistics.values.length, 3);
+  assert.equal(emitted[0].data_table.rows[0][0], "a");
   act(() => tree.unmount());
 });
 

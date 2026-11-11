@@ -7,6 +7,8 @@ import { QUESTION_TYPES } from "@/lib/brand";
 import { RESPONSE_TOOLS } from "@/lib/responseTools";
 import { emptyGraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec } from "@/lib/geometrySpec";
+import { STATS_CHART_LABELS, STATS_CHART_TYPES, emptyStatsSpec, type StatsChartType } from "@/lib/statsSpec";
+import { emptyDataTableSpec, normaliseDataTableSpec } from "@/lib/dataTableSpec";
 import { docIsEmpty, docToLabel, docToPlainText, emptyDoc, textToDoc, type RichDoc } from "@/lib/content";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -130,6 +132,31 @@ export function QuestionForm({
   const [geometryXMax, setGeometryXMax] = useState(String(geometryDomain.xMax ?? 6));
   const [geometryYMin, setGeometryYMin] = useState(String(geometryDomain.yMin ?? -4));
   const [geometryYMax, setGeometryYMax] = useState(String(geometryDomain.yMax ?? 4));
+  const rawStats = (cfg.response_stats ?? {}) as Record<string, unknown>;
+  const rawStatsStarter = (rawStats.starter ?? {}) as { values?: unknown; chart?: unknown };
+  const [statsTitle, setStatsTitle] = useState(String(rawStats.title ?? "Your statistics chart"));
+  const [statsInstructions, setStatsInstructions] = useState(String(rawStats.instructions ?? ""));
+  const [statsChart, setStatsChart] = useState(String(rawStats.chart ?? "any"));
+  const [statsValues, setStatsValues] = useState(
+    Array.isArray(rawStatsStarter.values) ? rawStatsStarter.values.join(", ") : "",
+  );
+  const rawTable = (cfg.response_data_table ?? {}) as Record<string, unknown>;
+  const rawTableStarter = (rawTable.starter ?? {}) as {
+    columns?: unknown;
+    rows?: unknown;
+    rowHeaders?: unknown;
+  };
+  const [tableTitle, setTableTitle] = useState(String(rawTable.title ?? "Your data table"));
+  const [tableInstructions, setTableInstructions] = useState(String(rawTable.instructions ?? ""));
+  const [tableColumns, setTableColumns] = useState(
+    Array.isArray(rawTableStarter.columns) ? rawTableStarter.columns.join(", ") : "Item, Value",
+  );
+  const [tableRows, setTableRows] = useState(
+    Array.isArray(rawTableStarter.rows)
+      ? (rawTableStarter.rows as unknown[][]).map((row) => row.map((cell) => String(cell ?? "")).join(" | ")).join("\n")
+      : "\n\n\n",
+  );
+  const [tableRowHeaders, setTableRowHeaders] = useState(Boolean(rawTableStarter.rowHeaders));
   const [responseRequirement, setResponseRequirement] = useState(String(cfg.response_requirement ?? "any"));
   const [responseGuidance, setResponseGuidance] = useState(String(cfg.response_guidance ?? ""));
   const [pairs, setPairs] = useState<{ left: string; right: string }[]>(
@@ -232,6 +259,38 @@ export function QuestionForm({
               yMax: Number(geometryYMax) || 4,
             },
           }),
+        };
+      }
+      if (toolMode === "custom" && responseTools.includes("statistics")) {
+        const values = statsValues
+          .split(/[\s,;]+/)
+          .map((token) => Number(token))
+          .filter((value) => Number.isFinite(value))
+          .slice(0, 400);
+        const chart = STATS_CHART_TYPES.includes(statsChart as StatsChartType)
+          ? (statsChart as StatsChartType)
+          : "dot_plot";
+        config.response_stats = {
+          title: statsTitle.trim() || "Your statistics chart",
+          instructions: statsInstructions.trim(),
+          chart: statsChart === "any" ? "any" : chart,
+          starter: emptyStatsSpec({ chart, values }),
+        };
+      }
+      if (toolMode === "custom" && responseTools.includes("data_table")) {
+        const columns = tableColumns.split(",").map((column) => column.trim()).filter(Boolean);
+        const rows = tableRows
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .map((line) => line.split("|").map((cell) => cell.trim()));
+        config.response_data_table = {
+          title: tableTitle.trim() || "Your data table",
+          instructions: tableInstructions.trim(),
+          starter: normaliseDataTableSpec(
+            { columns, rows, rowHeaders: tableRowHeaders },
+            emptyDataTableSpec(),
+          ),
         };
       }
     }
@@ -428,6 +487,49 @@ export function QuestionForm({
               </div>
             )}
 
+            {toolMode === "custom" && responseTools.includes("statistics") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Statistics workspace title">
+                  <Input value={statsTitle} onChange={(e) => setStatsTitle(e.target.value)} placeholder="Your statistics chart" />
+                </Field>
+                <Field label="Statistics instructions">
+                  <Input value={statsInstructions} onChange={(e) => setStatsInstructions(e.target.value)} placeholder="Draw a histogram of the data…" />
+                </Field>
+                <Field label="Representation">
+                  <Select value={statsChart} onChange={(e) => setStatsChart(e.target.value)}>
+                    <option value="any">Let the student choose</option>
+                    {STATS_CHART_TYPES.map((chart) => (
+                      <option key={chart} value={chart}>{STATS_CHART_LABELS[chart]}</option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Starting data (optional)" hint="Comma-separated values the candidate can edit.">
+                  <Input value={statsValues} onChange={(e) => setStatsValues(e.target.value)} placeholder="4, 7, 7, 8, 10, 12" />
+                </Field>
+              </div>
+            )}
+
+            {toolMode === "custom" && responseTools.includes("data_table") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Data table title">
+                  <Input value={tableTitle} onChange={(e) => setTableTitle(e.target.value)} placeholder="Your data table" />
+                </Field>
+                <Field label="Table instructions">
+                  <Input value={tableInstructions} onChange={(e) => setTableInstructions(e.target.value)} placeholder="Complete the frequency table…" />
+                </Field>
+                <Field label="Column headings" hint="Comma-separated, e.g. Interval, Tally, Frequency.">
+                  <Input value={tableColumns} onChange={(e) => setTableColumns(e.target.value)} />
+                </Field>
+                <Field label="Rows" hint="One row per line; separate cells with | .">
+                  <Textarea rows={3} value={tableRows} onChange={(e) => setTableRows(e.target.value)} placeholder="0–9 |   |" />
+                </Field>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input type="checkbox" checked={tableRowHeaders} onChange={(e) => setTableRowHeaders(e.target.checked)} />
+                  Treat the first column as row labels
+                </label>
+              </div>
+            )}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="What must the response contain?" hint="Shown as guidance; it never changes marking.">
                 <Select value={responseRequirement} onChange={(e) => setResponseRequirement(e.target.value)}>
@@ -435,6 +537,8 @@ export function QuestionForm({
                   <option value="text">A written explanation</option>
                   <option value="graph">A graph</option>
                   <option value="geometry">A geometric construction</option>
+                  <option value="statistics">A statistics chart</option>
+                  <option value="data_table">A completed data table</option>
                 </Select>
               </Field>
               <Field label="Response guidance for students">
