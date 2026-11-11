@@ -211,6 +211,11 @@ Not performed (and therefore not claimed):
 
 ## 6. Deployment
 
-The change is committed to the working branch, then pushed and deployed. The
-final production URL and deployment id are reported in the task completion
-message; production verification is repeated after the deployment is ready.
+- Original structured-response delivery: branch `arena/fd4f6de7-evalora`,
+  commit `8ca8130`, pull request **#39**, merged to `main` as `af55314`.
+- Statistics and data-table follow-up: branch `arena/d69b8a15-evalora`,
+  commit `2939a2d`, pull request **#40**.
+- Production alias: `https://evalora-six.vercel.app` (Vercel project `evalora`).
+- Each merge triggers a production deployment from `main`; the exact merge
+  commit and deployment id are reported in the task completion message, and the
+  deployment state is confirmed there before the work is called live.
