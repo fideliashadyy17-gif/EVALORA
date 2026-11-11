@@ -1,7 +1,9 @@
+import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
+import { organizationPlatformAccess } from "@/lib/tenant";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Library, PenSquare, Radio, Users } from "lucide-react";
 import type { Metadata } from "next";
@@ -15,7 +17,7 @@ export default async function DashboardPage() {
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
 
-  const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams] =
+  const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams, platformRow] =
     await Promise.all([
       supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
       supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
@@ -24,7 +26,16 @@ export default async function DashboardPage() {
       supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]),
       supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
       supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
+      supabase
+        .from("organizations")
+        .select("slug, name, status, portal_enabled, custom_domain, platform_domain_status")
+        .eq("id", org.id)
+        .maybeSingle(),
     ]);
+
+  const platform = organizationPlatformAccess(
+    platformRow.data ?? { slug: org.slug, status: org.status },
+  );
 
   const entitlement = await getEntitlementFor(supabase, ctx, org.id);
 
@@ -57,6 +68,42 @@ export default async function DashboardPage() {
         <StatCard label="Live / open sessions" value={sessions.count ?? 0} icon={<Radio className="h-5 w-5" />} />
         <StatCard label="Team members" value={members.count ?? 0} icon={<Users className="h-5 w-5" />} />
       </div>
+
+      <Card className="mt-6 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="font-display text-base font-semibold text-evergreen-950">My Institution&apos;s Platform</h2>
+            <p className="mt-1 text-sm text-ink-soft">
+              Your institution&apos;s official platform address — share it with students, teachers and parents.
+            </p>
+            {platform.url ? (
+              <a
+                href={platform.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-2 block max-w-xl break-all rounded-lg border border-evergreen-900/15 bg-cream px-3 py-2 font-mono text-sm text-evergreen-900 underline-offset-2 hover:underline"
+              >
+                {platform.url}
+              </a>
+            ) : (
+              <p className="mt-2 text-sm text-ink-soft">{platform.detail}</p>
+            )}
+          </div>
+          <Badge tone={platform.tone}>{platform.label}</Badge>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+          <PlatformUrlActions
+            url={platform.url}
+            size="sm"
+            openLabel="Open My Platform"
+            copyLabel="Copy Platform Link"
+            shareLabel="Share Platform Link"
+          />
+          <Link href="/dashboard/platform" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
+            Platform details →
+          </Link>
+        </div>
+      </Card>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="p-6">

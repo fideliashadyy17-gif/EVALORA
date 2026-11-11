@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { ssoProviderStatus } from "@/lib/sso";
 import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -104,12 +105,16 @@ export default async function SettingsPage({
                   <option value="other">Other</option>
                 </Select>
               </Field>
-              <Field label="School portal (subdomain)">
+              <Field label="Platform identifier">
                 <Input value={orgFull?.slug ? tenantPortalLabel(orgFull.slug) : ""} disabled />
               </Field>
               <p className="text-xs text-ink-soft">
-                Your public school portal: <a className="font-semibold text-evergreen-800 underline" href={orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "#"}>{orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "—"}</a>.
-                To request a different subdomain, contact EVALORA support — changes are reviewed so existing links are not broken silently.
+                Official platform URL: <a className="font-semibold text-evergreen-800 underline" href={orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "#"}>{orgFull?.slug ? tenantPortalUrl(orgFull.slug) : "—"}</a>.
+                Open, copy and share it from{" "}
+                <Link href="/dashboard/platform" className="font-semibold text-evergreen-800 underline underline-offset-2">
+                  My Institution&apos;s Platform
+                </Link>
+                . To change the identifier, contact EVALORA support — changes are reviewed and old links keep redirecting.
               </p>
               <Button type="submit">Save organization</Button>
             </form>

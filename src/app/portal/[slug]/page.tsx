@@ -2,9 +2,9 @@ import { Logo } from "@/components/Logo";
 import { Badge, ButtonLink, Card } from "@/components/ui";
 import { getSessionContext } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { tenantPortalLabel } from "@/lib/tenant";
+import { organizationPlatformUrl, tenantPortalLabel } from "@/lib/tenant";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
@@ -28,12 +28,25 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
  */
 export default async function SchoolPortalPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
+  const requested = String(slug ?? "").trim().toLowerCase();
   const admin = createAdminClient();
   const { data: org } = await admin
     .from("organizations")
     .select("id, name, slug, type, status, description, country, city, logo_url, is_demo, portal_enabled")
-    .eq("slug", slug)
+    .eq("slug", requested)
     .maybeSingle();
+
+  // A retired identifier (the organization was renamed by the platform owner)
+  // redirects permanently to the current platform URL instead of breaking.
+  if (!org) {
+    const { data: alias } = await admin
+      .from("organizations")
+      .select("slug")
+      .contains("previous_slugs", [requested])
+      .eq("portal_enabled", true)
+      .maybeSingle();
+    if (alias?.slug) permanentRedirect(organizationPlatformUrl(alias.slug));
+  }
   if (!org || !org.portal_enabled) notFound();
 
   const ctx = await getSessionContext().catch(() => null);

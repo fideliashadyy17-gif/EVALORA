@@ -1,6 +1,8 @@
+import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { Badge, Button, Card } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { organizationPlatformAccess } from "@/lib/tenant";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -13,6 +15,7 @@ import { AcademicsTab } from "./tabs/AcademicsTab";
 import { ActivityTab } from "./tabs/ActivityTab";
 import { MembersTab } from "./tabs/MembersTab";
 import { OverviewTab } from "./tabs/OverviewTab";
+import { PlatformTab } from "./tabs/PlatformTab";
 import { SubscriptionTab } from "./tabs/SubscriptionTab";
 
 export const metadata: Metadata = { title: "Organization" };
@@ -20,6 +23,7 @@ export const dynamic = "force-dynamic";
 
 const TABS = [
   { key: "overview", label: "Overview & settings" },
+  { key: "platform", label: "Platform URL" },
   { key: "members", label: "Members & admins" },
   { key: "academics", label: "Academics & classes" },
   { key: "students", label: "Students" },
@@ -60,6 +64,7 @@ export default async function OrganizationDetailPage({
     : null;
   const sub = subRes.data;
   const base = `/admin/organizations/${id}`;
+  const platform = organizationPlatformAccess(org);
 
   return (
     <>
@@ -81,6 +86,23 @@ export default async function OrganizationDetailPage({
                 {[org.city, org.country].filter(Boolean).length > 0 && ` · ${[org.city, org.country].filter(Boolean).join(", ")}`}
                 {` · since ${fmtDate(org.created_at)}`}
               </p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Platform</span>
+                {platform.url ? (
+                  <a
+                    href={platform.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="max-w-full break-all font-mono text-xs text-evergreen-800 underline underline-offset-2"
+                  >
+                    {platform.url}
+                  </a>
+                ) : (
+                  <span className="text-xs text-ink-soft">no working URL</span>
+                )}
+                <PlatformUrlActions url={platform.url} size="sm" openLabel="Open" copyLabel="Copy" shareLabel="Share" />
+              </div>
+
               <p className="mt-1 text-sm text-ink-soft">
                 Owner:{" "}
                 {ownerProfile ? (
@@ -145,6 +167,7 @@ export default async function OrganizationDetailPage({
 
       <div className="pt-6">
         {tab === "overview" && <OverviewTab org={org} sp={sp} />}
+        {tab === "platform" && <PlatformTab org={org} sp={sp} />}
         {tab === "members" && <MembersTab orgId={id} sp={sp} />}
         {tab === "academics" && <AcademicsTab orgId={id} sp={sp} />}
         {tab === "students" && (

@@ -76,6 +76,7 @@ const GROUPS: NavGroup[] = [
     title: "B. Organizations & Schools",
     items: [
       { href: "/admin/organizations", label: "All Organizations", icon: Building2 },
+      { href: "/admin/organizations/access", label: "Organization Platform Access", icon: Link2 },
       { href: "/admin/classes", label: "Class Management", icon: GraduationCap },
       { href: "/admin/organizations/new", label: "Create Organization", icon: Plus },
       { href: "/admin/organizations/admins", label: "Organization Administrators", icon: UserCog },

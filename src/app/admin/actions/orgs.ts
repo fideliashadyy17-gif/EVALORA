@@ -4,7 +4,7 @@ import { audit, fint, fstr, requireSuperAdmin, uniqueOrgSlug } from "@/lib/admin
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { subdomainSuggestions, validateSubdomain } from "@/lib/tenant";
+import { rootDomain, subdomainSuggestions, validateSubdomain } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -356,4 +356,129 @@ export async function exitOrgWorkspace() {
   cookieStore.delete(ADMIN_ORG_COOKIE);
   if (orgId) await audit(ctx, "organization.admin_access_ended", "organizations", orgId, orgId);
   redirect(orgId ? `/admin/organizations/${orgId}` : "/admin/organizations");
+}
+
+/* ─── Organization platform URL (tenant identity) ─────────────────── */
+
+/**
+ * Safe return path for platform actions: only organization records in the
+ * Super Admin console, never an arbitrary external or member destination.
+ */
+function platformReturnPath(formData: FormData, id: string): string {
+  const raw = String(formData.get("return_to") ?? "").split("?")[0];
+  return raw.startsWith(`/admin/organizations/${id}`) ? raw : `/admin/organizations/${id}`;
+}
+
+/**
+ * Change an organization's permanent platform identifier (subdomain label).
+ *
+ * Server-side, super-admin only, validated and collision-checked. The database
+ * trigger independently enforces format, reserved names, DEMO protection and
+ * the rule that an organization administrator can never re-point a tenant;
+ * the old identifier is retired into `previous_slugs` for redirects.
+ */
+export async function changeOrganizationSlug(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id") ?? "");
+  const back = platformReturnPath(formData, id);
+  const fail = (code: string) => redirect(`${back}?tab=platform&e=${code}`);
+
+  const { data: org } = await admin
+    .from("organizations")
+    .select("id, name, slug, is_demo")
+    .eq("id", id)
+    .maybeSingle();
+  if (!org) redirect("/admin/organizations");
+  if (org!.is_demo) fail("demo_protected");
+
+  const requested = fstr(formData, "slug", 63);
+  if (!requested) fail("subdomain");
+  const check = validateSubdomain(requested!);
+  if (!check.ok) fail("subdomain");
+  // A permanent tenant address is never silently rewritten: if normalizing the
+  // input would change what the owner typed, refuse and ask for a clean label.
+  if (requested!.trim().toLowerCase() !== check.slug) fail("subdomain_format");
+  if (check.slug === org!.slug) redirect(`${back}?tab=platform&ok=platform_unchanged`);
+
+  const { data: taken } = await admin
+    .from("organizations")
+    .select("id")
+    .eq("slug", check.slug)
+    .neq("id", id)
+    .maybeSingle();
+  if (taken) fail("subdomain_taken");
+
+  // A retired identifier may not be re-registered to a different tenant: it
+  // still redirects to the organization that used to own it.
+  const { data: retired } = await admin
+    .from("organizations")
+    .select("id")
+    .contains("previous_slugs", [check.slug])
+    .neq("id", id)
+    .maybeSingle();
+  if (retired) fail("subdomain_taken");
+
+  const { error } = await admin.from("organizations").update({ slug: check.slug }).eq("id", id);
+  if (error) fail("save_failed");
+
+  await audit(ctx, "organization.subdomain_changed", "organizations", id, id, {
+    from: org!.slug,
+    to: check.slug,
+    redirect_from: `/portal/${org!.slug}`,
+  });
+  revalidatePath(`/admin/organizations/${id}`);
+  revalidatePath("/admin/organizations");
+  revalidatePath("/admin/organizations/access");
+  revalidatePath("/dashboard/platform");
+  redirect(`${back}?tab=platform&ok=platform_saved`);
+}
+
+/**
+ * Record whether the platform can actually serve subdomain/custom-domain
+ * traffic for an organization. Deliberately explicit: an address is only
+ * reported Active after somebody verified DNS + TLS, never because a row
+ * exists in the database.
+ */
+export async function updateOrganizationPlatformDomain(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id") ?? "");
+  const back = platformReturnPath(formData, id);
+  const fail = (code: string) => redirect(`${back}?tab=platform&e=${code}`);
+
+  const { data: org } = await admin
+    .from("organizations")
+    .select("id, name, slug, custom_domain, platform_domain_status")
+    .eq("id", id)
+    .maybeSingle();
+  if (!org) redirect("/admin/organizations");
+
+  const rawDomain = fstr(formData, "custom_domain", 253);
+  const customDomain = rawDomain
+    ? rawDomain.toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "").replace(/\.$/, "")
+    : null;
+  if (customDomain && !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(customDomain)) {
+    fail("domain_invalid");
+  }
+  if (customDomain && customDomain === rootDomain()) fail("domain_invalid");
+
+  const requestedStatus = String(formData.get("domain_status") ?? "pending");
+  const status = ["active", "pending", "unavailable"].includes(requestedStatus) ? requestedStatus : "pending";
+
+  const { error } = await admin
+    .from("organizations")
+    .update({ custom_domain: customDomain, platform_domain_status: status })
+    .eq("id", id);
+  if (error) fail("save_failed");
+
+  await audit(ctx, "organization.platform_domain_updated", "organizations", id, id, {
+    custom_domain: customDomain,
+    from: org!.platform_domain_status,
+    to: status,
+  });
+  revalidatePath(`/admin/organizations/${id}`);
+  revalidatePath("/admin/organizations/access");
+  revalidatePath("/dashboard/platform");
+  redirect(`${back}?tab=platform&ok=domain_saved`);
 }
