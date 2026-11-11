@@ -1,6 +1,8 @@
 "use server";
 
 import { can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { applyLiveCommand, type LiveCommand } from "@/lib/liveControl";
+import { createNextRoundSession, loadControlTiming, saveRankingSnapshot } from "@/lib/liveControlServer";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -58,6 +60,51 @@ async function updateSession(
 ) {
   const { error } = await own.supabase.from("quiz_sessions").update(patch).eq("id", own.session.id);
   return error ? { error: "The organizer action could not be saved." } : { ok: true as const };
+}
+
+/**
+ * Runs one organizer command through the same server-side engine the
+ * projected live page uses, so both surfaces agree on every transition.
+ */
+async function runHostCommand(sessionId: string, command: LiveCommand) {
+  const own = await loadOwnedSession(sessionId);
+  if (!own) return { error: "Session not found." };
+  const admin = createAdminClient();
+  const timing = await loadControlTiming(admin, own.session.quiz_id);
+  const now = new Date();
+  const outcome = applyLiveCommand({
+    command,
+    session: own.session as never,
+    questionCount: timing.questionCount,
+    durationFor: timing.durationFor,
+    now,
+  });
+  if (outcome.error) return { error: outcome.error };
+  if (outcome.noop && Object.keys(outcome.patch).length === 0) return { ok: true as const };
+
+  const { error } = await own.supabase
+    .from("quiz_sessions")
+    .update(outcome.patch)
+    .eq("id", own.session.id)
+    .eq("current_question_index", own.session.current_question_index);
+  if (error) return { error: "The organizer action could not be saved." };
+
+  if (outcome.snapshotIndex !== null) {
+    const final = Boolean(outcome.closedQuestion?.final);
+    await saveRankingSnapshot(admin, {
+      sessionId: own.session.id,
+      organizationId: own.session.organization_id,
+      questionIndex: outcome.snapshotIndex,
+      quizQuestionId: timing.rows[outcome.snapshotIndex]?.id ?? null,
+      isFinal: final,
+      recompute: final || command === "show_board",
+    });
+  }
+  if (outcome.createNextSession) {
+    await createNextRoundSession(admin, own.session as never);
+  }
+  revalidate(sessionId);
+  return { ok: true as const };
 }
 
 export async function hostStart(sessionId: string) {
@@ -393,4 +440,34 @@ export async function hostRevokeDisplayToken(sessionId: string) {
   if ("error" in res) return res;
   revalidate(sessionId);
   return { ok: true };
+}
+
+/* ── Organizer flow shared with the projected live page ──────────────── */
+
+export async function hostPrev(sessionId: string) {
+  return runHostCommand(sessionId, "prev");
+}
+
+export async function hostSetAnswerLock(sessionId: string, locked: boolean) {
+  return runHostCommand(sessionId, locked ? "lock" : "unlock");
+}
+
+export async function hostRevealResults(sessionId: string) {
+  return runHostCommand(sessionId, "reveal_results");
+}
+
+export async function hostRevealNextPlace(sessionId: string) {
+  return runHostCommand(sessionId, "reveal_next");
+}
+
+export async function hostShowFullBoard(sessionId: string) {
+  return runHostCommand(sessionId, "show_full_board");
+}
+
+export async function hostReplayPodium(sessionId: string) {
+  return runHostCommand(sessionId, "replay_podium");
+}
+
+export async function hostFinishPresentation(sessionId: string) {
+  return runHostCommand(sessionId, "finish");
 }

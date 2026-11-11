@@ -9,6 +9,9 @@ import {
   revealedQuestion,
   seededShuffle,
 } from "@/lib/live";
+import { isResultsStage, parsePresentationStage, stageLabel } from "@/lib/liveControl";
+import { loadRankingView } from "@/lib/liveControlServer";
+import { revealedPodium, withMovement } from "@/lib/liveRanking";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -80,6 +83,7 @@ export async function GET(request: Request) {
   const currentRow = index >= 0 && index < effectiveRows.length ? effectiveRows[index] : null;
   const phase = effectivePhase(session, currentRow, quizSettings, now);
   const deadline = questionDeadlineAt(session, currentRow, quizSettings);
+  const stage = parsePresentationStage(session.presentation_stage);
 
   let myAnswerRow: {
     answer: Record<string, unknown>;
@@ -136,8 +140,10 @@ export async function GET(request: Request) {
   const showBoard =
     participantStatus !== "pending" &&
     (phase === "leaderboard" ||
-      phase === "podium" ||
-      (session.status === "ended" && liveSettings.show_leaderboard) ||
+      stage === "board" ||
+      // Sessions ended before the reveal sequence existed keep their old
+      // behaviour; a new round is always gated by the organizer's reveal.
+      (session.status === "ended" && stage === "idle" && liveSettings.show_leaderboard) ||
       (session.mode === "self_paced" && participantStatus === "finished" && liveSettings.show_leaderboard));
 
   let leaderboard: { display_name: string; avatar_key: string; score: number; is_me: boolean }[] | null = null;
@@ -180,6 +186,65 @@ export async function GET(request: Request) {
 
   const explanationReleased = feedbackReleased && (Boolean(myAnswerRow) || phase === "answer_reveal");
 
+  // ── Final results on the participant's own device ────────────────────
+  // The organizer controls the reveal; a participant only ever receives the
+  // places already revealed, plus their own position once the reveal starts.
+  let final: {
+    stage: string;
+    label: string;
+    my_rank: number | null;
+    my_score: number;
+    my_entry: { display_name: string; avatar_key: string; score: number; rank: number } | null;
+    revealed: number;
+    total: number;
+    podium: { display_name: string; avatar_key: string; score: number; rank: number; is_me: boolean }[];
+    full: { display_name: string; avatar_key: string; score: number; rank: number; is_me: boolean }[] | null;
+    away_from_board: number;
+  } | null = null;
+  if (isResultsStage(stage) && participantStatus !== "pending") {
+    const view = await loadRankingView(admin, session.id, stage);
+    const rows = withMovement(view.current?.entries ?? [], view.previous);
+    const podiumRows = revealedPodium(rows, stage);
+    const revealed = podiumRows.length;
+    const mine = rows.find((row) => row.participant_id === participant.id) ?? null;
+    const decorate = (row: (typeof rows)[number]) => ({
+      display_name: row.display_name,
+      avatar_key: row.avatar_key,
+      score: row.score,
+      rank: row.rank,
+      is_me: row.participant_id === participant.id,
+    });
+    final = {
+      stage,
+      label: stageLabel(stage, session.status),
+      my_rank: mine?.rank ?? null,
+      my_score: mine?.score ?? Number(participant.score),
+      my_entry: mine ? { display_name: mine.display_name, avatar_key: mine.avatar_key, score: mine.score, rank: mine.rank } : null,
+      revealed,
+      total: rows.length,
+      podium: podiumRows.map(decorate),
+      full: stage === "board" ? rows.map(decorate) : null,
+      away_from_board: Math.max(0, rows.length - revealed),
+    };
+    if (mine) myRank = mine.rank;
+  }
+
+  // ── Next round ──────────────────────────────────────────────────────
+  // Once the organizer finishes the podium the same configuration opens a new
+  // waiting room. The previous round keeps its participants, answers, scores,
+  // snapshots and champion; participants only receive the new join code.
+  let nextSession: { session_id: string; join_code: string } | null = null;
+  if (stage === "finished") {
+    const { data: next } = await admin
+      .from("quiz_sessions")
+      .select("id, join_code")
+      .eq("previous_session_id", session.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (next) nextSession = { session_id: next.id, join_code: next.join_code };
+  }
+
   return NextResponse.json({
     server_now: now.toISOString(),
     session: {
@@ -188,6 +253,8 @@ export async function GET(request: Request) {
       status: session.status,
       mode: session.mode,
       phase,
+      answer_locked: Boolean(session.answer_locked),
+      presentation_stage: stage,
       question_started_at: session.question_started_at,
       question_deadline_at: deadline,
       time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
@@ -212,5 +279,7 @@ export async function GET(request: Request) {
     participant_count: participantCount ?? 0,
     leaderboard,
     my_rank: myRank,
+    final,
+    next_session: nextSession,
   });
 }

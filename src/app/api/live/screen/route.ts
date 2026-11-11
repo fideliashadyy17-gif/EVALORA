@@ -1,5 +1,6 @@
 import {
   effectivePhase,
+  isParticipantConnected,
   loadQuizQuestions,
   parseLiveSettings,
   publicQuestion,
@@ -8,7 +9,10 @@ import {
   rankedParticipants,
   revealedQuestion,
 } from "@/lib/live";
-import { verifyDisplayToken } from "@/lib/liveDisplayToken";
+import { isResultsStage, parsePresentationStage, revealedPlaces } from "@/lib/liveControl";
+import { loadRankingView } from "@/lib/liveControlServer";
+import { historyPoints, revealedPodium, withMovement, type RankingRow } from "@/lib/liveRanking";
+import { publicScreenPath, verifyDisplayToken } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -20,8 +24,12 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
  * A competition/session ID alone grants nothing. The caller must also
  * present the organizer-issued signed display token for that exact
  * session and token version. Responses are constructed field-by-field:
- * no organizer settings, participant rows, individual answers, or an
+ * no organizer settings, participant tokens, individual answers, or an
  * answer key outside the authorized answer-reveal phase can leak here.
+ *
+ * The final standings obey the organizer's reveal sequence: the public
+ * payload only ever contains the places already revealed on screen, so the
+ * champion cannot be read from the network before the reveal reaches them.
  */
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
@@ -85,12 +93,22 @@ export async function GET(request: Request) {
   const now = new Date();
   const phase = effectivePhase(session, currentRow, quizSettings, now);
   const deadline = questionDeadlineAt(session, currentRow, quizSettings);
+  const stage = parsePresentationStage(session.presentation_stage);
 
-  const { count: joined } = await admin
-    .from("session_participants")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", session.id)
-    .in("status", ["admitted", "finished"]);
+  const [{ data: roster }, { count: joined }] = await Promise.all([
+    admin
+      .from("session_participants")
+      .select("display_name, avatar_key, status, last_seen_at, joined_at")
+      .eq("session_id", session.id)
+      .in("status", ["admitted", "finished", "pending"])
+      .order("joined_at", { ascending: true })
+      .limit(300),
+    admin
+      .from("session_participants")
+      .select("id", { count: "exact", head: true })
+      .eq("session_id", session.id)
+      .in("status", ["admitted", "finished"]),
+  ]);
 
   let answeredCurrent = 0;
   if (currentRow) {
@@ -102,20 +120,76 @@ export async function GET(request: Request) {
     answeredCurrent = count ?? 0;
   }
 
+  // ── Ranking evolution ────────────────────────────────────────────────
+  const rankingView = await loadRankingView(admin, session.id, stage);
+  const movementRows = withMovement(rankingView.current?.entries ?? [], rankingView.previous);
+  const places = revealedPlaces(stage);
+  const history = rankingView.history.length
+    ? rankingView.history
+    : historyPoints([]);
+
+  let ranking: {
+    question_index: number;
+    is_final: boolean;
+    rows: RankingRow[];
+    hidden: number;
+    answered_count: number;
+    participant_count: number;
+  } | null = null;
+  if (rankingView.current) {
+    const isFinal = rankingView.current.is_final;
+    const visible = isFinal
+      ? Number.isFinite(places)
+        ? movementRows.slice(0, Math.max(0, places))
+        : movementRows
+      : movementRows;
+    ranking = {
+      question_index: rankingView.current.question_index,
+      is_final: isFinal,
+      rows: isFinal ? visible : visible.slice(0, 10),
+      hidden: Math.max(0, (rankingView.current.entries.length ?? 0) - visible.length),
+      answered_count: rankingView.current.answered_count,
+      participant_count: rankingView.current.participant_count,
+    };
+  }
+
+  // Compact strip for the running question: top three and their movement,
+  // never the full standings of a final question before the reveal.
+  const strip =
+    liveSettings.show_leaderboard && ["question", "countdown", "time_expired", "answer_reveal"].includes(phase)
+      ? movementRows.slice(0, 3)
+      : [];
+
+  let final: {
+    stage: string;
+    places: number;
+    podium: RankingRow[];
+    full: RankingRow[] | null;
+    participant_count: number;
+    history: typeof history;
+  } | null = null;
+  if (isResultsStage(stage)) {
+    const podium = revealedPodium(movementRows, stage);
+    final = {
+      stage,
+      places: podium.length,
+      podium,
+      full: stage === "board" ? movementRows : null,
+      participant_count: rankingView.current?.participant_count ?? joined ?? 0,
+      history,
+    };
+  }
+
+  // Legacy field kept for older screens; now reveal-gated so it can never
+  // announce the champion before the organizer does.
   let leaderboard: { display_name: string; avatar_key: string; score: number }[] | null = null;
-  if (phase === "leaderboard" || phase === "podium") {
-    const [{ data: participants }, { data: answers }] = await Promise.all([
-      admin
-        .from("session_participants")
-        .select("id, display_name, avatar_key, score, joined_at")
-        .eq("session_id", session.id)
-        .in("status", ["admitted", "finished"])
-        .limit(1000),
-      admin.from("participant_answers").select("participant_id, response_ms").eq("session_id", session.id),
-    ]);
-    leaderboard = rankedParticipants(participants ?? [], answers ?? [])
+  if (phase === "leaderboard" || stage === "board") {
+    const source = movementRows.length
+      ? movementRows
+      : await loadLiveRankingRows(admin, session.id);
+    leaderboard = source
       .slice(0, 10)
-      .map((p) => ({ display_name: p.display_name, avatar_key: p.avatar_key ?? "owl", score: Number(p.score) }));
+      .map((p) => ({ display_name: p.display_name, avatar_key: p.avatar_key, score: p.score }));
   }
 
   const question =
@@ -136,6 +210,25 @@ export async function GET(request: Request) {
     competition?.instructions ??
     (typeof rawSettings.public_instructions === "string" ? rawSettings.public_instructions : null);
 
+  // Next round, once the organizer has finished the podium presentation.
+  let nextSession: { join_code: string; screen_path: string; session_id: string } | null = null;
+  if (stage === "finished") {
+    const { data: next } = await admin
+      .from("quiz_sessions")
+      .select("id, join_code, display_token_version")
+      .eq("previous_session_id", session.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (next) {
+      nextSession = {
+        session_id: next.id,
+        join_code: next.join_code,
+        screen_path: publicScreenPath(next.id, next.id, Number(next.display_token_version ?? 1)),
+      };
+    }
+  }
+
   return NextResponse.json({
     server_now: now.toISOString(),
     competition_id: competition?.id ?? null,
@@ -150,6 +243,11 @@ export async function GET(request: Request) {
     status: session.status,
     mode: session.mode,
     phase,
+    presentation_stage: stage,
+    session_round: Number(session.session_round ?? 1),
+    answer_locked: Boolean(session.answer_locked),
+    admission_open: session.admission_open !== false,
+    show_leaderboard: liveSettings.show_leaderboard,
     question_started_at: session.question_started_at,
     question_deadline_at: deadline,
     time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
@@ -160,9 +258,46 @@ export async function GET(request: Request) {
     },
     question,
     joined: joined ?? 0,
+    connected: (roster ?? []).filter((p) => isParticipantConnected(p.last_seen_at)).length,
+    participants: (roster ?? []).map((p) => ({
+      display_name: p.display_name,
+      avatar_key: p.avatar_key ?? "owl",
+      status: p.status === "pending" ? "waiting" : p.status,
+      connected: isParticipantConnected(p.last_seen_at),
+    })),
     answered_current: answeredCurrent,
     leaderboard,
+    ranking,
+    strip,
+    final,
+    next_session: nextSession,
     audio: liveSettings.audio,
     presentation: liveSettings.presentation,
   });
 }
+
+/** Fallback ranking straight from authoritative rows (legacy sessions with no snapshot). */
+async function loadLiveRankingRows(admin: ReturnType<typeof createAdminClient>, sessionId: string) {
+  const [{ data: participants }, { data: answers }] = await Promise.all([
+    admin
+      .from("session_participants")
+      .select("id, display_name, avatar_key, score, joined_at")
+      .eq("session_id", sessionId)
+      .in("status", ["admitted", "finished"])
+      .limit(1000),
+    admin.from("participant_answers").select("participant_id, response_ms").eq("session_id", sessionId),
+  ]);
+  return rankedParticipants(participants ?? [], answers ?? []).map((p) => ({
+    participant_id: p.id,
+    display_name: p.display_name,
+    avatar_key: p.avatar_key ?? "owl",
+    score: Number(p.score),
+    rank: 0,
+  }));
+}
+
+// Keep the `hidden` count type-safe for clients that cache the payload.
+export type ScreenRankingPayload = {
+  rows: RankingRow[];
+  hidden: number;
+};

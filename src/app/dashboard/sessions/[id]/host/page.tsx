@@ -48,7 +48,7 @@ export default async function HostPage({ params }: { params: Promise<{ id: strin
     <>
       <PageTitle
         title={`Host control: ${competition?.title ?? session.title ?? quiz?.title ?? "Live session"}`}
-        subtitle="Private organizer screen. The public projection and student devices receive only their own authorized live state."
+        subtitle="Private organizer screen. The projected live page is also a full control centre — open it in this signed-in browser and the organizer toolbar appears at the bottom, so you can run the whole competition from the projector."
       />
       <HostConsole
         session={session as never}
