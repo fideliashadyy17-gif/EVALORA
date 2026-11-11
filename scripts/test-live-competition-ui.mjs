@@ -86,6 +86,11 @@ let screenPayload = null;
 let controlPayload = { authorized: false };
 
 const listeners = new Map();
+globalThis.document = {
+  visibilityState: "visible",
+  addEventListener: () => undefined,
+  removeEventListener: () => undefined,
+};
 globalThis.window = {
   location: {
     origin: "https://evalora.test",
@@ -133,16 +138,16 @@ async function settle() {
   });
 }
 
-async function mount(payload, control) {
-  return mountAt("11111111-1111-4111-8111-111111111111", payload, control);
+async function mount(payload, control, hostIntent = false) {
+  return mountAt("11111111-1111-4111-8111-111111111111", payload, control, hostIntent);
 }
 
-async function mountAt(liveId, payload, control) {
+async function mountAt(liveId, payload, control, hostIntent = false) {
   screenPayload = payload;
   controlPayload = control;
   let tree;
   await act(async () => {
-    tree = TestRenderer.create(React.createElement(PublicScreenClient, { liveId, token: "screen-token" }));
+    tree = TestRenderer.create(React.createElement(PublicScreenClient, { liveId, token: "screen-token", hostIntent }));
   });
   await settle();
   return tree;
@@ -256,6 +261,46 @@ await checkAsync("no organizer control is rendered for an unauthorized viewer", 
   if (labels.includes("Next question")) throw new Error("controls leaked to the public screen");
   if (textOf(tree).includes("Organizer controls")) throw new Error("the organizer bar leaked");
   await act(async () => tree.unmount());
+});
+
+await checkAsync("a shared projection link stays completely clean when nobody is authorized", async () => {
+  const tree = await mount(payload(), { authorized: false, signed_in: false, reason: "signed_out" });
+  const text = textOf(tree);
+  if (text.includes("contrôles organisateur")) throw new Error("the organizer hint leaked onto the shared link");
+  if (text.includes("Se connecter pour piloter")) throw new Error("the sign-in call to action leaked onto the shared link");
+  if (buttonLabels(tree).join("|").includes("Start competition")) throw new Error("controls leaked to the shared link");
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("an organizer link opened while signed out explains itself and offers the sign-in round trip", async () => {
+  const tree = await mount(payload(), { authorized: false, signed_in: false, reason: "signed_out" }, true);
+  const text = textOf(tree);
+  if (!text.includes("n'est pas connecté")) throw new Error("the signed-out explanation is missing");
+  const link = tree.root.findAllByType("a").find((node) => flat(node.props.children).includes("Se connecter pour piloter"));
+  if (!link) throw new Error("the sign-in call to action is missing");
+  if (!String(link.props.href).startsWith("/login?switch=1&next=")) throw new Error("the sign-in link does not return to the screen");
+  if (buttonLabels(tree).join("|").includes("Start competition")) throw new Error("a hint must never render controls");
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("a signed-in outsider is told they are not the organizer", async () => {
+  const tree = await mount(payload(), { authorized: false, signed_in: true, reason: "not_organizer" }, true);
+  const text = textOf(tree);
+  if (!text.includes("n'est pas organisateur")) throw new Error("the wrong-account explanation is missing");
+  if (!text.includes("Changer de compte")) throw new Error("no way to switch accounts");
+  if (buttonLabels(tree).join("|").includes("Start competition")) throw new Error("an outsider must never receive controls");
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("a transient probe failure is not mistaken for a missing permission", async () => {
+  const tree = await mount(payload(), { authorized: false, signed_in: false, reason: "signed_out" }, true);
+  await act(async () => tree.unmount());
+  // The probe retries every 5s and on focus, so a recovered session restores the
+  // toolbar without a page reload.
+  const recovered = await mount(payload(), AUTHORIZED(), true);
+  if (!textOf(recovered).includes("Organizer controls")) throw new Error("the toolbar did not come back after recovery");
+  if (textOf(recovered).includes("Se connecter pour piloter")) throw new Error("the hint stayed on screen after authorization");
+  await act(async () => recovered.unmount());
 });
 
 await checkAsync("an authorized organizer gets every control on the projected page", async () => {

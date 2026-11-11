@@ -140,13 +140,28 @@ type LiveCommand =
  * command is re-authorized on the server. A visitor holding only the screen
  * token can watch but cannot command.
  */
-export function PublicScreenClient({ liveId, token }: { liveId: string; token: string }) {
+export function PublicScreenClient({
+  liveId,
+  token,
+  hostIntent = false,
+}: {
+  liveId: string;
+  token: string;
+  /**
+   * True only for links opened from the organizer's own console (`?host=1`).
+   * It never grants anything: it merely allows the page to explain why the
+   * toolbar is missing (signed out / wrong account) instead of showing the
+   * plain projection with no clue. Shared and projected links stay clean.
+   */
+  hostIntent?: boolean;
+}) {
   const [data, setData] = useState<ScreenState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [reconnecting, setReconnecting] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [qr, setQr] = useState("");
   const [control, setControl] = useState<ControlState | null>(null);
+  const [probe, setProbe] = useState<ProbeOutcome>({ state: "checking" });
   const [participants, setParticipants] = useState<ControlParticipant[]>([]);
   const [busy, setBusy] = useState<LiveCommand | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -199,17 +214,27 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   const loadControl = useCallback(async (sessionId: string) => {
     try {
       const res = await fetch(`/api/live/control?session_id=${encodeURIComponent(sessionId)}`, { cache: "no-store" });
-      if (!res.ok) return;
+      if (!res.ok) {
+        // A transient failure must not be mistaken for "not the organizer".
+        setProbe({ state: "unavailable", status: res.status });
+        return;
+      }
       const json = await res.json().catch(() => null);
       if (json?.authorized) {
         setControl(json.state as ControlState);
         setParticipants((json.participants as ControlParticipant[] | undefined) ?? []);
+        setProbe({ state: "authorized" });
       } else {
         setControl(null);
         setParticipants([]);
+        setProbe({
+          state: json?.signed_in ? "not_organizer" : "signed_out",
+          reason: typeof json?.reason === "string" ? json.reason : null,
+        });
       }
     } catch {
       // The public presentation must never depend on the control probe.
+      setProbe({ state: "unavailable" });
     }
   }, []);
 
@@ -232,7 +257,18 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
     // Keeps the toolbar and participant panel in step with the host console
     // (or a second organizer device) and restores them after a refresh.
     const timer = setInterval(() => void loadControl(controlSessionId), 5000);
-    return () => clearInterval(timer);
+    // Coming back to the window (for example after signing in elsewhere) is
+    // the moment the organizer expects the toolbar to appear.
+    const refresh = () => {
+      if (document.visibilityState === "visible") void loadControl(controlSessionId);
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+      document.removeEventListener("visibilitychange", refresh);
+    };
   }, [controlSessionId, loadControl]);
 
   const send = useCallback(
@@ -428,8 +464,11 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   const resultsStage = ["suspense", "third", "second", "champion", "board"].includes(stage);
   const paused = data.status === "paused";
 
+  const showHostHint = hostIntent && !authorized && probe.state !== "checking";
+
   return (
     <div className={`relative flex min-h-screen flex-col overflow-hidden bg-evergreen-950 text-white ${authorized && barOpen ? "pb-32" : "pb-4"}`}>
+      {showHostHint && <HostHint probe={probe} />}
       <div className="pointer-events-none absolute -left-32 top-20 h-96 w-96 rounded-full bg-evergreen-500/20 blur-3xl" />
       <div className="pointer-events-none absolute -right-24 bottom-10 h-96 w-96 rounded-full bg-gold-500/15 blur-3xl" />
 
@@ -558,6 +597,57 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
 }
 
 /* ── Organizer control layer ──────────────────────────────────────────── */
+
+type ProbeOutcome =
+  | { state: "checking" }
+  | { state: "authorized" }
+  | { state: "signed_out" }
+  | { state: "not_organizer"; reason: string | null }
+  | { state: "unavailable"; status?: number };
+
+/**
+ * Shown only on links opened from the organizer console (`?host=1`) when this
+ * browser cannot command the session. It explains the situation and offers the
+ * sign-in round trip that returns to this exact screen — it is not a control,
+ * and it is never rendered on the shared/projected link.
+ */
+function HostHint({ probe }: { probe: ProbeOutcome }) {
+  const [next, setNext] = useState("");
+  useEffect(() => {
+    const url = `${window.location.pathname}${window.location.search}`;
+    setNext(url.replace(/([?&])host=1&?/, "$1").replace(/[?&]$/, ""));
+  }, []);
+
+  const message =
+    probe.state === "signed_out"
+      ? "Cet onglet n'est pas connecté : les contrôles organisateur sont masqués."
+      : probe.state === "not_organizer"
+        ? "Vous êtes connecté, mais ce compte n'est pas organisateur de cette session."
+        : "Les contrôles organisateur sont momentanément indisponibles — nouvelle tentative…";
+
+  return (
+    <div className="relative z-30 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-b border-gold-500/40 bg-evergreen-900/90 px-4 py-2 text-center text-xs font-semibold text-gold-100">
+      <span aria-hidden="true">🎛️</span>
+      <span>{message}</span>
+      {probe.state === "signed_out" && (
+        <a
+          href={`/login?switch=1&next=${encodeURIComponent(next || "/dashboard")}`}
+          className="rounded-md bg-gold-500 px-2.5 py-1 font-bold text-evergreen-950 hover:bg-gold-400"
+        >
+          Se connecter pour piloter
+        </a>
+      )}
+      {probe.state === "not_organizer" && (
+        <a
+          href={`/login?switch=1&next=${encodeURIComponent(next || "/dashboard")}`}
+          className="rounded-md bg-white/10 px-2.5 py-1 font-bold text-white hover:bg-white/20"
+        >
+          Changer de compte
+        </a>
+      )}
+    </div>
+  );
+}
 
 function OrganizerBar({
   open,

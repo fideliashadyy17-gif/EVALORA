@@ -9,9 +9,11 @@ export default async function PublicScreenPage({
   searchParams,
 }: {
   params: Promise<{ liveId: string }>;
-  searchParams: Promise<{ token?: string }>;
+  searchParams: Promise<{ token?: string; host?: string }>;
 }) {
   const { liveId } = await params;
-  const { token } = await searchParams;
-  return <PublicScreenClient liveId={liveId} token={token ?? ""} />;
+  const { token, host } = await searchParams;
+  // `host=1` marks a link opened from the organizer console. It grants nothing;
+  // it only lets the page explain a missing toolbar. Shared links omit it.
+  return <PublicScreenClient liveId={liveId} token={token ?? ""} hostIntent={host === "1"} />;
 }

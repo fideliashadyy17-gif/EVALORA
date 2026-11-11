@@ -205,8 +205,8 @@ export default async function CompetitionDetailPage({
                         <input type="hidden" name="id" value={id} />
                         <Button type="submit" variant="gold">Open host console →</Button>
                       </form>
-                      <Link href={publicScreenPath(id, monitor.session.id, monitor.session.display_token_version ?? 1)} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
-                        Secure Public Live Screen
+                      <Link href={`${publicScreenPath(id, monitor.session.id, monitor.session.display_token_version ?? 1)}&host=1`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
+                        Open Public Live Screen ↗
                       </Link>
                       <Link href={`/join?code=${monitor.session.join_code}`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2.5 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">
                         Participant join page

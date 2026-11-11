@@ -178,15 +178,26 @@ export async function GET(request: Request) {
   const sessionId = searchParams.get("session_id") ?? "";
   if (!UUID_RE.test(sessionId)) return NextResponse.json({ error: "Invalid session." }, { status: 400 });
 
+  // `signed_in` describes only the calling browser's own session; it is never
+  // evidence of authorization and leaks nothing to an anonymous viewer. The
+  // screen uses it to tell an organizer *why* the toolbar is absent instead of
+  // silently showing the plain projection.
   const ctx = await getSessionContext().catch(() => null);
-  if (!ctx || ctx.profile.status !== "active") return NextResponse.json({ authorized: false }, { status: 200 });
+  if (!ctx || ctx.profile.status !== "active") {
+    return NextResponse.json(
+      { authorized: false, signed_in: Boolean(ctx), reason: ctx ? "inactive_account" : "signed_out" },
+      { status: 200 },
+    );
+  }
 
   const admin = createAdminClient();
   const session = await loadControlSession(admin, sessionId);
-  if (!session) return NextResponse.json({ authorized: false }, { status: 200 });
+  if (!session) {
+    return NextResponse.json({ authorized: false, signed_in: true, reason: "unknown_session" }, { status: 200 });
+  }
   const isHost = session.host_id === ctx.user.id;
   if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
-    return NextResponse.json({ authorized: false }, { status: 200 });
+    return NextResponse.json({ authorized: false, signed_in: true, reason: "not_organizer" }, { status: 200 });
   }
 
   const timing = await loadControlTiming(admin, session.quiz_id);
@@ -195,6 +206,7 @@ export async function GET(request: Request) {
   const participants = await loadControlParticipants(admin, session.id, currentQuestionId);
   return NextResponse.json({
     authorized: true,
+    signed_in: true,
     session_id: session.id,
     commands: LIVE_COMMANDS,
     state: controlState(session as LoadedSession["session"], timing.questionCount),

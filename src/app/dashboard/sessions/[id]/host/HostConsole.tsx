@@ -136,6 +136,10 @@ export function HostConsole({
 
   const joinUrl = `${appUrl}/play/${session.join_code}`;
   const screenUrl = screenPath.startsWith("http") ? screenPath : `${appUrl}${screenPath}`;
+  // The organizer opens the projected page from this console: the extra flag
+  // tells that page to explain a missing toolbar (sign in, wrong account) while
+  // the clean `screenUrl` stays the link to copy for the projector and students.
+  const hostScreenUrl = `${screenUrl}${screenUrl.includes("?") ? "&" : "?"}host=1`;
   const current = questions[session.current_question_index] ?? null;
   const settings = useMemo(() => parseLiveSettings(session.settings), [session.settings]);
   const participants = hostData?.participants ?? [];
@@ -440,12 +444,13 @@ export function HostConsole({
                   <h3 className="font-display text-base font-semibold text-evergreen-950">Secure public projection screen</h3>
                   <p className="mt-1 max-w-2xl text-sm text-ink-soft">
                     Open this separate token-protected link on the projector/TV. Rotate or revoke it if the link is shared outside the room.
+                    {" "}Open it from here to keep your organizer controls; the copied link stays a clean projection for the room.
                   </p>
                 </div>
                 <Badge tone={settings.projector_enabled ? "green" : "red"}>{settings.projector_enabled ? "Enabled" : "Revoked / disabled"}</Badge>
               </div>
               <div className="mt-3 flex flex-wrap gap-2">
-                <a href={screenUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg bg-evergreen-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-evergreen-700">
+                <a href={hostScreenUrl} target="_blank" rel="noreferrer" className="inline-flex items-center rounded-lg bg-evergreen-800 px-4 py-2.5 text-sm font-semibold text-white hover:bg-evergreen-700">
                   Open Public Live Screen ↗
                 </a>
                 <Button variant="outline" disabled={busy} onClick={copyScreenLink}>{copied ? "Copied ✓" : "Copy secure link"}</Button>
