@@ -9,7 +9,7 @@ import { AVATARS, type AvatarKey } from "@/lib/avatars";
 import type { RichDoc } from "@/lib/content";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
 
 interface SubmittedAnswer {
@@ -64,6 +64,11 @@ interface LiveState {
   explanation_doc?: RichDoc | null;
   participant: { display_name: string; avatar_key: string; status: string; score: number; finished: boolean };
   participant_count: number;
+  /** Presence only: names, avatars, connection state. Never answers or scores. */
+  presence?: PresenceRoster | null;
+  presence_heartbeat_ms?: number;
+  /** Host-authorised audio switches for this room. */
+  audio?: { enabled: boolean; volume: number; music_enabled?: boolean; sfx_enabled?: boolean; sound_effects?: boolean };
   leaderboard: { display_name: string; avatar_key: string; score: number; is_me: boolean }[] | null;
   my_rank: number | null;
   final?: FinalBlock | null;
@@ -73,6 +78,12 @@ interface LiveState {
 interface LocalSubmission extends SubmittedAnswer {
   quiz_question_id: string;
 }
+
+import { AudioControls, AudioEnableChip } from "@/components/AudioControls";
+import { PresenceRail } from "@/components/PresenceRail";
+import { useLiveAudio } from "@/lib/useLiveAudio";
+import { trackForPhase } from "@/lib/liveMusic";
+import type { PresenceRoster } from "@/lib/presence";
 
 export function PlayClient({ code }: { code: string }) {
   const storeKey = `evalora-play-${code}`;
@@ -89,7 +100,6 @@ export function PlayClient({ code }: { code: string }) {
   const [submitMessage, setSubmitMessage] = useState<string | null>(null);
   const [localSubmission, setLocalSubmission] = useState<LocalSubmission | null>(null);
   const [connection, setConnection] = useState<"connecting" | "online" | "reconnecting">("connecting");
-  const [localSound, setLocalSound] = useState(true);
   const [now, setNow] = useState(Date.now());
   // Once the participant has joined, the live question is an assessment surface:
   // copy, cut, paste and the context menu are cancelled and the text is not
@@ -98,7 +108,45 @@ export function PlayClient({ code }: { code: string }) {
   // the participant can paste a code or name.
   useAssessmentLockdown(Boolean(identity));
   const offsetRef = useRef(0);
-  const audioRef = useRef<AudioContext | null>(null);
+
+  // ── Audio ────────────────────────────────────────────────────────────
+  // Participants stay silent by default: the room's soundtrack belongs to the
+  // public screen, so a phone in the same room can never double the music. The
+  // host can share it (music_enabled), and every listener can still choose
+  // their own volumes or mute. Sound effects are per-device feedback.
+  const audioServer = state?.audio ?? { enabled: true, volume: 0.6, music_enabled: false };
+  const phaseTrack = useMemo(() => {
+    if (!state || !audioServer.music_enabled) return null;
+    const remaining = state.session.question_deadline_at
+      ? Math.max(0, (new Date(state.session.question_deadline_at).getTime() - (now + offsetRef.current)) / 1000)
+      : null;
+    return trackForPhase(state.session.phase, {
+      status: state.session.status,
+      stage: state.session.presentation_stage,
+      remaining: remaining === null ? null : remaining <= 0 ? 0 : remaining <= 5 ? 5 : Math.ceil(remaining / 10) * 10,
+    });
+  }, [audioServer.music_enabled, now, state]);
+  const {
+    snapshot: audioSnapshot,
+    updatePreferences: updateAudioPreferences,
+    unlock: unlockAudio,
+    cue: playCue,
+  } = useLiveAudio({
+    role: "participant",
+    sessionId: state?.session.id ?? `play-${code}`,
+    server: audioServer,
+    track: phaseTrack,
+  });
+
+  // Local, non-competitive feedback on the device that answered: a bright
+  // arpeggio for a confirmed correct answer, a soft falling third for an
+  // incorrect one, and a neutral confirmation when marking is pending. This is
+  // a short musical cue, never a stamp or a buzzer.
+  const playAnswerCue = (isCorrect?: boolean | null) => {
+    if (isCorrect === true) playCue("correct");
+    else if (isCorrect === false) playCue("incorrect");
+    else playCue("lock");
+  };
 
   useEffect(() => {
     try {
@@ -198,28 +246,6 @@ export function PlayClient({ code }: { code: string }) {
     }
   }
 
-  function playSubmittedTone() {
-    if (!localSound) return;
-    try {
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioRef.current ??= new AudioCtor();
-      const ctx = audioRef.current;
-      if (ctx.state === "suspended") void ctx.resume();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.frequency.setValueAtTime(660, ctx.currentTime);
-      osc.frequency.setValueAtTime(880, ctx.currentTime + 0.09);
-      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.08, ctx.currentTime + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.22);
-      osc.connect(gain).connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.24);
-    } catch {
-      // Local feedback sound is optional; submission never depends on it.
-    }
-  }
-
   async function postAnswer(payload: Record<string, unknown>) {
     if (!identity || !state?.question) throw new Error("No active question");
     const res = await fetch("/api/live/answer", {
@@ -267,7 +293,7 @@ export function PlayClient({ code }: { code: string }) {
         needs_marking: result.data?.needs_marking,
       });
       setSubmitMessage("Answer recorded ✓");
-      playSubmittedTone();
+      playAnswerCue(result.data?.is_correct);
       void fetchState();
     } catch {
       // One idempotent retry: the unique participant/question row means
@@ -279,7 +305,7 @@ export function PlayClient({ code }: { code: string }) {
         if (retry.res.ok) {
           setLocalSubmission({ quiz_question_id: quizQuestionId, submitted: true, answer: payload, response_ms: retry.data?.response_ms });
           setSubmitMessage("Answer recorded ✓");
-          playSubmittedTone();
+          playAnswerCue(retry.data?.is_correct);
           void fetchState();
         } else {
           setSubmitMessage(retry.data?.error ?? "Still offline. Your selected answer is still shown; tap it again when reconnected.");
@@ -400,14 +426,21 @@ export function PlayClient({ code }: { code: string }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setLocalSound((v) => !v)}
-            className="rounded-full border border-evergreen-900/15 bg-white px-3 py-1.5 text-sm"
-            aria-label={localSound ? "Turn local feedback sound off" : "Turn local feedback sound on"}
-          >
-            {localSound ? "🔊" : "🔇"}
-          </button>
+          <PresenceRail
+            roster={state.presence ?? null}
+            variant="live"
+            title="Participants"
+            error={connection === "reconnecting" ? "Reconnecting — the list updates itself." : null}
+          />
+          <AudioControls
+            snapshot={audioSnapshot}
+            onPreferences={updateAudioPreferences}
+            onUnlock={unlockAudio}
+            variant="participant"
+          />
+          {audioSnapshot?.blocked && audioSnapshot.ownsMusic && (
+            <AudioEnableChip snapshot={audioSnapshot} onUnlock={unlockAudio} variant="participant" />
+          )}
           {remaining !== null && session.status === "live" && session.phase === "question" && (
             <Badge tone={remaining <= 5 ? "red" : "gold"} className="px-3 py-1 text-base font-bold tabular-nums">
               {mmss(Math.ceil(remaining))}

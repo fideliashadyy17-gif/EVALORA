@@ -6,7 +6,10 @@ import { RichContent } from "@/components/RichContent";
 import type { PublicQuestion } from "@/components/QuestionRunner";
 import { mmss } from "@/lib/utils";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AudioControls, AudioEnableChip } from "@/components/AudioControls";
+import { useLiveAudio } from "@/lib/useLiveAudio";
+import { trackForPhase, type CueKey } from "@/lib/liveMusic";
 import { useAssessmentLockdown } from "@/lib/useAssessmentLockdown";
 
 interface RankingRowDto {
@@ -67,7 +70,14 @@ interface ScreenState {
   strip: RankingRowDto[];
   final: FinalBlock | null;
   next_session: { session_id: string; join_code: string; screen_path: string } | null;
-  audio: { enabled: boolean; volume: number; theme: "evergreen" | "focus" | "celebration" | "off"; sound_effects: boolean };
+  audio: {
+    enabled: boolean;
+    volume: number;
+    theme: "evergreen" | "focus" | "celebration" | "off";
+    sound_effects: boolean;
+    music_enabled?: boolean;
+    sfx_enabled?: boolean;
+  };
   presentation: { animations_enabled: boolean; show_join_code_on_screen: boolean };
 }
 
@@ -104,12 +114,6 @@ type LiveCommand =
   | "replay_podium"
   | "finish";
 
-const THEME_NOTES: Record<string, number[]> = {
-  evergreen: [261.63, 329.63, 392.0, 523.25, 392.0, 329.63],
-  focus: [220.0, 261.63, 329.63, 392.0],
-  celebration: [392.0, 523.25, 659.25, 783.99, 659.25, 523.25],
-};
-
 /**
  * Dedicated Public Live Screen — and, for the authenticated organizer, the
  * competition's control centre.
@@ -126,7 +130,6 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   const [reconnecting, setReconnecting] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [qr, setQr] = useState("");
-  const [soundUnlocked, setSoundUnlocked] = useState(false);
   const [control, setControl] = useState<ControlState | null>(null);
   const [busy, setBusy] = useState<LiveCommand | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -137,9 +140,7 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
   // menu are cancelled, and the displayed text is not selectable.
   useAssessmentLockdown(true);
   const offset = useRef(0);
-  const audioContext = useRef<AudioContext | null>(null);
   const playedEvents = useRef(new Set<string>());
-  const musicIndex = useRef(0);
   const dataRef = useRef<ScreenState | null>(null);
   dataRef.current = data;
 
@@ -235,87 +236,76 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
       .catch(() => setQr(""));
   }, [data?.join_code]);
 
-  const playTone = useCallback(
-    (frequency: number, delay = 0, duration = 0.28, volumeScale = 0.07, type: OscillatorType = "sine") => {
-      if (!soundUnlocked || !audioContext.current || !dataRef.current) return;
-      try {
-        const ctx = audioContext.current;
-        const start = ctx.currentTime + delay;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.type = type;
-        osc.frequency.setValueAtTime(frequency, start);
-        gain.gain.setValueAtTime(0.0001, start);
-        gain.gain.exponentialRampToValueAtTime(
-          Math.max(0.0002, dataRef.current.audio.volume * volumeScale),
-          start + 0.025,
-        );
-        gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
-        osc.connect(gain).connect(ctx.destination);
-        osc.start(start);
-        osc.stop(start + duration + 0.03);
-      } catch {
-        // Presentation audio must never break the visual screen.
-      }
-    },
-    [soundUnlocked],
-  );
-
-  // Original generated background music, only on this projection device.
-  const audioTheme = data?.audio.theme;
-  const audioEnabled = data?.audio.enabled;
-  const phase = data?.phase;
-  useEffect(() => {
-    if (!soundUnlocked || !audioEnabled || audioTheme === "off" || !phase) return;
-    if (!["waiting", "countdown", "question", "leaderboard", "podium"].includes(phase)) return;
-    const notes = THEME_NOTES[audioTheme ?? "evergreen"] ?? THEME_NOTES.evergreen;
-    const intervalMs = audioTheme === "focus" ? 720 : audioTheme === "celebration" ? 440 : 540;
-    const timer = setInterval(() => {
-      const note = notes[musicIndex.current % notes.length];
-      playTone(note, 0, 0.42, 0.038, "triangle");
-      if (musicIndex.current % 4 === 0) playTone(note / 2, 0, 0.55, 0.025, "sine");
-      musicIndex.current += 1;
-    }, intervalMs);
-    return () => clearInterval(timer);
-  }, [audioEnabled, audioTheme, phase, playTone, soundUnlocked]);
-
   const serverNow = now + offset.current;
   const startsAt = data?.question_started_at ? new Date(data.question_started_at).getTime() : null;
   const startsIn = startsAt && serverNow < startsAt ? Math.ceil((startsAt - serverNow) / 1000) : null;
 
-  // One-shot, state-synchronized sound effects.
+  // ── Original EVALORA soundtrack ─────────────────────────────────────
+  // The projection device is the room's single audio owner: the soundtrack
+  // plays here, never on participant phones, so a room can never hear the same
+  // track twice. Host switches (music / effects / volume) arrive with the
+  // public payload; each listener's own volumes are stored on the device.
+  const remainingSeconds = data?.question_deadline_at
+    ? Math.max(0, (new Date(data.question_deadline_at).getTime() - serverNow) / 1000)
+    : null;
+  // Coarse bucket: the engine only restarts when the musical cue actually
+  // changes, not on every 200 ms clock tick.
+  const remainingBucket = remainingSeconds === null ? null : remainingSeconds <= 0 ? 0 : remainingSeconds <= 5 ? 5 : Math.ceil(remainingSeconds / 10) * 10;
+  const audioTrack = useMemo(
+    () =>
+      data && data.audio.theme !== "off"
+        ? trackForPhase(data.phase, {
+            status: data.status,
+            stage: data.presentation_stage,
+            remaining: remainingBucket,
+          })
+        : null,
+    [data, remainingBucket],
+  );
+  const {
+    snapshot: audioSnapshot,
+    updatePreferences: updateAudioPreferences,
+    unlock: unlockAudio,
+    cue: playCue,
+  } = useLiveAudio({
+    role: "screen",
+    sessionId: liveId,
+    server: data?.audio ?? { enabled: true, volume: 0.6 },
+    track: audioTrack,
+    variant:
+      data?.audio.theme === "focus" ? "focus" : data?.audio.theme === "celebration" ? "celebration" : "evergreen",
+  });
+
+  // One-shot musical cues, synchronised to authoritative state. Each key is
+  // played at most once, so a network retry or a re-render cannot double a cue.
   useEffect(() => {
-    if (!data || !soundUnlocked || !data.audio.sound_effects) return;
-    const once = (key: string, fn: () => void) => {
+    if (!data) return;
+    const once = (key: string, c: CueKey) => {
       if (playedEvents.current.has(key)) return;
       playedEvents.current.add(key);
-      fn();
+      playCue(c);
     };
     const q = data.progress.index;
-    if (data.phase === "question") once(`question:${q}`, () => { playTone(659.25, 0, 0.2, 0.08); playTone(880, 0.11, 0.28, 0.08); });
-    if (data.phase === "time_expired") once(`expired:${q}`, () => playTone(196, 0, 0.5, 0.09, "sawtooth"));
-    if (data.phase === "answer_reveal") once(`reveal:${q}`, () => { playTone(523.25, 0, 0.22, 0.08); playTone(783.99, 0.13, 0.35, 0.08); });
-    if (data.phase === "leaderboard") once(`board:${q}:${data.joined}`, () => playTone(587.33, 0, 0.3, 0.07));
-    if (data.phase === "countdown" && startsIn !== null && startsIn <= 3 && startsIn > 0) {
-      once(`countdown:${q}:${startsIn}`, () => playTone(startsIn === 1 ? 880 : 587.33, 0, 0.16, 0.08));
-    }
     const stage = data.presentation_stage;
-    if (stage === "suspense") once("reveal:suspense", () => { [196, 196, 196, 246.94].forEach((f, i) => playTone(f, i * 0.5, 0.4, 0.05, "triangle")); });
-    if (stage === "third") once("reveal:third", () => { playTone(392, 0, 0.3, 0.08); playTone(523.25, 0.18, 0.42, 0.08); });
-    if (stage === "second") once("reveal:second", () => { playTone(440, 0, 0.3, 0.08); playTone(587.33, 0.18, 0.42, 0.08); });
-    if (stage === "champion") once("reveal:champion", () => { [523.25, 659.25, 783.99, 1046.5, 783.99, 1046.5].forEach((f, i) => playTone(f, i * 0.16, 0.5, 0.1, "triangle")); });
-    if (stage === "board") once("reveal:board", () => playTone(659.25, 0, 0.4, 0.07));
-  }, [data, playTone, soundUnlocked, startsIn]);
+    if (data.phase === "question" && data.status === "live") once(`question:${q}`, "transition");
+    if (data.phase === "time_expired") once(`expired:${q}`, "lock");
+    if (data.phase === "answer_reveal") once(`reveal:${q}`, "board");
+    if (data.phase === "leaderboard") once(`board:${q}:${data.joined}`, "board");
+    if (data.phase === "countdown" && startsIn !== null && startsIn <= 3 && startsIn > 0) {
+      once(`countdown:${q}:${startsIn}`, "tick");
+    }
+    if (data.phase === "question" && remainingSeconds !== null && remainingSeconds > 0 && remainingSeconds <= 5) {
+      once(`final:${q}:${Math.ceil(remainingSeconds)}`, "tick");
+    }
+    if (stage === "suspense") once("reveal:suspense", "reveal");
+    if (stage === "third") once("reveal:third", "podium-third");
+    if (stage === "second") once("reveal:second", "podium-second");
+    if (stage === "champion") once("reveal:champion", "podium-champion");
+    if (stage === "board") once("reveal:board", "board");
+  }, [data, playCue, remainingSeconds, startsIn]);
 
   async function enablePresentation() {
-    try {
-      const AudioCtor = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      audioContext.current ??= new AudioCtor();
-      await audioContext.current.resume();
-      setSoundUnlocked(true);
-    } catch {
-      setSoundUnlocked(false);
-    }
+    unlockAudio();
     try {
       if (!document.fullscreenElement) await document.documentElement.requestFullscreen();
     } catch {
@@ -436,11 +426,23 @@ export function PublicScreenClient({ liveId, token }: { liveId: string; token: s
           {data.answer_locked && ["live", "paused"].includes(data.status) && (
             <span className="rounded-full bg-red-500/90 px-3 py-1.5 text-sm font-bold text-white">🔒 Answers locked</span>
           )}
+          <AudioControls
+            snapshot={audioSnapshot}
+            onPreferences={updateAudioPreferences}
+            onUnlock={unlockAudio}
+            variant="screen"
+          />
           <button onClick={enablePresentation} className="rounded-full bg-gold-500 px-4 py-2 text-sm font-bold text-evergreen-950 shadow hover:bg-gold-400">
-            {soundUnlocked ? "🔊 Sound on · Fullscreen" : "▶ Enable sound & fullscreen"}
+            {audioSnapshot?.running ? "⛶ Fullscreen" : "▶ Sound & fullscreen"}
           </button>
         </div>
       </header>
+
+      {audioSnapshot?.blocked && (
+        <div className="relative z-20 flex justify-center bg-evergreen-900/80 px-4 py-2">
+          <AudioEnableChip snapshot={audioSnapshot} onUnlock={unlockAudio} variant="screen" />
+        </div>
+      )}
 
       {reconnecting && (
         <div className="relative z-20 bg-amber-400 px-5 py-2 text-center text-sm font-bold text-amber-950">

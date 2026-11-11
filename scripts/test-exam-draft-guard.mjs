@@ -30,6 +30,9 @@ Module._load=function(request,parent) {
   if(request==='./ExamMessenger') return {ExamMessenger:()=>null};
   if(request==='./RetakePanel') return {RetakePanel:()=>null};
   if(request==='./HintPanel') return {HintPanel:()=>null};
+  if(request==='@/components/PresenceRail') return {PresenceRail:()=>null};
+  if(request==='@/lib/hintAttention') return {answerStateFor:({hasSavedAnswer,isCorrect})=>!hasSavedAnswer?'unanswered':isCorrect===true?'correct':isCorrect===false?'incorrect':'answered'};
+  if(request==='@/lib/presence') return {PRESENCE_HEARTBEAT_MS:20000,PRESENCE_REFRESH_MS:15000};
   if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p)};
   if(request==='@/lib/utils') return {cn:(...args)=>args.filter(Boolean).join(' '),mmss:()=> '10:00'};
   if(request==='@livekit/components-styles') return {};

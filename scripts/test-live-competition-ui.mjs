@@ -55,6 +55,12 @@ function loadScreen() {
       if (request === "@/lib/useAssessmentLockdown") return { useAssessmentLockdown: () => undefined };
       if (request === "@/lib/utils") return { mmss: (seconds) => `${seconds}s` };
       if (request === "qrcode") return { toDataURL: async () => "data:image/png;base64,AA" };
+      // The soundtrack is exercised by its own suite; here it is inert so the
+      // presentation assertions stay about the room, not the audio device.
+      if (request === "@/components/AudioControls") return { AudioControls: () => null, AudioEnableChip: () => null };
+      if (request === "@/lib/useLiveAudio")
+        return { useLiveAudio: () => ({ snapshot: null, updatePreferences: () => {}, unlock: () => {}, cue: () => {} }) };
+      if (request === "@/lib/liveMusic") return { trackForPhase: () => null };
     }
     return originalLoad.apply(this, arguments);
   };

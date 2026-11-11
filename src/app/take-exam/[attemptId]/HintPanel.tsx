@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Lightbulb, Loader2 } from "lucide-react";
 import { Badge, Button } from "@/components/ui";
 import { HINT_LEVEL_LABELS, NO_HINT_MESSAGE } from "@/lib/examHints";
+import { HINT_ATTENTION_SECONDS, answerStateFor, hintAttention, type HintAnswerState } from "@/lib/hintAttention";
 
 export type CandidateHint = { level: number; text: string };
 
@@ -17,6 +18,11 @@ export type CandidateHint = { level: number; text: string };
  *  · it is rendered inline under the question header (not as an overlay), so it
  *    can never cover the question, the answer fields, the maths editor, an
  *    image or the on-screen keyboard;
+ *  · the button is available from the first second. After 30 seconds without a
+ *    resolved answer it starts a calm attention pulse ("HINT — NEED HELP?"),
+ *    and an incorrect answer asks immediately. Opening the hint — or answering
+ *    correctly — ends the pulse; changing question unmounts it, so the timer can
+ *    never follow a student to the next question;
  *  · the parent mounts it with `key={question_id}`, so switching questions
  *    unmounts it and a hint can never belong to the previous question;
  *  · it uses the hints already delivered with the paper when they are there
@@ -29,19 +35,51 @@ export function HintPanel({
   questionId,
   initialHints,
   disabled = false,
+  answerState,
+  savedAnswer,
+  attentionSeconds = HINT_ATTENTION_SECONDS,
 }: {
   attemptId: string;
   token: string | null;
   questionId: string;
   initialHints?: CandidateHint[] | null;
   disabled?: boolean;
+  /** Optional: derived from saved answer + released correctness, if the parent has it. */
+  answerState?: HintAnswerState;
+  /** Optional convenience: the candidate's saved answer payload, if any. */
+  savedAnswer?: unknown;
+  attentionSeconds?: number;
 }) {
+  const resolvedAnswerState: HintAnswerState =
+    answerState ?? answerStateFor({ hasSavedAnswer: savedAnswer !== null && savedAnswer !== undefined });
   const [open, setOpen] = useState(false);
+  const [openedOnce, setOpenedOnce] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const mountedAt = useRef<number>(typeof Date !== "undefined" ? Date.now() : 0);
   const [hints, setHints] = useState<CandidateHint[]>(() => sanitize(initialHints));
   const [levelIndex, setLevelIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requested = useRef(false);
+
+  // A single timeout for the invitation. It is restarted only when the question
+  // changes (the parent remounts this component with a question-keyed `key`) or
+  // when the answer state changes, and it is never persisted anywhere.
+  useEffect(() => {
+    if (openedOnce) return;
+    const tick = () => setElapsedMs(Date.now() - mountedAt.current);
+    tick();
+    const timer = setInterval(tick, 1000);
+    return () => clearInterval(timer);
+  }, [openedOnce]);
+
+  const attention = hintAttention({
+    answerState: resolvedAnswerState,
+    elapsedMs,
+    opened: openedOnce,
+    disabled,
+    attentionSeconds,
+  });
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -72,6 +110,7 @@ export function HintPanel({
       return;
     }
     setOpen(true);
+    setOpenedOnce(true);
     if (!hints.length && !requested.current) {
       requested.current = true;
       void load();
@@ -90,11 +129,25 @@ export function HintPanel({
         onClick={toggle}
         aria-expanded={open}
         aria-controls={`hint-${questionId}`}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gold-500/60 bg-gold-100/70 px-3 py-1.5 text-sm font-semibold text-gold-700 transition hover:bg-gold-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-600"
+        data-attention={attention.attention ? "true" : "false"}
+        title={
+          attention.attention
+            ? "Still stuck? Open your hint — it only guides your thinking, never the answer."
+            : "Hints are available at any time. They never change your timer or your answers."
+        }
+        className={[
+          "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gold-600",
+          attention.attention
+            ? "hint-attention border-gold-600 bg-gold-100 text-gold-800"
+            : "border-gold-500/60 bg-gold-100/70 text-gold-700 hover:bg-gold-100",
+        ].join(" ")}
       >
-        <Lightbulb className="h-4 w-4" aria-hidden />
-        {open ? "Hide hint" : "Need a hint?"}
+        <Lightbulb className={`h-4 w-4 ${attention.attention ? "text-gold-700" : ""}`} aria-hidden />
+        {open ? "Hide hint" : attention.label}
       </button>
+      <span className="sr-only" role="status" aria-live="polite">
+        {attention.attention ? "Hint available: you have not answered this question yet. Press the hint button for guidance." : ""}
+      </span>
 
       {open && (
         <div

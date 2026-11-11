@@ -24,6 +24,13 @@ export interface LiveAudioSettings {
   volume: number; // 0..1
   theme: "evergreen" | "focus" | "celebration" | "off";
   sound_effects: boolean;
+  /**
+   * Host switch for the soundtrack. `false` silences the public screen too and
+   * keeps participant devices silent; `true` (default) lets the screen play.
+   */
+  music_enabled: boolean;
+  /** Host switch for musical cues (correct, incorrect, transitions…). */
+  sfx_enabled: boolean;
 }
 
 export interface LivePresentationSettings {
@@ -52,6 +59,8 @@ export function defaultLiveSessionSettings(
       volume: 0.6,
       theme: "evergreen",
       sound_effects: true,
+      music_enabled: true,
+      sfx_enabled: true,
     },
     presentation: {
       animations_enabled: true,
@@ -81,6 +90,10 @@ export function parseLiveSettings(raw: unknown): ParsedLiveSettings {
       volume: Number.isFinite(volumeRaw) ? Math.min(1, Math.max(0, volumeRaw)) : 0.6,
       theme,
       sound_effects: audio.sound_effects !== false,
+      // Sessions created before this switch existed keep their music: absence
+      // is treated as "allowed", never as an opt-out.
+      music_enabled: audio.music_enabled !== false,
+      sfx_enabled: audio.sfx_enabled !== false && audio.sound_effects !== false,
     },
     presentation: {
       animations_enabled: presentation.animations_enabled !== false,
