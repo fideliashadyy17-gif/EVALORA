@@ -64,6 +64,33 @@ Module._load = function (request, parent) {
       Input: (props) => React.createElement('input', strip(props)),
     };
   }
+  if (fromOurCode && request === '@/lib/supabase/server') {
+    // The sign-in page reads the public identity of an institution portal and,
+    // when switching accounts, the current browser session. Both are stubbed.
+    const builder = () => {
+      const state = { slug: null };
+      const b = {
+        select: () => b,
+        eq: (column, value) => {
+          if (column === 'slug') state.slug = value;
+          return b;
+        },
+        maybeSingle: async () => ({
+          data:
+            state.slug === 'oak-international-school'
+              ? { name: 'Oak International School', slug: 'oak-international-school', status: 'active', portal_enabled: true }
+              : null,
+        }),
+      };
+      return b;
+    };
+    return {
+      createAdminClient: () => ({ from: builder }),
+      createClient: async () => ({
+        auth: { getUser: async () => ({ data: { user: { email: 'current.person@example.org' } } }) },
+      }),
+    };
+  }
   if (fromOurCode && request === '@/lib/supabase/client') {
     return { createClient: () => ({ auth: { signInWithPassword: async () => ({ error: null }) } }) };
   }
@@ -168,6 +195,36 @@ await test('password sign-in notices survive the move to the server page', async
   assert.match(registered, /Account created/);
   const reset = await render({ query: { reset: '1' } });
   assert.match(reset, /Password updated/);
+});
+
+await test('an institution portal opens its own named sign-in page, not the candidate screens', async () => {
+  const html = await render({ query: { org: 'oak-international-school' } });
+  assert.match(html, /Sign in to Oak International School/);
+  assert.match(html, /Staff and students sign in here/);
+  assert.match(html, /Back to the Oak International School portal/);
+  assert.match(html, /name="email"/);
+  assert.match(html, /Forgot password\?/);
+  assert.match(html, /Show/);
+  assert.doesNotMatch(html, /access code/i);
+  assert.doesNotMatch(html, /avatar/i);
+});
+
+await test('an unknown institution falls back to the generic sign-in page', async () => {
+  const html = await render({ query: { org: 'no-such-school' } });
+  assert.match(html, /Welcome back/);
+  assert.doesNotMatch(html, /Sign in to No Such School/i);
+});
+
+await test('switching accounts names the signed-in person and offers a way out', async () => {
+  const html = await render({ query: { switch: '1', org: 'oak-international-school' } });
+  assert.match(html, /current\.person@example\.org/);
+  assert.match(html, /Sign out/i);
+  assert.doesNotMatch(html, /Sign in as someone else/);
+});
+
+await test('the ordinary sign-in page offers a shared-computer escape hatch', async () => {
+  const html = await render({ query: { org: 'oak-international-school' } });
+  assert.match(html, /Sign in as someone else/);
 });
 
 console.log(`\n${n} sign-in page checks passed (server render; stubbed UI + action).`);

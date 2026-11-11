@@ -65,7 +65,12 @@ export async function middleware(request: NextRequest) {
     response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
     return redirect;
   }
-  if (user && (path === "/login" || path === "/register") &&
+  // An existing session must never hijack an explicit "sign in" click: when the
+  // visitor asks to switch accounts (switch=1), the form is always shown, and
+  // the page itself offers to sign the current session out.
+  const switchingAccounts =
+    path === "/login" && request.nextUrl.searchParams.get("switch") === "1";
+  if (user && (path === "/login" || path === "/register") && !switchingAccounts &&
       !(path === "/login" && ["suspended", "profile"].includes(request.nextUrl.searchParams.get("error") ?? ""))) {
     const url = request.nextUrl.clone();
     url.pathname = "/auth/resolve";
