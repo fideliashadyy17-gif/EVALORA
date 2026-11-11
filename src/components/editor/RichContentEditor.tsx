@@ -20,6 +20,10 @@ import { useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
 import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
+import { GraphBlock, GeometryBlock, type DiagramKind } from "./diagramNodes";
+import { DiagramEditorDialog } from "./DiagramEditorDialog";
+import { emptyGraphSpec, type GraphSpec } from "@/lib/graphSpec";
+import { emptyGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 
 type Mode = "text" | "math" | "latex";
 
@@ -87,12 +91,23 @@ export function RichContentEditor({
   compact = false,
   uploadImage,
   ariaLabel,
+  allowDiagrams = true,
+  allowImages = true,
+  allowLinks = true,
+  placeholder,
+  minHeight,
 }: {
   value: RichDoc | null;
   onChange: (doc: RichDoc) => void;
   compact?: boolean;
   uploadImage?: (file: File) => Promise<UploadResult>;
   ariaLabel?: string;
+  /** Graph and geometry builders (teachers). Answer workspaces use their own. */
+  allowDiagrams?: boolean;
+  allowImages?: boolean;
+  allowLinks?: boolean;
+  placeholder?: string;
+  minHeight?: string;
 }) {
   const [mode, setMode] = useState<Mode>("text");
   const [showKeyboard, setShowKeyboard] = useState(false);
@@ -108,6 +123,7 @@ export function RichContentEditor({
   const [imageUrl, setImageUrl] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [diagramEdit, setDiagramEdit] = useState<{ pos: number; kind: DiagramKind; spec: GraphSpec | GeometrySpec } | null>(null);
   const mfRef = useRef<MathFieldHandle | null>(null);
   const latexRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -143,14 +159,27 @@ export function RichContentEditor({
       TableCell,
       MathInline,
       MathBlock,
+      GraphBlock,
+      GeometryBlock,
     ],
     content: initialDoc as never,
-    editorProps: { attributes: { "aria-label": ariaLabel ?? "Content editor" } },
+    editorProps: {
+      attributes: {
+        "aria-label": ariaLabel ?? "Content editor",
+        ...(placeholder ? { "data-placeholder": placeholder } : {}),
+        ...(minHeight ? { style: `min-height:${minHeight}` } : {}),
+      },
+    },
     onUpdate: ({ editor }) => onChange(editor.getJSON() as RichDoc),
     onCreate: ({ editor }) => {
       const storage = editor.storage as unknown as Record<string, { onEditRequest?: unknown }>;
       if (storage.mathInline) storage.mathInline.onEditRequest = openMathEditor;
       if (storage.mathBlock) storage.mathBlock.onEditRequest = openMathEditor;
+      const openDiagram = (pos: number, kind: DiagramKind, spec: unknown) => {
+        setDiagramEdit({ pos, kind, spec: kind === "graph" ? (spec as GraphSpec) : (spec as GeometrySpec) });
+      };
+      if (storage.graphBlock) storage.graphBlock.onEditRequest = openDiagram;
+      if (storage.geometryBlock) storage.geometryBlock.onEditRequest = openDiagram;
     },
   });
 
@@ -167,6 +196,36 @@ export function RichContentEditor({
   function insertMathNode(latex: string, display: boolean) {
     ed.chain().focus().insertContent({ type: display ? "mathBlock" : "mathInline", attrs: { latex } }).run();
     setEditingPos(null);
+  }
+
+  /**
+   * Insert a real diagram node and immediately open its builder. The node keeps
+   * the whole specification, so reopening the question reopens the same graph
+   * or construction for editing rather than showing a flattened picture.
+   */
+  function insertDiagram(kind: DiagramKind) {
+    const spec = kind === "graph" ? emptyGraphSpec() : emptyGeometrySpec();
+    const before = ed.state.selection.from;
+    ed.chain().focus().insertContent({
+      type: kind === "graph" ? "graphBlock" : "geometryBlock",
+      attrs: { spec },
+    }).run();
+    const pos = Math.max(0, Math.min(before, ed.state.doc.content.size - 1));
+    setDiagramEdit({ pos, kind, spec });
+  }
+
+  function saveDiagram(spec: GraphSpec | GeometrySpec) {
+    if (!diagramEdit) return;
+    const node = ed.state.doc.nodeAt(diagramEdit.pos);
+    if (node && (node.type.name === "graphBlock" || node.type.name === "geometryBlock")) {
+      ed.chain().setNodeSelection(diagramEdit.pos).updateAttributes(node.type.name, { spec }).focus().run();
+    } else {
+      ed.chain().focus().insertContent({
+        type: diagramEdit.kind === "graph" ? "graphBlock" : "geometryBlock",
+        attrs: { spec },
+      }).run();
+    }
+    setDiagramEdit(null);
   }
 
   function applyMathNode(latex: string): boolean {
@@ -406,11 +465,25 @@ export function RichContentEditor({
               >
                 ▦ Table
               </button>
+              {allowDiagrams && (
+                <>
+                  <button type="button" className={btn} onClick={() => insertDiagram("graph")} title="Insert an editable mathematical graph">
+                    📈 Graph
+                  </button>
+                  <button type="button" className={btn} onClick={() => insertDiagram("geometry")} title="Insert an editable geometric construction">
+                    △ Geometry
+                  </button>
+                </>
+              )}
             </>
           )}
-          <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
-          <button type="button" className={btn} onClick={() => { setShowLinkRow((s) => !s); setLinkUrl(String(editor.getAttributes("link").href ?? "")); }} title="Insert/edit link">🔗</button>
-          {uploadImage && (
+          {allowLinks && (
+            <>
+              <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
+              <button type="button" className={btn} onClick={() => { setShowLinkRow((s) => !s); setLinkUrl(String(editor.getAttributes("link").href ?? "")); }} title="Insert/edit link">🔗</button>
+            </>
+          )}
+          {uploadImage && allowImages && (
             <>
               <button type="button" className={btn} disabled={uploadBusy} onClick={() => fileRef.current?.click()} title="Upload an image or diagram">
                 {uploadBusy ? "Uploading…" : "🖼 Image"}
@@ -418,7 +491,7 @@ export function RichContentEditor({
               <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="hidden" onChange={(e) => { void onFileChosen(e.target.files?.[0] ?? null); e.target.value = ""; }} />
             </>
           )}
-          <button type="button" className={btn} onClick={() => setShowImageUrlRow((s) => !s)} title="Insert image from URL">🌐</button>
+          {allowImages && <button type="button" className={btn} onClick={() => setShowImageUrlRow((s) => !s)} title="Insert image from URL">🌐</button>}
           <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
           <button type="button" className={`${btn} font-semibold`} onClick={() => switchMode("math")} title="Insert a mathematical equation at the cursor">
             √ Insert equation
@@ -430,14 +503,14 @@ export function RichContentEditor({
         </div>
       )}
 
-      {showLinkRow && mode === "text" && (
+      {showLinkRow && allowLinks && mode === "text" && (
         <div className="flex items-center gap-2 border-b border-evergreen-900/10 px-3 py-2">
           <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="https://…" className="h-8 flex-1 rounded-md border border-evergreen-900/20 px-2 text-sm" aria-label="Link URL" />
           <button type="button" className={btn} onClick={() => { if (linkUrl.trim()) editor.chain().focus().setLink({ href: linkUrl.trim() }).run(); setShowLinkRow(false); }}>Apply link</button>
           <button type="button" className={btn} onClick={() => { editor.chain().focus().unsetLink().run(); setShowLinkRow(false); }}>Remove</button>
         </div>
       )}
-      {showImageUrlRow && mode === "text" && (
+      {showImageUrlRow && allowImages && mode === "text" && (
         <div className="flex items-center gap-2 border-b border-evergreen-900/10 px-3 py-2">
           <input value={imageUrl} onChange={(e) => setImageUrl(e.target.value)} placeholder="https://…/diagram.png" className="h-8 flex-1 rounded-md border border-evergreen-900/20 px-2 text-sm" aria-label="Image URL" />
           <button type="button" className={btn} onClick={() => { if (imageUrl.trim()) editor.chain().focus().setImage({ src: imageUrl.trim() }).updateAttributes("image", { width: 70 }).run(); setImageUrl(""); setShowImageUrlRow(false); }}>Insert image</button>
@@ -649,6 +722,15 @@ export function RichContentEditor({
         <button type="button" className={btn} onClick={() => editor.chain().focus().toggleHeaderRow().run()}>Header row</button>
         <button type="button" className={`${btn} text-red-700`} onClick={() => editor.chain().focus().deleteTable().run()}>Delete table</button>
       </BubbleMenu>
+
+      {diagramEdit && (
+        <DiagramEditorDialog
+          kind={diagramEdit.kind}
+          initial={diagramEdit.spec}
+          onSave={saveDiagram}
+          onClose={() => setDiagramEdit(null)}
+        />
+      )}
     </div>
   );
 }

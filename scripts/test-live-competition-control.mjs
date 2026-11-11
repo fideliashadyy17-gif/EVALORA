@@ -31,7 +31,7 @@ const ok = (name, condition) => {
 /* ── Compile the pure modules ─────────────────────────────────────────── */
 const outDir = "/tmp/evalora-live-control-test";
 execSync(
-  `npx tsc src/lib/liveControl.ts src/lib/liveRanking.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --esModuleInterop --skipLibCheck --moduleResolution node`,
+  `npx tsc src/lib/liveControl.ts src/lib/liveRanking.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --strict --esModuleInterop --skipLibCheck --moduleResolution node`,
   { stdio: "inherit" },
 );
 execSync(`ln -sfn "$(pwd)/node_modules" ${outDir}/node_modules`, { stdio: "inherit" });

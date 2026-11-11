@@ -1,4 +1,5 @@
 import { RichContent } from "@/components/RichContent";
+import { AnswerResponseView } from "@/components/AnswerResponseView";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
@@ -383,7 +384,9 @@ export default async function ExamDetailPage({
                       {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} pts
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
-                    <p className="mt-2 whitespace-pre-wrap rounded-lg bg-white p-3 text-sm">{ans.answer?.text ?? "(empty)"}</p>
+                    <div className="mt-2 rounded-lg bg-white p-3">
+                      <AnswerResponseView answer={ans.answer} />
+                    </div>
                     {rubric && canMark ? (
                       <div className="mt-3 rounded-lg border border-gold-600/30 bg-gold-50/40 p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">

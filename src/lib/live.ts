@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { responseWorkspaceFor } from "./responseTools";
 
 export type LivePhase =
   | "waiting"
@@ -264,6 +265,9 @@ export function publicQuestion(
     options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}`);
   }
   const optionBackedTypes = ["single_choice", "multiple_select", "true_false", "poll", "ordering"];
+  // The composition environment is derived from the question itself. Only the
+  // tool description travels: never marking criteria, never an answer key.
+  const workspace = responseWorkspaceFor({ ...q, config: cfg });
   const out: Record<string, unknown> = {
     quiz_question_id: row.id,
     question_id: q.id,
@@ -276,6 +280,17 @@ export function publicQuestion(
     // Short-answer question_options contain accepted answers. They must
     // never be serialized before an authorized reveal.
     options: optionBackedTypes.includes(q.type) ? options : [],
+    response_workspace: workspace.tools.length || workspace.graph.enabled || workspace.geometry.enabled
+      ? {
+          tools: workspace.tools,
+          graph: workspace.graph,
+          geometry: workspace.geometry,
+          guidance: workspace.guidance,
+          requirement: workspace.requirement,
+          // `source` is an authoring diagnostic, not candidate information.
+          source: "configured",
+        }
+      : null,
   };
   if (q.type === "ordering") {
     out.options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}:ord`);

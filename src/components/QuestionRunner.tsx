@@ -3,10 +3,12 @@
 import { MathText } from "./MathText";
 import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
-import { Button, Input, Textarea } from "./ui";
+import { Button, Input } from "./ui";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
+import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
+import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
 
 export interface PublicQuestion {
   quiz_question_id: string;
@@ -33,6 +35,11 @@ export interface PublicQuestion {
   } | null;
   explanation?: string | null;
   explanation_doc?: RichDoc | null;
+  /**
+   * Candidate-safe composition description computed on the server. It never
+   * carries an answer key; it only names the tools this question needs.
+   */
+  response_workspace?: ResponseWorkspace | null;
 }
 
 /**
@@ -49,6 +56,7 @@ export function QuestionRunner({
   initial,
   submitLabel = "Submit answer",
   markings,
+  autosave = false,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -59,6 +67,8 @@ export function QuestionRunner({
   submitLabel?: string;
   /** Post-submission marking: option id → "correct" | "wrong". */
   markings?: Record<string, "correct" | "wrong">;
+  /** Enable the durable autosave loop (examinations only). */
+  autosave?: boolean;
 }) {
   /** Marked options win over the neutral/selected styling after submission. */
   const optionClass = (id: string, idle: string, picked: string) => {
@@ -86,6 +96,9 @@ export function QuestionRunner({
     (t === "ordering" && present(initial?.order) && !isStringArray(initial?.order)) ||
     (t === "matching" && present(initial?.pairs) && !isPairs(initial?.pairs)) ||
     ((t === "short_answer" || t === "open_ended") && present(initial?.text) && typeof initial?.text !== "string") ||
+    (t === "open_ended" && present(initial?.doc) && (typeof initial?.doc !== "object" || (initial?.doc as { type?: unknown })?.type !== "doc")) ||
+    (t === "open_ended" && present(initial?.graph) && (typeof initial?.graph !== "object" || Array.isArray(initial?.graph))) ||
+    (t === "open_ended" && present(initial?.geometry) && (typeof initial?.geometry !== "object" || Array.isArray(initial?.geometry))) ||
     (t === "numeric" && present(initial?.value) && (typeof initial?.value !== "string" && typeof initial?.value !== "number" || String(initial.value).trim() === "" || !Number.isFinite(Number(initial.value))))
   );
   const disabled = initiallyDisabled || invalidSavedAnswer;
@@ -109,7 +122,11 @@ export function QuestionRunner({
   useEffect(() => () => { editRevision.current += 1; }, []);
 
   function changed() { editRevision.current += 1; onDirtyChange?.(true); }
-  function emit(payload: Record<string, unknown>) {
+  // The structured response editor reports dirtiness itself *and* saves through
+  // emit(), which also clears the draft flag. Notify the parent of "clean" only
+  // once so a save does not produce duplicate state updates.
+  const structuredDirty = useRef(false);
+  function emit(payload: Record<string, unknown>): boolean | void {
     // Leave existing live-session callback behavior unchanged when draft
     // tracking is not requested.
     if (!onDirtyChange) { void onAnswer(payload); return; }
@@ -118,9 +135,14 @@ export function QuestionRunner({
       const result = onAnswer(payload);
       if (result instanceof Promise) {
         void result.then((accepted) => { if (accepted !== false && revision === editRevision.current) onDirtyChange?.(false); }).catch(() => {});
-      } else if (result !== false) onDirtyChange?.(false);
+        return true;
+      }
+      if (result === false) return false;
+      onDirtyChange?.(false);
+      return true;
     } catch {
       // Keep the draft marked unsaved when the consumer rejects it.
+      return false;
     }
   }
 
@@ -359,10 +381,22 @@ export function QuestionRunner({
         })()}
 
         {t === "open_ended" && (
-          <div>
-            <Textarea rows={6} value={text} disabled={disabled} onChange={(e) => { changed(); setText(e.target.value); }} placeholder="Write your answer…" />
-            <Button className="mt-3" disabled={disabled || !text.trim()} onClick={() => emit({ text })}>{submitLabel}</Button>
-          </div>
+          <StructuredResponseEditor
+            workspace={question.response_workspace ?? responseWorkspaceFor(question)}
+            initial={initial ?? null}
+            disabled={disabled}
+            autosave={autosave}
+            submitLabel={submitLabel}
+            emit={(payload) => {
+              const accepted = emit(payload);
+              if (accepted !== false) structuredDirty.current = false;
+              return accepted;
+            }}
+            onDirtyChange={(dirty) => {
+              if (dirty) { structuredDirty.current = true; changed(); return; }
+              if (structuredDirty.current) { structuredDirty.current = false; onDirtyChange?.(false); }
+            }}
+          />
         )}
 
         {t === "slide" && (

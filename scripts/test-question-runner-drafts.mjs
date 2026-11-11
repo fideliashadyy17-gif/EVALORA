@@ -16,6 +16,17 @@ Module._load = function(request, parent) {
     if (request === './MathText') return { MathText: ({text}) => text };
     if (request === './RichContent') return { RichContent: ({text}) => text };
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };
+    if (request === '@/lib/responseTools') return { responseWorkspaceFor: () => ({ tools: ['rich_text', 'math'], graph: { enabled: false, title: 'Graph', instructions: '', allowFunctions: true, starter: null }, geometry: { enabled: false, title: 'Geometry', instructions: '', starter: null }, guidance: '', requirement: 'any', source: 'inferred' }) };
+    if (request === '@/components/response/StructuredResponseEditor') {
+      const StructuredResponseEditor = ({ initial, emit, onDirtyChange, disabled, submitLabel }) => {
+        const [text, setText] = React.useState(typeof initial?.text === 'string' ? initial.text : '');
+        const [dirty, setDirty] = React.useState(false);
+        return React.createElement('div', { 'data-structured': true },
+          React.createElement('textarea', { value: text, disabled: Boolean(disabled), onChange: (event) => { setText(event.target.value); setDirty(true); onDirtyChange?.(true); } }),
+          React.createElement('button', { disabled: Boolean(disabled) || !dirty, onClick: () => { if (emit({ text }) !== false) { setDirty(false); onDirtyChange?.(false); } } }, submitLabel));
+      };
+      return { StructuredResponseEditor };
+    }
     if (request === '@/lib/matchDnd') {
       const dndFile = path.resolve('scripts/__virtual_match_dnd.cjs');
       const dndJs = ts.transpileModule(readFileSync('src/lib/matchDnd.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
