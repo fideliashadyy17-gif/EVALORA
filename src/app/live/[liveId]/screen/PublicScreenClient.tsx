@@ -118,6 +118,8 @@ type LiveCommand =
   | "resume"
   | "lock"
   | "unlock"
+  | "reveal_answer"
+  | "hide_answer"
   | "open_join"
   | "close_join"
   | "show_board"
@@ -655,6 +657,25 @@ function OrganizerBar({
           >
             {state.admission_open ? "Close joining" : "Open joining"}
           </CtrlButton>
+          {state.phase === "answer_reveal" ? (
+            <CtrlButton
+              onClick={() => onCommand("hide_answer")}
+              busy={busy === "hide_answer"}
+              disabled={state.ended}
+              title="Hide the correct answer again. Submitted answers are untouched."
+            >
+              🙈 Hide answer
+            </CtrlButton>
+          ) : (
+            <CtrlButton
+              onClick={() => onCommand("reveal_answer")}
+              busy={busy === "reveal_answer"}
+              disabled={state.status === "lobby" || state.ended || state.phase === "leaderboard"}
+              title="Show the correct answer on the projected screen. Nobody's answer is submitted, changed or re-scored."
+            >
+              👁 Reveal answer
+            </CtrlButton>
+          )}
           <CtrlButton onClick={() => setShowPeople((open) => !open)} disabled={false} tone={showPeople ? "gold" : "default"}>
             👥 Participants ({participants.length})
           </CtrlButton>

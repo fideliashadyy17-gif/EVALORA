@@ -339,6 +339,26 @@ await checkAsync("the organizer sees who is in the room, connected and awaiting 
   await act(async () => tree.unmount());
 });
 
+await checkAsync("the organizer can reveal and hide the answer from the projected page", async () => {
+  controlPosts.length = 0;
+  const tree = await mount(payload(), AUTHORIZED({ phase: "question" }));
+  const reveal = buttonByText(tree, "Reveal answer");
+  if (!reveal) throw new Error("the reveal-answer control is missing");
+  await act(async () => reveal.props.onClick());
+  await settle();
+  if (controlPosts.length !== 1 || controlPosts[0].command !== "reveal_answer") throw new Error("reveal did not reach the server");
+  await act(async () => tree.unmount());
+
+  controlPosts.length = 0;
+  const revealedTree = await mount(payload({ phase: "answer_reveal" }), AUTHORIZED({ phase: "answer_reveal" }));
+  const hide = buttonByText(revealedTree, "Hide answer");
+  if (!hide) throw new Error("the hide-answer control is missing while the answer is revealed");
+  await act(async () => hide.props.onClick());
+  await settle();
+  if (controlPosts.length !== 1 || controlPosts[0].command !== "hide_answer") throw new Error("hide did not reach the server");
+  await act(async () => revealedTree.unmount());
+});
+
 await checkAsync("closing joining does not pause or end the competition", async () => {
   controlPosts.length = 0;
   const tree = await mount(payload(), AUTHORIZED({ admission_open: true }));

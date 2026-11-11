@@ -136,6 +136,29 @@ ok("unlock on an unlocked session is a no-op", run("unlock").noop === true);
 ok("closing registration does not pause or lock answers", run("close_join").patch.admission_open === false && !("answer_locked" in run("close_join").patch));
 ok("registration controls are idempotent", run("close_join", { admission_open: false }).noop === true && run("open_join").noop === true);
 
+/* ── Reveal answer: changes what the room sees, never anyone's answer ── */
+const revealed = run("reveal_answer");
+ok("reveal switches the shared phase only", revealed.patch.phase === "answer_reveal" && revealed.patch.status === undefined);
+ok("reveal never submits, changes or re-scores an answer", !("answer" in revealed.patch) && !("score" in revealed.patch) && revealed.closedQuestion === null);
+ok("reveal leaves the question timer untouched", !("question_deadline_at" in revealed.patch) && !("question_started_at" in revealed.patch));
+ok("revealing twice is a no-op", run("reveal_answer", { phase: "answer_reveal" }).noop === true);
+ok("reveal is refused before the competition starts", run("reveal_answer", { status: "lobby", phase: "waiting", current_question_index: -1 }).error !== undefined);
+ok("reveal is refused once the question is already closed", run("reveal_answer", { phase: "leaderboard" }).error !== undefined);
+ok("reveal is allowed while the competition is paused", run("reveal_answer", { status: "paused" }).patch.phase === "answer_reveal");
+
+const hiddenEarly = run("hide_answer", { phase: "answer_reveal" });
+ok("hiding the answer returns to the open question", hiddenEarly.patch.phase === "question");
+const hiddenLate = control.applyLiveCommand({
+  command: "hide_answer",
+  session: session({ phase: "answer_reveal", question_started_at: new Date(NOW.getTime() - 60_000).toISOString(), question_deadline_at: new Date(NOW.getTime() - 40_000).toISOString() }),
+  questionCount: 4,
+  durationFor: () => 20,
+  now: NOW,
+});
+ok("hiding after the deadline returns to the closed question, not a new one", hiddenLate.patch.phase === "time_expired");
+ok("hiding never restarts the question timer", !("question_deadline_at" in hiddenLate.patch));
+ok("hiding when nothing is revealed is a no-op", run("hide_answer").noop === true);
+
 /* ── Ranking board ───────────────────────────────────────────────────── */
 const board = run("show_board", { current_question_index: 2 });
 ok("showing the board keeps the current question for its ranking", board.snapshotIndex === 2 && board.patch.phase === "leaderboard");

@@ -99,6 +99,8 @@ export type LiveCommand =
   | "resume"
   | "lock"
   | "unlock"
+  | "reveal_answer"
+  | "hide_answer"
   | "open_join"
   | "close_join"
   | "show_board"
@@ -118,6 +120,8 @@ export const LIVE_COMMANDS: LiveCommand[] = [
   "resume",
   "lock",
   "unlock",
+  "reveal_answer",
+  "hide_answer",
   "open_join",
   "close_join",
   "show_board",
@@ -379,6 +383,33 @@ export function applyLiveCommand({
       if (status === "lobby") return fail("Start the competition before unlocking answers.");
       if (!session.answer_locked) return { ...base, noop: true };
       return { ...base, patch: { answer_locked: false } };
+    }
+
+    case "reveal_answer": {
+      // Mirrors the host console's "reveal answer" phase: it changes only what
+      // the room can see. Nobody's submitted answer is modified or re-scored
+      // and the question timer is untouched.
+      if (session.mode === "self_paced") return fail("Self-paced sessions do not share a projected question.");
+      if (!["live", "paused"].includes(status)) return fail("Start the competition before revealing an answer.");
+      if (index < 0) return fail("There is no question to reveal.");
+      if (phase === "answer_reveal") return { ...base, noop: true };
+      if (phase === "leaderboard") return fail("That question is already closed.");
+      return { ...base, patch: { phase: "answer_reveal", phase_started_at: now.toISOString() } };
+    }
+
+    case "hide_answer": {
+      if (phase !== "answer_reveal") return { ...base, noop: true };
+      const startsAt = session.question_started_at ? new Date(session.question_started_at).getTime() : null;
+      const deadline = session.question_deadline_at ? new Date(session.question_deadline_at).getTime() : null;
+      // Return to the phase the clock implies — never to a fresh question, and
+      // never restarting the timer.
+      const restored =
+        startsAt !== null && now.getTime() < startsAt
+          ? "countdown"
+          : deadline !== null && now.getTime() > deadline
+            ? "time_expired"
+            : "question";
+      return { ...base, patch: { phase: restored, phase_started_at: now.toISOString() } };
     }
 
     case "open_join":

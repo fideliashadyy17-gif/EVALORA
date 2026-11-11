@@ -347,6 +347,8 @@ await checkAsync("a screen addressed by its competition resolves the live sessio
   assert.ok(res.body.commands.includes("resume"));
   assert.ok(res.body.commands.includes("close_join"));
   assert.ok(res.body.commands.includes("end"));
+  assert.ok(res.body.commands.includes("reveal_answer"));
+  assert.ok(res.body.commands.includes("hide_answer"));
 });
 
 await checkAsync("host commands from a competition-addressed screen hit the session exactly once", async () => {
@@ -391,7 +393,7 @@ await checkAsync("a student holding the competition screen link still cannot com
   canResult = false;
   const state = await get(COMPETITION_ID);
   assert.equal(state.body.authorized, false);
-  for (const command of ["start", "next", "prev", "pause", "resume", "close_join", "open_join", "end"]) {
+  for (const command of ["start", "next", "prev", "pause", "resume", "close_join", "open_join", "reveal_answer", "hide_answer", "end"]) {
     const res = await post({ session_id: COMPETITION_ID, command });
     assert.equal(res.status, 403, `${command} must be refused for a student`);
   }

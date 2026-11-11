@@ -21,7 +21,17 @@ import { NextResponse } from "next/server";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 /** Commands whose effect depends on the exact question/phase they saw. */
-const CAS_COMMANDS = new Set<LiveCommand>(["start", "next", "prev", "end", "show_board", "hide_board", "finish"]);
+const CAS_COMMANDS = new Set<LiveCommand>([
+  "start",
+  "next",
+  "prev",
+  "end",
+  "show_board",
+  "hide_board",
+  "finish",
+  "reveal_answer",
+  "hide_answer",
+]);
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
