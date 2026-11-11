@@ -12,6 +12,7 @@ import {
 import { isResultsStage, parsePresentationStage, stageLabel } from "@/lib/liveControl";
 import { loadRankingView } from "@/lib/liveControlServer";
 import { revealedPodium, withMovement } from "@/lib/liveRanking";
+import { buildRoster, PRESENCE_HEARTBEAT_MS, type PresenceSourceRow } from "@/lib/presence";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -131,11 +132,37 @@ export async function GET(request: Request) {
       ? Math.max(0, Number(participant.score) - myAnswerRow.points_awarded)
       : Number(participant.score);
 
-  const { count: participantCount } = await admin
+  // ── Participant rail ────────────────────────────────────────────────
+  // One small row per admitted participant: name, avatar and when their device
+  // last spoke. No answers, no scores, no ranks and no other session can ever
+  // appear here — the query is filtered by this session id.
+  const { data: rosterRows } = await admin
     .from("session_participants")
-    .select("id", { count: "exact", head: true })
+    .select("id, display_name, avatar_key, status, last_seen_at")
     .eq("session_id", session.id)
-    .in("status", ["admitted", "finished"]);
+    .in("status", ["admitted", "finished"])
+    .order("joined_at", { ascending: true })
+    .limit(1000);
+  const presenceRows: PresenceSourceRow[] = ((rosterRows ?? []) as {
+    id: string;
+    display_name: string | null;
+    avatar_key: string | null;
+    status: string;
+    last_seen_at: string | null;
+  }[]).map((row) => ({
+    key: row.id,
+    display_name: row.display_name,
+    avatar_key: row.avatar_key,
+    last_seen_at: row.last_seen_at,
+    status: row.status,
+  }));
+  const presence = buildRoster({
+    scope: `live:${session.id}`,
+    rows: presenceRows,
+    nowMs: now.getTime(),
+    selfKey: participant.id,
+  });
+  const participantCount = presence.total;
 
   const showBoard =
     participantStatus !== "pending" &&
@@ -276,7 +303,9 @@ export async function GET(request: Request) {
       finished: participantStatus === "finished",
       reconnect_count: Number(presencePatch.reconnect_count ?? participant.reconnect_count ?? 0),
     },
-    participant_count: participantCount ?? 0,
+    participant_count: participantCount,
+    presence,
+    presence_heartbeat_ms: PRESENCE_HEARTBEAT_MS,
     leaderboard,
     my_rank: myRank,
     final,

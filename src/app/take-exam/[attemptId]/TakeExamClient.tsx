@@ -20,6 +20,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
+import { PresenceRail } from "@/components/PresenceRail";
+import { answerStateFor } from "@/lib/hintAttention";
+import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
 interface ExamState {
   server_now: string;
@@ -113,6 +116,15 @@ function resultTone(result: { is_correct: boolean | null; answered?: boolean }):
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [token, setToken] = useState<string | null>(null);
+  // Participant rail: presence only. It is fetched on its own slow cadence and
+  // can never touch an answer, a deadline or the save queue.
+  const [presence, setPresence] = useState<PresenceRoster | null>(null);
+  const [presenceError, setPresenceError] = useState<string | null>(null);
+  const presenceBusy = useRef(false);
+  // Roster/heartbeat loops must be harmless in a non-browser environment (the
+  // React test renderer mounts this component without a `document`).
+  const pageHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
+  const presenceMeta = useRef({ current_question: 1, total_questions: 1, saved_count: 0, pending_saves: 0 });
   const [state, setState] = useState<ExamState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
@@ -142,6 +154,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const audioRef = useRef<AudioContext | null>(null);
   const lastBeepAt = useRef(0);
   const attemptStatus = state?.attempt.status ?? "in_progress";
+  const attemptActive = attemptStatus === "in_progress";
   const activePolicy = useMemo(() => parseIntegrityPolicy(state?.exam.integrity), [state?.exam.integrity]);
   const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
@@ -297,6 +310,113 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
+    presenceMeta.current = {
+      current_question: index + 1,
+      total_questions: state?.questions.length ?? 1,
+      saved_count: savedIds.size,
+      pending_saves: queueState.pending,
+    };
+  });
+
+  /*
+   * Presence rail (candidate side).
+   *
+   * Two independent, deliberately slow loops:
+   *   · a heartbeat every 20 s that writes one small row on the server;
+   *   · a roster refresh every 15 s that reads names + avatars + connection
+   *     state for this examination only.
+   *
+   * Neither loop submits, saves, reloads, reorders or touches the deadline, and
+   * both stop when the attempt is no longer in progress or the tab is hidden.
+   * A failed heartbeat is *not* a submission: the UI keeps saying "Reconnecting"
+   * and answers stay in the save queue exactly as they were.
+   */
+  useEffect(() => {
+    if (!token || !attemptActive) {
+      setPresence(null);
+      return;
+    }
+    const heartbeat = async (event: "heartbeat" | "leave") => {
+      try {
+        const meta = presenceMeta.current;
+        await fetch("/api/exam/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({
+            attempt_id: attemptId,
+            current_question: meta.current_question,
+            total_questions: meta.total_questions,
+            saved_count: meta.saved_count,
+            pending_saves: meta.pending_saves,
+            event,
+          }),
+          keepalive: event === "leave",
+        });
+      } catch {
+        // Offline: the next heartbeat (or the roster refresh) recovers on its own.
+      }
+    };
+
+    void heartbeat("heartbeat");
+    const beat = setInterval(() => {
+      if (pageHidden()) return;
+      void heartbeat("heartbeat");
+    }, PRESENCE_HEARTBEAT_MS);
+
+    const onHide = () => {
+      if (pageHidden()) void heartbeat("leave");
+    };
+    const pageHide = () => {
+      if (typeof navigator === "undefined" || navigator.onLine !== false) void heartbeat("leave");
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onHide);
+    if (typeof window !== "undefined") window.addEventListener("pagehide", pageHide);
+
+    return () => {
+      clearInterval(beat);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onHide);
+      if (typeof window !== "undefined") window.removeEventListener("pagehide", pageHide);
+    };
+  }, [attemptActive, attemptId, token]);
+
+  useEffect(() => {
+    if (!token || !attemptActive) return;
+    let stopped = false;
+    const refresh = async () => {
+      if (stopped || pageHidden() || presenceBusy.current) return;
+      presenceBusy.current = true;
+      try {
+        const res = await fetch(`/api/exam/presence?attempt_id=${encodeURIComponent(attemptId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        const data = (await res.json().catch(() => null)) as { roster?: PresenceRoster } | null;
+        if (stopped) return;
+        if (res.ok && data?.roster) {
+          setPresence(data.roster);
+          setPresenceError(null);
+        } else {
+          setPresenceError("The participant list could not be refreshed yet.");
+        }
+      } catch {
+        if (!stopped) setPresenceError("Connection interrupted — the list refreshes itself when you are back.");
+      } finally {
+        presenceBusy.current = false;
+      }
+    };
+    void refresh();
+    const timer = setInterval(() => void refresh(), PRESENCE_REFRESH_MS);
+    const onVisible = () => {
+      if (!pageHidden()) void refresh();
+    };
+    if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [attemptActive, attemptId, token]);
+  useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(t);
   }, []);
@@ -446,6 +566,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </div>
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
+          <PresenceRail
+            roster={presence}
+            variant="exam"
+            title="Candidates"
+            loading={!presence && !presenceError}
+            error={presenceError}
+          />
         </div>
       </header>
 
@@ -613,6 +740,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   questionId={current.question_id}
                   initialHints={current.hints ?? null}
                   disabled={submitted}
+                  answerState={answerStateFor({
+                    hasSavedAnswer: Boolean(current.saved_answer) || answerDirty,
+                    isCorrect: current.result?.is_correct ?? null,
+                  })}
                 />
                 <button
                   disabled={submitted || submitting}

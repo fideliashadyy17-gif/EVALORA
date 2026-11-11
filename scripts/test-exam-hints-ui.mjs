@@ -29,11 +29,13 @@ function compile(source, filename) {
   return mod.exports;
 }
 
+const attentionRules = compile("src/lib/hintAttention.ts", "scripts/__virtual_hint_attention_rules.cjs");
 const panelFile = path.resolve("scripts/__virtual_hint_panel.cjs");
 const originalLoad = Module._load;
 Module._load = function (request, parent) {
   if (parent?.filename === panelFile) {
     if (request === "@/lib/examHints") return hintRules;
+    if (request === "@/lib/hintAttention") return attentionRules;
     if (request === "@/components/ui") {
       return {
         Badge: (props) => React.createElement("span", { "data-badge": true }, props.children),

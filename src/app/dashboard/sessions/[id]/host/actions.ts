@@ -360,6 +360,8 @@ export interface LiveSettingsPatch {
     volume?: number;
     theme?: "evergreen" | "focus" | "celebration" | "off";
     sound_effects?: boolean;
+    music_enabled?: boolean;
+    sfx_enabled?: boolean;
   };
   presentation?: {
     animations_enabled?: boolean;
@@ -381,7 +383,15 @@ export async function hostUpdateLiveSettings(sessionId: string, patch: LiveSetti
   }
   if (patch.audio) {
     if (typeof patch.audio.enabled === "boolean") audio.enabled = patch.audio.enabled;
-    if (typeof patch.audio.sound_effects === "boolean") audio.sound_effects = patch.audio.sound_effects;
+    if (typeof patch.audio.sound_effects === "boolean") {
+      audio.sound_effects = patch.audio.sound_effects;
+      audio.sfx_enabled = patch.audio.sound_effects;
+    }
+    if (typeof patch.audio.music_enabled === "boolean") audio.music_enabled = patch.audio.music_enabled;
+    if (typeof patch.audio.sfx_enabled === "boolean") {
+      audio.sfx_enabled = patch.audio.sfx_enabled;
+      audio.sound_effects = patch.audio.sfx_enabled;
+    }
     if (typeof patch.audio.volume === "number" && Number.isFinite(patch.audio.volume)) {
       audio.volume = Math.min(1, Math.max(0, patch.audio.volume));
     }

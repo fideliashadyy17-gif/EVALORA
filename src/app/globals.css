@@ -120,8 +120,29 @@ body {
 .evalora-pop {
   animation: evalora-pop 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+/* Hint attention: a calm, professional "still stuck?" pulse. It never moves
+   the question, never overlays the options and stops the moment the hint opens.
+   Reduced-motion users get a static gold ring instead of movement. */
+@keyframes evalora-hint-attention {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(201, 162, 39, 0);
+    background-color: #f5ecc8;
+  }
+  45% {
+    box-shadow: 0 0 0 6px rgba(201, 162, 39, 0.28);
+    background-color: #fbf3d4;
+  }
+}
+.hint-attention {
+  animation: evalora-hint-attention 1.9s ease-in-out infinite;
+  border-color: #a9861c;
+}
 @media (prefers-reduced-motion: reduce) {
   .evalora-screen-in, .evalora-confetti, .evalora-rise, .evalora-pop, .live-dot { animation: none !important; }
+  .hint-attention {
+    animation: none !important;
+    box-shadow: 0 0 0 3px rgba(201, 162, 39, 0.35);
+  }
 }
 
 /* ── Rich structured content (questions, options, explanations) ────────── */

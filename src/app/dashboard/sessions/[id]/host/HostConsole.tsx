@@ -531,32 +531,39 @@ export function HostConsole({
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Public-screen sound & presentation</h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Sound plays from the projection computer after its operator presses “Enable sound”. Student devices never start background music.
+            The projection computer owns the room soundtrack and starts it after its operator presses “Sound”. Student devices stay silent unless you
+            explicitly share the music with them, so a room never hears the same track twice. Every listener can still lower the volume or mute on their own device.
           </p>
           <div className="mt-4 grid gap-4 md:grid-cols-2">
             <Toggle
-              label="Background music"
-              checked={settings.audio.enabled && settings.audio.theme !== "off"}
+              label="Room audio (master)"
+              checked={settings.audio.enabled}
               disabled={busy}
               onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { enabled: v } }))}
             />
             <Toggle
-              label="Sound effects"
-              checked={settings.audio.sound_effects}
+              label="Music on the public screen"
+              checked={settings.audio.music_enabled && settings.audio.theme !== "off"}
               disabled={busy}
-              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { sound_effects: v } }))}
+              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { music_enabled: v } }))}
+            />
+            <Toggle
+              label="Sound effects (correct, incorrect, transitions)"
+              checked={settings.audio.sfx_enabled && settings.audio.sound_effects}
+              disabled={busy}
+              onChange={(v) => act(() => hostUpdateLiveSettings(session.id, { audio: { sfx_enabled: v } }))}
             />
             <label className="block">
-              <span className="text-sm font-semibold text-evergreen-950">Music theme</span>
+              <span className="text-sm font-semibold text-evergreen-950">Music identity</span>
               <select
                 className="mt-2 w-full rounded-xl border border-evergreen-900/20 bg-white px-3 py-2.5"
                 value={settings.audio.theme}
                 disabled={busy}
                 onChange={(e) => act(() => hostUpdateLiveSettings(session.id, { audio: { theme: e.target.value as typeof settings.audio.theme } }))}
               >
-                <option value="evergreen">Evergreen — warm classroom energy</option>
-                <option value="focus">Focus — calm concentration</option>
-                <option value="celebration">Celebration — finals & winners</option>
+                <option value="evergreen">Evergreen — original EVALORA score</option>
+                <option value="focus">Focus — calmer evening sitting</option>
+                <option value="celebration">Celebration — finals &amp; winners</option>
                 <option value="off">Off</option>
               </select>
             </label>
