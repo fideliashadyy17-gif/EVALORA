@@ -18,14 +18,30 @@
 import { docToPlainText, type RichDoc } from "./content";
 import { emptyGraphSpec, normaliseGraphSpec, type GraphSpec } from "./graphSpec";
 import { emptyGeometrySpec, normaliseGeometrySpec, type GeometrySpec } from "./geometrySpec";
+import {
+  emptyStatsSpec,
+  normaliseStatsSpec,
+  statsSpecHasWork,
+  isStatsChartType,
+  type StatsChartType,
+  type StatsSpec,
+} from "./statsSpec";
+import {
+  dataTableHasWork,
+  emptyDataTableSpec,
+  normaliseDataTableSpec,
+  type DataTableSpec,
+} from "./dataTableSpec";
 
 export const RESPONSE_TOOLS = [
   { id: "rich_text", label: "Structured writing", hint: "Paragraphs, headings, lists, tables, step-by-step working." },
   { id: "math", label: "Mathematics editor", hint: "Visual fractions, powers, roots, integrals, matrices — no LaTeX needed." },
-  { id: "table", label: "Tables", hint: "Insert and edit a table for data, values or a frequency distribution." },
+  { id: "table", label: "Tables", hint: "Insert a formatted table inside your written answer." },
+  { id: "data_table", label: "Structured data table", hint: "Fill in a table whose columns and rows keep their place for marking." },
   { id: "science", label: "Science & units", hint: "Chemistry notation, scientific units, constants and Greek symbols." },
   { id: "graph", label: "Graph workspace", hint: "Draw or plot a coordinate graph as structured, editable data." },
   { id: "geometry", label: "Geometry workspace", hint: "Construct points, lines, circles, polygons, angles and measurements." },
+  { id: "statistics", label: "Statistics workspace", hint: "Enter data and draw a dot plot, bar chart, histogram, box plot or cumulative-frequency chart." },
 ] as const;
 
 export type ResponseToolId = (typeof RESPONSE_TOOLS)[number]["id"];
@@ -46,13 +62,31 @@ export interface ResponseGeometryConfig {
   starter: GeometrySpec;
 }
 
+export interface ResponseStatsConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  /** "any" lets the candidate choose the representation. */
+  chart: StatsChartType | "any";
+  starter: StatsSpec;
+}
+
+export interface ResponseDataTableConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  starter: DataTableSpec;
+}
+
 export interface ResponseWorkspace {
   /** Empty for question types that have their own native interface. */
   tools: ResponseToolId[];
   graph: ResponseGraphConfig;
   geometry: ResponseGeometryConfig;
+  statistics: ResponseStatsConfig;
+  dataTable: ResponseDataTableConfig;
   guidance: string;
-  requirement: "any" | "text" | "graph" | "geometry";
+  requirement: "any" | "text" | "graph" | "geometry" | "statistics" | "data_table";
   /** Where the tool set came from — shown to the teacher, never to candidates. */
   source: "native" | "configured" | "inferred";
 }
@@ -60,6 +94,8 @@ export interface ResponseWorkspace {
 const GRAPH_LANGUAGE = /\b(graph|graphs|plot|plotting|sketch|sketched|curve|parabola|coordinate plane|axes|axis|gradient|turning point|vertex|roots? of the (graph|function)|intersections?)\b/i;
 const GEOMETRY_LANGUAGE = /\b(geometry|geometric|construct|construction|triangle|quadrilateral|polygon|angle bisector|perpendicular|parallel|circle|arc|midpoint|bisector|parallelogram|rectangle|square|rhombus|trapezium|trapezoid)\b/i;
 const SCIENCE_LANGUAGE = /\b(science|physics|chemistry|biology|molecule|atom|reaction|solution|concentration|velocity|acceleration|force|energy|voltage|resistance|moles?|mass|density|pressure|temperature|units?)\b/i;
+const STATISTICS_LANGUAGE = /\b(statistics?|statistical|data set|dataset|frequency|frequenc(?:y|ies) table|histogram|dot plot|bar chart|box (?:and[- ]whisker )?plot|quartiles?|interquartile|iqr|median|mean|standard deviation|distribution|cumulative frequency|stem[- ]and[- ]leaf)\b/i;
+const DATA_TABLE_LANGUAGE = /\b(complete the (?:frequency |data )?table|copy and complete the table|fill in the table|table below|frequency table|data table)\b/i;
 
 function hasWord(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
@@ -83,9 +119,11 @@ function asRecord(value: unknown): Record<string, unknown> {
 export function inferResponseTools(question: { prompt?: string | null; prompt_doc?: RichDoc | null }): ResponseToolId[] {
   const text = promptText(question);
   const tools: ResponseToolId[] = ["rich_text", "math", "table"];
+  if (hasWord(text, DATA_TABLE_LANGUAGE)) tools.push("data_table");
   if (hasWord(text, GRAPH_LANGUAGE)) tools.push("graph");
   if (hasWord(text, GEOMETRY_LANGUAGE)) tools.push("geometry");
   if (hasWord(text, SCIENCE_LANGUAGE)) tools.push("science");
+  if (hasWord(text, STATISTICS_LANGUAGE)) tools.push("statistics");
   return tools;
 }
 
@@ -102,18 +140,30 @@ export function responseWorkspaceFor(question: {
   const cfg = asRecord(question.config);
   const rawGraph = asRecord(cfg.response_graph);
   const rawGeometry = asRecord(cfg.response_geometry);
+  const rawStats = asRecord(cfg.response_stats);
+  const rawTable = asRecord(cfg.response_data_table);
   const guidance = typeof cfg.response_guidance === "string" ? cfg.response_guidance.slice(0, 1000) : "";
   const requirementRaw = typeof cfg.response_requirement === "string" ? cfg.response_requirement : "any";
-  const requirement = (["any", "text", "graph", "geometry"].includes(requirementRaw) ? requirementRaw : "any") as ResponseWorkspace["requirement"];
+  const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table"].includes(requirementRaw)
+    ? requirementRaw
+    : "any") as ResponseWorkspace["requirement"];
 
   const graphStarter = normaliseGraphSpec(rawGraph.starter ?? cfg.response_graph_starter ?? null, emptyGraphSpec());
   const geometryStarter = normaliseGeometrySpec(rawGeometry.starter ?? cfg.response_geometry_starter ?? null, emptyGeometrySpec());
+  const statsStarter = normaliseStatsSpec(rawStats.starter ?? null, emptyStatsSpec());
+  const tableStarter = normaliseDataTableSpec(rawTable.starter ?? null, emptyDataTableSpec());
+  const rawChart = rawStats.chart;
+  const statsChart: StatsChartType | "any" = rawChart === "any" || rawChart === undefined
+    ? "any"
+    : isStatsChartType(rawChart) ? rawChart : "any";
 
   if (NATIVE_TYPES.has(question.type)) {
     return {
       tools: [],
       graph: { enabled: false, title: "Graph", instructions: "", allowFunctions: true, starter: graphStarter },
       geometry: { enabled: false, title: "Geometry", instructions: "", starter: geometryStarter },
+      statistics: { enabled: false, title: "Statistics", instructions: "", chart: "any", starter: statsStarter },
+      dataTable: { enabled: false, title: "Data table", instructions: "", starter: tableStarter },
       guidance,
       requirement: "any",
       source: "native",
@@ -122,23 +172,34 @@ export function responseWorkspaceFor(question: {
 
   const configured = uniqueTools(cfg.response_tools);
   const tools = configured.length ? configured : inferResponseTools(question);
-  const graphEnabled = tools.includes("graph");
-  const geometryEnabled = tools.includes("geometry");
 
   return {
     tools,
     graph: {
-      enabled: graphEnabled,
+      enabled: tools.includes("graph"),
       title: typeof rawGraph.title === "string" && rawGraph.title.trim() ? rawGraph.title.slice(0, 80) : "Your graph",
       instructions: typeof rawGraph.instructions === "string" ? rawGraph.instructions.slice(0, 400) : "",
       allowFunctions: rawGraph.allow_functions !== false,
       starter: graphStarter,
     },
     geometry: {
-      enabled: geometryEnabled,
+      enabled: tools.includes("geometry"),
       title: typeof rawGeometry.title === "string" && rawGeometry.title.trim() ? rawGeometry.title.slice(0, 80) : "Your construction",
       instructions: typeof rawGeometry.instructions === "string" ? rawGeometry.instructions.slice(0, 400) : "",
       starter: geometryStarter,
+    },
+    statistics: {
+      enabled: tools.includes("statistics"),
+      title: typeof rawStats.title === "string" && rawStats.title.trim() ? rawStats.title.slice(0, 80) : "Your statistics chart",
+      instructions: typeof rawStats.instructions === "string" ? rawStats.instructions.slice(0, 400) : "",
+      chart: statsChart,
+      starter: statsStarter,
+    },
+    dataTable: {
+      enabled: tools.includes("data_table"),
+      title: typeof rawTable.title === "string" && rawTable.title.trim() ? rawTable.title.slice(0, 80) : "Your data table",
+      instructions: typeof rawTable.instructions === "string" ? rawTable.instructions.slice(0, 400) : "",
+      starter: tableStarter,
     },
     guidance,
     requirement,
@@ -158,6 +219,8 @@ export interface StructuredAnswer {
   doc: RichDoc | null;
   graph: GraphSpec | null;
   geometry: GeometrySpec | null;
+  statistics: StatsSpec | null;
+  data_table: DataTableSpec | null;
   saved_at?: string;
 }
 
@@ -167,6 +230,11 @@ export const ANSWER_LIMITS = {
   graphFunctions: 12,
   graphPoints: 150,
   geometryPoints: 160,
+  statsValues: 400,
+  statsCategories: 40,
+  tableRows: 40,
+  tableColumns: 10,
+  tableCell: 200,
 } as const;
 
 export interface AnswerValidation {
@@ -177,6 +245,23 @@ export interface AnswerValidation {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+function statsPayloadTooLarge(raw: Record<string, unknown>): boolean {
+  if (Array.isArray(raw.values) && raw.values.length > ANSWER_LIMITS.statsValues) return true;
+  if (Array.isArray(raw.categories) && raw.categories.length > ANSWER_LIMITS.statsCategories) return true;
+  return false;
+}
+
+function tablePayloadTooLarge(raw: Record<string, unknown>): boolean {
+  if (Array.isArray(raw.columns) && raw.columns.length > ANSWER_LIMITS.tableColumns) return true;
+  if (Array.isArray(raw.rows)) {
+    if (raw.rows.length > ANSWER_LIMITS.tableRows) return true;
+    return raw.rows.some((row) => Array.isArray(row) &&
+      (row.length > ANSWER_LIMITS.tableColumns ||
+        row.some((cell) => typeof cell === "string" && cell.length > ANSWER_LIMITS.tableCell)));
+  }
+  return false;
+}
 
 /**
  * Server-side validation and sanitisation of an autosaved answer. Runs before
@@ -254,6 +339,26 @@ export function validateAnswerPayload(type: string, raw: unknown): AnswerValidat
     clean.geometry = null;
   }
 
+  if (raw.statistics !== undefined && raw.statistics !== null) {
+    if (!isRecord(raw.statistics)) return { ok: false, answer: {}, error: "The statistics answer has an invalid format." };
+    if (statsPayloadTooLarge(raw.statistics)) {
+      return { ok: false, answer: {}, error: "The chart has too many values or categories." };
+    }
+    clean.statistics = normaliseStatsSpec(raw.statistics);
+  } else if (raw.statistics === null) {
+    clean.statistics = null;
+  }
+
+  if (raw.data_table !== undefined && raw.data_table !== null) {
+    if (!isRecord(raw.data_table)) return { ok: false, answer: {}, error: "The data table has an invalid format." };
+    if (tablePayloadTooLarge(raw.data_table)) {
+      return { ok: false, answer: {}, error: "The data table is too large." };
+    }
+    clean.data_table = normaliseDataTableSpec(raw.data_table);
+  } else if (raw.data_table === null) {
+    clean.data_table = null;
+  }
+
   clean.version = 1;
   return { ok: true, answer: clean };
 }
@@ -290,6 +395,12 @@ export function answerHasWork(answer: Record<string, unknown> | null | undefined
       if (Array.isArray(geometry[key]) && (geometry[key] as unknown[]).length) return true;
     }
   }
+  if (answer.statistics && isRecord(answer.statistics)) {
+    if (statsSpecHasWork(normaliseStatsSpec(answer.statistics))) return true;
+  }
+  if (answer.data_table && isRecord(answer.data_table)) {
+    if (dataTableHasWork(normaliseDataTableSpec(answer.data_table))) return true;
+  }
   return false;
 }
 
@@ -301,5 +412,7 @@ export function describeAnswerComponents(answer: Record<string, unknown> | null 
   if (isRecord(answer.doc) && answerHasWork({ doc: answer.doc })) parts.push("formatted response");
   if (isRecord(answer.graph) && answerHasWork({ graph: answer.graph })) parts.push("graph construction");
   if (isRecord(answer.geometry) && answerHasWork({ geometry: answer.geometry })) parts.push("geometry construction");
+  if (isRecord(answer.statistics) && statsSpecHasWork(normaliseStatsSpec(answer.statistics))) parts.push("statistics chart");
+  if (isRecord(answer.data_table) && dataTableHasWork(normaliseDataTableSpec(answer.data_table))) parts.push("data table");
   return parts.length ? parts : ["Empty response"];
 }

@@ -20,12 +20,21 @@ import { useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
 import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
-import { GraphBlock, GeometryBlock, type DiagramKind } from "./diagramNodes";
+import { DataTableBlock, GeometryBlock, GraphBlock, StatsBlock, emptyDiagramSpec, type DiagramKind, type DiagramSpec } from "./diagramNodes";
 import { DiagramEditorDialog } from "./DiagramEditorDialog";
-import { emptyGraphSpec, type GraphSpec } from "@/lib/graphSpec";
-import { emptyGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 
 type Mode = "text" | "math" | "latex";
+
+const DIAGRAM_NODE_NAMES: Record<DiagramKind, string> = {
+  graph: "graphBlock",
+  geometry: "geometryBlock",
+  statistics: "statsBlock",
+  data_table: "dataTableBlock",
+};
+
+function diagramNodeName(kind: DiagramKind): string {
+  return DIAGRAM_NODE_NAMES[kind];
+}
 
 /** Font-size mark support (TextStyle attribute). */
 const FontSize = Extension.create({
@@ -102,7 +111,7 @@ export function RichContentEditor({
   compact?: boolean;
   uploadImage?: (file: File) => Promise<UploadResult>;
   ariaLabel?: string;
-  /** Graph and geometry builders (teachers). Answer workspaces use their own. */
+  /** Graph, geometry, statistics and table builders (teachers). */
   allowDiagrams?: boolean;
   allowImages?: boolean;
   allowLinks?: boolean;
@@ -123,7 +132,7 @@ export function RichContentEditor({
   const [imageUrl, setImageUrl] = useState("");
   const [uploadBusy, setUploadBusy] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
-  const [diagramEdit, setDiagramEdit] = useState<{ pos: number; kind: DiagramKind; spec: GraphSpec | GeometrySpec } | null>(null);
+  const [diagramEdit, setDiagramEdit] = useState<{ pos: number; kind: DiagramKind; spec: DiagramSpec } | null>(null);
   const mfRef = useRef<MathFieldHandle | null>(null);
   const latexRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -161,6 +170,8 @@ export function RichContentEditor({
       MathBlock,
       GraphBlock,
       GeometryBlock,
+      StatsBlock,
+      DataTableBlock,
     ],
     content: initialDoc as never,
     editorProps: {
@@ -176,10 +187,11 @@ export function RichContentEditor({
       if (storage.mathInline) storage.mathInline.onEditRequest = openMathEditor;
       if (storage.mathBlock) storage.mathBlock.onEditRequest = openMathEditor;
       const openDiagram = (pos: number, kind: DiagramKind, spec: unknown) => {
-        setDiagramEdit({ pos, kind, spec: kind === "graph" ? (spec as GraphSpec) : (spec as GeometrySpec) });
+        setDiagramEdit({ pos, kind, spec: spec as DiagramSpec });
       };
-      if (storage.graphBlock) storage.graphBlock.onEditRequest = openDiagram;
-      if (storage.geometryBlock) storage.geometryBlock.onEditRequest = openDiagram;
+      for (const name of ["graphBlock", "geometryBlock", "statsBlock", "dataTableBlock"]) {
+        if (storage[name]) storage[name].onEditRequest = openDiagram;
+      }
     },
   });
 
@@ -200,30 +212,29 @@ export function RichContentEditor({
 
   /**
    * Insert a real diagram node and immediately open its builder. The node keeps
-   * the whole specification, so reopening the question reopens the same graph
-   * or construction for editing rather than showing a flattened picture.
+   * the whole specification, so reopening the question reopens the same graph,
+   * construction, chart or table for editing rather than showing a flattened
+   * picture.
    */
   function insertDiagram(kind: DiagramKind) {
-    const spec = kind === "graph" ? emptyGraphSpec() : emptyGeometrySpec();
+    const spec = emptyDiagramSpec(kind);
     const before = ed.state.selection.from;
     ed.chain().focus().insertContent({
-      type: kind === "graph" ? "graphBlock" : "geometryBlock",
+      type: diagramNodeName(kind),
       attrs: { spec },
     }).run();
     const pos = Math.max(0, Math.min(before, ed.state.doc.content.size - 1));
     setDiagramEdit({ pos, kind, spec });
   }
 
-  function saveDiagram(spec: GraphSpec | GeometrySpec) {
+  function saveDiagram(spec: DiagramSpec) {
     if (!diagramEdit) return;
+    const name = diagramNodeName(diagramEdit.kind);
     const node = ed.state.doc.nodeAt(diagramEdit.pos);
-    if (node && (node.type.name === "graphBlock" || node.type.name === "geometryBlock")) {
+    if (node && node.type.name === name) {
       ed.chain().setNodeSelection(diagramEdit.pos).updateAttributes(node.type.name, { spec }).focus().run();
     } else {
-      ed.chain().focus().insertContent({
-        type: diagramEdit.kind === "graph" ? "graphBlock" : "geometryBlock",
-        attrs: { spec },
-      }).run();
+      ed.chain().focus().insertContent({ type: name, attrs: { spec } }).run();
     }
     setDiagramEdit(null);
   }
@@ -472,6 +483,12 @@ export function RichContentEditor({
                   </button>
                   <button type="button" className={btn} onClick={() => insertDiagram("geometry")} title="Insert an editable geometric construction">
                     △ Geometry
+                  </button>
+                  <button type="button" className={btn} onClick={() => insertDiagram("statistics")} title="Insert an editable statistics chart">
+                    📊 Statistics
+                  </button>
+                  <button type="button" className={btn} onClick={() => insertDiagram("data_table")} title="Insert an editable data table">
+                    ▦ Data table
                   </button>
                 </>
               )}

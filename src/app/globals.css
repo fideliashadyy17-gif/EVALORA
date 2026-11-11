@@ -378,6 +378,147 @@ html.assessment-protected img {
 }
 .graph-legend li { display: inline-flex; align-items: center; gap: 0.4rem; }
 .graph-legend-line { width: 1.5rem; height: 0.2rem; border-radius: 999px; display: inline-block; }
+
+/* ── Statistics charts and structured data tables ─────────────────────── */
+.stats-figure,
+.data-table-figure {
+  margin: 0.75em 0;
+  min-width: 0;
+}
+.stats-title,
+.data-table-title {
+  margin: 0 0 0.35em;
+  font-family: var(--font-display, serif);
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--color-evergreen-950, #06351f);
+}
+.stats-scroll,
+.data-table-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  border-radius: 0.75rem;
+  border: 1px solid rgb(6 46 36 / 0.12);
+  background: #fff;
+}
+.stats-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 340px;
+}
+.stats-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin: 0.55em 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.78rem;
+  color: var(--color-ink-soft, #4b5a52);
+}
+.stats-summary li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.3rem;
+  border: 1px solid rgb(6 46 36 / 0.12);
+  border-radius: 999px;
+  padding: 0.15rem 0.55rem;
+  background: var(--color-evergreen-50, #eef7f2);
+}
+.stats-summary strong { color: var(--color-evergreen-950, #06351f); }
+.stats-data-details,
+.stats-editor-preview {
+  margin-top: 0.6rem;
+  font-size: 0.8rem;
+  color: var(--color-evergreen-900, #06351f);
+}
+.stats-data-details table {
+  width: 100%;
+  margin-top: 0.4rem;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+}
+.stats-data-details th,
+.stats-data-details td {
+  border: 1px solid rgb(6 46 36 / 0.12);
+  padding: 0.3rem 0.5rem;
+  text-align: left;
+}
+.stats-data-details thead th { background: var(--color-evergreen-50, #eef7f2); }
+
+.stats-editor { display: grid; gap: 0.65rem; }
+.stats-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  align-items: flex-end;
+}
+.stats-editor-block {
+  border: 1px solid rgb(6 46 36 / 0.12);
+  border-radius: 0.7rem;
+  background: rgb(250 247 240 / 0.5);
+  padding: 0.6rem;
+}
+.stats-editor-label {
+  margin: 0 0 0.3rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-evergreen-800, #0a5c36);
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  min-width: 320px;
+}
+.data-table th,
+.data-table td {
+  border: 1px solid rgb(6 46 36 / 0.13);
+  padding: 0.4rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+  min-width: 5rem;
+}
+.data-table thead th {
+  background: var(--color-evergreen-50, #eef7f2);
+  color: var(--color-evergreen-950, #06351f);
+  font-weight: 600;
+}
+.data-table tbody th[scope="row"] {
+  background: rgb(250 247 240 / 0.7);
+  font-weight: 600;
+}
+.data-table-edit input { min-width: 4.5rem; }
+.data-table-rownum {
+  width: 2.2rem;
+  min-width: 2.2rem !important;
+  text-align: center !important;
+  background: rgb(250 247 240 / 0.7);
+}
+.data-table-remove {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  color: #b91c1c;
+  text-decoration: underline;
+}
+.data-table-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-end;
+  margin-bottom: 0.5rem;
+}
+.data-table-meta {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--color-ink-soft, #4b5a52);
+}
 .graph-error { color: #b91c1c; }
 
 .graph-editor {
@@ -493,11 +634,15 @@ html.assessment-protected img {
   .graph-editor > div:first-child > * { flex: 0 0 auto; }
   .diagram-dialog-body { padding: 0.4rem; }
   .graph-panel { padding: 0.5rem; }
+  .stats-editor-head { flex-direction: column; align-items: stretch; }
 }
 @media print {
   .diagram-dialog, .structured-tabs, .graph-panel { display: none !important; }
-  .graph-scroll { border: none; overflow: visible; }
-  .graph-svg { min-width: 0; }
+  .graph-scroll,
+  .stats-scroll,
+  .data-table-scroll { border: none; overflow: visible; }
+  .graph-svg,
+  .stats-svg { min-width: 0; }
 }
 
 /* Every control in the graph/geometry workspaces meets the 40 px touch target,

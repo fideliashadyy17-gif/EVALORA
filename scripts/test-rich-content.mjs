@@ -165,6 +165,10 @@ ok("numeric question requires finite answer", questionPublishIssues({ type: "num
 ok("numeric tolerance cannot be negative", questionPublishIssues({ type: "numeric", prompt: "x?", points: 1, config: { numeric_answer: 2, tolerance: -1 } }).length > 0);
 ok("matching question requires two complete pairs", questionPublishIssues({ type: "matching", prompt: "Match", points: 1, config: { pairs: [{ left: "a", right: "1" }] } }).length > 0);
 ok("structured response requires marking criteria", questionPublishIssues({ type: "open_ended", prompt: "Prove…", points: 5, config: {} }).length > 0);
+ok("statistics requirement with the tool enabled can publish", questionPublishIssues({ type: "open_ended", prompt: "Draw…", points: 5, config: { marking_criteria: "1 mark", response_tools: ["rich_text", "statistics"], response_requirement: "statistics" } }).length === 0);
+ok("statistics requirement without the tool cannot publish", questionPublishIssues({ type: "open_ended", prompt: "Draw…", points: 5, config: { marking_criteria: "1 mark", response_tools: ["rich_text"], response_requirement: "statistics" } }).length > 0);
+ok("data-table requirement without the tool cannot publish", questionPublishIssues({ type: "open_ended", prompt: "Complete…", points: 5, config: { marking_criteria: "1 mark", response_tools: ["rich_text"], response_requirement: "data_table" } }).length > 0);
+ok("data-table requirement with the tool enabled can publish", questionPublishIssues({ type: "open_ended", prompt: "Complete…", points: 5, config: { marking_criteria: "1 mark", response_tools: ["data_table"], response_requirement: "data_table" } }).length === 0);
 
 /* ─── Server-side examination deadlines/extensions ───────────────── */
 const started = "2026-01-01T10:00:00.000Z";

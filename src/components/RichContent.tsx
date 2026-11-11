@@ -1,9 +1,13 @@
 import { docIsEmpty, renderLatex, type RichDoc, type RichNode } from "@/lib/content";
 import { normaliseGraphSpec } from "@/lib/graphSpec";
 import { normaliseGeometrySpec } from "@/lib/geometrySpec";
+import { normaliseStatsSpec } from "@/lib/statsSpec";
+import { normaliseDataTableSpec } from "@/lib/dataTableSpec";
 import { MathText } from "./MathText";
 import { GraphView } from "./graph/GraphView";
 import { GeometryView } from "./geometry/GeometryView";
+import { StatsView } from "./stats/StatsView";
+import { DataTableView } from "./stats/DataTableView";
 
 /**
  * Renders structured question content (rich document) identically everywhere:
@@ -83,6 +87,10 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
       return <GraphView key={key} spec={normaliseGraphSpec(node.attrs?.spec)} compact />;
     case "geometryBlock":
       return <GeometryView key={key} spec={normaliseGeometrySpec(node.attrs?.spec)} compact />;
+    case "statsBlock":
+      return <StatsView key={key} spec={normaliseStatsSpec(node.attrs?.spec)} compact />;
+    case "dataTableBlock":
+      return <DataTableView key={key} spec={normaliseDataTableSpec(node.attrs?.spec)} compact />;
     case "image": {
       const src = String(node.attrs?.src ?? "");
       if (!src) return null;

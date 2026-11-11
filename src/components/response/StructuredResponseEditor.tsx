@@ -6,15 +6,19 @@ import { GraphEditor } from "@/components/graph/GraphEditor";
 import { GeometryEditor } from "@/components/geometry/GeometryEditor";
 import { GraphView } from "@/components/graph/GraphView";
 import { GeometryView } from "@/components/geometry/GeometryView";
+import { StatsEditor } from "@/components/stats/StatsEditor";
+import { DataTableEditor } from "@/components/stats/DataTableEditor";
 import { emptyDoc, docToPlainText, textToDoc, type RichDoc } from "@/lib/content";
 import { emptyGraphSpec, graphSpecHasWork, normaliseGraphSpec, type GraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec, geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
+import { emptyStatsSpec, normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "@/lib/statsSpec";
+import { emptyDataTableSpec, dataTableHasWork, normaliseDataTableSpec, type DataTableSpec } from "@/lib/dataTableSpec";
 import type { ResponseWorkspace } from "@/lib/responseTools";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type Tab = "written" | "graph" | "geometry";
+type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table";
 
 /**
  * The student composition environment for constructed responses.
@@ -61,8 +65,20 @@ export function StructuredResponseEditor({
     const saved = initial?.geometry;
     return saved ? normaliseGeometrySpec(saved) : normaliseGeometrySpec(workspace.geometry.starter, emptyGeometrySpec());
   });
+  const [statistics, setStatistics] = useState<StatsSpec>(() => {
+    const saved = initial?.statistics;
+    const base = saved ? normaliseStatsSpec(saved) : normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
+    return workspace.statistics.chart === "any" ? base : { ...base, chart: workspace.statistics.chart };
+  });
+  const [dataTable, setDataTable] = useState<DataTableSpec>(() => {
+    const saved = initial?.data_table;
+    return saved ? normaliseDataTableSpec(saved) : normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec());
+  });
+  const [statsReset, setStatsReset] = useState(0);
   const graphOn = workspace.graph.enabled;
   const geometryOn = workspace.geometry.enabled;
+  const statsOn = workspace.statistics.enabled;
+  const tableOn = workspace.dataTable.enabled;
   const [tab, setTab] = useState<Tab>("written");
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -70,23 +86,29 @@ export function StructuredResponseEditor({
 
   // A workspace without prose (rare, teacher-configured) opens on its first tool.
   useEffect(() => {
-    if (!workspace.tools.includes("rich_text")) setTab(graphOn ? "graph" : geometryOn ? "geometry" : "written");
+    if (!workspace.tools.includes("rich_text")) {
+      setTab(graphOn ? "graph" : geometryOn ? "geometry" : statsOn ? "statistics" : tableOn ? "data_table" : "written");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const payload = useCallback((): Record<string, unknown> => {
     const graphWork = graphSpecHasWork(graph) ? graph : null;
     const geometryWork = geometrySpecHasWork(geometry) ? geometry : null;
+    const statsWork = statsSpecHasWork(statistics) ? statistics : null;
+    const tableWork = dataTableHasWork(dataTable) ? dataTable : null;
     return {
       version: 1,
       text: docToPlainText(doc),
       doc,
       // A tool the teacher later turns off must not silently delete work the
-      // candidate already saved: existing graph/geometry remains in the answer.
+      // candidate already saved: existing work remains in the answer.
       ...(graphOn || graphWork ? { graph: graphWork } : {}),
       ...(geometryOn || geometryWork ? { geometry: geometryWork } : {}),
+      ...(statsOn || statsWork ? { statistics: statsWork } : {}),
+      ...(tableOn || tableWork ? { data_table: tableWork } : {}),
     };
-  }, [doc, graph, geometry, graphOn, geometryOn]);
+  }, [doc, graph, geometry, statistics, dataTable, graphOn, geometryOn, statsOn, tableOn]);
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -134,9 +156,13 @@ export function StructuredResponseEditor({
 
   const graphPreview = graphOn && graphSpecHasWork(graph) ? graph : null;
   const geometryPreview = geometryOn && geometrySpecHasWork(geometry) ? geometry : null;
+  const statsPreview = statsOn && statsSpecHasWork(statistics) ? statistics : null;
+  const tablePreview = tableOn && dataTableHasWork(dataTable) ? dataTable : null;
   const missingRequired =
     (workspace.requirement === "graph" && !graphPreview) ||
     (workspace.requirement === "geometry" && !geometryPreview) ||
+    (workspace.requirement === "statistics" && !statsPreview) ||
+    (workspace.requirement === "data_table" && !tablePreview) ||
     (workspace.requirement === "text" && !docToPlainText(doc).trim());
 
   return (
@@ -155,6 +181,16 @@ export function StructuredResponseEditor({
         {geometryOn && (
           <button type="button" role="tab" aria-selected={tab === "geometry"} className={cn("structured-tab", tab === "geometry" && "is-active")} onClick={() => setTab("geometry")}>
             △ Geometry {geometryPreview ? "✓" : ""}
+          </button>
+        )}
+        {statsOn && (
+          <button type="button" role="tab" aria-selected={tab === "statistics"} className={cn("structured-tab", tab === "statistics" && "is-active")} onClick={() => setTab("statistics")}>
+            📊 Statistics {statsPreview ? "✓" : ""}
+          </button>
+        )}
+        {tableOn && (
+          <button type="button" role="tab" aria-selected={tab === "data_table"} className={cn("structured-tab", tab === "data_table" && "is-active")} onClick={() => setTab("data_table")}>
+            ▦ Data table {tablePreview ? "✓" : ""}
           </button>
         )}
         <span className="ml-auto hidden text-[11px] text-ink-soft sm:inline">
@@ -243,9 +279,68 @@ export function StructuredResponseEditor({
         </div>
       )}
 
+      {tab === "statistics" && statsOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">
+            {workspace.statistics.instructions || "Enter your data and choose the representation the question asks for."}
+          </p>
+          <StatsEditor
+            initial={statistics}
+            onChange={(next) => { setStatistics(next); markDirty(); }}
+            readOnly={disabled}
+            allowChartChange={workspace.statistics.chart === "any"}
+            resetToken={statsReset}
+          />
+          {!disabled && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  const starter = normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
+                  setStatistics(workspace.statistics.chart === "any" ? starter : { ...starter, chart: workspace.statistics.chart });
+                  setStatsReset((value) => value + 1);
+                  markDirty();
+                }}
+              >
+                Reset statistics workspace
+              </Button>
+              <span className="text-xs text-ink-soft">Your chart is stored as data, so your teacher can reopen the values.</span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "data_table" && tableOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">
+            {workspace.dataTable.instructions || "Complete the table. Each value keeps its row and column when your teacher marks it."}
+          </p>
+          <DataTableEditor
+            spec={dataTable}
+            onChange={(next) => { setDataTable(next); markDirty(); }}
+            readOnly={disabled}
+            allowStructure={!disabled}
+            title={workspace.dataTable.title || "Data table"}
+          />
+          {!disabled && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setDataTable(normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec()));
+                  markDirty();
+                }}
+              >
+                Reset table
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       {missingRequired && (
         <p role="status" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-          This question asks for {workspace.requirement === "text" ? "a written response" : workspace.requirement === "graph" ? "a graph" : "a geometric construction"}. Add it before saving your final answer.
+          This question asks for {requirementLabel(workspace.requirement)}. Add it before saving your final answer.
         </p>
       )}
 
@@ -261,6 +356,18 @@ export function StructuredResponseEditor({
   );
 }
 
+function requirementLabel(requirement: ResponseWorkspace["requirement"]): string {
+  switch (requirement) {
+    case "text": return "a written response";
+    case "graph": return "a graph";
+    case "geometry": return "a geometric construction";
+    case "statistics": return "a statistics chart";
+    case "data_table": return "a completed data table";
+    default: return "a response";
+  }
+}
+
 export function isStructuredWorkspace(workspace: ResponseWorkspace): boolean {
-  return workspace.tools.includes("rich_text") || workspace.graph.enabled || workspace.geometry.enabled;
+  return workspace.tools.includes("rich_text") || workspace.graph.enabled || workspace.geometry.enabled ||
+    workspace.statistics.enabled || workspace.dataTable.enabled;
 }

@@ -1,6 +1,8 @@
 import katex from "katex";
 import { graphSpecHasWork, graphSpecSummary, normaliseGraphSpec } from "./graphSpec";
 import { geometrySpecHasWork, geometrySpecSummary, normaliseGeometrySpec } from "./geometrySpec";
+import { normaliseStatsSpec, statsSpecHasWork, statsSpecSummary } from "./statsSpec";
+import { dataTableHasWork, dataTableSummary, normaliseDataTableSpec } from "./dataTableSpec";
 
 /**
  * Structured rich content (Tiptap JSON) used by the unified question editor.
@@ -51,6 +53,14 @@ function nodeText(node: RichNode): string {
       const spec = normaliseGeometrySpec(node.attrs?.spec);
       return geometrySpecHasWork(spec) ? `[Geometry: ${geometrySpecSummary(spec)}]` : "";
     }
+    case "statsBlock": {
+      const spec = normaliseStatsSpec(node.attrs?.spec);
+      return statsSpecHasWork(spec) ? `[Statistics: ${statsSpecSummary(spec)}]` : "";
+    }
+    case "dataTableBlock": {
+      const spec = normaliseDataTableSpec(node.attrs?.spec);
+      return dataTableHasWork(spec) ? `[Data table: ${dataTableSummary(spec)}]` : "";
+    }
     default: {
       const inner = (node.content ?? []).map(nodeText).join("");
       const isBlock = [
@@ -87,7 +97,9 @@ export function docIsEmpty(doc: RichDoc | null | undefined): boolean {
   let hasContent = false;
   const walk = (n: RichNode) => {
     if (n.type === "text" && (n.text ?? "").trim()) hasContent = true;
-    if (n.type === "mathInline" || n.type === "mathBlock" || n.type === "image" || n.type === "graphBlock" || n.type === "geometryBlock") hasContent = true;
+    if (n.type === "mathInline" || n.type === "mathBlock" || n.type === "image" ||
+      n.type === "graphBlock" || n.type === "geometryBlock" ||
+      n.type === "statsBlock" || n.type === "dataTableBlock") hasContent = true;
     (n.content ?? []).forEach(walk);
   };
   walk(doc);
