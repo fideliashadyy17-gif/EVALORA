@@ -54,6 +54,10 @@ export async function POST(request: Request) {
   const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", participant.session_id).single();
   if (session.status !== "live")
     return NextResponse.json({ error: "The session is not live." }, { status: 409 });
+  // Organizer answer lock: submissions are refused while the presentation
+  // continues, and no answer already stored is touched.
+  if (session.answer_locked)
+    return NextResponse.json({ error: "Answers are locked by the organizer." }, { status: 423 });
 
   const { data: quiz } = await admin.from("quizzes").select("settings").eq("id", session.quiz_id).single();
   const quizSettings = (quiz?.settings ?? {}) as Record<string, unknown>;

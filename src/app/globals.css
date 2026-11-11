@@ -105,8 +105,23 @@ body {
 .evalora-confetti {
   animation: evalora-confetti-fall 4.8s ease-in infinite;
 }
+@keyframes evalora-rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.evalora-rise {
+  animation: evalora-rise 460ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes evalora-pop {
+  0% { opacity: 0; transform: scale(0.86); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.evalora-pop {
+  animation: evalora-pop 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
 @media (prefers-reduced-motion: reduce) {
-  .evalora-screen-in, .evalora-confetti, .live-dot { animation: none !important; }
+  .evalora-screen-in, .evalora-confetti, .evalora-rise, .evalora-pop, .live-dot { animation: none !important; }
 }
 
 /* ── Rich structured content (questions, options, explanations) ────────── */

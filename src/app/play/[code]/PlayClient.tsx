@@ -22,6 +22,27 @@ interface SubmittedAnswer {
   needs_marking?: boolean;
 }
 
+interface FinalRow {
+  display_name: string;
+  avatar_key: string;
+  score: number;
+  rank: number;
+  is_me: boolean;
+}
+
+interface FinalBlock {
+  stage: string;
+  label: string;
+  my_rank: number | null;
+  my_score: number;
+  my_entry: { display_name: string; avatar_key: string; score: number; rank: number } | null;
+  revealed: number;
+  total: number;
+  podium: FinalRow[];
+  full: FinalRow[] | null;
+  away_from_board: number;
+}
+
 interface LiveState {
   server_now: string;
   session: {
@@ -30,6 +51,8 @@ interface LiveState {
     status: string;
     mode: string;
     phase: string;
+    answer_locked?: boolean;
+    presentation_stage?: string;
     question_started_at: string | null;
     question_deadline_at: string | null;
     time_per_question_seconds: number;
@@ -43,6 +66,8 @@ interface LiveState {
   participant_count: number;
   leaderboard: { display_name: string; avatar_key: string; score: number; is_me: boolean }[] | null;
   my_rank: number | null;
+  final?: FinalBlock | null;
+  next_session?: { session_id: string; join_code: string } | null;
 }
 
 interface LocalSubmission extends SubmittedAnswer {
@@ -213,6 +238,10 @@ export function PlayClient({ code }: { code: string }) {
 
   async function answer(payload: Record<string, unknown>) {
     if (!identity || !state?.question || submitting || submittedForCurrent) return;
+    if (state.session.answer_locked) {
+      setSubmitMessage("The organizer has locked answers for this question.");
+      return;
+    }
     setSubmitting(true);
     setSubmitMessage("Sending your answer…");
     const quizQuestionId = state.question.quiz_question_id;
@@ -385,7 +414,10 @@ export function PlayClient({ code }: { code: string }) {
             </Badge>
           )}
           <Badge tone="green" className="px-3 py-1 text-base font-bold">{participant.score} pts</Badge>
-          {state.my_rank && <Badge tone="gray" className="px-3 py-1 text-base">#{state.my_rank}</Badge>}
+          {state.my_rank && !state.final && <Badge tone="gray" className="px-3 py-1 text-base">#{state.my_rank}</Badge>}
+          {session.answer_locked && session.status !== "ended" && (
+            <Badge tone="red" className="px-3 py-1 text-base">🔒 Answers locked</Badge>
+          )}
         </div>
       </div>
 
@@ -416,6 +448,16 @@ export function PlayClient({ code }: { code: string }) {
         </div>
       ) : session.status === "paused" ? (
         <CenterState icon="⏸️" title="Paused by the organizer" body={submittedForCurrent ? "Your current answer is safely recorded. The competition will continue shortly." : "The competition will continue shortly. Stay on this page."} />
+      ) : state.next_session ? (
+        <NextRoundCard joinCode={state.next_session.join_code} />
+      ) : state.final ? (
+        <FinalResult final={state.final} />
+      ) : session.status === "ended" && session.presentation_stage === "final_pending" ? (
+        <CenterState
+          icon="🎬"
+          title="Final results are locked"
+          body="Your answers and scores are saved. The organizer will reveal the podium here in a moment — stay on this page."
+        />
       ) : session.phase === "countdown" ? (
         <div className="py-10 text-center">
           <p className="text-sm font-bold uppercase tracking-[0.2em] text-evergreen-700">Get ready</p>
@@ -431,11 +473,16 @@ export function PlayClient({ code }: { code: string }) {
           <p className="mb-3 text-sm font-medium text-ink-soft">
             Question {progress.index + 1} of {progress.total} · {question.points} point(s)
           </p>
+          {session.answer_locked && (
+            <p className="mb-3 rounded-xl bg-amber-100 px-4 py-2.5 text-sm font-semibold text-amber-950">
+              🔒 The organizer has locked answers. You can still read the question — nothing you already submitted is lost.
+            </p>
+          )}
           <QuestionRunner
             key={question.quiz_question_id}
             question={question}
             onAnswer={answer}
-            disabled={submitting || session.phase === "time_expired" || (remaining !== null && remaining <= 0)}
+            disabled={submitting || Boolean(session.answer_locked) || session.phase === "time_expired" || (remaining !== null && remaining <= 0)}
           />
           {submitMessage && <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{submitMessage}</p>}
           {(session.phase === "time_expired" || (remaining !== null && remaining <= 0)) && (
@@ -459,7 +506,10 @@ export function PlayClient({ code }: { code: string }) {
         <CenterState icon="👀" title="Waiting for the next screen" body="The organizer is preparing the next question or presentation." />
       ) : null}
 
-      {(session.status === "ended" || participant.finished) && participant.status !== "pending" && (
+      {(session.status === "ended" || participant.finished) &&
+        participant.status !== "pending" &&
+        !state.final &&
+        !state.next_session && (
         <div className="py-4 text-center">
           <ParticipantAvatar avatarKey={participant.avatar_key} name={participant.display_name} size={84} className="mx-auto" />
           <h2 className="mt-4 font-display text-3xl font-semibold text-evergreen-950">
@@ -594,6 +644,112 @@ function Leaderboard({ state, title }: { state: LiveState; title: string }) {
         ))}
       </ol>
       {state.my_rank && <p className="mt-3 text-center text-sm text-ink-soft">Your rank: #{state.my_rank}</p>}
+    </div>
+  );
+}
+
+/**
+ * The participant's own final result plus the podium the organizer has
+ * already revealed. The server sends only the revealed places, so a
+ * participant cannot learn the champion before the projector does.
+ */
+function FinalResult({ final }: { final: FinalBlock }) {
+  const mine = final.my_entry;
+  const rankLabel = (rank: number) => {
+    const suffix = rank % 100 >= 11 && rank % 100 <= 13 ? "th" : ["th", "st", "nd", "rd"][rank % 10] ?? "th";
+    return `${rank}${suffix}`;
+  };
+  const pendingPlaces = Math.max(0, Math.min(3, final.total) - final.revealed);
+  return (
+    <div className="py-2">
+      <div className="rounded-2xl bg-evergreen-950 px-5 py-5 text-center text-white">
+        <p className="text-xs font-bold uppercase tracking-[0.24em] text-gold-300">Your final result</p>
+        {mine ? (
+          <>
+            <ParticipantAvatar avatarKey={mine.avatar_key} name={mine.display_name} size={86} className="mx-auto mt-3" />
+            <h2 className="mt-3 font-display text-2xl font-semibold">{mine.display_name}</h2>
+            <p className="mt-2 font-display text-5xl font-extrabold text-gold-300">{rankLabel(mine.rank)}</p>
+            <p className="mt-1 text-lg text-evergreen-100">place of {final.total}</p>
+            <p className="mt-3 text-2xl font-bold tabular-nums">{mine.score} points</p>
+          </>
+        ) : (
+          <>
+            <p className="mt-3 font-display text-2xl font-semibold">Final position not available</p>
+            <p className="mt-2 text-evergreen-100">Your score: {final.my_score} points</p>
+          </>
+        )}
+      </div>
+
+      <div className="mt-5">
+        <h3 className="text-center font-display text-xl font-semibold text-evergreen-950">Podium</h3>
+        {final.podium.length ? (
+          <ol className="mt-3 space-y-2">
+            {[...final.podium]
+              .sort((a, b) => a.rank - b.rank)
+              .map((row) => (
+                <li
+                  key={`${row.rank}-${row.display_name}`}
+                  className={`flex items-center gap-3 rounded-2xl border px-4 py-3 ${row.rank === 1 ? "border-gold-500 bg-gold-50" : "border-evergreen-900/10 bg-white"} ${row.is_me ? "ring-2 ring-evergreen-700" : ""}`}
+                >
+                  <span className="w-8 text-xl">{row.rank === 1 ? "🥇" : row.rank === 2 ? "🥈" : row.rank === 3 ? "🥉" : row.rank}</span>
+                  <ParticipantAvatar avatarKey={row.avatar_key} name={row.display_name} size={38} />
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {row.display_name}
+                    {row.is_me ? " (you)" : ""}
+                  </span>
+                  <strong className="tabular-nums">{row.score}</strong>
+                </li>
+              ))}
+          </ol>
+        ) : (
+          <p className="mt-3 text-center text-sm text-ink-soft">The organizer is building the suspense — the podium appears here as each place is announced.</p>
+        )}
+        {pendingPlaces > 0 && final.stage !== "board" && (
+          <p className="mt-3 text-center text-sm text-ink-soft">{pendingPlaces} podium place(s) still to be announced.</p>
+        )}
+      </div>
+
+      {final.full ? (
+        <div className="mt-5">
+          <h3 className="text-center font-display text-xl font-semibold text-evergreen-950">Full final leaderboard</h3>
+          <ol className="mt-3 space-y-1.5">
+            {final.full.map((row) => (
+              <li
+                key={`full-${row.rank}-${row.display_name}`}
+                className={`flex items-center gap-3 rounded-xl px-3 py-2 text-sm ${row.is_me ? "bg-evergreen-50 font-semibold" : "bg-cream"}`}
+              >
+                <span className="w-7 font-bold text-evergreen-800">{row.rank}</span>
+                <span className="min-w-0 flex-1 truncate">{row.display_name}{row.is_me ? " (you)" : ""}</span>
+                <strong className="tabular-nums">{row.score}</strong>
+              </li>
+            ))}
+          </ol>
+        </div>
+      ) : (
+        final.away_from_board > 0 && (
+          <p className="mt-4 text-center text-sm text-ink-soft">
+            The full leaderboard with all {final.total} participants appears when the organizer shows it.
+          </p>
+        )
+      )}
+    </div>
+  );
+}
+
+function NextRoundCard({ joinCode }: { joinCode: string }) {
+  return (
+    <div className="py-8 text-center">
+      <p className="text-5xl">🎉</p>
+      <h2 className="mt-3 font-display text-3xl font-semibold text-evergreen-950">This round is complete</h2>
+      <p className="mt-2 text-ink-soft">Your result is saved. The organizer has opened a fresh waiting room for the next competition.</p>
+      <p className="mt-5 text-sm font-semibold uppercase tracking-[0.2em] text-evergreen-700">New competition code</p>
+      <p className="mt-1 font-display text-5xl font-extrabold tracking-[0.16em] text-evergreen-900">{joinCode}</p>
+      <a
+        href={`/play/${joinCode}`}
+        className="mt-5 inline-flex rounded-xl bg-evergreen-800 px-6 py-3 font-semibold text-white hover:bg-evergreen-700"
+      >
+        Join the next round
+      </a>
     </div>
   );
 }

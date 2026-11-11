@@ -12,8 +12,15 @@ import QRCode from "qrcode";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   hostEnd,
+  hostFinishPresentation,
   hostNext,
   hostPauseToggle,
+  hostPrev,
+  hostRevealNextPlace,
+  hostRevealResults,
+  hostReplayPodium,
+  hostSetAnswerLock,
+  hostShowFullBoard,
   hostRevokeDisplayToken,
   hostRotateDisplayToken,
   hostSetAdmission,
@@ -31,6 +38,9 @@ interface Session {
   mode: string;
   status: string;
   phase?: string;
+  answer_locked?: boolean;
+  presentation_stage?: string;
+  session_round?: number;
   current_question_index: number;
   question_started_at: string | null;
   question_deadline_at?: string | null;
@@ -314,8 +324,43 @@ export function HostConsole({
                   </Button>
                 )}
                 {session.mode === "synchronized" && (session.status === "live" || session.status === "paused") && (
+                  <Button variant="outline" disabled={busy || session.current_question_index <= 0} onClick={() => act(() => hostPrev(session.id))} className="py-3">
+                    ← Previous question
+                  </Button>
+                )}
+                {session.mode === "synchronized" && (session.status === "live" || session.status === "paused") && (
                   <Button variant="gold" disabled={busy} onClick={() => act(() => hostNext(session.id))} className="px-6 py-3">
                     {session.current_question_index + 1 >= questions.length ? "Finish competition 🏁" : "Next question →"}
+                  </Button>
+                )}
+                {(session.status === "live" || session.status === "paused") && (
+                  <Button variant="outline" disabled={busy} onClick={() => act(() => hostSetAnswerLock(session.id, !session.answer_locked))} className="py-3">
+                    {session.answer_locked ? "🔓 Unlock answers" : "🔒 Lock answers"}
+                  </Button>
+                )}
+                {session.status === "ended" && session.presentation_stage !== "suspense" && session.presentation_stage !== "third" && session.presentation_stage !== "second" && session.presentation_stage !== "champion" && session.presentation_stage !== "board" && session.presentation_stage !== "finished" && (
+                  <Button variant="gold" disabled={busy} onClick={() => act(() => hostRevealResults(session.id))} className="px-6 py-3">
+                    🎬 Reveal final results
+                  </Button>
+                )}
+                {session.status === "ended" && ["suspense", "third", "second", "champion"].includes(String(session.presentation_stage)) && (
+                  <Button variant="gold" disabled={busy} onClick={() => act(() => hostRevealNextPlace(session.id))} className="px-6 py-3">
+                    Reveal next place
+                  </Button>
+                )}
+                {session.status === "ended" && ["third", "second", "champion"].includes(String(session.presentation_stage)) && (
+                  <Button variant="outline" disabled={busy} onClick={() => act(() => hostShowFullBoard(session.id))} className="py-3">
+                    Full leaderboard
+                  </Button>
+                )}
+                {session.status === "ended" && ["champion", "board"].includes(String(session.presentation_stage)) && (
+                  <Button variant="outline" disabled={busy} onClick={() => act(() => hostReplayPodium(session.id))} className="py-3">
+                    ↺ Replay podium
+                  </Button>
+                )}
+                {session.status === "ended" && session.presentation_stage !== "finished" && (
+                  <Button variant="outline" disabled={busy} onClick={() => act(() => hostFinishPresentation(session.id))} className="py-3">
+                    ✅ Finish & return to waiting room
                   </Button>
                 )}
                 {session.status !== "ended" && (
