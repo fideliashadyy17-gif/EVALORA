@@ -206,6 +206,8 @@ await checkAsync("a signed-out visitor cannot read the organizer state", async (
   const res = await get();
   assert.equal(res.status, 200);
   assert.equal(res.body.authorized, false);
+  assert.equal(res.body.signed_in, false);
+  assert.equal(res.body.reason, "signed_out");
 });
 
 await checkAsync("a signed-out visitor cannot command a live competition", async () => {
@@ -221,6 +223,8 @@ await checkAsync("a signed-in user without organizer rights is refused by the ba
   canResult = false;
   const state = await get();
   assert.equal(state.body.authorized, false);
+  assert.equal(state.body.signed_in, true);
+  assert.equal(state.body.reason, "not_organizer");
   const res = await post({ session_id: SESSION_ID, command: "next" });
   assert.equal(res.status, 403);
   assert.equal(snapshots.length, 0);
@@ -338,6 +342,7 @@ await checkAsync("a screen addressed by its competition resolves the live sessio
   const res = await get(COMPETITION_ID);
   assert.equal(res.status, 200);
   assert.equal(res.body.authorized, true, "the organizer must be authorized on a competition-addressed screen");
+  assert.equal(res.body.signed_in, true);
   assert.equal(res.body.session_id, SESSION_ID);
   assert.equal(res.body.state.question_count, 3);
   assert.ok(res.body.commands.includes("start"));
@@ -373,6 +378,8 @@ await checkAsync("an unknown public id is refused instead of silently hiding the
   const state = await get(UNKNOWN_ID);
   assert.equal(state.status, 200);
   assert.equal(state.body.authorized, false);
+  assert.equal(state.body.signed_in, true);
+  assert.equal(state.body.reason, "unknown_session");
   const command = await post({ session_id: UNKNOWN_ID, command: "next" });
   assert.equal(command.status, 404);
   assert.equal(snapshots.length, 0);
@@ -434,6 +441,31 @@ await checkAsync("the organizer roster reports presence, approval state and subm
   assert.equal(bilal.connected, false, "a participant seen long ago is shown as disconnected");
   assert.equal(bilal.answered, false);
   assert.equal(bilal.status, "waiting", "pending approvals are labelled waiting, as on the projection");
+});
+
+await checkAsync("a signed-in non-organizer is told apart from a signed-out viewer", async () => {
+  // The screen uses this to explain a missing toolbar only on host links; it is
+  // not authorization and it never reveals who the organizer is.
+  reset();
+  authContext = null;
+  const anonymous = await get();
+  assert.equal(anonymous.body.reason, "signed_out");
+
+  reset({ host_id: "99999999-9999-4999-8999-999999999999" });
+  canResult = false;
+  const outsider = await get();
+  assert.equal(outsider.body.reason, "not_organizer");
+  assert.equal(outsider.body.signed_in, true);
+  assert.equal(outsider.body.authorized, false);
+});
+
+await checkAsync("an inactive account is reported without authorizing it", async () => {
+  reset();
+  authContext = { user: { id: HOST_ID }, profile: { status: "suspended", platform_role: "user" }, memberships: [] };
+  const res = await get();
+  assert.equal(res.body.authorized, false);
+  assert.equal(res.body.signed_in, true);
+  assert.equal(res.body.reason, "inactive_account");
 });
 
 console.log(`\n${checks} checks passed`);
