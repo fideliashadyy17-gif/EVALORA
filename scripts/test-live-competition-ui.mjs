@@ -80,6 +80,7 @@ const checkAsync = async (name, fn) => {
 
 /* ── Fake browser + network ───────────────────────────────────────────── */
 const controlPosts = [];
+const controlGets = [];
 let navigations = [];
 let screenPayload = null;
 let controlPayload = { authorized: false };
@@ -100,6 +101,7 @@ globalThis.window = {
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes("/api/live/control")) {
+    if (options.method !== "POST") controlGets.push(target);
     if (options.method === "POST") {
       controlPosts.push(JSON.parse(options.body));
       return { ok: true, json: async () => ({ ok: true, state: controlPayload.state }) };
@@ -132,20 +134,28 @@ async function settle() {
 }
 
 async function mount(payload, control) {
+  return mountAt("11111111-1111-4111-8111-111111111111", payload, control);
+}
+
+async function mountAt(liveId, payload, control) {
   screenPayload = payload;
   controlPayload = control;
   let tree;
   await act(async () => {
-    tree = TestRenderer.create(
-      React.createElement(PublicScreenClient, { liveId: "11111111-1111-4111-8111-111111111111", token: "screen-token" }),
-    );
+    tree = TestRenderer.create(React.createElement(PublicScreenClient, { liveId, token: "screen-token" }));
   });
   await settle();
   return tree;
 }
 
+const ROSTER = [
+  { participant_id: "p1", display_name: "Ada", avatar_key: "owl", status: "admitted", connected: true, answered: true, reconnect_count: 0 },
+  { participant_id: "p2", display_name: "Bilal", avatar_key: "fox", status: "waiting", connected: false, answered: false, reconnect_count: 2 },
+];
+
 const AUTHORIZED = (state = {}) => ({
   authorized: true,
+  participants: ROSTER,
   state: {
     status: "live",
     phase: "question",
@@ -251,17 +261,24 @@ await checkAsync("no organizer control is rendered for an unauthorized viewer", 
 await checkAsync("an authorized organizer gets every control on the projected page", async () => {
   const tree = await mount(payload(), AUTHORIZED());
   const text = textOf(tree);
-  for (const label of ["Organizer controls", "Next question", "Previous", "Pause", "Lock answers", "Close registration", "Show leaderboard"]) {
+  for (const label of ["Organizer controls", "Next question", "Previous", "Pause", "Lock answers", "Close joining", "Show leaderboard"]) {
     if (!text.includes(label)) throw new Error(`missing control: ${label}`);
   }
   await act(async () => tree.unmount());
 });
 
 await checkAsync("the organizer can finish the competition from the projected page", async () => {
+  controlPosts.length = 0;
   const tree = await mount(payload(), AUTHORIZED({ current_question_index: 1, phase: "question" }));
   const button = buttonByText(tree, "End competition");
   if (!button) throw new Error("the end-of-competition control is missing");
   await act(async () => button.props.onClick());
+  await settle();
+  if (controlPosts.length !== 0) throw new Error("ending must ask for confirmation before it is sent");
+  if (!textOf(tree).includes("End now?")) throw new Error("the confirmation is missing");
+  const confirm = buttonByText(tree, "Yes, end competition");
+  if (!confirm) throw new Error("the confirmation has no confirm button");
+  await act(async () => confirm.props.onClick());
   await settle();
   if (controlPosts.length !== 1) throw new Error(`expected one command, saw ${controlPosts.length}`);
   if (controlPosts[0].command !== "end") throw new Error("wrong command sent");
@@ -271,7 +288,71 @@ await checkAsync("the organizer can finish the competition from the projected pa
   controlPosts.length = 0;
 });
 
+await checkAsync("the confirmation can be dismissed without ending the competition", async () => {
+  controlPosts.length = 0;
+  const tree = await mount(payload(), AUTHORIZED({ current_question_index: 1, phase: "question" }));
+  await act(async () => buttonByText(tree, "End competition").props.onClick());
+  await settle();
+  const cancel = buttonByText(tree, "Cancel");
+  if (!cancel) throw new Error("the confirmation cannot be dismissed");
+  await act(async () => cancel.props.onClick());
+  await settle();
+  if (controlPosts.length !== 0) throw new Error("cancelling must not send a command");
+  if (textOf(tree).includes("End now?")) throw new Error("the confirmation stayed on screen");
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("a competition-addressed screen commands the session it reports, not the URL id", async () => {
+  controlPosts.length = 0;
+  controlGets.length = 0;
+  const COMPETITION_ID = "88888888-8888-4888-8888-888888888888";
+  const SESSION_ID = "99999999-9999-4999-8999-999999999999";
+  const tree = await mountAt(COMPETITION_ID, payload({ competition_id: COMPETITION_ID, session_id: SESSION_ID }), AUTHORIZED());
+  if (!textOf(tree).includes("Organizer controls")) throw new Error("the organizer bar is missing on a competition screen");
+  if (!controlGets.some((url) => url.includes(`session_id=${SESSION_ID}`))) {
+    throw new Error(`the control probe asked about the wrong record: ${controlGets.join(", ")}`);
+  }
+  if (controlGets.some((url) => url.includes(`session_id=${COMPETITION_ID}`))) {
+    throw new Error("the control probe still asks the competition id as if it were a session");
+  }
+  const next = buttonByText(tree, "Next question");
+  if (!next) throw new Error("the next-question control is missing");
+  await act(async () => next.props.onClick());
+  await settle();
+  if (controlPosts.length !== 1) throw new Error("the command was not sent");
+  if (controlPosts[0].session_id !== SESSION_ID) throw new Error("the command addressed the wrong record");
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("the organizer sees who is in the room, connected and awaiting approval", async () => {
+  const tree = await mount(payload(), AUTHORIZED());
+  const text = textOf(tree);
+  if (!text.includes("Participants connected: 1/2")) throw new Error("the live participant counter is missing");
+  const toggle = buttonByText(tree, "Participants");
+  if (!toggle) throw new Error("the participant panel toggle is missing");
+  await act(async () => toggle.props.onClick());
+  await settle();
+  const panel = textOf(tree);
+  for (const expected of ["Ada", "Bilal", "Connected: 1/2", "Answered this question: 1", "awaiting approval", "disconnected"]) {
+    if (!panel.includes(expected)) throw new Error(`missing from the participant panel: ${expected}`);
+  }
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("closing joining does not pause or end the competition", async () => {
+  controlPosts.length = 0;
+  const tree = await mount(payload(), AUTHORIZED({ admission_open: true }));
+  const closeJoin = buttonByText(tree, "Close joining");
+  if (!closeJoin) throw new Error("the close-joining control is missing");
+  await act(async () => closeJoin.props.onClick());
+  await settle();
+  if (controlPosts.length !== 1 || controlPosts[0].command !== "close_join") throw new Error("wrong command for closing entry");
+  if (textOf(tree).includes("paused")) throw new Error("closing entry must not pause the room");
+  await act(async () => tree.unmount());
+});
+
 await checkAsync("arrow keys advance the competition without leaving the page", async () => {
+  controlPosts.length = 0;
   const tree = await mount(payload(), AUTHORIZED());
   const handler = globalThis.window.__keyHandler;
   if (typeof handler !== "function") throw new Error("keyboard controls are not attached");
