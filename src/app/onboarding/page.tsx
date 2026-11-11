@@ -2,7 +2,7 @@ import { AuthShell } from "@/components/AuthShell";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { rootDomain, subdomainSuggestions, tenantPortalLabel, validateSubdomain } from "@/lib/tenant";
+import { platformUrlMode, rootDomain, subdomainSuggestions, tenantPortalLabel, validateSubdomain } from "@/lib/tenant";
 import { slugify } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -112,7 +112,14 @@ export default async function OnboardingPage({
         <Field label="Organization name">
           <Input name="name" required defaultValue={sp.name ?? ""} placeholder="e.g. Riverdale International School" />
         </Field>
-        <Field label="School subdomain" hint={rootDomain() ? `Your portal will be https://<subdomain>.${rootDomain()}` : "Your school's unique portal address (e.g. riverdale). Leave blank to generate it from the name."}>
+        <Field
+          label="School subdomain"
+          hint={
+            platformUrlMode() === "subdomain" && rootDomain()
+              ? `Your portal will be https://<subdomain>.${rootDomain()}`
+              : "Your school's unique identifier (e.g. riverdale) — it becomes the permanent address of your platform. Leave blank to generate it from the name."
+          }
+        >
           <Input name="subdomain" defaultValue={sp.subdomain ?? ""} placeholder="e.g. riverdale" />
         </Field>
         <Field label="Organization type">

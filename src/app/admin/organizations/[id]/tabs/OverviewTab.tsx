@@ -1,6 +1,6 @@
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { ORG_TYPES } from "@/lib/brand";
-import { tenantPortalLabel } from "@/lib/tenant";
+import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import { setOrgStatus } from "../../../actions";
 import { deleteOrganization, enterOrgWorkspace, updateOrganization } from "../../../actions/orgs";
 import { ConfirmField, Notice, Section } from "../../../ui";
@@ -93,7 +93,10 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
               <Field label="Replace logo">
                 <Input name="logo" type="file" accept="image/*" />
               </Field>
-              <Field label="School subdomain / portal" hint={`Portal: ${tenantPortalLabel(org.slug)} · path: /portal/${org.slug}`}>
+              <Field
+                label="Platform identifier"
+                hint={`Platform URL: ${tenantPortalUrl(org.slug)} · label: ${tenantPortalLabel(org.slug)} · manage it on the Platform URL tab`}
+              >
                 <Input name="slug" defaultValue={org.slug} disabled={Boolean(org.is_demo)} readOnly={Boolean(org.is_demo)} />
               </Field>
               <label className="flex items-center gap-2 text-sm text-ink">

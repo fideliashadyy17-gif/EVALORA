@@ -1,7 +1,9 @@
-import { Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
+import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
+import { organizationPlatformAccess } from "@/lib/tenant";
 import { fmtDate } from "@/lib/utils";
 import { Building2, GraduationCap, Users } from "lucide-react";
 import type { Metadata } from "next";
@@ -25,7 +27,7 @@ export default async function AdminOrganizations({
   let query = admin
     .from("organizations")
     .select(
-      "id, name, slug, type, status, country, city, created_at, organization_members(id), students(id), quizzes(id), exams(id), competitions(id), subscriptions(status, source, plans(name), trial_ends_at, current_period_end)",
+      "id, name, slug, type, status, country, city, created_at, portal_enabled, custom_domain, platform_domain_status, organization_members(id), students(id), quizzes(id), exams(id), competitions(id), subscriptions(status, source, plans(name), trial_ends_at, current_period_end)",
     )
     .order("created_at", { ascending: false })
     .limit(200);
@@ -46,7 +48,12 @@ export default async function AdminOrganizations({
       <PageTitle
         title="Organizations"
         subtitle="Create and operate schools, universities and examination centers — no payment required on the path."
-        action={<ButtonLink href="/admin/organizations/new" variant="gold">+ Create organization</ButtonLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/admin/organizations/access" variant="outline">Organization platform access</ButtonLink>
+            <ButtonLink href="/admin/organizations/new" variant="gold">+ Create organization</ButtonLink>
+          </div>
+        }
       />
       <Notice ok={sp.ok} e={sp.e} messages={{ deleted: "Organization permanently deleted." }} />
 
@@ -84,7 +91,7 @@ export default async function AdminOrganizations({
           .
         </p>
       ) : (
-        <Table head={["Organization", "Type", "Scale", "Plan", "Status", "Actions"]}>
+        <Table head={["Organization", "Type", "Scale", "Plan", "Platform URL", "Status", "Actions"]}>
           {(orgs ?? []).map((o) => {
             const sub = ((o.subscriptions as unknown as { status: string; source?: string; plans: { name: string } | null; trial_ends_at: string | null; current_period_end: string | null }[]) ?? [])
               .find((s) => ["active", "trialing"].includes(s.status));
@@ -118,6 +125,29 @@ export default async function AdminOrganizations({
                   ) : (
                     <span className="text-ink-soft">Free</span>
                   )}
+                </td>
+                <td>
+                  {(() => {
+                    const access = organizationPlatformAccess(o);
+                    return (
+                      <>
+                        <Badge tone={access.tone}>{access.label}</Badge>
+                        {access.url ? (
+                          <a
+                            href={access.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="mt-1 block max-w-[16rem] break-all font-mono text-[11px] text-evergreen-800 underline underline-offset-2"
+                          >
+                            {access.url}
+                          </a>
+                        ) : (
+                          <span className="mt-1 block text-[11px] text-ink-soft">No working URL</span>
+                        )}
+                        <PlatformUrlActions url={access.url} size="sm" openLabel="Open" copyLabel="Copy" shareLabel="Share" className="mt-1" />
+                      </>
+                    );
+                  })()}
                 </td>
                 <td><StatusBadge status={o.status} /></td>
                 <td>

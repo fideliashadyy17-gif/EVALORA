@@ -90,16 +90,221 @@ export function getTenantSlugFromHost(hostHeader: string | null | undefined, roo
   return null;
 }
 
-/** Canonical public URL for a school portal. */
-export function tenantPortalUrl(slug: string): string {
+/**
+ * How organization platform URLs are addressed right now.
+ *
+ *  - "subdomain" — `https://<slug>.<NEXT_PUBLIC_ROOT_DOMAIN>` is the canonical
+ *    address. Only possible on a host that can actually serve wildcard
+ *    subdomains (a real custom domain with a wildcard DNS record + TLS).
+ *  - "path" — the canonical address is `<app origin>/portal/<slug>`. Used
+ *    whenever the configured root domain is a preview/platform host such as
+ *    `*.vercel.app`, where wildcard subdomains do not exist. The app still
+ *    *resolves* subdomain hosts correctly (see getTenantSlugFromHost), so
+ *    flipping the root domain to a real domain switches every organization
+ *    to subdomain URLs without any data change.
+ */
+export type PlatformUrlMode = "subdomain" | "path";
+
+/** True only for a hostname that can serve `<slug>.<host>` with valid TLS. */
+export function isSubdomainCapableHost(host: string | null | undefined): boolean {
+  const value = String(host ?? "").trim().toLowerCase();
+  if (!value) return false;
+  if (value === "localhost" || value.endsWith(".localhost")) return true; // dev: <slug>.localhost
+  if (EXCLUDED_HOST_SUFFIXES.some((s) => value.endsWith(s))) return false;
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(value)) return false;
+  return value.includes(".");
+}
+
+export function platformUrlMode(root = rootDomain()): PlatformUrlMode {
+  return isSubdomainCapableHost(root) ? "subdomain" : "path";
+}
+
+/** Absolute origin of the deployed application (no trailing slash). */
+export function platformOrigin(): string {
+  const app = (process.env.NEXT_PUBLIC_APP_URL ?? "").trim().replace(/\/+$/, "");
+  if (app) return /^https?:\/\//i.test(app) ? app : `https://${app}`;
   const root = rootDomain();
-  if (root) return `https://${slug}.${root}`;
-  const app = (process.env.NEXT_PUBLIC_APP_URL ?? "").replace(/\/$/, "");
-  return app ? `${app}/portal/${slug}` : `/portal/${slug}`;
+  return root ? `https://${root}` : "";
+}
+
+/** Subdomain address for an organization, or null when no root domain is set. */
+export function organizationSubdomainUrl(slug: string, root = rootDomain()): string | null {
+  if (!slug || !root) return null;
+  return `https://${slug}.${root}`;
+}
+
+/**
+ * The one canonical, currently-working URL for an organization's platform.
+ * Used by the Super Admin console and the organization dashboard, so both
+ * always show the same address.
+ */
+export function organizationPlatformUrl(
+  slug: string,
+  options: { root?: string | null; appUrl?: string | null; mode?: PlatformUrlMode } = {},
+): string {
+  const clean = normalizeSubdomain(slug);
+  if (!clean) return "";
+  const root = options.root === undefined ? rootDomain() : options.root;
+  const mode = options.mode ?? platformUrlMode(root);
+  if (mode === "subdomain" && root) return `https://${clean}.${root}`;
+  const app = (options.appUrl ?? process.env.NEXT_PUBLIC_APP_URL ?? "").trim().replace(/\/+$/, "");
+  const origin = app ? (/^https?:\/\//i.test(app) ? app : `https://${app}`) : root ? `https://${root}` : "";
+  return `${origin}/portal/${clean}`;
+}
+
+/** Canonical public URL for a school portal (tenant subdomain or portal path). */
+export function tenantPortalUrl(slug: string): string {
+  return organizationPlatformUrl(slug);
 }
 
 /** Human label shown in dashboards: either the subdomain or the portal path. */
 export function tenantPortalLabel(slug: string): string {
   const root = rootDomain();
-  return root ? `${slug}.${root}` : `/portal/${slug}`;
+  return platformUrlMode(root) === "subdomain" && root ? `${slug}.${root}` : `/portal/${slug}`;
+}
+
+export type PlatformAccessState = "active" | "pending" | "unavailable" | "disabled";
+
+export interface OrganizationPlatformAccess {
+  state: PlatformAccessState;
+  /** Short label for a status pill. */
+  label: string;
+  tone: "green" | "gold" | "gray" | "red" | "amber";
+  /** Canonical URL that works today (empty when unavailable/disabled). */
+  url: string;
+  /** Plain-language explanation of the status. */
+  detail: string;
+  mode: PlatformUrlMode;
+  /** Future/primary host address (`https://slug.root`), when a root exists. */
+  subdomainUrl: string | null;
+  /** Verified custom domain URL, when the organization has one. */
+  customDomainUrl: string | null;
+}
+
+const ACCESS_LABELS: Record<PlatformAccessState, { label: string; tone: OrganizationPlatformAccess["tone"] }> = {
+  active: { label: "Active", tone: "green" },
+  pending: { label: "Pending", tone: "amber" },
+  unavailable: { label: "Unavailable", tone: "gray" },
+  disabled: { label: "Disabled", tone: "red" },
+};
+
+/**
+ * Single source of truth for "is this organization's platform URL usable?".
+ *
+ * It never claims a URL works because a row exists in the database: the
+ * address is only reported Active when the deployment can actually serve it
+ * (path mode always can; subdomain/custom-domain mode needs the platform's
+ * wildcard DNS + TLS recorded as verified).
+ */
+export function organizationPlatformAccess(org: {
+  slug?: string | null;
+  status?: string | null;
+  portal_enabled?: boolean | null;
+  platform_domain_status?: string | null;
+  custom_domain?: string | null;
+}): OrganizationPlatformAccess {
+  const root = rootDomain();
+  const mode = platformUrlMode(root);
+  const slug = normalizeSubdomain(org.slug ?? "");
+  const subdomainUrl = organizationSubdomainUrl(slug, root);
+  const verified = String(org.platform_domain_status ?? "pending") === "active";
+  const customDomainUrl =
+    org.custom_domain && verified ? `https://${String(org.custom_domain).trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "")}` : null;
+  const base = { mode, subdomainUrl, customDomainUrl };
+
+  if (!slug) {
+    return {
+      ...base,
+      ...ACCESS_LABELS.unavailable,
+      state: "unavailable",
+      url: "",
+      detail: "This organization has no identifier yet, so it has no platform URL. Assign one to activate its platform.",
+    };
+  }
+  if (String(org.status ?? "active") !== "active") {
+    return {
+      ...base,
+      ...ACCESS_LABELS.disabled,
+      state: "disabled",
+      url: customDomainUrl ?? organizationPlatformUrl(slug, { root, mode }),
+      detail: `The organization is ${String(org.status)}. Its URL still resolves, but the platform shows a closed notice and nobody can sign in.`,
+    };
+  }
+  if (org.portal_enabled === false) {
+    return {
+      ...base,
+      ...ACCESS_LABELS.disabled,
+      state: "disabled",
+      url: "",
+      detail: "The public portal is switched off for this organization, so its URL returns “not found”.",
+    };
+  }
+  if (customDomainUrl) {
+    return {
+      ...base,
+      ...ACCESS_LABELS.active,
+      state: "active",
+      url: customDomainUrl,
+      detail: "Served from the organization's verified custom domain over HTTPS.",
+    };
+  }
+  if (mode === "subdomain") {
+    const url = organizationPlatformUrl(slug, { root, mode });
+    if (!verified) {
+      return {
+        ...base,
+        ...ACCESS_LABELS.pending,
+        state: "pending",
+        url,
+        detail: "Subdomain routing is configured, but the platform wildcard domain has not been verified yet. Mark it verified once DNS and TLS confirm it.",
+      };
+    }
+    return {
+      ...base,
+      ...ACCESS_LABELS.active,
+      state: "active",
+      url,
+      detail: "Served from this organization's own HTTPS subdomain.",
+    };
+  }
+  return {
+    ...base,
+    ...ACCESS_LABELS.active,
+    state: "active",
+    url: organizationPlatformUrl(slug, { root, mode }),
+    detail: "Served over HTTPS on the EVALORA application host at /portal/<identifier>. This address works today and is stable for this organization.",
+  };
+}
+
+/** Deployment-level explanation of the URL infrastructure, shown to owners/admins. */
+export function platformInfrastructure(): {
+  mode: PlatformUrlMode;
+  root: string | null;
+  origin: string;
+  note: string;
+  /** Exact configuration still needed before subdomain URLs can serve traffic. */
+  requirement: string | null;
+} {
+  const root = rootDomain();
+  const mode = platformUrlMode(root);
+  const origin = platformOrigin();
+  if (mode === "subdomain") {
+    return {
+      mode,
+      root,
+      origin,
+      note: `Organization platforms are addressed as https://<identifier>.${root}. Wildcard DNS and TLS for *.${root} must stay in place.`,
+      requirement: null,
+    };
+  }
+  return {
+    mode,
+    root,
+    origin,
+    note: origin
+      ? `Organization platforms are addressed as ${origin}/portal/<identifier>. Every organization keeps the same identifier, so nothing changes for users when subdomains go live.`
+      : "Organization platforms are addressed as /portal/<identifier> on this deployment.",
+    requirement:
+      "Subdomain URLs (https://<identifier>.<domain>) are not live yet. They require: (1) a custom domain attached to the production project in Vercel, (2) a wildcard DNS record *.domain → Vercel, (3) a wildcard TLS certificate issued by Vercel, then (4) NEXT_PUBLIC_ROOT_DOMAIN set to that domain. Until all four exist, /portal/<identifier> is the working canonical address.",
+  };
 }

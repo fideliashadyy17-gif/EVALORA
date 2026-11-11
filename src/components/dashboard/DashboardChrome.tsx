@@ -14,6 +14,7 @@ import {
   Layers3,
   LayoutDashboard,
   Library,
+  Link2,
   ListChecks,
   LogOut,
   Menu,
@@ -52,6 +53,7 @@ const NAV_SECTIONS: { title?: string; items: { href: string; label: string; icon
   {
     title: "Administration",
     items: [
+      { href: "/dashboard/platform", label: "My Platform", icon: Link2 },
       { href: "/dashboard/team", label: "Team & Roles", icon: Users },
       { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard },
       { href: "/dashboard/settings", label: "Settings", icon: Settings },

@@ -15,12 +15,21 @@ const btnStyles: Record<BtnVariant, string> = {
 const btnBase =
   "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-evergreen-600 whitespace-nowrap";
 
+/**
+ * Shared button styling, for the few places that must render an anchor (a
+ * link that opens in a new tab, a mailto, a platform URL) instead of a
+ * button element. Keeps those links visually identical to Button/ButtonLink.
+ */
+export function buttonClass(variant: BtnVariant = "primary", className?: string) {
+  return cn(btnBase, btnStyles[variant], className);
+}
+
 export function Button({
   variant = "primary",
   className,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant }) {
-  return <button className={cn(btnBase, btnStyles[variant], className)} {...props} />;
+  return <button className={buttonClass(variant, className)} {...props} />;
 }
 
 export function ButtonLink({
@@ -35,7 +44,7 @@ export function ButtonLink({
   children: ReactNode;
 }) {
   return (
-    <Link href={href} className={cn(btnBase, btnStyles[variant], className)}>
+    <Link href={href} className={buttonClass(variant, className)}>
       {children}
     </Link>
   );
@@ -102,12 +111,14 @@ export function Field({
 export function Card({
   children,
   className,
+  id,
 }: {
   children: ReactNode;
   className?: string;
+  id?: string;
 }) {
   return (
-    <div className={cn("rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
+    <div id={id} className={cn("rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
       {children}
     </div>
   );
