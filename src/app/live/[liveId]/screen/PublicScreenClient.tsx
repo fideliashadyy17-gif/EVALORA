@@ -6,7 +6,7 @@ import { RichContent } from "@/components/RichContent";
 import type { PublicQuestion } from "@/components/QuestionRunner";
 import { mmss } from "@/lib/utils";
 import QRCode from "qrcode";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AudioControls, AudioEnableChip } from "@/components/AudioControls";
 import { useLiveAudio } from "@/lib/useLiveAudio";
 import { trackForPhase, type CueKey } from "@/lib/liveMusic";
@@ -144,6 +144,7 @@ export function PublicScreenClient({
   liveId,
   token,
   hostIntent = false,
+  initialSignedIn = false,
 }: {
   liveId: string;
   token: string;
@@ -154,6 +155,12 @@ export function PublicScreenClient({
    * plain projection with no clue. Shared and projected links stay clean.
    */
   hostIntent?: boolean;
+  /**
+   * Server-side answer to "is this tab signed in at all?". It only decides
+   * whether the explanation is painted immediately; authorization for every
+   * command still comes from `/api/live/control` on each call.
+   */
+  initialSignedIn?: boolean;
 }) {
   const [data, setData] = useState<ScreenState | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -161,7 +168,13 @@ export function PublicScreenClient({
   const [now, setNow] = useState(Date.now());
   const [qr, setQr] = useState("");
   const [control, setControl] = useState<ControlState | null>(null);
-  const [probe, setProbe] = useState<ProbeOutcome>({ state: "checking" });
+  // On an organizer link opened by an anonymous tab the explanation is known
+  // before any request is made, so it is rendered with the first paint instead
+  // of leaving the organizer in front of a projection with no toolbar and no
+  // clue. A signed-in tab starts as `checking` and waits for the probe.
+  const [probe, setProbe] = useState<ProbeOutcome>(
+    hostIntent && !initialSignedIn ? { state: "signed_out" } : { state: "checking" },
+  );
   const [participants, setParticipants] = useState<ControlParticipant[]>([]);
   const [busy, setBusy] = useState<LiveCommand | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -450,8 +463,22 @@ export function PublicScreenClient({
     };
   }, [finishedStage, nextScreenPath]);
 
-  if (error && !data) return <Center><p className="max-w-xl text-2xl leading-relaxed">{error}</p></Center>;
-  if (!data) return <Center><p className="text-2xl">Loading the Public Live Screen…</p></Center>;
+  // The explanation sits above every state of the page — including the first
+  // paint, before the projection payload arrives — so an organizer link never
+  // shows a silent, control-less screen.
+  const showHostHint = hostIntent && !authorized && probe.state !== "checking";
+  const withHostHint = (content: ReactNode) =>
+    showHostHint ? (
+      <div className="flex min-h-screen flex-col bg-evergreen-950 text-white">
+        <HostHint probe={probe} />
+        <div className="flex flex-1 items-center justify-center">{content}</div>
+      </div>
+    ) : (
+      content
+    );
+
+  if (error && !data) return withHostHint(<Center><p className="max-w-xl text-2xl leading-relaxed">{error}</p></Center>);
+  if (!data) return withHostHint(<Center><p className="text-2xl">Loading the Public Live Screen…</p></Center>);
 
   const deadlineAt = data.question_deadline_at ? new Date(data.question_deadline_at).getTime() : null;
   const remaining = deadlineAt ? Math.max(0, (deadlineAt - serverNow) / 1000) : null;
@@ -463,8 +490,6 @@ export function PublicScreenClient({
   const stateKey = `${data.status}-${data.phase}-${data.progress.index}-${stage}-${data.final?.places ?? 0}`;
   const resultsStage = ["suspense", "third", "second", "champion", "board"].includes(stage);
   const paused = data.status === "paused";
-
-  const showHostHint = hostIntent && !authorized && probe.state !== "checking";
 
   return (
     <div className={`relative flex min-h-screen flex-col overflow-hidden bg-evergreen-950 text-white ${authorized && barOpen ? "pb-32" : "pb-4"}`}>

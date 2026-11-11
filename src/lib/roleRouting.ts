@@ -9,6 +9,13 @@ export function safeLocalPath(value: string | null | undefined): string | null {
 }
 
 const inArea = (path: string, root: string) => path === root || path.startsWith(`${root}/`) || path.startsWith(`${root}?`);
+/**
+ * The projected live screen is a public route: returning to it after signing in
+ * grants nothing (every host command is re-authorized per request and the page
+ * still needs its display token), but it lets an organizer who signed in from
+ * the screen's own banner land back on the page they were controlling.
+ */
+const isPublicLiveScreen = (path: string) => inArea(path, "/live");
 // Includes family accounts because no dedicated parent portal exists yet; they
 // must not be sent to staff dashboards in the meantime.
 export const isLearnerRole = (role: string | null | undefined) =>
@@ -21,14 +28,22 @@ export function postAuthDestination(
 ): string {
   const next = safeLocalPath(requested);
   // Platform administration is independent of the selected customer workspace.
-  if (input.platformRole === "super_admin") return next && inArea(next, "/admin") ? next : "/admin";
+  if (input.platformRole === "super_admin") {
+    return next && (inArea(next, "/admin") || isPublicLiveScreen(next)) ? next : "/admin";
+  }
   // Invitation flow must remain usable before a membership exists.
   if (next && inArea(next, "/invite")) return next;
   if (input.tenantDenied) return "/dashboard";
   if (input.needsSelection) return "/workspaces";
   if (!input.hasOrg) return "/onboarding";
   if (isLearnerRole(input.role)) {
-    return next && (inArea(next, "/student") || inArea(next, "/exam-access") || inArea(next, "/join")) ? next : "/student";
+    return next &&
+      (inArea(next, "/student") || inArea(next, "/exam-access") || inArea(next, "/join") || isPublicLiveScreen(next))
+      ? next
+      : "/student";
   }
-  return next && (inArea(next, "/dashboard") || inArea(next, "/exam-access") || inArea(next, "/join")) ? next : "/dashboard";
+  return next &&
+    (inArea(next, "/dashboard") || inArea(next, "/exam-access") || inArea(next, "/join") || isPublicLiveScreen(next))
+    ? next
+    : "/dashboard";
 }
