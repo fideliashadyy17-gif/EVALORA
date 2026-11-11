@@ -123,6 +123,29 @@ ok("rows carry no answer, score or question field", roster.entries.every((entry)
   Object.keys(entry).every((key) => !["answer", "score", "points", "is_correct", "current_question", "rank"].includes(key))));
 ok("a finished attempt is offline but not called submitted", roster.entries.find((e) => e.connection === "offline").display_name.startsWith("David"));
 
+// Large rooms: 5, 20 and 250 participants, plus two rooms built from the same
+// rows — proving that scope, not data, separates sessions.
+for (const size of [2, 5, 20, 250]) {
+  const big = presence.buildRoster({
+    scope: `live:room-${size}`,
+    nowMs: now,
+    rows: Array.from({ length: size }, (_, index) => ({
+      key: `p-${size}-${index}`,
+      display_name: `Student ${index + 1}`,
+      last_seen_at: index % 4 === 3 ? ago(300) : ago(3),
+    })),
+  });
+  const expectedOnline = size - Math.floor(size / 4);
+  ok(`a room of ${size} lists everyone`, big.total === size);
+  ok(`a room of ${size} counts only fresh devices (${expectedOnline})`, big.online === expectedOnline);
+  ok(`a room of ${size} scrolls instead of truncating`, presence.limitRoster(big, size + 10).hidden === 0);
+  ok(`a room of ${size} keeps one scope`, big.entries.every((entry) => entry.key.startsWith(`live:room-${size}:`)));
+}
+
+const roomA = presence.buildRoster({ scope: "live:room-a", nowMs: now, rows: [{ key: "same-id", display_name: "Ana", last_seen_at: ago(1) }] });
+const roomB = presence.buildRoster({ scope: "live:room-b", nowMs: now, rows: [{ key: "same-id", display_name: "Ben", last_seen_at: ago(1) }] });
+ok("two rooms built from the same id never merge", roomA.entries[0].key !== roomB.entries[0].key && roomA.scope !== roomB.scope);
+
 const other = presence.buildRoster({ scope: "exam:exam-2", nowMs: now, rows: [{ key: "x", display_name: "Zoe", last_seen_at: ago(1) }] });
 ok("two examinations never share a roster", other.scope !== roster.scope && other.total === 1);
 ok("summary text reads naturally", presence.presenceSummary(roster) === "2 online · 4 in the room");
