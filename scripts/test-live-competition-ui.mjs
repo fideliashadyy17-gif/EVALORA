@@ -71,6 +71,26 @@ function loadScreen() {
 
 const PublicScreenClient = loadScreen();
 
+/**
+ * The screen page itself (a server component). It decides, before the browser
+ * runs anything, whether this tab is signed in — the flag that lets an
+ * organizer link explain a missing toolbar on the very first paint.
+ */
+function loadScreenPage(getSessionContext) {
+  const originalLoad = Module._load;
+  Module._load = function (request, ...rest) {
+    if (request === "@/lib/auth") return { getSessionContext, CREATOR_ROLES: [], can: () => false };
+    if (request === "./PublicScreenClient") return { PublicScreenClient: (props) => props };
+    return originalLoad.apply(this, arguments);
+  };
+  try {
+    const loaded = compile("src/app/live/[liveId]/screen/page.tsx", "scripts/__virtual_screen_page.cjs");
+    return loaded.default;
+  } finally {
+    Module._load = originalLoad;
+  }
+}
+
 let checks = 0;
 const checkAsync = async (name, fn) => {
   await fn();
@@ -84,6 +104,13 @@ const controlGets = [];
 let navigations = [];
 let screenPayload = null;
 let controlPayload = { authorized: false };
+// When true the authorization probe never answers, which is how a page looks
+// in the instant before any network round trip — the moment that mattered for
+// an organizer staring at a projection with no controls.
+let holdControl = false;
+// When true the projection payload never arrives either: the page is frozen at
+// the exact HTML a server sends before the first poll.
+let holdScreen = false;
 
 const listeners = new Map();
 globalThis.document = {
@@ -106,6 +133,7 @@ globalThis.window = {
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url);
   if (target.includes("/api/live/control")) {
+    if (options.method !== "POST" && holdControl) return new Promise(() => {});
     if (options.method !== "POST") controlGets.push(target);
     if (options.method === "POST") {
       controlPosts.push(JSON.parse(options.body));
@@ -113,6 +141,7 @@ globalThis.fetch = async (url, options = {}) => {
     }
     return { ok: true, json: async () => controlPayload };
   }
+  if (holdScreen) return new Promise(() => {});
   return { ok: true, json: async () => screenPayload };
 };
 
@@ -138,16 +167,18 @@ async function settle() {
   });
 }
 
-async function mount(payload, control, hostIntent = false) {
-  return mountAt("11111111-1111-4111-8111-111111111111", payload, control, hostIntent);
+async function mount(payload, control, hostIntent = false, initialSignedIn = false) {
+  return mountAt("11111111-1111-4111-8111-111111111111", payload, control, hostIntent, initialSignedIn);
 }
 
-async function mountAt(liveId, payload, control, hostIntent = false) {
+async function mountAt(liveId, payload, control, hostIntent = false, initialSignedIn = false) {
   screenPayload = payload;
   controlPayload = control;
   let tree;
   await act(async () => {
-    tree = TestRenderer.create(React.createElement(PublicScreenClient, { liveId, token: "screen-token", hostIntent }));
+    tree = TestRenderer.create(
+      React.createElement(PublicScreenClient, { liveId, token: "screen-token", hostIntent, initialSignedIn }),
+    );
   });
   await settle();
   return tree;
@@ -290,6 +321,102 @@ await checkAsync("a signed-in outsider is told they are not the organizer", asyn
   if (!text.includes("Changer de compte")) throw new Error("no way to switch accounts");
   if (buttonLabels(tree).join("|").includes("Start competition")) throw new Error("an outsider must never receive controls");
   await act(async () => tree.unmount());
+});
+
+await checkAsync("an organizer link opened by a signed-out tab explains itself before any probe answers", async () => {
+  // Nothing is rendered from a network answer here: this is the first paint of
+  // a page whose server already knows the tab has no session.
+  holdControl = true;
+  let tree;
+  await act(async () => {
+    tree = TestRenderer.create(
+      React.createElement(PublicScreenClient, {
+        liveId: "11111111-1111-4111-8111-111111111111",
+        token: "screen-token",
+        hostIntent: true,
+        initialSignedIn: false,
+      }),
+    );
+  });
+  const text = textOf(tree);
+  if (!text.includes("n'est pas connecté")) throw new Error("the signed-out explanation waited for the network");
+  if (!text.includes("Se connecter pour piloter")) throw new Error("no sign-in round trip on the first paint");
+  holdControl = false;
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("an organizer link explains itself even before the projection payload arrives", async () => {
+  // This is the HTML a server sends before any polling: the loading shell plus
+  // the explanation. A silent, control-less screen must not exist.
+  holdControl = true;
+  holdScreen = true;
+  const tree = await mount(null, { authorized: false }, true, false);
+  const text = textOf(tree);
+  if (!text.includes("Loading the Public Live Screen")) throw new Error("the loading shell disappeared");
+  if (!text.includes("n'est pas connecté")) throw new Error("the explanation is missing from the first paint");
+  if (!text.includes("Se connecter pour piloter")) throw new Error("no sign-in link on the first paint");
+  holdControl = false;
+  holdScreen = false;
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("the same shell on a shared link stays silent", async () => {
+  holdControl = true;
+  holdScreen = true;
+  const tree = await mount(null, { authorized: false }, false, false);
+  const text = textOf(tree);
+  if (text.includes("contrôles organisateur") || text.includes("Se connecter pour piloter")) {
+    throw new Error("the organizer explanation leaked onto the shared link");
+  }
+  holdControl = false;
+  holdScreen = false;
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("a signed-in tab never claims it is signed out while the probe is in flight", async () => {
+  holdControl = true;
+  let tree;
+  await act(async () => {
+    tree = TestRenderer.create(
+      React.createElement(PublicScreenClient, {
+        liveId: "11111111-1111-4111-8111-111111111111",
+        token: "screen-token",
+        hostIntent: true,
+        initialSignedIn: true,
+      }),
+    );
+  });
+  const text = textOf(tree);
+  if (text.includes("n'est pas connecté")) throw new Error("a signed-in organizer was told to sign in");
+  holdControl = false;
+  await act(async () => tree.unmount());
+});
+
+await checkAsync("the projected page is told whether the tab is signed in, on the server", async () => {
+  const page = await loadScreenPage(async () => null);
+  const anonymous = await page({
+    params: Promise.resolve({ liveId: "11111111-1111-4111-8111-111111111111" }),
+    searchParams: Promise.resolve({ token: "t", host: "1" }),
+  });
+  if (anonymous.props.initialSignedIn !== false) throw new Error("an anonymous tab was reported as signed in");
+  if (anonymous.props.hostIntent !== true) throw new Error("the organizer flag was dropped");
+  const shared = await page({
+    params: Promise.resolve({ liveId: "11111111-1111-4111-8111-111111111111" }),
+    searchParams: Promise.resolve({ token: "t" }),
+  });
+  if (shared.props.hostIntent !== false) throw new Error("a shared link was treated as an organizer link");
+  const signedInPage = await loadScreenPage(async () => ({ user: { id: "u1" }, profile: { status: "active" }, memberships: [] }));
+  const signedIn = await signedInPage({
+    params: Promise.resolve({ liveId: "11111111-1111-4111-8111-111111111111" }),
+    searchParams: Promise.resolve({ token: "t", host: "1" }),
+  });
+  if (signedIn.props.initialSignedIn !== true) throw new Error("a signed-in organizer was reported as anonymous");
+  const suspendedPage = await loadScreenPage(async () => ({ user: { id: "u1" }, profile: { status: "suspended" }, memberships: [] }));
+  const suspended = await suspendedPage({
+    params: Promise.resolve({ liveId: "11111111-1111-4111-8111-111111111111" }),
+    searchParams: Promise.resolve({ token: "t", host: "1" }),
+  });
+  if (suspended.props.initialSignedIn !== false) throw new Error("a suspended account was reported as signed in");
 });
 
 await checkAsync("a transient probe failure is not mistaken for a missing permission", async () => {

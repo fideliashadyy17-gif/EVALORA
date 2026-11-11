@@ -205,7 +205,7 @@ export default async function LiveCompetitionMonitoringPage({
                     {["live", "paused"].includes(c.status) && statusForm(c, "ended", "End", "danger")}
                     {session && (
                       <>
-                        <Link href={publicScreenPath(c.id, session.id, session.display_token_version ?? 1)} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-3 py-2 text-xs font-medium text-evergreen-800 hover:bg-evergreen-50">Public screen</Link>
+                        <Link href={`${publicScreenPath(c.id, session.id, session.display_token_version ?? 1)}&host=1`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-3 py-2 text-xs font-medium text-evergreen-800 hover:bg-evergreen-50">Live screen ↗</Link>
                         <Link href={`/join?code=${session.join_code}`} target="_blank" className="inline-flex items-center rounded-lg border border-evergreen-700/50 bg-white px-3 py-2 text-xs font-medium text-evergreen-800 hover:bg-evergreen-50">Participant join</Link>
                       </>
                     )}

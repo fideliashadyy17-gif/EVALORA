@@ -75,6 +75,19 @@ await test('a super admin cannot be redirected into a customer dashboard via the
   assert.equal(dest({ platformRole: 'super_admin', role: 'owner', hasOrg: true }, 'https://evil.invalid'), '/admin');
 });
 
+await test('signing in from a projected live screen returns to that screen', () => {
+  const screen = '/live/74d2d859-3853-4461-a3ed-32c15e68fc4a/screen?token=abc.def&host=1';
+  // Staff and Super Admins are normally pinned to their own areas, but the live
+  // screen is a public route: returning there grants no authority.
+  assert.equal(dest({ platformRole: 'user', role: 'owner', hasOrg: true }, screen), screen);
+  assert.equal(dest({ platformRole: 'user', role: 'teacher', hasOrg: true }, screen), screen);
+  assert.equal(dest({ platformRole: 'super_admin', role: 'owner', hasOrg: true }, screen), screen);
+  assert.equal(dest({ platformRole: 'user', role: 'student', hasOrg: true }, '/live/abc/screen'), '/live/abc/screen');
+  // No way out of the origin and no privilege escalation through the hint.
+  assert.equal(dest({ platformRole: 'super_admin', role: 'owner', hasOrg: true }, '/live/../admin'), '/admin');
+  assert.equal(dest({ platformRole: 'user', role: 'owner', hasOrg: true }, '/liveevil'), '/dashboard');
+});
+
 await test('missing membership, tenant mismatch and multi-workspace selection stay safe', () => {
   assert.equal(dest({ platformRole: 'user', hasOrg: false }), '/onboarding');
   assert.equal(dest({ platformRole: 'user', role: 'owner', hasOrg: true, tenantDenied: true }), '/dashboard');
