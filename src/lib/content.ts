@@ -3,6 +3,7 @@ import { graphSpecHasWork, graphSpecSummary, normaliseGraphSpec } from "./graphS
 import { geometrySpecHasWork, geometrySpecSummary, normaliseGeometrySpec } from "./geometrySpec";
 import { normaliseStatsSpec, statsSpecHasWork, statsSpecSummary } from "./statsSpec";
 import { dataTableHasWork, dataTableSummary, normaliseDataTableSpec } from "./dataTableSpec";
+import { assessDiagramSummary, normaliseAssessDiagram } from "./assessDiagram";
 
 /**
  * Structured rich content (Tiptap JSON) used by the unified question editor.
@@ -61,6 +62,10 @@ function nodeText(node: RichNode): string {
       const spec = normaliseDataTableSpec(node.attrs?.spec);
       return dataTableHasWork(spec) ? `[Data table: ${dataTableSummary(spec)}]` : "";
     }
+    case "assessDiagramBlock": {
+      const spec = normaliseAssessDiagram(node.attrs?.spec);
+      return spec ? `[Diagram: ${assessDiagramSummary(spec)}]` : "";
+    }
     default: {
       const inner = (node.content ?? []).map(nodeText).join("");
       const isBlock = [
@@ -99,7 +104,7 @@ export function docIsEmpty(doc: RichDoc | null | undefined): boolean {
     if (n.type === "text" && (n.text ?? "").trim()) hasContent = true;
     if (n.type === "mathInline" || n.type === "mathBlock" || n.type === "image" ||
       n.type === "graphBlock" || n.type === "geometryBlock" ||
-      n.type === "statsBlock" || n.type === "dataTableBlock") hasContent = true;
+      n.type === "statsBlock" || n.type === "dataTableBlock" || n.type === "assessDiagramBlock") hasContent = true;
     (n.content ?? []).forEach(walk);
   };
   walk(doc);

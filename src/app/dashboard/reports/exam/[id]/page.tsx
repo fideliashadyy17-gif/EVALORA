@@ -21,6 +21,14 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const passMark = Number(settings.pass_mark_percent ?? 50);
 
+  const { data: hintUsage } = await supabase.from("exam_hint_usage").select("attempt_id, question_id, part_id, level").eq("exam_id", id);
+  const hintsByAttempt = new Map<string, number>();
+  const hintsByQuestion = new Map<string, number>();
+  for (const u of hintUsage ?? []) {
+    hintsByAttempt.set(u.attempt_id, (hintsByAttempt.get(u.attempt_id) ?? 0) + 1);
+    hintsByQuestion.set(u.question_id, (hintsByQuestion.get(u.question_id) ?? 0) + 1);
+  }
+
   const [{ data: attempts }, { data: qq }, { count: candidateTotal }] = await Promise.all([
     supabase.from("exam_attempts").select("*, exam_candidates(full_name, candidate_ref), exam_answers(question_id, is_correct, points_awarded)").eq("exam_id", id).order("score", { ascending: false, nullsFirst: false }),
     supabase.from("quiz_questions").select("question_id, questions(prompt, prompt_doc, type, topic, difficulty)").eq("quiz_id", exam.quiz_id),
@@ -40,11 +48,11 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
     );
     const graded = answers.filter((x) => x.is_correct !== null);
     const correct = answers.filter((x) => x.is_correct === true).length;
-    return { ...q, answered: answers.length, pct: graded.length ? Math.round((correct / graded.length) * 100) : null };
+    return { ...q, question_id: r.question_id, answered: answers.length, pct: graded.length ? Math.round((correct / graded.length) * 100) : null };
   });
 
   const csv = toCsv([
-    ["Candidate", "Reference", "Status", "Score", "Max", "%", "Result", "Submitted"],
+    ["Candidate", "Reference", "Status", "Score", "Max", "%", "Result", "Hints used", "Submitted"],
     ...list.map((a) => {
       const pct = a.score !== null && a.max_score ? Math.round((Number(a.score) / Number(a.max_score)) * 1000) / 10 : "";
       return [
@@ -55,6 +63,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
         a.max_score !== null ? Number(a.max_score) : "",
         pct,
         typeof pct === "number" ? (pct >= passMark ? "PASS" : "FAIL") : "",
+        hintsByAttempt.get(a.id) ?? 0,
         a.submitted_at ?? "",
       ];
     }),
@@ -88,6 +97,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                   <th className="py-2 pr-2 font-medium">Candidate</th>
                   <th className="py-2 pr-2 font-medium">Score</th>
                   <th className="py-2 pr-2 font-medium">%</th>
+                  <th className="py-2 pr-2 font-medium">Hints</th>
                   <th className="py-2 font-medium">Result</th>
                 </tr>
               </thead>
@@ -102,6 +112,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                       </td>
                       <td className="py-2 pr-2 tabular-nums">{a.score !== null ? `${Number(a.score)}/${Number(a.max_score ?? 0)}` : "—"}</td>
                       <td className="py-2 pr-2 tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
+                      <td className="py-2 pr-2 tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
                       <td className="py-2">{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
                     </tr>
                   );
@@ -124,7 +135,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-evergreen-100">
                   <div className={`h-full ${(q.pct ?? 0) >= 70 ? "bg-evergreen-600" : (q.pct ?? 0) >= 40 ? "bg-gold-500" : "bg-red-500"}`} style={{ width: `${q.pct ?? 0}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-ink-soft">{q.answered} answers · {q.difficulty}{q.topic ? ` · ${q.topic}` : ""}</p>
+                <p className="mt-1 text-xs text-ink-soft">{q.answered} answers · {q.difficulty}{q.topic ? ` · ${q.topic}` : ""} · {hintsByQuestion.get(q.question_id) ?? 0} hint openings</p>
               </div>
             ))}
           </div>

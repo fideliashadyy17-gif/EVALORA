@@ -12,9 +12,11 @@ export type CandidateHint = { level: number; text: string };
  * "Need a hint?" for the question that is currently on screen.
  *
  * Safety rules baked into this component:
- *  · it is pure presentation — it never saves an answer, never submits, never
- *    re-reads the examination state, never touches the countdown and never reports an
- *    integrity event, so opening a hint cannot affect the attempt;
+ *  · it never saves an answer, never submits, never re-reads the examination
+ *    state, never touches the countdown and never reports an integrity event,
+ *    so opening a hint cannot affect the attempt. The only write it makes is a
+ *    best-effort, fire-and-forget record that a hint level was opened (once per
+ *    level), which teachers see in the results view; it never changes a mark;
  *  · it is rendered inline under the question header (not as an overlay), so it
  *    can never cover the question, the answer fields, the maths editor, an
  *    image or the on-screen keyboard;
@@ -61,6 +63,7 @@ export function HintPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const requested = useRef(false);
+  const recordedLevels = useRef<Set<number>>(new Set());
 
   // A single timeout for the invitation. It is restarted only when the question
   // changes (the parent remounts this component with a question-keyed `key`) or
@@ -104,6 +107,16 @@ export function HintPanel({
     }
   }, [attemptId, questionId, token]);
 
+  const recordUse = useCallback((level: number) => {
+    if (!token || recordedLevels.current.has(level)) return;
+    recordedLevels.current.add(level);
+    void fetch("/api/exam/hint/usage", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ attempt_id: attemptId, question_id: questionId, level }),
+    }).catch(() => { /* recording is best-effort; it must never disturb the paper */ });
+  }, [attemptId, questionId, token]);
+
   const toggle = () => {
     if (open) {
       setOpen(false);
@@ -111,6 +124,7 @@ export function HintPanel({
     }
     setOpen(true);
     setOpenedOnce(true);
+    recordUse(1);
     if (!hints.length && !requested.current) {
       requested.current = true;
       void load();
@@ -198,7 +212,7 @@ export function HintPanel({
 
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {hasMore && (
-              <Button variant="outline" className="text-xs" onClick={() => setLevelIndex((index) => index + 1)}>
+              <Button variant="outline" className="text-xs" onClick={() => { recordUse(levelIndex + 2); setLevelIndex((index) => index + 1); }}>
                 Another hint
               </Button>
             )}

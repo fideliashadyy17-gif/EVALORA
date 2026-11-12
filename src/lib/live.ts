@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { responseWorkspaceFor } from "./responseTools";
+import { assessPartsFromConfig, assessPartSummary, publicAssessParts } from "./assessParts";
 
 export type LivePhase =
   | "waiting"
@@ -220,6 +221,8 @@ export interface SessionQuestionRow {
     explanation: string | null;
     explanation_doc: import("./content").RichDoc | null;
     points: number;
+    topic?: string | null;
+    difficulty?: string | null;
     config: Record<string, unknown> | null;
     question_options: { id: string; label: string; content_doc: import("./content").RichDoc | null; is_correct: boolean; position: number }[];
   };
@@ -292,6 +295,13 @@ export function publicQuestion(
         }
       : null,
   };
+  // Topic + MYP criterion power the formative feedback summary; they are
+  // curriculum metadata, never answer information.
+  out.topic = q.topic ?? null;
+  out.criterion = typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
+  if (q.type === "assess_parts") {
+    out.assess_parts = publicAssessParts(assessPartsFromConfig(cfg));
+  }
   if (q.type === "ordering") {
     out.options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}:ord`);
   }
@@ -349,6 +359,8 @@ export function answerReveal(row: SessionQuestionRow): AnswerReveal {
     reveal.summary = reveal.correct_order;
   } else if (q.type === "matching") {
     reveal.summary = reveal.matching_pairs.map((p) => `${p.left} → ${p.right}`);
+  } else if (q.type === "assess_parts") {
+    reveal.summary = assessPartSummary(assessPartsFromConfig(cfg));
   } else if (q.type === "poll") {
     reveal.summary = ["Poll question — no correct answer."];
   } else if (q.type === "open_ended") {

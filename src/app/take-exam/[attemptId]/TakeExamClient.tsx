@@ -29,10 +29,13 @@ interface ExamState {
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
+  hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
   questions: (PublicQuestion & {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */
     hints?: CandidateHint[] | null;
     saved_answer: Record<string, unknown> | null;
+    topic?: string | null;
+    criterion?: string | null;
     result: {
       is_correct: boolean | null;
       points_awarded: number | null;
@@ -713,6 +716,41 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     {(pct ?? 0) >= exam.pass_mark_percent ? "PASS" : "Below pass mark"} · pass mark {exam.pass_mark_percent}%
                   </Badge>
                   <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and the official explanation. Blank answers score 0 and are shown too.</p>
+                  {(() => {
+                    const usage = state.hint_usage ?? [];
+                    const hintedQuestions = new Set(usage.map((u) => u.question_id)).size;
+                    const byTopic = new Map<string, { got: number; max: number }>();
+                    const byCriterion = new Map<string, { got: number; max: number }>();
+                    for (const q of questions) {
+                      if (!q.result) continue;
+                      const got = Number(q.result.points_awarded ?? 0);
+                      const t = byTopic.get(q.topic ?? "General") ?? { got: 0, max: 0 };
+                      t.got += got; t.max += q.points; byTopic.set(q.topic ?? "General", t);
+                      const cKey = q.criterion ? `Criterion ${q.criterion}` : "Criterion —";
+                      const c = byCriterion.get(cKey) ?? { got: 0, max: 0 };
+                      c.got += got; c.max += q.points; byCriterion.set(cKey, c);
+                    }
+                    const band = (got: number, max: number) => {
+                      const p = max ? (got / max) * 100 : 0;
+                      return p >= 70 ? "Strong" : p >= 40 ? "Developing" : "Needs work";
+                    };
+                    const rows = (m: Map<string, { got: number; max: number }>) => [...m.entries()].map(([k, v]) => (
+                      <li key={k} className="flex items-center justify-between gap-3 py-1 text-sm">
+                        <span className="font-medium capitalize">{k}</span>
+                        <span className="text-ink-soft">{v.got}/{v.max} · <strong className="text-evergreen-900">{band(v.got, v.max)}</strong></span>
+                      </li>
+                    ));
+                    return (
+                      <div className="mx-auto mt-5 max-w-xl rounded-xl border border-evergreen-900/15 bg-white p-4 text-left" data-testid="feedback-summary">
+                        <p className="font-display text-base font-semibold text-evergreen-950">Your feedback summary</p>
+                        <p className="mt-1 text-sm text-ink-soft">Hints used: <strong className="text-evergreen-900">{usage.length}</strong> on {hintedQuestions} question{hintedQuestions === 1 ? "" : "s"} — using a hint never costs marks here; it shows where to revise.</p>
+                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By topic</p>
+                        <ul>{rows(byTopic)}</ul>
+                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By MYP criterion</p>
+                        <ul>{rows(byCriterion)}</ul>
+                      </div>
+                    );
+                  })()}
                   <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
                     <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
                     <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
@@ -768,6 +806,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 submitLabel="Save answer"
                 autosave
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
+                onHintUse={(partId, level) => {
+                  if (!token) return;
+                  void fetch("/api/exam/hint/usage", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                    body: JSON.stringify({ attempt_id: attemptId, question_id: current.question_id, part_id: partId, level }),
+                  }).catch(() => { /* best-effort formative record */ });
+                }}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
               />

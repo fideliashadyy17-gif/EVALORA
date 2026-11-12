@@ -70,6 +70,30 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
       if (new Set(lefts).size !== lefts.length) issues.push("matching prompts must be unique");
       break;
     }
+    case "assess_parts": {
+      const parts = Array.isArray(config.parts) ? config.parts : [];
+      if (parts.length < 1) issues.push("at least one typed answer part is required");
+      let partMarks = 0;
+      for (const raw of parts) {
+        const part = (raw ?? {}) as Record<string, unknown>;
+        const pts = Number(part.points);
+        if (!Number.isFinite(pts) || pts <= 0) issues.push("every part must carry positive marks");
+        else partMarks += pts;
+        const hints = Array.isArray(part.hints) ? part.hints : [];
+        if (hints.filter((h) => typeof h === "string" && h.trim().length >= 8).length < 2) {
+          issues.push("every part needs two progressive hints");
+        }
+        if (part.kind === "numeric") {
+          if (!Number.isFinite(Number(part.answer))) issues.push("every numeric part needs a numeric answer");
+        } else if (!Array.isArray(part.accepted) || !part.accepted.some((a) => typeof a === "string" && a.trim())) {
+          issues.push("every text/expression part needs at least one accepted answer");
+        }
+      }
+      if (parts.length && Math.abs(partMarks - Number(question.points)) > 0.001) {
+        issues.push("the part marks must add up to the question marks");
+      }
+      break;
+    }
     case "open_ended": {
       if (!String(config.marking_criteria ?? "").trim()) {
         issues.push("marking criteria are required for a structured-response question");

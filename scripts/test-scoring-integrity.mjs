@@ -4,8 +4,9 @@ import {readFileSync} from 'node:fs';
 import {Module} from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
-function compile(src,name){const file=path.resolve(name),m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}
-const {scoreAnswer,ScoringError}=compile('src/lib/scoring.ts','scripts/__scoring_integrity.cjs');
+function compile(src,name,stubs={}){const file=path.resolve(name),m=new Module(file),old=Module._load;m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));Module._load=function(id,parent){if(parent?.filename===file&&id in stubs)return stubs[id];return old.apply(this,arguments)};try{m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}finally{Module._load=old;}}
+const assessParts=compile('src/lib/assessParts.ts','scripts/__assess_parts_integrity.cjs');
+const {scoreAnswer,ScoringError}=compile('src/lib/scoring.ts','scripts/__scoring_integrity.cjs',{'./assessParts':assessParts});
 const {questionPublishIssues}=compile('src/lib/questionValidation.ts','scripts/__validation_integrity.cjs');
 const opts=[{id:'a',label:'Yes',is_correct:true},{id:'b',label:'No',is_correct:false}];const q=(type,config={})=>({type,points:2,config});const correct=(x)=>assert.deepEqual(x,{isCorrect:true,points:2});let n=0;function test(name,fn){fn();n++;console.log('  ✓ '+name);}
 test('choice grades valid selections and honours paper marks',()=>{correct(scoreAnswer(q('single_choice'),opts,{option_id:'a'}));assert.deepEqual(scoreAnswer(q('single_choice'),opts,{option_id:'b'},5),{isCorrect:false,points:0});});
