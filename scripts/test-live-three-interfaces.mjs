@@ -63,6 +63,37 @@ const pub = live.publicQuestion(makeRow(), {});
 ok("public question keeps answer options", pub.options.length === 2);
 ok("public question strips correctness flags", !JSON.stringify(pub).includes("is_correct"));
 ok("public question has no reveal payload", !("reveal" in pub));
+ok("native objective workspace stays null", pub.response_workspace === null);
+
+/* A constructed-response question reaches the client as a workspace the
+ * structured editor reads in full. A projection that omits `statistics` or
+ * `dataTable` used to throw a TypeError and blank the whole paper. */
+const openRow = makeRow({
+  questions: {
+    ...makeRow().questions,
+    type: "open_ended",
+    prompt: "State 2 reasons we wear clothes and 2 ways to care for them.",
+    question_options: [],
+  },
+});
+const openPub = live.publicQuestion(openRow, {});
+ok("constructed-response workspace is exposed", openPub.response_workspace !== null);
+for (const key of ["tools", "graph", "geometry", "statistics", "dataTable", "guidance", "requirement", "source"]) {
+  ok(`constructed-response workspace carries ${key}`, key in openPub.response_workspace);
+}
+ok("workspace carries no marking keys", !JSON.stringify(openPub.response_workspace).includes("numeric_answer"));
+
+const statsOnlyRow = makeRow({
+  questions: {
+    ...makeRow().questions,
+    type: "open_ended",
+    prompt: "Draw the bar chart of the data.",
+    config: { response_tools: ["statistics"] },
+    question_options: [],
+  },
+});
+const statsOnlyPub = live.publicQuestion(statsOnlyRow, {});
+ok("statistics-only workspace is still exposed", statsOnlyPub.response_workspace !== null && statsOnlyPub.response_workspace.statistics.enabled === true);
 
 const shortRow = makeRow({
   questions: {

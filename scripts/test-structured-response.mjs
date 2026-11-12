@@ -168,6 +168,18 @@ await test("renders one tab per enabled tool plus the written editor", () => {
   act(() => tree.unmount());
 });
 
+await test("a workspace missing statistics/dataTable renders instead of crashing", () => {
+  // An older projection carried only tools/graph/geometry. The editor read the
+  // missing panes and threw "Cannot read properties of undefined (reading
+  // 'starter')", which blanked the whole examination paper.
+  const partial = workspace();
+  delete partial.statistics;
+  delete partial.dataTable;
+  const { tree } = render({ workspace: partial });
+  assert.equal(byTestId(tree, "write").length, 1);
+  act(() => tree.unmount());
+});
+
 await test("a written change marks dirty and Save emits a structured, versioned payload", () => {
   const dirty = [];
   const { tree, emitted } = render({ onDirtyChange: (value) => dirty.push(value) });

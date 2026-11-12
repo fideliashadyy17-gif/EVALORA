@@ -57,6 +57,22 @@ export function StructuredResponseEditor({
     return emptyDoc();
   }, [initial]);
   const [doc, setDoc] = useState<RichDoc>(initialDoc);
+  // Every pane is normally present. A payload from an older build (or a future
+  // projection mistake) may omit `statistics`/`dataTable`; default them so one
+  // missing key can never blank an entire examination paper.
+  const statsPane = workspace.statistics ?? ({
+    enabled: workspace.tools.includes("statistics"),
+    title: "Your statistics chart",
+    instructions: "",
+    chart: "any",
+    starter: emptyStatsSpec(),
+  } as NonNullable<typeof workspace.statistics>);
+  const tablePane = workspace.dataTable ?? ({
+    enabled: workspace.tools.includes("data_table"),
+    title: "Your data table",
+    instructions: "",
+    starter: emptyDataTableSpec(),
+  } as NonNullable<typeof workspace.dataTable>);
   const [graph, setGraph] = useState<GraphSpec>(() => {
     const saved = initial?.graph;
     return saved ? normaliseGraphSpec(saved) : normaliseGraphSpec(workspace.graph.starter, emptyGraphSpec());
@@ -67,18 +83,18 @@ export function StructuredResponseEditor({
   });
   const [statistics, setStatistics] = useState<StatsSpec>(() => {
     const saved = initial?.statistics;
-    const base = saved ? normaliseStatsSpec(saved) : normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
-    return workspace.statistics.chart === "any" ? base : { ...base, chart: workspace.statistics.chart };
+    const base = saved ? normaliseStatsSpec(saved) : normaliseStatsSpec(statsPane.starter, emptyStatsSpec());
+    return statsPane.chart === "any" ? base : { ...base, chart: statsPane.chart };
   });
   const [dataTable, setDataTable] = useState<DataTableSpec>(() => {
     const saved = initial?.data_table;
-    return saved ? normaliseDataTableSpec(saved) : normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec());
+    return saved ? normaliseDataTableSpec(saved) : normaliseDataTableSpec(tablePane.starter, emptyDataTableSpec());
   });
   const [statsReset, setStatsReset] = useState(0);
   const graphOn = workspace.graph.enabled;
   const geometryOn = workspace.geometry.enabled;
-  const statsOn = workspace.statistics.enabled;
-  const tableOn = workspace.dataTable.enabled;
+  const statsOn = statsPane.enabled;
+  const tableOn = tablePane.enabled;
   const [tab, setTab] = useState<Tab>("written");
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -282,13 +298,13 @@ export function StructuredResponseEditor({
       {tab === "statistics" && statsOn && (
         <div className="structured-pane">
           <p className="structured-hint">
-            {workspace.statistics.instructions || "Enter your data and choose the representation the question asks for."}
+            {statsPane.instructions || "Enter your data and choose the representation the question asks for."}
           </p>
           <StatsEditor
             initial={statistics}
             onChange={(next) => { setStatistics(next); markDirty(); }}
             readOnly={disabled}
-            allowChartChange={workspace.statistics.chart === "any"}
+            allowChartChange={statsPane.chart === "any"}
             resetToken={statsReset}
           />
           {!disabled && (
@@ -296,8 +312,8 @@ export function StructuredResponseEditor({
               <Button
                 variant="outline"
                 onClick={() => {
-                  const starter = normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
-                  setStatistics(workspace.statistics.chart === "any" ? starter : { ...starter, chart: workspace.statistics.chart });
+                  const starter = normaliseStatsSpec(statsPane.starter, emptyStatsSpec());
+                  setStatistics(statsPane.chart === "any" ? starter : { ...starter, chart: statsPane.chart });
                   setStatsReset((value) => value + 1);
                   markDirty();
                 }}
@@ -313,21 +329,21 @@ export function StructuredResponseEditor({
       {tab === "data_table" && tableOn && (
         <div className="structured-pane">
           <p className="structured-hint">
-            {workspace.dataTable.instructions || "Complete the table. Each value keeps its row and column when your teacher marks it."}
+            {tablePane.instructions || "Complete the table. Each value keeps its row and column when your teacher marks it."}
           </p>
           <DataTableEditor
             spec={dataTable}
             onChange={(next) => { setDataTable(next); markDirty(); }}
             readOnly={disabled}
             allowStructure={!disabled}
-            title={workspace.dataTable.title || "Data table"}
+            title={tablePane.title || "Data table"}
           />
           {!disabled && (
             <div className="mt-2 flex flex-wrap items-center gap-2">
               <Button
                 variant="outline"
                 onClick={() => {
-                  setDataTable(normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec()));
+                  setDataTable(normaliseDataTableSpec(tablePane.starter, emptyDataTableSpec()));
                   markDirty();
                 }}
               >

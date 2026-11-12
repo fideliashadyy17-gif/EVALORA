@@ -283,11 +283,18 @@ export function publicQuestion(
     // Short-answer question_options contain accepted answers. They must
     // never be serialized before an authorized reveal.
     options: optionBackedTypes.includes(q.type) ? options : [],
-    response_workspace: workspace.tools.length || workspace.graph.enabled || workspace.geometry.enabled
+    // The whole composition workspace travels: the structured-response editor
+    // reads `statistics` and `dataTable` as well as `graph`/`geometry`, so a
+    // partial projection would crash every constructed-response question. Every
+    // field here is candidate-safe — starters and tool flags only, never keys.
+    response_workspace: workspace.tools.length || workspace.graph.enabled || workspace.geometry.enabled ||
+      workspace.statistics?.enabled || workspace.dataTable?.enabled
       ? {
           tools: workspace.tools,
           graph: workspace.graph,
           geometry: workspace.geometry,
+          statistics: workspace.statistics,
+          dataTable: workspace.dataTable,
           guidance: workspace.guidance,
           requirement: workspace.requirement,
           // `source` is an authoring diagnostic, not candidate information.
