@@ -6,6 +6,7 @@ import type { RichDoc } from "@/lib/content";
 import { parseLiveSettings } from "@/lib/live";
 import { Badge, Button, Card } from "@/components/ui";
 import { createClient } from "@/lib/supabase/client";
+import { screenLinks } from "@/lib/liveLinks";
 import { mmss } from "@/lib/utils";
 import { Eye, Radio, Trophy, UserCheck, Users, UserX, Wifi } from "lucide-react";
 import QRCode from "qrcode";
@@ -135,11 +136,12 @@ export function HostConsole({
   const displayVersionRef = useRef(Number(initial.display_token_version ?? 1));
 
   const joinUrl = `${appUrl}/play/${session.join_code}`;
-  const screenUrl = screenPath.startsWith("http") ? screenPath : `${appUrl}${screenPath}`;
-  // The organizer opens the projected page from this console: the extra flag
-  // tells that page to explain a missing toolbar (sign in, wrong account) while
-  // the clean `screenUrl` stays the link to copy for the projector and students.
-  const hostScreenUrl = `${screenUrl}${screenUrl.includes("?") ? "&" : "?"}host=1`;
+  // `screenUrl` is the canonical link to copy for a projector; `hostScreenUrl`
+  // stays on the hostname this console is served from, so the organizer's own
+  // session cookie is actually sent with it (cookies are host-scoped, and the
+  // console can be used on any of this deployment's domains). The extra `host`
+  // flag only lets the page explain a genuinely missing toolbar.
+  const { absolute: screenUrl, host: hostScreenUrl } = screenLinks(screenPath, appUrl);
   const current = questions[session.current_question_index] ?? null;
   const settings = useMemo(() => parseLiveSettings(session.settings), [session.settings]);
   const participants = hostData?.participants ?? [];
@@ -444,7 +446,7 @@ export function HostConsole({
                   <h3 className="font-display text-base font-semibold text-evergreen-950">Secure public projection screen</h3>
                   <p className="mt-1 max-w-2xl text-sm text-ink-soft">
                     Open this separate token-protected link on the projector/TV. Rotate or revoke it if the link is shared outside the room.
-                    {" "}Open it from here to keep your organizer controls; the copied link stays a clean projection for the room.
+                    {" "}Open it from here to keep your organizer controls — it stays on the address you are signed in on; the copied link stays a clean projection for the room.
                   </p>
                 </div>
                 <Badge tone={settings.projector_enabled ? "green" : "red"}>{settings.projector_enabled ? "Enabled" : "Revoked / disabled"}</Badge>
