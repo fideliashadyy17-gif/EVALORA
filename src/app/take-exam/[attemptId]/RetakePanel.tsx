@@ -1,5 +1,6 @@
 "use client";
 
+import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { Badge, Button, Card, Textarea } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
@@ -148,6 +149,10 @@ export function RetakePanel({
 
   return (
     <div className="mt-5 text-left">
+      {/* The student may be sitting on this page while an administrator
+          decides. Supabase Realtime (with a polling fallback) moves them to
+          the decision page without a reload. */}
+      {pending && <RetakeDecisionWatcher pendingIds={[pending.id]} />}
       <Card className="border border-evergreen-900/15 bg-cream/60 p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>

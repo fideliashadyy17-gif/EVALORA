@@ -239,3 +239,138 @@ export function normalizeGrantedAttempts(value: unknown): number {
   if (!Number.isFinite(n) || n < 1) return 1;
   return Math.min(3, n);
 }
+
+/* ── Retake access code ─────────────────────────────────────────────────
+ * An approval produces ONE code. It is the third thing the student types on
+ * the dedicated access page, next to their first and last name, and it is
+ * checked on the server against the approval — never against anything the
+ * browser sends about itself.
+ */
+
+/** No 0/O/1/I/L: a code is read aloud and typed on a phone. */
+export const RETAKE_CODE_ALPHABET = "23456789ABCDEFGHJKMNPQRSTUVWXYZ";
+export const RETAKE_CODE_LENGTH = 10;
+
+/** A stored/typed code in canonical form: uppercase, alphabet only. */
+export function normalizeRetakeCode(value: unknown): string {
+  return String(value ?? "")
+    .toUpperCase()
+    .split("")
+    .filter((char) => RETAKE_CODE_ALPHABET.includes(char))
+    .join("");
+}
+
+export function isValidRetakeCode(value: unknown): boolean {
+  const code = normalizeRetakeCode(value);
+  return code.length === RETAKE_CODE_LENGTH;
+}
+
+/**
+ * A code is generated from a cryptographically random source. It is not
+ * derived from the request or the student, so knowing one code says nothing
+ * about any other authorization.
+ */
+export function generateRetakeCode(randomBytes: (size: number) => Uint8Array): string {
+  const bytes = randomBytes(RETAKE_CODE_LENGTH);
+  let code = "";
+  for (let index = 0; index < RETAKE_CODE_LENGTH; index += 1) {
+    // 256 is not a multiple of 32, but the alphabet is 32 characters and the
+    // modulo bias here is 0: 256 / 32 = 8 exactly.
+    code += RETAKE_CODE_ALPHABET[bytes[index] % RETAKE_CODE_ALPHABET.length];
+  }
+  return code;
+}
+
+/** Diacritics, punctuation and spacing must never decide whether a name matches. */
+export function normalizePersonName(value: unknown): string {
+  return String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s'-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+export interface RetakeNameInput {
+  firstName: string;
+  lastName: string;
+}
+
+export interface RetakeNameRecord {
+  firstName?: string | null;
+  lastName?: string | null;
+  fullName?: string | null;
+}
+
+/**
+ * The typed names must be the authorized student's. A single stored full name
+ * is accepted in either order so an institution that only records "Emily
+ * Gathoni" is not locked out; a mismatch is a hard failure.
+ */
+export function retakeNameMatches(input: RetakeNameInput, record: RetakeNameRecord): boolean {
+  const first = normalizePersonName(input.firstName);
+  const last = normalizePersonName(input.lastName);
+  if (!first || !last) return false;
+
+  const storedFirst = normalizePersonName(record.firstName ?? "");
+  const storedLast = normalizePersonName(record.lastName ?? "");
+  if (storedFirst && storedLast) return storedFirst === first && storedLast === last;
+
+  const full = normalizePersonName(record.fullName ?? "");
+  if (!full) return false;
+  if (full === `${first} ${last}`) return true;
+  const parts = full.split(" ").filter(Boolean);
+  if (parts.length < 2) return false;
+  const lastPart = parts[parts.length - 1];
+  const firstPart = parts.slice(0, -1).join(" ");
+  return (firstPart === first && lastPart === last) || (firstPart === last && lastPart === first);
+}
+
+export type RetakeAccessProblem =
+  | "not_approved"
+  | "rejected"
+  | "expired"
+  | "consumed"
+  | "no_code";
+
+export interface RetakeAccessState {
+  status: string;
+  access_expires_at?: string | null;
+  granted_attempts?: number | null;
+  retake_code?: string | null;
+  retake_code_consumed_at?: string | null;
+}
+
+/**
+ * Everything that can make an approval unusable, in the order a student can
+ * understand. `attemptsUsed` counts the attempts this approval already
+ * produced, so a second click can never open a second paper.
+ */
+export function retakeAccessProblem(
+  request: RetakeAccessState,
+  attemptsUsed: number,
+  now: Date = new Date(),
+): RetakeAccessProblem | null {
+  if (request.status === "rejected" || request.status === "cancelled") return "rejected";
+  if (request.status !== "approved") return "not_approved";
+  if (!request.retake_code) return "no_code";
+  const granted = Math.max(1, Math.min(3, Math.floor(Number(request.granted_attempts ?? 1))));
+  if (attemptsUsed >= granted) return "consumed";
+  if (request.retake_code_consumed_at) return "consumed";
+  const expiry = request.access_expires_at ? Date.parse(request.access_expires_at) : NaN;
+  if (!Number.isFinite(expiry) || expiry <= now.getTime()) return "expired";
+  return null;
+}
+
+/** Student-facing copy for a code that cannot be used. */
+export function retakeAccessProblemMessage(problem: RetakeAccessProblem): string {
+  switch (problem) {
+    case "rejected": return "This retake request was rejected. No new attempt can be started.";
+    case "not_approved": return "This retake has not been approved. Nothing can be started from this page.";
+    case "expired": return "The access window for this retake has closed. Ask your institution to approve a new request.";
+    case "consumed": return "This retake code has already been used. Ask your institution for another approval.";
+    case "no_code": return "No access code is attached to this approval yet. Reload the page or contact your institution.";
+    default: return "This retake cannot be started.";
+  }
+}

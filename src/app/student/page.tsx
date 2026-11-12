@@ -1,3 +1,4 @@
+import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { SignOutButton } from "@/components/SignOutButton";
 import { Badge, ButtonLink, Card } from "@/components/ui";
 import { LocalTime } from "@/components/LocalTime";
@@ -43,6 +44,10 @@ interface RequestRow {
   decided_at: string | null;
   decision_note: string | null;
   access_expires_at: string | null;
+  decision_seen_at: string | null;
+  retake_code: string | null;
+  retake_code_consumed_at: string | null;
+  granted_attempts: number | null;
 }
 
 /** A small, real entry point to the existing code-based candidate flows. */
@@ -83,7 +88,7 @@ export default async function StudentWorkspace() {
         .limit(60),
       admin
         .from("exam_retake_requests")
-        .select("id,exam_id,status,created_at,decided_at,decision_note,access_expires_at")
+        .select("id,exam_id,status,created_at,decided_at,decision_note,access_expires_at,decision_seen_at,retake_code,retake_code_consumed_at,granted_attempts")
         .eq("student_id", student.id)
         .order("created_at", { ascending: false })
         .limit(60),
@@ -97,7 +102,20 @@ export default async function StudentWorkspace() {
     }, new Map<string, RequestRow[]>());
   }
 
+  // A decision the student has not been shown yet takes over the page: they
+  // land on the retake decision page whether the decision was just made (the
+  // live watcher below) or while they were away. Viewing it marks it seen, so
+  // the automatic redirection happens exactly once.
+  const unseenDecision = [...requestsByExam.values()]
+    .flat()
+    .filter((r) => (r.status === "approved" || r.status === "rejected") && !r.decision_seen_at)
+    .sort((a, b) => Date.parse(b.decided_at ?? b.created_at) - Date.parse(a.decided_at ?? a.created_at))[0];
+  if (unseenDecision) redirect(`/retake/${unseenDecision.id}`);
+
+  const pendingRequestIds = [...requestsByExam.values()].flat().filter((r) => r.status === "pending").map((r) => r.id);
+
   return <main className="mx-auto max-w-3xl px-4 py-12">
+    {pendingRequestIds.length > 0 && <RetakeDecisionWatcher pendingIds={pendingRequestIds} />}
     <p className="text-sm font-semibold uppercase tracking-wide text-evergreen-700">{org.name}</p>
     <h1 className="mt-2 font-display text-3xl font-semibold text-evergreen-950">Welcome, {ctx.profile.full_name?.split(" ")[0] || "student"}</h1>
     <p className="mt-3 text-ink-soft">Use the code provided by your institution to enter an examination or join a live activity.</p>
@@ -138,9 +156,36 @@ export default async function StudentWorkspace() {
                   <Badge tone={submitted ? "gray" : "green"}>{submitted ? "Submitted & locked" : "In progress"}</Badge>
                 </div>
 
-                {pending && <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">Retake request pending approval since <LocalTime iso={pending.created_at} />.</p>}
-                {approved && <p className="mt-2 rounded-lg bg-evergreen-50 px-3 py-2 text-sm text-evergreen-900">A retake is approved. Start it before <LocalTime iso={approved.access_expires_at} /> from your submitted paper page or the examination access link.</p>}
-                {!pending && !approved && rejected && <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">Your last retake request was rejected.{rejected.decision_note ? ` ${rejected.decision_note}` : ""}</p>}
+                {pending && (
+                  <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                    <strong className="font-semibold">Pending.</strong> Retake request awaiting an administrator&apos;s
+                    decision since <LocalTime iso={pending.created_at} />.
+                  </p>
+                )}
+                {approved && (
+                  <div className="mt-2 rounded-lg bg-evergreen-50 px-3 py-2 text-sm text-evergreen-900">
+                    <p><strong className="font-semibold">Approved.</strong> Start the authorized attempt before <LocalTime iso={approved.access_expires_at} />.</p>
+                    {approved.retake_code && !approved.retake_code_consumed_at && (
+                      <p className="mt-1">
+                        Retake code: <span className="font-mono text-base font-bold tracking-[0.2em] text-evergreen-950">{approved.retake_code}</span>
+                      </p>
+                    )}
+                    <Link prefetch={false} className="mt-2 inline-flex font-semibold text-evergreen-700 underline underline-offset-2" href={`/retake/${approved.id}`}>
+                      Open the retake access page →
+                    </Link>
+                  </div>
+                )}
+                {!pending && !approved && rejected && (
+                  <div className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900">
+                    <p>
+                      <strong className="font-semibold">Rejected.</strong>
+                      {rejected.decision_note ? ` Reason: ${rejected.decision_note}` : " No reason was recorded."}
+                    </p>
+                    <Link prefetch={false} className="mt-1 inline-flex font-semibold text-red-800 underline underline-offset-2" href={`/retake/${rejected.id}`}>
+                      See the decision →
+                    </Link>
+                  </div>
+                )}
 
                 <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                   {attempt.exams?.invite_token && (
