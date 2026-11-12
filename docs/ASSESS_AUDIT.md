@@ -219,3 +219,16 @@ Q19 stem+(a), Q25(d). Rewording only — answers recomputed and unchanged, hints
 untouched. Final scan of the production database: 50 questions, 96 parts, **0** parts not starting
 with a command term, **0** empty prompts, **0** single questions without an instruction; student-view
 re-render confirms 50/50 questions display with a labelled input and hint button per part.
+
+## Addendum 2 — "MYP2 (Grade 7) Formative Assessment 2 - Criteria A-D" stem-level check
+
+The assessment (exam `c2000000-0000-4000-8000-000000000002`, quiz
+`c2000000-0000-4000-8000-000000000001`, code `MYP2-FORM2-2026` — the only match in the database for
+MYP2 / Grade 7 / Formative Assessment 2 / Criteria at Oak International School) was re-checked at
+the *stem* level: 17 questions (Q3, Q5, Q6, Q8, Q10–Q15, Q17, Q18, Q21–Q25) presented only a
+diagram, table or scenario in the stem, with the instruction carried solely by the parts
+(including the user-spotted Q5, Q6, Q8 and Q10). Each stem now also carries an instruction
+sentence starting with a command term summarising its parts (migration
+`0094_myp2_form2_stem_instructions.sql`, applied to production). Parts, answers, hints, marks and
+strands unchanged. Final scan: 25/25 stems contain an instruction, 62/62 parts start with a
+command term, student-view re-render confirms a labelled input and hint button for every part.
