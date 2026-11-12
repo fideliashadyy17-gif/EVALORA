@@ -106,7 +106,10 @@ await checkAsync("opening with bundled hints is instant and shows level 1 of 2",
     ],
   });
   await click(tree, "Need a hint?");
-  assert.equal(calls.length, 0, "no request when the paper already delivered the hint");
+  assert.equal(calls.filter((c) => (c.options?.method ?? "GET") === "GET").length, 0, "no hint fetch when the paper already delivered the hint");
+  assert.equal(calls.length, 1, "the opening itself is recorded once for the results view");
+  assert.equal(calls[0].url, "/api/exam/hint/usage");
+  assert.deepEqual(JSON.parse(calls[0].options.body), { attempt_id: "attempt-1", question_id: "q-1", level: 1 });
   assert.equal(panelRegion(tree).length, 1);
   assert.match(textOf(tree), /length multiplied by width/);
   assert.equal(buttonByText(tree, "Need a hint?"), undefined, "the toggle now reads Hide hint");
@@ -135,7 +138,8 @@ await checkAsync("hiding the hint removes the panel and keeps the question untou
   await click(tree, "Need a hint?");
   await click(tree, "Hide hint");
   assert.equal(panelRegion(tree).length, 0);
-  assert.equal(calls.length, 0);
+  assert.equal(calls.length, 1, "hiding makes no request; only the opening was recorded");
+  assert.equal(calls[0].url, "/api/exam/hint/usage");
   assert.ok(buttonByText(tree, "Need a hint?"));
   act(() => tree.unmount());
 });
@@ -145,16 +149,17 @@ await checkAsync("without bundled hints it asks the authorised endpoint exactly 
   responder = async () => ({ ok: true, json: async () => ({ hints: [{ level: 1, text: "Think about what a river gives a community." }] }) });
   const tree = mount({});
   await click(tree, "Need a hint?");
-  assert.equal(calls.length, 1);
-  assert.match(calls[0].url, /^\/api\/exam\/hint\?attempt_id=attempt-1&question_id=q-1$/);
-  assert.equal(calls[0].options.headers.Authorization, `Bearer ${TOKEN}`);
-  assert.equal(calls[0].options.cache, "no-store");
-  assert.equal(calls[0].url.includes(TOKEN), false, "the attempt token never travels in a URL");
+  const reads = calls.filter((c) => (c.options?.method ?? "GET") === "GET");
+  assert.equal(reads.length, 1, "exactly one authorised read fetches the hints");
+  assert.match(reads[0].url, /^\/api\/exam\/hint\?attempt_id=attempt-1&question_id=q-1$/);
+  assert.equal(reads[0].options.headers.Authorization, `Bearer ${TOKEN}`);
+  assert.equal(reads[0].options.cache, "no-store");
+  assert.equal(reads[0].url.includes(TOKEN), false, "the attempt token never travels in a URL");
   assert.match(textOf(tree), /river gives a community/);
 
   await click(tree, "Hide hint");
   await click(tree, "Need a hint?");
-  assert.equal(calls.length, 1, "re-opening does not repeat the request");
+  assert.equal(calls.length, 2, "re-opening repeats neither the read nor the usage record");
   act(() => tree.unmount());
 });
 
@@ -168,7 +173,7 @@ await checkAsync("a network failure is explained and can be retried", async () =
 
   responder = async () => ({ ok: true, json: async () => ({ hints: [{ level: 1, text: "Read the passage again and look for repeated ideas." }] }) });
   await click(tree, "Try again");
-  assert.equal(calls.length, 2);
+  assert.equal(calls.filter((c) => (c.options?.method ?? "GET") === "GET").length, 2, "the retry is a second authorised read");
   assert.match(textOf(tree), /repeated ideas/);
   act(() => tree.unmount());
 });
@@ -224,7 +229,7 @@ await checkAsync("the panel only ever talks to the hint endpoint", async () => {
   await click(tree, "Hide hint");
   await click(tree, "Need a hint?");
   assert.ok(calls.length >= 1);
-  for (const call of calls) assert.match(call.url, /^\/api\/exam\/hint\?/, `unexpected request: ${call.url}`);
+  for (const call of calls) assert.match(call.url, /^\/api\/exam\/hint(\?|\/usage$)/, `unexpected request: ${call.url}`);
   assert.equal(calls.some((call) => /\/api\/exam\/(save|submit|state|integrity)/.test(call.url)), false);
   act(() => tree.unmount());
 });

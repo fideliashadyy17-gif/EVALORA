@@ -23,6 +23,8 @@ export class ScoringError extends Error {
   constructor() { super("The answer or marking key cannot be verified."); this.name = "ScoringError"; }
 }
 
+import { assessPartsFromConfig, canonicalExpression, scoreAssessParts } from "./assessParts";
+
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 const validNumber = (v: unknown): number | null => {
   if (typeof v !== "number" && (typeof v !== "string" || !v.trim())) return null;
@@ -65,8 +67,18 @@ export function scoreAnswer(
     case "short_answer": {
       const accepted = options.filter((o) => o.is_correct && typeof o.label === "string" && norm(o.label)).map((o) => norm(o.label));
       if (!accepted.length || typeof answer.text !== "string") throw new ScoringError();
-      const ok = accepted.includes(norm(answer.text));
+      // Expression questions accept equivalent algebraic forms (4n-1, 4n - 1,
+      // a_n = 4n - 1); plain word answers keep the exact normalisation above.
+      const ok = cfg.normalize_expression === true
+        ? accepted.some((a) => canonicalExpression(a) === canonicalExpression(answer.text as string))
+        : accepted.includes(norm(answer.text));
       return { isCorrect: ok, points: ok ? max : 0 };
+    }
+    case "assess_parts": {
+      const parts = assessPartsFromConfig(cfg);
+      if (!parts.length) throw new ScoringError();
+      const scored = scoreAssessParts(parts, answer, max);
+      return { isCorrect: scored.isCorrect, points: scored.points };
     }
     case "numeric": {
       const expected = validNumber(cfg.numeric_answer);

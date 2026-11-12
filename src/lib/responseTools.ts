@@ -128,7 +128,7 @@ export function inferResponseTools(question: { prompt?: string | null; prompt_do
 }
 
 const NATIVE_TYPES = new Set([
-  "single_choice", "multiple_select", "true_false", "poll", "ordering", "matching", "numeric", "short_answer", "slide",
+  "single_choice", "multiple_select", "true_false", "poll", "ordering", "matching", "numeric", "short_answer", "slide", "assess_parts",
 ]);
 
 export function responseWorkspaceFor(question: {

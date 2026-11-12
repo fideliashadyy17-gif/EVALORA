@@ -87,6 +87,17 @@ export async function GET(request: Request) {
     hintsByQuestion = new Map();
   }
 
+  // Hint usage is a formative record, shown back to the candidate in their
+  // feedback summary and to the teacher in the report. A failure here must
+  // never fail the paper, so it degrades to an empty list.
+  let hintUsage: { question_id: string; part_id: string; level: number; times_opened: number }[] = [];
+  try {
+    const { data } = await admin.from("exam_hint_usage")
+      .select("question_id, part_id, level, times_opened")
+      .eq("attempt_id", attempt.id);
+    hintUsage = data ?? [];
+  } catch { hintUsage = []; }
+
   const submitted = attempt.status !== "in_progress";
   const resultsPublished = Boolean(settings.results_published);
 
@@ -125,6 +136,7 @@ export async function GET(request: Request) {
       results_published: resultsPublished,
       track: (attempt.track as "AB" | "BC" | null | undefined) ?? null,
     },
+    hint_usage: hintUsage,
     questions: rows.map((row) => {
       const pub = publicQuestion(row, {
         randomizeOptions: Boolean(settings.randomize_options),

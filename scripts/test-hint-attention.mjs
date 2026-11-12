@@ -136,8 +136,11 @@ ok("an incorrect answer triggers attention at once", label(incorrect) === "💡 
 calls.length = 0;
 await act(async () => { buttons(incorrect)[0].props.onClick(); });
 ok("opening the hint stops asking", label(incorrect) === "Hide hint" && buttons(incorrect)[0].props["data-attention"] === "false");
-ok("opening performs exactly one authorised read", calls.length === 1 && calls[0].url.startsWith("/api/exam/hint?"));
-ok("that read is a GET with the attempt token", (calls[0].options?.method ?? "GET") === "GET" && calls[0].options.headers.Authorization === "Bearer attempt-token");
+const reads = calls.filter((call) => (call.options?.method ?? "GET") === "GET");
+const records = calls.filter((call) => call.url === "/api/exam/hint/usage");
+ok("opening performs exactly one authorised read", reads.length === 1 && reads[0].url.startsWith("/api/exam/hint?"));
+ok("that read is a GET with the attempt token", (reads[0].options?.method ?? "GET") === "GET" && reads[0].options.headers.Authorization === "Bearer attempt-token");
+ok("opening records the hint use once, and only that", records.length === 1 && records[0].options.method === "POST" && JSON.parse(records[0].options.body).level === 1 && calls.length === 2);
 ok("no write, submit or save endpoint is touched", calls.every((call) => !/save|submit|answer|integrity/.test(call.url)));
 await act(async () => { await sleep(400); });
 ok("the pulse stays off once opened", label(incorrect) === "Hide hint");

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
+import type { PublicAssessPart } from "@/lib/assessParts";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
 
 export interface PublicQuestion {
@@ -40,6 +41,10 @@ export interface PublicQuestion {
    * carries an answer key; it only names the tools this question needs.
    */
   response_workspace?: ResponseWorkspace | null;
+  /** Assess Prep typed parts (keys never included) + curriculum metadata. */
+  assess_parts?: PublicAssessPart[] | null;
+  topic?: string | null;
+  criterion?: string | null;
 }
 
 /**
@@ -57,6 +62,7 @@ export function QuestionRunner({
   submitLabel = "Submit answer",
   markings,
   autosave = false,
+  onHintUse,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -69,6 +75,8 @@ export function QuestionRunner({
   markings?: Record<string, "correct" | "wrong">;
   /** Enable the durable autosave loop (examinations only). */
   autosave?: boolean;
+  /** Records that a per-part hint was opened at a level (examinations only). */
+  onHintUse?: (partId: string, level: number) => void;
 }) {
   /** Marked options win over the neutral/selected styling after submission. */
   const optionClass = (id: string, idle: string, picked: string) => {
@@ -108,6 +116,11 @@ export function QuestionRunner({
   const [order, setOrder] = useState<string[]>(orderFromSaved);
   const [pairs, setPairs] = useState<Record<string, string>>(pairsFromSaved);
   const [selectedChip, setSelectedChip] = useState<string | null>(null);
+  const savedParts = (initial && typeof initial === "object" && (initial as { parts?: unknown }).parts && typeof (initial as { parts?: unknown }).parts === "object")
+    ? ((initial as { parts: Record<string, unknown> }).parts) : {};
+  const [partValues, setPartValues] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(savedParts).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
+  const [openPartHints, setOpenPartHints] = useState<Record<string, number>>({});
 
   useEffect(() => {
     setSelected(selectedFromSaved());
@@ -116,6 +129,10 @@ export function QuestionRunner({
     setOrder(orderFromSaved());
     setPairs(pairsFromSaved());
     setSelectedChip(null);
+    setPartValues(Object.fromEntries(Object.entries(
+      (initial && typeof initial === "object" && (initial as { parts?: Record<string, unknown> }).parts) || {},
+    ).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
+    setOpenPartHints({});
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
@@ -379,6 +396,63 @@ export function QuestionRunner({
             </div>
           );
         })()}
+
+        {t === "assess_parts" && (
+          <div className="space-y-4">
+            {(question.assess_parts ?? []).map((part) => {
+              const shownHints = openPartHints[part.id] ?? 0;
+              return (
+                <div key={part.id} className="rounded-xl border border-evergreen-900/20 bg-white p-4">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-evergreen-700 px-1.5 text-sm font-bold text-white">{part.label}</span>
+                    {part.prompt ? <span className="min-w-0 flex-1 font-medium"><MathText text={part.prompt} /></span> : <span className="flex-1" />}
+                    <span className="text-xs font-semibold text-ink-soft">{part.points} mark{part.points === 1 ? "" : "s"}</span>
+                    <button
+                      type="button"
+                      disabled={disabled}
+                      aria-expanded={shownHints > 0}
+                      onClick={() => {
+                        if (shownHints === 0) { setOpenPartHints((h) => ({ ...h, [part.id]: 1 })); onHintUse?.(part.id, 1); }
+                        else setOpenPartHints((h) => ({ ...h, [part.id]: 0 }));
+                      }}
+                      className="inline-flex items-center gap-1.5 rounded-lg border border-gold-500/60 bg-gold-100/70 px-3 py-1.5 text-sm font-semibold text-gold-700 hover:bg-gold-100 disabled:opacity-50"
+                    >
+                      💡 Hint
+                    </button>
+                  </div>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Input
+                      value={partValues[part.id] ?? ""}
+                      disabled={disabled}
+                      inputMode={part.kind === "numeric" ? "decimal" : "text"}
+                      placeholder={part.placeholder ?? "Type your answer…"}
+                      aria-label={`Answer for part ${part.label}`}
+                      onChange={(e) => { changed(); setPartValues((v) => ({ ...v, [part.id]: e.target.value })); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") emit({ parts: partValues }); }}
+                    />
+                    {part.unit ? <span className="shrink-0 text-sm font-medium text-ink-soft">{part.unit}</span> : null}
+                  </div>
+                  {shownHints > 0 && (
+                    <div className="mt-3 rounded-lg border border-gold-500/50 bg-gold-100/50 p-3 text-sm" role="region" aria-label={`Hint for part ${part.label}`}>
+                      <p className="font-semibold text-evergreen-950">Hint {shownHints} of 2 — {shownHints === 1 ? "a nudge" : "the first step"}</p>
+                      <p className="mt-1 leading-relaxed">{part.hints[shownHints - 1]}</p>
+                      {shownHints < 2 ? (
+                        <button type="button" className="mt-2 text-xs font-semibold text-evergreen-800 underline underline-offset-2"
+                          onClick={() => { setOpenPartHints((h) => ({ ...h, [part.id]: 2 })); onHintUse?.(part.id, 2); }}>
+                          Still stuck? See hint 2
+                        </button>
+                      ) : null}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <Button disabled={disabled || !(question.assess_parts ?? []).some((p) => (partValues[p.id] ?? "").trim())}
+              onClick={() => emit({ parts: partValues })}>
+              {submitLabel}
+            </Button>
+          </div>
+        )}
 
         {t === "open_ended" && (
           <StructuredResponseEditor

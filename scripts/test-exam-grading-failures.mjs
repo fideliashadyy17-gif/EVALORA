@@ -6,8 +6,9 @@ import path from 'node:path';
 import ts from 'typescript';
 function compile(src,name,deps={}){const file=path.resolve(name),m=new Module(file),old=Module._load;m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));Module._load=function(id,parent){if(parent?.filename===file&&id in deps)return deps[id];return old.apply(this,arguments)};try{m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports}finally{Module._load=old}}
 const responseTools={responseWorkspaceFor:()=>({tools:[],graph:{enabled:false,title:'Graph',instructions:'',allowFunctions:true,starter:null},geometry:{enabled:false,title:'Geometry',instructions:'',starter:null},guidance:'',requirement:'any',source:'native'})};
-const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs',{'./responseTools':responseTools});
-const scoring=compile('src/lib/scoring.ts','scripts/__virtual_scoring_grading.cjs');
+const assessParts=compile('src/lib/assessParts.ts','scripts/__virtual_assess_parts_grading.cjs');
+const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs',{'./responseTools':responseTools,'./assessParts':assessParts});
+const scoring=compile('src/lib/scoring.ts','scripts/__virtual_scoring_grading.cjs',{'./assessParts':assessParts});
 const examDeadline=compile('src/lib/examDeadline.ts','scripts/__virtual_exam_deadline_grading.cjs');
 const {attemptRows,gradeAttempt}=compile('src/lib/exam.ts','scripts/__virtual_exam_grading.cjs',{'./live':live,'./scoring':scoring,'./examDeadline':examDeadline});
 const q=(id)=>({id:'qq'+id,question_id:id,quiz_id:'quiz',position:1,points:2,questions:{id,type:'single_choice',points:3,config:{},question_options:[{id:'correct',label:'yes',is_correct:true,position:0}]}});
