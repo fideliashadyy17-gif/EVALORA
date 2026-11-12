@@ -146,9 +146,12 @@ export function normaliseAssessDiagram(raw: unknown): AssessDiagramSpec | null {
       return { label: s(pat.label), squares: Math.max(0, Math.floor(n(pat.squares) ?? 0)), ...(n(pat.dots) !== null ? { dots: Math.max(0, Math.floor(n(pat.dots)!)) } : {}) };
     });
   }
-  if (Array.isArray(raw.columns)) spec.columns = raw.columns.slice(0, 8).map((c) => s(c));
+  // Wide data tables (a full data set across 10–12 columns) must survive
+  // intact: truncating columns silently deletes values a question asks
+  // about. The renderer scrolls horizontally on narrow screens instead.
+  if (Array.isArray(raw.columns)) spec.columns = raw.columns.slice(0, 24).map((c) => s(c));
   if (Array.isArray(raw.rows)) {
-    spec.rows = raw.rows.slice(0, 24).map((r) => (Array.isArray(r) ? r : []).slice(0, 8).map((c) => s(c)));
+    spec.rows = raw.rows.slice(0, 24).map((r) => (Array.isArray(r) ? r : []).slice(0, 24).map((c) => s(c)));
   }
   return spec;
 }

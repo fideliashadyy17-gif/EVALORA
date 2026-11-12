@@ -427,7 +427,7 @@ export function QuestionRunner({
                       value={partValues[part.id] ?? ""}
                       disabled={disabled}
                       inputMode={part.kind === "numeric" ? "decimal" : "text"}
-                      placeholder={part.placeholder ?? "Type your answer…"}
+                      placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2)" : "Type your answer…")}
                       aria-label={`Answer for part ${part.label}`}
                       onChange={(e) => { changed(); setPartValues((v) => ({ ...v, [part.id]: e.target.value })); }}
                       onKeyDown={(e) => { if (e.key === "Enter") emit({ parts: partValues }); }}
