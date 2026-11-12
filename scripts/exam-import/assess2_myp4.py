@@ -7,7 +7,7 @@ from assess2_common import P, Q
 EXAM = {
     "key": "myp4b", "title": "MYP4 (Grade 9) Formative Assessment 2 - Criteria A-D",
     "grade": "9", "curriculum": "MYP 4", "class_id": "0a400000-0000-4000-8000-000000000109",
-    "access_code": "MYP4-FORM2-2026", "duration": 45,
+    "access_code": "MYP4-FORM2-2026", "duration": 60,
     "description": "Grade 9 · MYP 4 · Mathematics · Formative Assessment 2 (Criteria A–D). Statistics only: classification, stem-and-leaf, averages, grouped data, quartiles and box plots, cumulative frequency, histograms and standard deviation. Every answer is typed; hints are free.",
 }
 CRIT_SPLIT = {"A": 9, "B": 5, "C": 5, "D": 6}

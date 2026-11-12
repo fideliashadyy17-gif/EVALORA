@@ -7,7 +7,7 @@ from assess_prep_common import P, Q
 EXAM = {
     "key": "myp4", "title": "MYP 4 Mathematics — Formative Assessment: Statistics",
     "grade": "9", "curriculum": "MYP 4", "class_id": "0a400000-0000-4000-8000-000000000109",
-    "access_code": "MYP4-STATS-2026", "duration": 45,
+    "access_code": "MYP4-STATS-2026", "duration": 60,
     "description": "Grade 9 · MYP 4 · Mathematics · Formative (Assess Prep). Statistics only: classification of data, stem-and-leaf diagrams, measures of centre and spread, grouped data, cumulative frequency, histograms and standard deviation. Type every answer — there are no options to choose from.",
 }
 H = lambda a, b: [a, b]

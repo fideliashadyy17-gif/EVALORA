@@ -5,7 +5,7 @@ from assess2_common import P, Q
 EXAM = {
     "key": "myp5b", "title": "MYP5 (Grade 10) Formative Assessment 2 - Criteria A-D",
     "grade": "10", "curriculum": "MYP 5", "class_id": "0a400000-0000-4000-8000-000000000110",
-    "access_code": "MYP5-FORM2-2026", "duration": 45,
+    "access_code": "MYP5-FORM2-2026", "duration": 60,
     "description": "Grade 10 · MYP 5 · Mathematics · Formative Assessment 2 (Criteria A–D). Explicit and recursive formulas, arithmetic, quadratic and geometric sequences, and series. Every answer is typed; hints are free and never give the answer.",
 }
 CRIT_SPLIT = {"A": 7, "B": 9, "C": 4, "D": 5}

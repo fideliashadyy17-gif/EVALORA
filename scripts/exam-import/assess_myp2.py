@@ -4,7 +4,7 @@ from assess_prep_common import P, Q
 EXAM = {
     "key": "myp2", "title": "MYP 2 Mathematics — Formative Assessment: Rate, Ratio, Proportion, Sets and Probability",
     "grade": "7", "curriculum": "MYP 2", "class_id": "0a400000-0000-4000-8000-000000000107",
-    "access_code": "MYP2-FORM-2026", "duration": 45,
+    "access_code": "MYP2-FORM-2026", "duration": 60,
     "description": "Grade 7 · MYP 2 · Mathematics · Formative (Assess Prep). Rate, ratio, proportion and proportional reasoning, sets and two-set Venn diagrams, simple and experimental probability. Type every answer — there are no options to choose from.",
 }
 

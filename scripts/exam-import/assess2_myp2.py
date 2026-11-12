@@ -5,7 +5,7 @@ from assess2_common import P, Q
 EXAM = {
     "key": "myp2b", "title": "MYP2 (Grade 7) Formative Assessment 2 - Criteria A-D",
     "grade": "7", "curriculum": "MYP 2", "class_id": "0a400000-0000-4000-8000-000000000107",
-    "access_code": "MYP2-FORM2-2026", "duration": 45,
+    "access_code": "MYP2-FORM2-2026", "duration": 60,
     "description": "Grade 7 · MYP 2 · Mathematics · Formative Assessment 2 (Criteria A–D). Rate, ratio and proportional reasoning, sets and two-set Venn diagrams, probability. Every answer is typed; hints are free and never give the answer.",
 }
 CRIT_SPLIT = {"A": 9, "B": 6, "C": 5, "D": 5}

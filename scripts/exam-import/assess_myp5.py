@@ -4,7 +4,7 @@ from assess_prep_common import P, Q
 EXAM = {
     "key": "myp5", "title": "MYP 5 Mathematics — Formative Assessment: Sequences and Series",
     "grade": "10", "curriculum": "MYP 5", "class_id": "0a400000-0000-4000-8000-000000000110",
-    "access_code": "MYP5-SEQUENCES-2026", "duration": 45,
+    "access_code": "MYP5-SEQUENCES-2026", "duration": 60,
     "description": "Grade 10 · MYP 5 · Mathematics · Formative (Assess Prep). Explicit and recursive formulae, arithmetic, quadratic and geometric sequences, arithmetic and geometric series. Type every answer — there are no options to choose from.",
 }
 H = lambda a, b: [a, b]
