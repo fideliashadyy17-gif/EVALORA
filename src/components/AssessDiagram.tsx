@@ -135,9 +135,12 @@ function StemLeaf({ spec }: { spec: AssessDiagramSpec }) {
 }
 
 function Table({ spec }: { spec: AssessDiagramSpec }) {
+  const cols = spec.columns?.length ?? 0;
   return (
     <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm text-ink">
+      {/* Wide tables keep a readable cell width and scroll sideways on a
+          phone rather than crushing every column into the screen width. */}
+      <table className="w-full border-collapse text-sm text-ink" style={cols > 6 ? { minWidth: `${cols * 76}px` } : undefined}>
         <thead>
           <tr>{(spec.columns ?? []).map((c, i) => <th key={i} className="border border-evergreen-900/25 bg-evergreen-50 px-3 py-2 text-left font-semibold">{c}</th>)}</tr>
         </thead>
@@ -157,20 +160,30 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
   return (
     <div className="flex flex-wrap gap-5">
       {pats.map((p, i) => {
-        const cols = Math.min(10, Math.max(1, p.squares));
-        const rowsN = Math.ceil(p.squares / cols) || 1;
+        // Square counts (4, 9, 16…) are drawn as actual square arrangements;
+        // other counts run in rows of at most 10. Dots are stacked below any
+        // squares (never drawn over them), and the viewBox is tall enough
+        // for every dot row — previously dot patterns were clipped to the
+        // height of the squares row, hiding most dots.
+        const sq = p.squares;
+        const sqrtSq = Math.round(Math.sqrt(sq));
+        const cols = sq > 1 && sqrtSq * sqrtSq === sq ? sqrtSq : Math.min(10, Math.max(1, sq));
+        const rowsN = sq ? Math.ceil(sq / cols) : 0;
         const dots = p.dots ?? 0;
-        const w = Math.max(cols * cell + 8, dots ? Math.ceil(Math.sqrt(dots)) * cell + 8 : 0);
+        const dc = dots ? Math.ceil(Math.sqrt(dots)) : 0;
+        const dotRows = dots ? Math.ceil(dots / dc) : 0;
+        const squaresH = rowsN * cell;
+        const w = Math.max(cols * cell, dc * cell) + 8;
+        const h = squaresH + dotRows * cell + 8;
         return (
           <div key={i} className="text-center">
-            <svg viewBox={`0 0 ${w} ${rowsN * cell + 8}`} className="mx-auto" style={{ width: Math.max(60, w) }} role="img" aria-label={p.label}>
-              {Array.from({ length: p.squares }, (_, k) => (
+            <svg viewBox={`0 0 ${w} ${h}`} className="mx-auto" style={{ width: Math.max(60, w) }} role="img" aria-label={p.label}>
+              {Array.from({ length: sq }, (_, k) => (
                 <rect key={k} x={4 + (k % cols) * cell} y={4 + Math.floor(k / cols) * cell} width={cell - 2} height={cell - 2} fill="#e7efe9" stroke={accent} strokeWidth={1.4} />
               ))}
-              {Array.from({ length: dots }, (_, k) => {
-                const dc = Math.ceil(Math.sqrt(dots)) || 1;
-                return <circle key={`d${k}`} cx={8 + (k % dc) * cell} cy={8 + Math.floor(k / dc) * cell} r={5} fill={gold} stroke="#8a6d14" />;
-              })}
+              {Array.from({ length: dots }, (_, k) => (
+                <circle key={`d${k}`} cx={8 + (k % dc) * cell} cy={8 + squaresH + Math.floor(k / dc) * cell} r={5} fill={gold} stroke="#8a6d14" />
+              ))}
             </svg>
             <p className="mt-1 text-sm font-semibold text-ink">{p.label}</p>
           </div>
@@ -220,7 +233,9 @@ function Axes({ spec }: { spec: AssessDiagramSpec }) {
   const f = spec.fiveNumber;
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full min-w-[340px]" role="img">
-      {ticks(yMin, yMax, 6).map((v) => (
+      {/* A box plot's vertical axis carries no scale (the boxes sit in
+          lanes), so y gridlines/tick numbers would be meaningless noise. */}
+      {spec.kind !== "box_plot" && ticks(yMin, yMax, 6).map((v) => (
         <g key={`y${v}`}>
           <line x1={L} y1={sy(v)} x2={W - R} y2={sy(v)} stroke={grid} />
           <text x={L - 6} y={sy(v) + 4} textAnchor="end" fontSize={11.5} fill={ink}>{fmt(v)}</text>

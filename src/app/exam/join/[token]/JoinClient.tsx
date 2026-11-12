@@ -136,8 +136,8 @@ export function ExamJoinClient({
               />
             </Field>
           ))}
-          <Field label="Examination access code" hint="Use the code provided with this link; it is verified on the server.">
-            <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" />
+          <Field label="Examination access code" hint="Use the code provided with this link. Hyphens, spaces and O/0 look-alikes don't matter — pasting the code works too.">
+            <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false} />
           </Field>
           <Field label="Class" hint={verifiedClassId ? "Your verified class is fixed." : "Choose your class. Your AP Calculus course (AB or BC) follows from your class."}>
             <Select value={classId} onChange={(e) => setClassId(e.target.value)} disabled={Boolean(verifiedClassId)} required>
