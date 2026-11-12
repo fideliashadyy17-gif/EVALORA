@@ -207,3 +207,15 @@ Audit of every question and every part (150 questions) of the six formative asse
   - display (visual wrong/incomplete): 2
   - missing element (visual referenced but not shown): 2
 - Anything not fixable: **none**. No question had to be rebuilt or deleted; mathematical content, topic, criterion and difficulty were preserved everywhere.
+
+## Addendum — MYP2 strict command-term pass (follow-up)
+
+A second, stricter pass over the two MYP2 papers only, requiring every part to *start* with a
+recognised command term (previously some parts used "Type…", "List…" or "Use…", and two ended in a
+bare question). 12 further prompts were normalised (migrations
+`0092_myp2_command_term_fixes.sql`, `0093_myp2_command_term_lead.sql`, applied to production):
+MYP2-1 Q5, Q14(b), Q16(a), Q25; MYP2-2 Q11(d), Q12(d), Q13(c), Q13(d), Q14(d), Q18 stem+(a),
+Q19 stem+(a), Q25(d). Rewording only — answers recomputed and unchanged, hints/accepted variants
+untouched. Final scan of the production database: 50 questions, 96 parts, **0** parts not starting
+with a command term, **0** empty prompts, **0** single questions without an instruction; student-view
+re-render confirms 50/50 questions display with a labelled input and hint button per part.
