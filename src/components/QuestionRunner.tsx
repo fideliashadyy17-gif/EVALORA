@@ -3,13 +3,14 @@
 import { MathText } from "./MathText";
 import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
-import { Button, Input } from "./ui";
+import { Button } from "./ui";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
 import type { PublicAssessPart } from "@/lib/assessParts";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
+import { MathAnswerInput } from "@/components/MathAnswerInput";
 
 export interface PublicQuestion {
   quiz_question_id: string;
@@ -242,16 +243,42 @@ export function QuestionRunner({
         )}
 
         {t === "short_answer" && (
-          <div className="flex gap-2">
-            <Input value={text} disabled={disabled} onChange={(e) => { changed(); setText(e.target.value); }} placeholder="Type your answer…" onKeyDown={(e) => e.key === "Enter" && text.trim() && emit({ text })} />
-            <Button disabled={disabled || !text.trim()} onClick={() => emit({ text })}>{submitLabel}</Button>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              {/* Plain-text answer with the integrated math keyboard (∑). The
+                  stored payload stays { text } — autosave, scoring and teacher
+                  marking are unchanged. */}
+              <MathAnswerInput
+                value={text}
+                disabled={disabled}
+                placeholder="Type your answer… (tap ∑ for math symbols)"
+                ariaLabel="Short answer"
+                onChange={(next) => { changed(); setText(next); }}
+                onCommit={() => text.trim() && emit({ text })}
+              />
+            </div>
+            <Button className="shrink-0" disabled={disabled || !text.trim()} onClick={() => emit({ text })}>{submitLabel}</Button>
           </div>
         )}
 
         {t === "numeric" && (
-          <div className="flex gap-2">
-            <Input type="number" step="any" value={num} disabled={disabled} onChange={(e) => { changed(); setNum(e.target.value); }} placeholder="Enter a number…" onKeyDown={(e) => e.key === "Enter" && num.trim() && emit({ value: parseFloat(num) })} />
-            <Button disabled={disabled || !num.trim()} onClick={() => emit({ value: parseFloat(num) })}>{submitLabel}</Button>
+          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start">
+            <div className="min-w-0 flex-1">
+              {/* inputMode="decimal" (not type="number") so π, √ and fractions
+                  composed with the math keyboard stay visible and editable;
+                  the emitted payload is still the finite { value } number. */}
+              <MathAnswerInput
+                value={num}
+                disabled={disabled}
+                variant="numeric"
+                inputMode="decimal"
+                placeholder="Enter a number… (tap ∑ for π, √, fractions)"
+                ariaLabel="Numeric answer"
+                onChange={(next) => { changed(); setNum(next); }}
+                onCommit={() => num.trim() && Number.isFinite(parseFloat(num)) && emit({ value: parseFloat(num) })}
+              />
+            </div>
+            <Button className="shrink-0" disabled={disabled || !num.trim() || !Number.isFinite(parseFloat(num))} onClick={() => emit({ value: parseFloat(num) })}>{submitLabel}</Button>
           </div>
         )}
 
@@ -422,17 +449,20 @@ export function QuestionRunner({
                       💡 Hint
                     </button>
                   </div>
-                  <div className="mt-3 flex items-center gap-2">
-                    <Input
+                  <div className="mt-3">
+                    {/* Math keyboard for every part kind; numeric parts get the
+                        compact keyboard and a decimal input mode. */}
+                    <MathAnswerInput
                       value={partValues[part.id] ?? ""}
                       disabled={disabled}
+                      variant={part.kind === "numeric" ? "numeric" : "full"}
                       inputMode={part.kind === "numeric" ? "decimal" : "text"}
-                      placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2)" : "Type your answer…")}
-                      aria-label={`Answer for part ${part.label}`}
-                      onChange={(e) => { changed(); setPartValues((v) => ({ ...v, [part.id]: e.target.value })); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") emit({ parts: partValues }); }}
+                      placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2, or tap ∑)" : "Type your answer…")}
+                      ariaLabel={`Answer for part ${part.label}`}
+                      unit={part.unit}
+                      onChange={(next) => { changed(); setPartValues((v) => ({ ...v, [part.id]: next })); }}
+                      onCommit={() => emit({ parts: partValues })}
                     />
-                    {part.unit ? <span className="shrink-0 text-sm font-medium text-ink-soft">{part.unit}</span> : null}
                   </div>
                   {shownHints > 0 && (
                     <div className="mt-3 rounded-lg border border-gold-500/50 bg-gold-100/50 p-3 text-sm" role="region" aria-label={`Hint for part ${part.label}`}>

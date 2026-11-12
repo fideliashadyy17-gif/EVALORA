@@ -35,6 +35,11 @@ export function AnswerResponseView({
     ? (answer.doc as RichDoc)
     : null;
   const text = typeof answer.text === "string" ? answer.text : "";
+  /** Assess Prep per-part answers `{ parts: { id: string } }`, rendered as a
+      labelled list (through MathText) instead of falling back to raw JSON. */
+  const partEntries = answer.parts && typeof answer.parts === "object" && !Array.isArray(answer.parts)
+    ? Object.entries(answer.parts as Record<string, unknown>).filter(([, v]) => typeof v === "string" && (v as string).trim())
+    : [];
   const graph = answer.graph ? normaliseGraphSpec(answer.graph) : null;
   const geometry = answer.geometry ? normaliseGeometrySpec(answer.geometry) : null;
   const statistics = answer.statistics ? normaliseStatsSpec(answer.statistics) : null;
@@ -62,6 +67,22 @@ export function AnswerResponseView({
         </div>
       ) : null}
 
+      {!doc && !text.trim() && partEntries.length > 0 && (
+        <div className="rounded-xl border border-evergreen-900/10 bg-white p-4">
+          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-ink-soft">Answer per part</p>
+          <dl className="space-y-1.5">
+            {partEntries.map(([id, value], index) => (
+              <div key={id} className="flex items-baseline gap-2 text-sm">
+                <dt className="shrink-0 font-semibold text-evergreen-900">Part {index + 1}</dt>
+                <dd className="min-w-0 flex-1 whitespace-pre-wrap leading-relaxed">
+                  <MathText text={String(value)} />
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      )}
+
       {graph && graphSpecHasWork(graph) && (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-ink-soft">Graph submitted by the candidate</p>
@@ -87,7 +108,7 @@ export function AnswerResponseView({
         </div>
       )}
 
-      {!doc && !text.trim() && !(graph && graphSpecHasWork(graph)) && !(geometry && geometrySpecHasWork(geometry)) &&
+      {!doc && !text.trim() && partEntries.length === 0 && !(graph && graphSpecHasWork(graph)) && !(geometry && geometrySpecHasWork(geometry)) &&
         !statisticsWork && !tableWork && (
         structured ? (
           <p className="text-sm text-ink-soft">(empty response)</p>

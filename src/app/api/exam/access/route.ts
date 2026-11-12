@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { manualPauseMs } from "@/lib/examPause";
 import { accessCodeMatches } from "@/lib/exam-access";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
@@ -34,7 +35,9 @@ export async function POST(request: Request) {
     exam = (codedExams ?? []).find((row) => accessCodeMatches(examCode, row.access_code as string | null)) ?? null;
   }
   if (!exam) return NextResponse.json({ error: "Examination not found. Check the exam code." }, { status: 404 });
-  if (exam.status !== "open")
+  // A paused examination admits ONLY candidates resuming an existing active
+  // attempt (checked below); every other non-open status refuses everyone.
+  if (exam.status !== "open" && exam.status !== "paused")
     return NextResponse.json({ error: "This examination is not open yet. Please check with your institution." }, { status: 403 });
 
   const now = new Date();
@@ -73,6 +76,15 @@ export async function POST(request: Request) {
   const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
   const latestAttempt = rowsForCandidate[0] ?? null;
   let attempt: Record<string, unknown> | null = rowsForCandidate.find((row) => row.status === "in_progress") ?? null;
+
+  // Paused examination gate: resuming the active attempt is allowed (the
+  // attempt routes freeze composition and the countdown while paused); new
+  // attempts and retakes wait for the organizer to resume.
+  if (exam.status === "paused" && !attempt)
+    return NextResponse.json(
+      { error: "This examination has been paused by the organizer and is not accepting entries right now. If you already started it, sign in again with the same details to return to your saved attempt." },
+      { status: 409 },
+    );
 
   if (!attempt && latestAttempt) {
     const grant = await findUsableGrant(admin, exam.id, candidate.id);
@@ -154,10 +166,13 @@ export async function POST(request: Request) {
 
   const finalAttempt = attempt;
   if (!finalAttempt) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
+  // A resumed attempt carrying an open manual pause echoes the pause-aware
+  // deadline so the countdown never shows time the freeze already preserved.
   const deadline = attemptDeadline(
     exam,
     String(finalAttempt.started_at ?? ""),
     Number(finalAttempt.extension_minutes ?? 0),
+    manualPauseMs(finalAttempt as { pause_reasons?: string[] | null; paused_at?: string | null }, Date.now()),
   );
   return NextResponse.json({
     attempt_id: finalAttempt.id,

@@ -13,6 +13,20 @@ const originalLoad = Module._load;
 Module._load = function(request, parent) {
   if (parent?.filename === file) {
     if (request === './ui') return Object.fromEntries(['Button', 'Input', 'Textarea'].map((name) => [name, (props) => React.createElement({Button:'button', Input:'input', Textarea:'textarea'}[name], props)]));
+    if (request === '@/components/MathAnswerInput') {
+      // Interaction-faithful stand-in: a plain input plus the ∑ keyboard toggle.
+      const MathAnswerInput = ({ value, onChange, onCommit, disabled, placeholder, ariaLabel, unit }) => {
+        const [showKb, setShowKb] = React.useState(false);
+        return React.createElement('div', null,
+          React.createElement('input', { value, disabled: Boolean(disabled), placeholder, 'aria-label': ariaLabel,
+            onChange: (event) => onChange(event.target.value),
+            onKeyDown: (event) => { if (event.key === 'Enter' && String(value).trim()) onCommit?.(); } }),
+          unit ? React.createElement('span', null, unit) : null,
+          React.createElement('button', { type: 'button', disabled: Boolean(disabled), 'aria-label': 'Show the math keyboard', onClick: () => setShowKb((v) => !v) }, '∑'),
+          showKb ? React.createElement('div', { 'data-testid': 'math-keyboard-panel' }) : null);
+      };
+      return { MathAnswerInput };
+    }
     if (request === './MathText') return { MathText: ({text}) => text };
     if (request === './RichContent') return { RichContent: ({text}) => text };
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };

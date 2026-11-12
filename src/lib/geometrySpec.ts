@@ -15,7 +15,7 @@ export const GEOMETRY_COLORS = ["#0a5c36", "#b45309", "#1d4ed8", "#b91c1c", "#7c
 export const GEOMETRY_LINE_STYLES = ["solid", "dashed", "dotted"] as const;
 export type GeometryLineStyle = (typeof GEOMETRY_LINE_STYLES)[number];
 
-export type GeometryPointKind = "free" | "midpoint" | "foot" | "intersection";
+export type GeometryPointKind = "free" | "midpoint" | "foot" | "intersection" | "bisector";
 
 export interface GeometryPoint {
   id: string;
@@ -185,7 +185,7 @@ export function normaliseGeometrySpec(raw: unknown, fallback: GeometrySpec = emp
     const id = idText(p.id) || `P${i + 1}`;
     if (pointIds.has(id)) continue;
     pointIds.add(id);
-    const kind: GeometryPointKind = ["midpoint", "foot", "intersection"].includes(String(p.kind))
+    const kind: GeometryPointKind = ["midpoint", "foot", "intersection", "bisector"].includes(String(p.kind))
       ? (p.kind as GeometryPointKind)
       : "free";
     points.push({
@@ -455,6 +455,23 @@ export function resolveGeometry(spec: GeometrySpec): ResolvedGeometry {
           const d1 = resolveLineDirection(l1);
           const d2 = resolveLineDirection(l2);
           if (d1 && d2) solved = intersectionOf(d1.a, d1.d, d2.a, d2.d);
+        }
+      } else if (p.kind === "bisector") {
+        // dependsOn = [arm A, vertex, arm B]: the point sits one unit from the
+        // vertex along the internal angle bisector, so a ray vertex→point is
+        // the bisector and follows its three parents when they are dragged.
+        const a = points.get(p.dependsOn[0]);
+        const v = points.get(p.dependsOn[1]);
+        const b = points.get(p.dependsOn[2]);
+        if (a && v && b) {
+          const la = Math.hypot(a.x - v.x, a.y - v.y);
+          const lb = Math.hypot(b.x - v.x, b.y - v.y);
+          if (la > 1e-9 && lb > 1e-9) {
+            const dx = (a.x - v.x) / la + (b.x - v.x) / lb;
+            const dy = (a.y - v.y) / la + (b.y - v.y) / lb;
+            const len = Math.hypot(dx, dy);
+            if (len > 1e-9) solved = { x: v.x + dx / len, y: v.y + dy / len };
+          }
         }
       }
       if (solved) {

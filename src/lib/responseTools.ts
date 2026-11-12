@@ -388,6 +388,8 @@ export function answerHasWork(answer: Record<string, unknown> | null | undefined
     if (Array.isArray(graph.functions) && graph.functions.some((f) => isRecord(f) && typeof f.expression === "string" && f.expression.trim())) return true;
     if (Array.isArray(graph.segments) && graph.segments.length) return true;
     if (Array.isArray(graph.annotations) && graph.annotations.some((a) => isRecord(a) && typeof a.text === "string" && a.text.trim())) return true;
+    if (Array.isArray(graph.strokes) && graph.strokes.some((st) => isRecord(st) && Array.isArray(st.points) && st.points.length >= 2)) return true;
+    if (Array.isArray(graph.regions) && graph.regions.length) return true;
   }
   const geometry = answer.geometry;
   if (geometry && isRecord(geometry)) {

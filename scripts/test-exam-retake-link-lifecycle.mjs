@@ -53,9 +53,26 @@ check("a future activation is Scheduled", () => {
   assert.equal(l.status, "scheduled");
 });
 
-check("a missing expiry is treated as Expired, never permanent", () => {
-  const l = examLinkLifecycle({ shared_link_enabled: true, invite_expires_at: null }, now);
+// Migration 0096 makes a stored NULL expiry impossible (trigger + backfill).
+// If a legacy row ever arrives without one, display and gate must AGREE that
+// the link is usable and flag the missing configuration — the 2026-11-12
+// incident was the display saying "Expired" while the gate admitted students.
+check("a missing expiry keeps display and gate consistent (usable, flagged)", () => {
+  const row = { shared_link_enabled: true, invite_expires_at: null };
+  const l = examLinkLifecycle(row, now);
+  const a = examAccessAvailability({ ...row, status: "open", starts_at: null, ends_at: null }, now);
+  assert.equal(l.status, "active");
+  assert.match(l.detail, /no explicit expiration/i);
+  assert.equal(a.ok, true);
+});
+
+check("an unreadable expiry is Expired in BOTH display and gate", () => {
+  const row = { shared_link_enabled: true, invite_expires_at: "not-a-date" };
+  const l = examLinkLifecycle(row, now);
+  const a = examAccessAvailability({ ...row, status: "open", starts_at: null, ends_at: null }, now);
   assert.equal(l.status, "expired");
+  assert.equal(a.ok, false);
+  assert.equal(a.reason, "link_expired");
 });
 
 check("an explicit policy exemption can be unexpired", () => {

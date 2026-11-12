@@ -97,11 +97,11 @@ const play = read("src/app/play/[code]/PlayClient.tsx");
 check("participant UI collects qualification token", play.includes("qualificationToken") && play.includes("qualification_token"));
 
 const examLink = read("src/app/api/exam/link-access/route.ts");
-check("exam link validates code against server hash", examLink.includes("access_code_hash !== sha256"));
+check("exam link validates code against server hash", examLink.includes("access_code_hash === sha256(normalizeCode(access_code))") && examLink.includes("accessCodeMatches"));
 check("exam link requires first and last name", examLink.includes("first_name") && examLink.includes("last_name") && examLink.includes("min(1)"));
 check("exam link validates eligible class", examLink.includes("eligibleClasses") && examLink.includes("organization_id"));
 check("exam link associates only verified student", examLink.includes("students") && examLink.includes("user_id") && !examLink.includes("full_name ="));
-check("exam link prevents duplicate/conflicting attempts", examLink.includes("guestKeyHash") && examLink.includes("Duplicate attempts"));
+check("exam link prevents duplicate/conflicting attempts", examLink.includes("guestKeyHash") && examLink.includes("Duplicate attempts") && examLink.includes("samePerson") && examLink.includes("uq_exam_candidate_shared_identity"));
 check("exam access routes enforce configured attempt policy", examLink.includes("attemptPolicy") && read("src/app/api/exam/access/route.ts").includes('attemptPolicy !== "read_only_reentry"'));
 const examPage = read("src/app/exam/join/[token]/page.tsx");
 check("exam link scopes classes to the exam stage", examLink.includes('eq("phase_key", stage)') && examPage.includes('eq("phase_key", stage)'));

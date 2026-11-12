@@ -76,6 +76,28 @@ export interface GraphAnnotation {
   color: string;
 }
 
+/** A freehand stroke: a polyline the candidate drew directly on the plane. */
+export interface GraphStroke {
+  id: string;
+  /** Plane coordinates, in drawing order. */
+  points: { x: number; y: number }[];
+  color: string;
+  width: number;
+  visible: boolean;
+}
+
+/** A highlighted rectangular region (e.g. a solution set or an area under a curve). */
+export interface GraphRegion {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  color: string;
+  label: string;
+  visible: boolean;
+}
+
 export interface GraphSpec {
   version: number;
   title: string;
@@ -84,6 +106,10 @@ export interface GraphSpec {
   points: GraphPoint[];
   segments: GraphSegment[];
   annotations: GraphAnnotation[];
+  /** Freehand strokes drawn on the plane (added after v1; always safe to default to []). */
+  strokes: GraphStroke[];
+  /** Highlighted rectangular regions (added after v1; always safe to default to []). */
+  regions: GraphRegion[];
 }
 
 export const GRAPH_LIMITS = {
@@ -92,6 +118,9 @@ export const GRAPH_LIMITS = {
   segments: 150,
   annotations: 60,
   expression: 240,
+  strokes: 40,
+  strokePoints: 600,
+  regions: 20,
 } as const;
 
 export function emptyGraphSpec(overrides: Partial<GraphSpec> = {}): GraphSpec {
@@ -115,6 +144,8 @@ export function emptyGraphSpec(overrides: Partial<GraphSpec> = {}): GraphSpec {
     points: [],
     segments: [],
     annotations: [],
+    strokes: [],
+    regions: [],
     ...overrides,
   };
 }
@@ -225,6 +256,40 @@ export function normaliseGraphSpec(raw: unknown, fallback: GraphSpec = emptyGrap
       } satisfies GraphAnnotation;
     });
 
+  const strokes = (Array.isArray(source.strokes) ? source.strokes : [])
+    .slice(0, GRAPH_LIMITS.strokes)
+    .map((row, i) => {
+      const s = (row && typeof row === "object" ? row : {}) as Record<string, unknown>;
+      const pts = (Array.isArray(s.points) ? s.points : [])
+        .slice(0, GRAPH_LIMITS.strokePoints)
+        .map((raw) => {
+          const p = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+          return { x: clamp(finite(p.x, 0), -10000, 10000), y: clamp(finite(p.y, 0), -10000, 10000) };
+        })
+        .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+      return {
+        id: safeId(s.id, "stroke", i),
+        points: pts,
+        color: colour(s.color, GRAPH_COLORS[2]),
+        width: clamp(finite(s.width, 2.5), 1, 8),
+        visible: bool(s.visible, true),
+      } satisfies GraphStroke;
+    })
+    .filter((s) => s.points.length >= 2);
+
+  const regions = (Array.isArray(source.regions) ? source.regions : [])
+    .slice(0, GRAPH_LIMITS.regions)
+    .map((row, i) => {
+      const r = (row && typeof row === "object" ? row : {}) as Record<string, unknown>;
+      return {
+        id: safeId(r.id, "region", i),
+        x1: finite(r.x1, 0), y1: finite(r.y1, 0), x2: finite(r.x2, 0), y2: finite(r.y2, 0),
+        color: colour(r.color, GRAPH_COLORS[4]),
+        label: text(r.label, 60),
+        visible: bool(r.visible, true),
+      } satisfies GraphRegion;
+    });
+
   return {
     version: GRAPH_SPEC_VERSION,
     title: text(source.title, 100),
@@ -233,6 +298,8 @@ export function normaliseGraphSpec(raw: unknown, fallback: GraphSpec = emptyGrap
     points,
     segments,
     annotations,
+    strokes,
+    regions,
   };
 }
 
@@ -240,7 +307,8 @@ export function normaliseGraphSpec(raw: unknown, fallback: GraphSpec = emptyGrap
 export function graphSpecHasWork(spec: GraphSpec | null | undefined): boolean {
   if (!spec) return false;
   return spec.functions.some((f) => f.expression.trim()) || spec.points.length > 0 ||
-    spec.segments.length > 0 || spec.annotations.some((a) => a.text.trim());
+    spec.segments.length > 0 || spec.annotations.some((a) => a.text.trim()) ||
+    (spec.strokes ?? []).some((s) => s.points.length >= 2) || (spec.regions ?? []).length > 0;
 }
 
 export function graphSpecSummary(spec: GraphSpec | null | undefined): string {
@@ -252,6 +320,8 @@ export function graphSpecSummary(spec: GraphSpec | null | undefined): string {
   if (spec.points.length) parts.push(`${spec.points.length} plotted point(s)`);
   if (spec.segments.length) parts.push(`${spec.segments.length} drawn segment(s)`);
   if (spec.annotations.length) parts.push(`${spec.annotations.length} annotation(s)`);
+  if ((spec.strokes ?? []).length) parts.push(`${spec.strokes.length} freehand stroke(s)`);
+  if ((spec.regions ?? []).length) parts.push(`${spec.regions.length} highlighted region(s)`);
   return parts.join(" · ");
 }
 

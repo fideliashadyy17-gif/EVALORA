@@ -19,6 +19,8 @@ Module._load=function(request,parent){
   // The deadline and submission rules live in their own modules so that no route
   // can hold a private copy of them; this suite only exercises credentials, so it
   // supplies a deadline that is always in the future.
+  if(request==='@/lib/examPause') return {isManuallyPaused:()=>false,hasConnectionPause:()=>false,hasOrganizerPause:()=>false,manualPauseMs:()=>0,pauseNoticeKind:()=>null,parsePauseReasons:()=>[]};
+  if(request==='@/lib/connectionLost') return {isConnectionLost:()=>false,connectionLostAnchor:()=>null,pauseForConnectionLost:async()=>null,resumeConnectionPause:async()=>null,CONNECTION_LOST_AFTER_MS:65000};
   if(request==='@/lib/examDeadline') return {submissionWindow:(exam,attempt)=>attemptWindow(exam,attempt),attemptDeadlineInstant:()=>Date.now()+600000,deadlineReached:()=>false};
   if(request==='@/lib/examSubmission') return {applyDeadlineSubmission:async()=>({outcome:'already_closed',status:'in_progress',submittedAt:null,deadline:new Date(Date.now()+600000).toISOString(),autoSubmitted:false,score:null,max:null,window:attemptWindow(context.exam,context.attempt)})};
   if(request==='@/lib/examHintsServer') return {loadPublishedHints:async()=>new Map()};

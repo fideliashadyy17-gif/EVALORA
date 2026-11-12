@@ -4,6 +4,9 @@
  * authorization decision and no privileged exam data is returned publicly.
  */
 
+import type { ExamLinkWindowInput } from "./examLink.ts";
+import { examLinkWindow } from "./examLink.ts";
+
 export type AccessMode = "shared_link" | "registered_students_only";
 export type AttemptPolicy = "single_resume" | "read_only_reentry";
 export type IdentityFieldType = "text" | "email" | "number";
@@ -25,22 +28,35 @@ export interface ExamAccessSettings {
   proctoring: boolean;
 }
 
-export interface ExamAccessExam {
+/**
+ * Examination row shape required for availability checks. The link-level
+ * half is exactly `ExamLinkWindowInput`, so the gate and the administrator
+ * display operate on one shared contract.
+ */
+export interface ExamAccessExam extends ExamLinkWindowInput {
   status: string;
   starts_at: string | null;
   ends_at: string | null;
-  shared_link_enabled: boolean | null;
-  invite_expires_at: string | null;
-  /** Optional scheduled activation instant (migration 0076). */
-  invite_activates_at?: string | null;
-  /** Explicit administrator exemption from link expiry. */
-  invite_no_expiry?: boolean | null;
 }
 
 export interface ExamAccessAvailability {
   ok: boolean;
   error?: string;
   label: string;
+  /**
+   * Machine-readable refusal class so clients can distinguish an invalid
+   * code from an expired link, a closed window, a missing authorization or a
+   * temporary failure — and never present an infrastructure problem as a
+   * student mistake. Present on every non-ok result.
+   */
+  reason?:
+    | "link_disabled"
+    | "link_scheduled"
+    | "link_expired"
+    | "exam_paused"
+    | "exam_not_open"
+    | "opens_later"
+    | "window_closed";
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -179,9 +195,16 @@ export function sanitizeIdentityData(
 /**
  * One source of truth for link-page / API availability checks.
  *
+ * The link-level half (disabled → scheduled → expired) is delegated to the
+ * SAME pure rule the administrator display uses (`examLinkWindow` in
+ * `./examLink`), so what an organizer sees and what the admission gate
+ * enforces can never disagree. This function then adds the examination-level
+ * checks (status and open window) that only the gate needs.
+ *
  * `now` is always injected by the caller and must be the SERVER clock. The
  * candidate's device clock is never consulted, so changing it cannot reopen an
- * expired link.
+ * expired link. All stored instants are UTC `timestamptz`, so no timezone
+ * conversion can make a valid link appear expired prematurely.
  *
  * Link expiry only ever decides whether a NEW attempt may start. Nothing here
  * looks at, closes or alters an attempt that is already in progress — that
@@ -191,34 +214,42 @@ export function examAccessAvailability(
   exam: ExamAccessExam,
   now: Date = new Date(),
 ): ExamAccessAvailability {
-  if (!exam.shared_link_enabled) return { ok: false, error: "This examination link is currently closed.", label: "Link closed" };
+  const window = examLinkWindow(exam, now);
 
-  const activates = exam.invite_activates_at ? Date.parse(exam.invite_activates_at) : null;
-  if (activates !== null && Number.isFinite(activates) && activates > now.getTime())
+  if (window.state === "disabled")
+    return { ok: false, error: "This examination link is currently closed.", label: "Link closed", reason: "link_disabled" };
+
+  if (window.state === "scheduled")
     return {
       ok: false,
-      error: `This examination link is scheduled to open on ${formatUtc(activates)}.`,
-      label: `Scheduled ${formatUtc(activates)}`,
+      error: `This examination link is scheduled to open on ${formatUtc(window.activatesMs ?? NaN)}.`,
+      label: `Scheduled ${formatUtc(window.activatesMs ?? NaN)}`,
+      reason: "link_scheduled",
     };
 
-  if (!exam.invite_no_expiry && exam.invite_expires_at) {
-    const expires = Date.parse(exam.invite_expires_at);
-    if (!Number.isFinite(expires) || expires <= now.getTime())
-      return {
-        ok: false,
-        error: exam.invite_expires_at && Number.isFinite(expires)
-          ? `This examination link expired on ${formatUtc(expires)} and can no longer start a new attempt.`
-          : "This examination link has expired and can no longer start a new attempt.",
-        label: "Link expired",
-      };
-  }
+  if (window.state === "expired")
+    return {
+      ok: false,
+      error: window.expiresMs !== null
+        ? `This examination link expired on ${formatUtc(window.expiresMs)} and can no longer start a new attempt.`
+        : "This examination link has expired and can no longer start a new attempt.",
+      label: "Link expired",
+      reason: "link_expired",
+    };
 
+  if (exam.status === "paused")
+    return {
+      ok: false,
+      error: "This examination has been paused by the organizer. If you already started it, reopen your link to return to your saved attempt; new entries resume when the organizer unpauses.",
+      label: "Paused by organizer",
+      reason: "exam_paused",
+    };
   if (exam.status !== "open")
-    return { ok: false, error: "This examination is not open.", label: `Status: ${exam.status}` };
+    return { ok: false, error: "This examination is not open.", label: `Status: ${exam.status}`, reason: "exam_not_open" };
   if (exam.starts_at && Date.parse(exam.starts_at) > now.getTime())
-    return { ok: false, error: `This examination opens at ${formatUtc(Date.parse(exam.starts_at))}.`, label: `Opens ${formatUtc(Date.parse(exam.starts_at))}` };
+    return { ok: false, error: `This examination opens at ${formatUtc(Date.parse(exam.starts_at))}.`, label: `Opens ${formatUtc(Date.parse(exam.starts_at))}`, reason: "opens_later" };
   if (exam.ends_at && Date.parse(exam.ends_at) < now.getTime())
-    return { ok: false, error: "This examination window has closed.", label: "Window closed" };
+    return { ok: false, error: "This examination window has closed.", label: "Window closed", reason: "window_closed" };
   return { ok: true, label: "Open now" };
 }
 

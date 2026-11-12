@@ -2,6 +2,8 @@
 
 import {
   DATA_TABLE_LIMITS,
+  insertDataTableColumn,
+  insertDataTableRow,
   normaliseDataTableSpec,
   resizeDataTable,
   type DataTableSpec,
@@ -106,6 +108,18 @@ export function DataTableEditor({
                     aria-label={`Column ${columnIndex + 1} heading`}
                     onChange={(event) => setColumn(columnIndex, event.target.value)}
                   />
+                  {allowStructure && (
+                    <button
+                      type="button"
+                      className="data-table-remove"
+                      disabled={clean.columns.length >= DATA_TABLE_LIMITS.columns}
+                      onClick={() => publish(insertDataTableColumn(clean, columnIndex))}
+                      aria-label={`Insert a column before column ${columnIndex + 1}`}
+                      title="Insert column here"
+                    >
+                      +←
+                    </button>
+                  )}
                   {allowStructure && clean.columns.length > 1 && (
                     <button
                       type="button"
@@ -124,6 +138,18 @@ export function DataTableEditor({
             {clean.rows.map((row, rowIndex) => (
               <tr key={`row-${rowIndex}`}>
                 <th className="data-table-rownum" scope="row">
+                  {allowStructure ? (
+                    <button
+                      type="button"
+                      className="data-table-remove"
+                      disabled={clean.rows.length >= DATA_TABLE_LIMITS.rows}
+                      onClick={() => publish(insertDataTableRow(clean, rowIndex))}
+                      aria-label={`Insert a row above row ${rowIndex + 1}`}
+                      title="Insert row here"
+                    >
+                      +↑
+                    </button>
+                  ) : null}
                   {allowStructure && clean.rows.length > 1 ? (
                     <button
                       type="button"
