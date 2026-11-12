@@ -1,7 +1,12 @@
 "use server";
 
 import { audit, fstr, requireSuperAdmin } from "@/lib/admin";
-import { normalizeGrantedAttempts, resolveRetakeAccessWindow } from "@/lib/examRetake";
+import {
+  generateRetakeCode,
+  normalizeGrantedAttempts,
+  resolveRetakeAccessWindow,
+} from "@/lib/examRetake";
+import { randomBytes } from "node:crypto";
 import { notifyRetakeDecision, recordRetakeAudit } from "@/lib/examRetakeServer";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -77,21 +82,36 @@ export async function approveRetakeAsAdmin(formData: FormData) {
   const note = fstr(formData, "decision_note", 2000);
 
   // Conditional update: two concurrent approvals can only produce one decision.
-  const { data: updated, error } = await admin
-    .from("exam_retake_requests")
-    .update({
-      status: "approved",
-      decided_by: ctx.user.id,
-      decided_at: new Date().toISOString(),
-      decision_note: note,
-      granted_attempts: grantedAttempts,
-      access_expires_at: window.expiresAt,
-    })
-    .eq("id", requestId)
-    .eq("status", "pending")
-    .select("id")
-    .maybeSingle();
-  if (error) go(back, "e=failed");
+  // The retake code is generated here and its uniqueness is enforced by the
+  // database index, so a collision is retried instead of being written twice.
+  let retakeCode: string | null = null;
+  let updated: { id: string } | null = null;
+  for (let attempt = 0; attempt < 5 && !updated; attempt += 1) {
+    retakeCode = generateRetakeCode((size) => randomBytes(size));
+    const { data, error } = await admin
+      .from("exam_retake_requests")
+      .update({
+        status: "approved",
+        decided_by: ctx.user.id,
+        decided_at: new Date().toISOString(),
+        decision_note: note,
+        granted_attempts: grantedAttempts,
+        access_expires_at: window.expiresAt,
+        retake_code: retakeCode,
+        retake_code_issued_at: new Date().toISOString(),
+      })
+      .eq("id", requestId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) {
+      // 23505 = the generated code already belongs to another approval.
+      if ((error as { code?: string }).code === "23505") continue;
+      go(back, "e=failed");
+    }
+    updated = (data as { id: string } | null) ?? null;
+  }
+  if (!retakeCode) go(back, "e=failed");
   if (!updated) go(back, "ok=already_decided");
 
   // Optional, explicit window administration. Extending `ends_at` can only
@@ -125,7 +145,12 @@ export async function approveRetakeAsAdmin(formData: FormData) {
     organizationId: exam.organization_id,
     requestId,
     actorId: ctx.user.id,
-    metadata: { granted_attempts: grantedAttempts, access_expires_at: window.expiresAt, exam_patch: examPatch },
+    metadata: {
+      granted_attempts: grantedAttempts,
+      access_expires_at: window.expiresAt,
+      exam_patch: examPatch,
+      retake_code_issued: true,
+    },
   });
   await notifyRetakeDecision(admin, {
     request: {
@@ -139,6 +164,7 @@ export async function approveRetakeAsAdmin(formData: FormData) {
     decision: "approved",
     note,
     accessExpiresAt: window.expiresAt,
+    retakeCode,
   });
 
   revalidateAll();

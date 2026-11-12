@@ -264,6 +264,8 @@ export async function notifyRetakeDecision(
     decision: "approved" | "rejected";
     note?: string | null;
     accessExpiresAt?: string | null;
+    /** The code issued by the approval, shown to the student with the decision. */
+    retakeCode?: string | null;
   },
 ) {
   let profileId: string | null = input.request.requested_by ?? null;
@@ -295,17 +297,20 @@ export async function notifyRetakeDecision(
   const approved = input.decision === "approved";
   const body = approved
     ? `Your retake request for “${input.examTitle}” was approved.`
+      + (input.retakeCode ? ` Retake code: ${input.retakeCode}.` : "")
       + (input.accessExpiresAt ? ` Start the authorized attempt before ${input.accessExpiresAt} (UTC).` : "")
       + " Your original submitted attempt is preserved."
     : `Your retake request for “${input.examTitle}” was rejected.`
       + (input.note ? ` Reason: ${input.note}` : "")
       + " Your original submitted attempt is unchanged.";
 
+  // The link opens the decision page itself, so a notification always leads to
+  // the exact request — never to a dashboard the student then has to search.
   await admin.from("notifications").insert({
     user_id: profileId,
     type: approved ? "exam_retake_approved" : "exam_retake_rejected",
     title: approved ? "Retake approved" : "Retake request rejected",
     body,
-    link: "/student",
+    link: `/retake/${input.request.id}`,
   });
 }

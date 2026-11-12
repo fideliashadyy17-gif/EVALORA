@@ -114,4 +114,120 @@ check("the migration is additive and preserves attempts", () => {
   assert.match(migration, /lock_timeout/);
 });
 
+/* ── The page that showed nothing ─────────────────────────────────────
+ * Migration 0076 added exam_attempts.retake_request_id, so the request table
+ * has TWO relationships to exam_attempts. An unqualified embed made PostgREST
+ * reject the whole select (PGRST201) and the page rendered as if there were no
+ * requests: no cards, therefore no Approve/Reject buttons. This is the exact
+ * regression these checks exist to prevent.
+ */
+check("the retake console disambiguates its attempt embed", () => {
+  assert.match(retakesPage, /exam_attempts!exam_retake_requests_attempt_id_fkey\(/);
+  assert.doesNotMatch(retakesPage, /"exam_attempts\(/);
+});
+
+check("no surface embeds the ambiguous attempt relationship", () => {
+  const sources = [
+    "src/app/admin/examinations/retakes/page.tsx",
+    "src/app/admin/examinations/retake-actions.ts",
+    "src/app/student/page.tsx",
+    "src/app/retake/[requestId]/page.tsx",
+    "src/app/api/retake/access/route.ts",
+  ];
+  for (const path of sources) {
+    const source = file(path);
+    // A select string that names exam_attempts from a retake request must name
+    // the constraint too.
+    if (!source.includes("from(\"exam_retake_requests\")")) continue;
+    assert.doesNotMatch(source, /exam_attempts\((?!id,status,submitted_at)/, path);
+  }
+});
+
+check("a query failure can no longer masquerade as an empty queue", () => {
+  // The page reports the failure instead of silently rendering zeros.
+  assert.match(retakesPage, /const \[\{ data: rows, error: rowsError \}/);
+  assert.match(retakesPage, /rowsError\.message/);
+});
+
+/* ── Retake access: code, identity, single use ────────────────────────── */
+const accessApi = file("src/app/api/retake/access/route.ts");
+const retakePage = file("src/app/retake/[requestId]/page.tsx");
+const statusApi = file("src/app/api/retake/status/route.ts");
+const watcher = file("src/components/RetakeDecisionWatcher.tsx");
+const studentPage = file("src/app/student/page.tsx");
+const accessMigration = file("supabase/migrations/0083_exam_retake_access_codes.sql");
+
+check("the access route authorizes from the session, never from the form", () => {
+  assert.match(accessApi, /getSessionContext\(\)/);
+  assert.match(accessApi, /ownedBySession/);
+  assert.match(accessApi, /retakeNameMatches\(/);
+  assert.match(accessApi, /normalizeRetakeCode\(record\.retake_code\)/);
+  assert.match(accessApi, /retakeAccessProblem\(/);
+});
+
+check("a foreign approval answers exactly like a missing one", () => {
+  assert.match(accessApi, /This retake was not found\./);
+  assert.match(retakePage, /if \(!owns\) notFound\(\)/);
+});
+
+check("the access route refuses a closed or expired examination", () => {
+  assert.match(accessApi, /This examination is not open/);
+  assert.match(accessApi, /The examination window has closed/);
+});
+
+check("the new attempt is created through the audited helper, never inline", () => {
+  assert.match(accessApi, /startRetakeAttempt\(/);
+  assert.match(accessApi, /recordRetakeAudit\(/);
+  assert.match(accessApi, /retake_code_consumed_at/);
+});
+
+check("the decision page requires a session and returns there after sign-in", () => {
+  assert.match(retakePage, /redirect\(`\/login\?next=/);
+  assert.match(retakePage, /decision_seen_at/);
+});
+
+check("the rejection page shows the decision, the reason, and no way into a paper", () => {
+  assert.match(retakePage, /Your retake request has been rejected\./);
+  assert.match(retakePage, /row\.decision_note/);
+  assert.doesNotMatch(retakePage, /Start the retake/);
+  assert.match(retakePage, /status === "rejected" \|\| row\.status === "cancelled"/);
+});
+
+check("the student workspace redirects to a decision it has not shown yet", () => {
+  assert.match(studentPage, /decision_seen_at/);
+  assert.match(studentPage, /redirect\(`\/retake\/\$\{unseenDecision\.id\}`\)/);
+  assert.match(studentPage, /RetakeDecisionWatcher/);
+});
+
+check("decisions arrive live, with a fallback that cannot double-navigate", () => {
+  assert.match(watcher, /postgres_changes/);
+  assert.match(watcher, /\/api\/retake\/status/);
+  assert.match(watcher, /handled\.current/);
+  assert.match(statusApi, /getSessionContext/);
+  assert.match(statusApi, /decision_seen_at/);
+});
+
+check("notifications link to the exact decision page", () => {
+  const server = file("src/lib/examRetakeServer.ts");
+  assert.match(server, /link: `\/retake\/\$\{input\.request\.id\}`/);
+  assert.match(server, /Retake code: \$\{input\.retakeCode\}/);
+});
+
+check("an approval issues a unique, spendable code", () => {
+  assert.match(approveAction, /generateRetakeCode\(/);
+  assert.match(approveAction, /23505/);
+  assert.match(accessMigration, /create unique index if not exists uq_exam_retake_code/);
+  assert.match(accessMigration, /retake_code_consumed_at/);
+  assert.match(accessMigration, /decision_seen_at/);
+});
+
+check("the new migration is additive only", () => {
+  assert.doesNotMatch(accessMigration, /drop table/i);
+  assert.doesNotMatch(accessMigration, /delete from/i);
+  assert.doesNotMatch(accessMigration, /truncate/i);
+  assert.doesNotMatch(accessMigration, /alter column .* drop/i);
+  assert.match(accessMigration, /add column if not exists/);
+  assert.match(accessMigration, /alter publication supabase_realtime add table public\.exam_retake_requests/);
+});
+
 console.log(`\n${checks} checks passed`);

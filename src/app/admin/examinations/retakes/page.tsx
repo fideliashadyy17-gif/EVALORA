@@ -25,6 +25,10 @@ interface RetakeRow {
   decision_note: string | null;
   granted_attempts: number;
   access_expires_at: string | null;
+  retake_code: string | null;
+  retake_code_consumed_at: string | null;
+  retake_started_at: string | null;
+  decision_seen_at: string | null;
   created_at: string;
   exams: {
     id: string;
@@ -82,10 +86,14 @@ export default async function RetakeRequestsPage({
   let query = admin
     .from("exam_retake_requests")
     .select(
-      "id,exam_id,candidate_id,attempt_id,student_id,requested_by,requester_name,requester_email,reason,status,decided_at,decision_note,granted_attempts,access_expires_at,created_at," +
+      "id,exam_id,candidate_id,attempt_id,student_id,requested_by,requester_name,requester_email,reason,status,decided_at,decision_note,granted_attempts,access_expires_at,retake_code,retake_code_consumed_at,retake_started_at,decision_seen_at,created_at," +
       "exams(id,title,status,organization_id,settings,organizations(name))," +
       "exam_candidates(id,full_name,first_name,last_name,email,class_id,student_id)," +
-      "exam_attempts(id,status,submitted_at,score,max_score,attempt_number)," +
+      // Disambiguate: the request links to its original attempt, and migration
+      // 0076 also added the reverse exam_attempts.retake_request_id link. Without
+      // the constraint name PostgREST rejects the whole select (PGRST201) and the
+      // page renders as if no request existed.
+      "exam_attempts!exam_retake_requests_attempt_id_fkey(id,status,submitted_at,score,max_score,attempt_number)," +
       "students(full_name,student_ref)," +
       "requester:profiles!exam_retake_requests_requested_by_fkey(full_name,email)," +
       "decider:profiles!exam_retake_requests_decided_by_fkey(full_name,email)",
@@ -95,12 +103,17 @@ export default async function RetakeRequestsPage({
   if (statusFilter) query = query.eq("status", statusFilter);
   if (sp.exam) query = query.eq("exam_id", sp.exam);
 
-  const [{ data: rows }, pending, approved, rejected] = await Promise.all([
+  const [{ data: rows, error: rowsError }, pending, approved, rejected] = await Promise.all([
     query,
     admin.from("exam_retake_requests").select("id", { count: "exact", head: true }).eq("status", "pending"),
     admin.from("exam_retake_requests").select("id", { count: "exact", head: true }).eq("status", "approved"),
     admin.from("exam_retake_requests").select("id", { count: "exact", head: true }).eq("status", "rejected"),
   ]);
+
+  // A failed read is never dressed up as an empty queue: the console says so,
+  // and the reason is logged for the operator. (An ambiguous embed used to
+  // fail exactly here and the page looked like nobody had asked for a retake.)
+  if (rowsError) console.error("[retake-requests] list query failed:", rowsError.message);
 
   const requests = ((rows ?? []) as unknown as RetakeRow[]).filter((row) => {
     if (!sp.q) return true;
@@ -130,6 +143,14 @@ export default async function RetakeRequestsPage({
         action={<ButtonLink href="/admin/examinations/links" variant="outline">Link expiration</ButtonLink>}
       />
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />
+
+      {rowsError && (
+        <div role="alert" className="mb-5 rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-900">
+          <p className="font-semibold">The retake queue could not be read.</p>
+          <p className="mt-1 text-xs">{rowsError.message}</p>
+          <p className="mt-1 text-xs">Nothing is lost — this is a read failure. Reload to try again.</p>
+        </div>
+      )}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Pending requests" value={pending.count ?? 0} />
@@ -313,6 +334,12 @@ export default async function RetakeRequestsPage({
                     <>
                       <LocalTime iso={row.access_expires_at} fallback="—" />
                       <span className="block text-xs text-ink-soft">{row.granted_attempts} attempt(s)</span>
+                      {row.retake_code && (
+                        <span className="mt-1 block font-mono text-[11px] tracking-[0.14em] text-evergreen-800">
+                          code {row.retake_code}
+                          {row.retake_code_consumed_at ? " (used)" : ""}
+                        </span>
+                      )}
                     </>
                   ) : "—"}
                 </td>
