@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { accessCodeMatches } from "@/lib/exam-access";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
 import { loadQuizQuestions, seededShuffle } from "@/lib/live";
@@ -7,8 +8,10 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const Body = z.object({
-  exam_code: z.string().min(4).max(16),
-  candidate_code: z.string().min(4).max(20),
+  // Generous length limits: a code pasted with spaces around its hyphens
+  // (e.g. "MYP2 - FORM2 - 2026") must not be rejected before it is compared.
+  exam_code: z.string().min(4).max(32),
+  candidate_code: z.string().min(4).max(32),
 });
 
 /**
@@ -23,7 +26,13 @@ export async function POST(request: Request) {
   const candidateCode = parsed.data.candidate_code.trim().toUpperCase();
 
   const admin = createAdminClient();
-  const { data: exam } = await admin.from("exams").select("*").eq("access_code", examCode).maybeSingle();
+  const { data: exactExam } = await admin.from("exams").select("*").eq("access_code", examCode).maybeSingle();
+  let exam = exactExam;
+  if (!exam) {
+    // Forgiving fallback: hyphens/spaces or O/0, I/1 transcription slips.
+    const { data: codedExams } = await admin.from("exams").select("*").not("access_code", "is", null);
+    exam = (codedExams ?? []).find((row) => accessCodeMatches(examCode, row.access_code as string | null)) ?? null;
+  }
   if (!exam) return NextResponse.json({ error: "Examination not found. Check the exam code." }, { status: 404 });
   if (exam.status !== "open")
     return NextResponse.json({ error: "This examination is not open yet. Please check with your institution." }, { status: 403 });
@@ -34,12 +43,18 @@ export async function POST(request: Request) {
   if (exam.ends_at && new Date(exam.ends_at) < now)
     return NextResponse.json({ error: "This examination window has closed." }, { status: 403 });
 
-  const { data: candidate } = await admin
+  const { data: exactCandidate } = await admin
     .from("exam_candidates")
     .select("*")
     .eq("exam_id", exam.id)
     .eq("access_code", candidateCode)
     .maybeSingle();
+  let candidate = exactCandidate;
+  if (!candidate) {
+    const { data: examCandidates } = await admin.from("exam_candidates").select("*").eq("exam_id", exam.id);
+    candidate =
+      (examCandidates ?? []).find((row) => accessCodeMatches(candidateCode, row.access_code as string | null)) ?? null;
+  }
   if (!candidate)
     return NextResponse.json({ error: "Candidate code not recognized for this examination." }, { status: 404 });
 

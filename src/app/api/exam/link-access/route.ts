@@ -1,6 +1,7 @@
 import { attemptDeadline } from "@/lib/exam";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import {
+  accessCodeMatches,
   examAccessAvailability,
   identityDataEqual,
   mergeEligibleClassIds,
@@ -112,8 +113,22 @@ export async function POST(request: Request) {
         { status: 403 },
       );
   }
-  if (exam.access_code_hash !== sha256(normalizeCode(access_code)))
-    return NextResponse.json({ error: "That access code is not correct for this examination." }, { status: 403 });
+  // Exact hash match first (the historical behaviour); otherwise fall back to
+  // a canonical comparison against the stored code so that plausible
+  // transcriptions — dropped hyphens, internal spaces, smart dashes, O/0 or
+  // I/1 confusion from a touch keyboard — are still accepted. The stored code
+  // is never changed; only the comparison is forgiving.
+  const codeAccepted =
+    exam.access_code_hash === sha256(normalizeCode(access_code)) ||
+    accessCodeMatches(access_code, exam.access_code as string | null);
+  if (!codeAccepted)
+    return NextResponse.json(
+      {
+        error:
+          "That access code does not match this examination. Copy-paste the code exactly as your teacher gave it, or reopen the invitation link — it fills the code in for you.",
+      },
+      { status: 403 },
+    );
 
   const identityResult = sanitizeIdentityData(access.identityFields, identity);
   if (!identityResult.ok)

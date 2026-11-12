@@ -47,7 +47,7 @@ export default function ExamAccessPage() {
             <Input value={examCode} onChange={(e) => setExamCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" />
           </Field>
           <Field label="Your personal candidate code">
-            <Input value={candidateCode} onChange={(e) => setCandidateCode(e.target.value.toUpperCase())} placeholder="Issued to you personally" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" />
+            <Input value={candidateCode} onChange={(e) => setCandidateCode(e.target.value.toUpperCase())} placeholder="Issued to you personally" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false} />
           </Field>
           <label className="flex items-start gap-2 text-sm text-ink">
             <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 accent-evergreen-700" required />

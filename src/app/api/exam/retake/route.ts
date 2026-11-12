@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { accessCodeMatches } from "@/lib/exam-access";
 import { decisionMessage, type RetakeRequestView } from "@/lib/examRetake";
 import {
   findUsableGrant,
@@ -69,14 +70,26 @@ async function resolveContext(input: z.infer<typeof Body>): Promise<{ ok: true; 
   if (!examCode || !candidateCode)
     return { ok: false, error: "Provide the attempt session or both examination and candidate codes.", status: 400 };
 
-  const { data: exam } = await admin.from("exams").select("*").eq("access_code", examCode).maybeSingle();
+  const { data: exactExam } = await admin.from("exams").select("*").eq("access_code", examCode).maybeSingle();
+  let exam = exactExam;
+  if (!exam) {
+    // Forgiving fallback: hyphens/spaces or O/0, I/1 transcription slips.
+    const { data: codedExams } = await admin.from("exams").select("*").not("access_code", "is", null);
+    exam = (codedExams ?? []).find((row) => accessCodeMatches(examCode, row.access_code as string | null)) ?? null;
+  }
   if (!exam) return { ok: false, error: "Examination not found.", status: 404 };
-  const { data: candidate } = await admin
+  const { data: exactCandidate } = await admin
     .from("exam_candidates")
     .select("*")
     .eq("exam_id", exam.id)
     .eq("access_code", candidateCode)
     .maybeSingle();
+  let candidate = exactCandidate;
+  if (!candidate) {
+    const { data: examCandidates } = await admin.from("exam_candidates").select("*").eq("exam_id", exam.id);
+    candidate =
+      (examCandidates ?? []).find((row) => accessCodeMatches(candidateCode, row.access_code as string | null)) ?? null;
+  }
   if (!candidate) return { ok: false, error: "Candidate code not recognised for this examination.", status: 404 };
   const { data: attempts } = await admin
     .from("exam_attempts")

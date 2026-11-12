@@ -110,6 +110,35 @@ export function mergeEligibleClassIds(base: string[], configured: string[]): str
   return base.filter((id) => allowed.has(id));
 }
 
+/**
+ * Canonical form of a typed access code, for forgiving-but-safe comparison.
+ *
+ * Students type codes from a board or paper, often on touch keyboards with
+ * autocorrect: hyphens get dropped or swapped for en/em dashes, internal
+ * spaces appear, and look-alike characters are confused (letter O vs digit
+ * 0, letter I vs digit 1). The canonical form upper-cases, strips every
+ * non-alphanumeric character (which also removes zero-width and other hidden
+ * characters pasted from documents) and folds O->0 and I->1, so any plausible
+ * transcription of the printed code compares equal. The stored code itself is
+ * never modified — canonicalisation happens on both sides at comparison time.
+ */
+export function canonicalAccessCode(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .normalize("NFKC")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/O/g, "0")
+    .replace(/I/g, "1");
+}
+
+/** True when a typed code plausibly transcribes the stored code. */
+export function accessCodeMatches(typed: unknown, stored: string | null | undefined): boolean {
+  const candidate = canonicalAccessCode(typed);
+  const expected = canonicalAccessCode(stored ?? "");
+  return candidate.length >= 4 && expected.length >= 4 && candidate === expected;
+}
+
 export interface IdentityDataResult {
   ok: boolean;
   data: Record<string, string>;
