@@ -17,7 +17,7 @@
 //   tab time is not outage time, short gaps are jitter not outages, `leave`
 //   never credits, and closed attempts are refused.
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { Module } from "node:module";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -123,6 +123,7 @@ const tables = {
   exam_attempts: [],
   exam_presence: [],
   exam_connection_events: [],
+  exam_pause_events: [],
 };
 function makeAttempt(status = "in_progress", startedMinutesAgo = 10, extension = 0) {
   const row = {
@@ -215,6 +216,35 @@ const admin = {
       }
       return { data: null, error: null };
     }
+    if (fn === "exam_attempt_set_pause") {
+      // Mirror of the 0098/0099 SQL against the real clock: one reason per
+      // call, anchor clamped to [started_at, now], credit folded into
+      // extension_minutes only when the LAST reason clears.
+      const attempt = tables.exam_attempts.find((a) => a.id === args.p_attempt_id);
+      if (!attempt || attempt.status !== "in_progress") return { data: null, error: null };
+      const reasons = [...(attempt.pause_reasons ?? [])];
+      if (args.p_paused) {
+        if (reasons.includes(args.p_reason)) return { data: { paused: true, reasons, credited_minutes: 0, duplicate: true }, error: null };
+        reasons.push(args.p_reason);
+        if (reasons.length === 1) {
+          const clamp = args.p_paused_at
+            ? Math.min(Math.max(Date.parse(args.p_paused_at), Date.parse(attempt.started_at)), Date.now())
+            : Date.now();
+          attempt.paused_at = iso(clamp);
+        }
+        attempt.pause_reasons = reasons;
+        return { data: { paused: true, reasons, credited_minutes: 0, paused_at: attempt.paused_at }, error: null };
+      }
+      const idx = reasons.indexOf(args.p_reason);
+      if (idx < 0) return { data: { paused: reasons.length > 0, reasons, credited_minutes: 0, duplicate: true }, error: null };
+      reasons.splice(idx, 1);
+      attempt.pause_reasons = reasons;
+      if (reasons.length > 0) return { data: { paused: true, reasons, credited_minutes: 0 }, error: null };
+      const credited = attempt.paused_at ? Math.max(0, Math.ceil((Date.now() - Date.parse(attempt.paused_at)) / 60000)) : 0;
+      attempt.extension_minutes = Math.min(1440, Number(attempt.extension_minutes ?? 0) + credited);
+      attempt.paused_at = null;
+      return { data: { paused: false, reasons: [], credited_minutes: credited, extension_minutes: attempt.extension_minutes }, error: null };
+    }
     throw new Error(`unexpected rpc ${fn}`);
   },
 };
@@ -229,6 +259,12 @@ function load(source, overrides = {}) {
     if (parent?.filename === file) {
       if (overrides[request]) return overrides[request];
       if (request.startsWith("@/lib/")) return load(path.resolve("src", `${request.slice(2)}.ts`));
+      if (request.startsWith("./")) {
+        // Relative source imports (e.g. connectionLost.ts → ./examPause) are
+        // compiled by the same loader, extension or no extension.
+        const base = path.resolve(path.dirname(file), request.replace(/\.ts$/, ""));
+        if (existsSync(`${base}.ts`)) return load(`${base}.ts`);
+      }
       if (request === "next/server") return { NextResponse: { json: (body, init) => Response.json(body, init) } };
     }
     return originalLoad.apply(this, arguments);
@@ -389,13 +425,98 @@ const fara = makeAttempt("submitted");
   });
 }
 
-/* An expired in-progress attempt (past its deadline) is refused too */
+/* An expired in-progress attempt whose device is STILL CONNECTED (fresh
+ * heartbeat at the deadline) is refused: that is the one legitimate expiry. */
 const gus = makeAttempt("in_progress", 70); // started 70 min ago, 60 min paper
+seedPresence(gus.id, 20_000); // heartbeating 20 s ago — present at the deadline
 {
   const res = await post(gus, { event: "restored", lost_at: iso(Date.now() - 10 * 60_000) });
-  check("an attempt already past its deadline is refused, not extended", () => {
+  check("a connected attempt past its deadline is refused, not extended", () => {
     assert.equal(res.status, 409);
     assert.equal(gus.extension_minutes, 0);
+  });
+}
+
+/* CONNECTION_LOST recovery (migration 0099): an expired attempt whose device
+ * went SILENT BEFORE the deadline is an interrupted attempt, never a
+ * completed one. The heartbeat that proves the candidate is back reopens the
+ * paper with the outage credited — remaining time continues from the moment
+ * of disconnection. This is the exact shape of the 2026-11-12 incident. */
+const hana = makeAttempt("in_progress", 70); // started 70 min ago, 60 min paper
+seedPresence(hana.id, 15 * 60_000); // server last heard from her 15 min ago — 5 min BEFORE the deadline
+{
+  const res = await post(hana, { event: "heartbeat", current_question: 9, saved_count: 4, pending_saves: 1 });
+  const body = await res.json();
+  check("a disconnected candidate returning past the deadline is RECOVERED, never refused or submitted", () => {
+    assert.equal(res.status, 200, "the heartbeat is accepted");
+    assert.equal(hana.status, "in_progress", "the attempt is never closed on a silent device");
+    assert.ok(body.pause_credit, "the credited outage is reported to the client");
+    assert.ok(hana.extension_minutes >= 15 && hana.extension_minutes <= 16,
+      `the full outage is credited, anchored at the last heartbeat (got ${hana.extension_minutes})`);
+    assert.equal(body.pause_credit.credit_ms, hana.extension_minutes * 60_000);
+    assert.equal(body.deadline, iso(Date.parse(hana.started_at) + (60 + hana.extension_minutes) * 60_000),
+      "the countdown continues from the disconnection instant");
+    assert.ok(Date.parse(body.deadline) > Date.now(), "the reopened window is in the future");
+    assert.deepEqual(hana.pause_reasons ?? [], [], "the connection pause clears as soon as the candidate is back");
+    assert.equal(hana.paused_at, null);
+    const evs = tables.exam_pause_events.filter((e) => e.attempt_id === hana.id);
+    assert.equal(evs.length, 2, "both transitions are audited");
+    assert.equal(evs[0].action, "pause");
+    assert.equal(evs[0].reason, "connection");
+    assert.equal(evs[1].action, "resume");
+    assert.equal(evs[1].credited_minutes, hana.extension_minutes);
+    const ledger = tables.exam_connection_events.filter((e) => e.attempt_id === hana.id);
+    assert.equal(ledger.length, 1, "the credited window reaches the connection ledger exactly once");
+    assert.equal(ledger[0].event_kind, "pause_credit");
+    assert.ok(Math.abs(Date.parse(ledger[0].lost_at) - (Date.now() - 15 * 60_000)) < 5_000,
+      "the ledger window is anchored at the seeded last heartbeat");
+  });
+
+  /* A `restored` claim for the SAME outage can never credit twice: the
+   * ledger's unique (attempt_id, lost_at) key deduplicates across rails. */
+  const extBeforeClaim = hana.extension_minutes;
+  const again = await post(hana, { event: "restored", lost_at: iso(Date.now() - 15 * 60_000), hidden_ms: 0 });
+  const againBody = await again.json();
+  check("the 0097 restored-event rail cannot double-credit a window the pause cycle already credited", () => {
+    assert.equal(again.status, 200);
+    assert.equal(hana.extension_minutes, extBeforeClaim, "no extra minutes");
+    assert.equal(tables.exam_connection_events.filter((e) => e.attempt_id === hana.id).length, 1, "no extra ledger row");
+    assert.equal(againBody.pause_credit, null);
+  });
+}
+
+/* An open connection pause (a sweep noticed the outage first) resumes on the
+ * candidate's heartbeat — automatically, with no organizer action. */
+const ido = makeAttempt("in_progress", 30);
+seedPresence(ido.id, 4 * 60_000);
+ido.pause_reasons = ["connection"];
+ido.paused_at = iso(Date.now() - 4 * 60_000); // anchored at his last heartbeat
+{
+  const res = await post(ido, { event: "heartbeat", current_question: 2, saved_count: 1, pending_saves: 0 });
+  const body = await res.json();
+  check("an attempt already paused for connection loss resumes on the returning heartbeat", () => {
+    assert.equal(res.status, 200);
+    assert.deepEqual(ido.pause_reasons ?? [], []);
+    assert.ok(ido.extension_minutes >= 4 && ido.extension_minutes <= 5, "the paused outage is folded into the extension");
+    assert.ok(body.pause_credit && body.pause_credit.credit_ms === ido.extension_minutes * 60_000);
+    assert.equal(tables.exam_pause_events.filter((e) => e.attempt_id === ido.id && e.action === "resume").length, 1);
+  });
+}
+
+/* A reconnection clears ONLY the connection reason: an organizer pause set
+ * before the outage survives the return (reasons are independent). */
+const jia = makeAttempt("in_progress", 30);
+seedPresence(jia.id, 6 * 60_000);
+jia.pause_reasons = ["student", "connection"];
+jia.paused_at = iso(Date.now() - 6 * 60_000);
+{
+  const res = await post(jia, { event: "heartbeat", current_question: 1, saved_count: 0, pending_saves: 0 });
+  const body = await res.json();
+  check("reconnection never cancels an organizer pause, and no credit is taken while one is open", () => {
+    assert.equal(res.status, 200);
+    assert.deepEqual(jia.pause_reasons, ["student"], "the organizer reason stays open");
+    assert.equal(body.paused, true, "the candidate is still paused");
+    assert.equal(jia.extension_minutes, 0, "credit waits until the LAST reason clears");
   });
 }
 

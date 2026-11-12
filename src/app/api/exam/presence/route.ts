@@ -1,6 +1,7 @@
+import { connectionLostAnchor, isConnectionLost, pauseForConnectionLost, resumeConnectionPause } from "@/lib/connectionLost";
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
 import { isUuid } from "@/lib/examMessaging";
-import { isManuallyPaused, manualPauseMs, pauseNoticeKind } from "@/lib/examPause";
+import { hasConnectionPause, isManuallyPaused, manualPauseMs, pauseNoticeKind } from "@/lib/examPause";
 import {
   buildRoster,
   connectionPauseCredit,
@@ -75,6 +76,63 @@ export async function POST(request: Request) {
   const { attempt, exam } = ctx;
   if (!exam) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers: NO_STORE });
   const nowMs0 = Date.now();
+
+  // ── Returning-candidate recovery (CONNECTION_LOST, migration 0099) ─────
+  // An authenticated heartbeat IS the server-confirmed proof the candidate is
+  // back. If a connection pause is open — or the deadline passed while the
+  // presence record proves the device was silent — the outage is credited
+  // here and the paper stays open with the SAME remaining time. A missed
+  // heartbeat can never become a submission. Organizer pauses are untouched.
+  let connectionResumed: { credit_ms: number; extension_minutes: number; deadline: string } | null = null;
+  if (attempt.status === "in_progress") {
+    let deadlineNow = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, nowMs0));
+    if (hasConnectionPause(attempt) || new Date(nowMs0) > deadlineNow) {
+      const { data: prevRow } = await admin
+        .from("exam_presence")
+        .select("last_seen_at")
+        .eq("attempt_id", attempt.id)
+        .maybeSingle();
+      const lastSeen = (prevRow as { last_seen_at?: string | null } | null)?.last_seen_at ?? null;
+      let recovered = false;
+      let creditedMinutes = 0;
+      if (hasConnectionPause(attempt)) {
+        const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+        if (resumed) {
+          attempt.pause_reasons = resumed.reasons;
+          attempt.paused_at = null;
+          if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+          creditedMinutes = resumed.credited_minutes;
+          recovered = true;
+        }
+      } else if (isConnectionLost(attempt, lastSeen, nowMs0)) {
+        const anchor = connectionLostAnchor(attempt, lastSeen, nowMs0);
+        const paused = anchor ? await pauseForConnectionLost(admin, attempt, exam.organization_id, anchor.anchorIso) : null;
+        if (paused) {
+          attempt.pause_reasons = paused.reasons;
+          attempt.paused_at = paused.paused_at ?? anchor?.anchorIso ?? null;
+          const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+          if (resumed) {
+            attempt.pause_reasons = resumed.reasons;
+            attempt.paused_at = null;
+            if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+            creditedMinutes = resumed.credited_minutes;
+            recovered = true;
+          }
+        }
+      }
+      if (recovered) {
+        const refreshed = await admin.from("exam_attempts").select("*").eq("id", attempt.id).maybeSingle();
+        if ((refreshed as { data?: unknown }).data) Object.assign(attempt, (refreshed as { data: Record<string, unknown> }).data);
+        deadlineNow = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, nowMs0));
+        connectionResumed = {
+          credit_ms: creditedMinutes * 60_000,
+          extension_minutes: Number(attempt.extension_minutes ?? 0),
+          deadline: deadlineNow.toISOString(),
+        };
+      }
+    }
+  }
+
   const manuallyPaused = isManuallyPaused(attempt);
   if (
     attempt.status !== "in_progress" ||
@@ -90,8 +148,12 @@ export async function POST(request: Request) {
   // window anchored at the last instant the server actually heard from the
   // device, and only once per window (unique ledger index). Every other
   // request path leaves `extension_minutes` untouched.
-  let pauseCredit: { credit_ms: number; extension_minutes: number; deadline: string } | null = null;
-  if (body.event === "restored" && attempt.status === "in_progress" && manuallyPaused) {
+  let pauseCredit: { credit_ms: number; extension_minutes: number; deadline: string } | null = connectionResumed;
+  if (connectionResumed) {
+    // The pause-resume cycle above already validated and credited this exact
+    // outage window (and mirrored it into the exam_connection_events ledger,
+    // whose unique (attempt_id, lost_at) key deduplicates any later claim).
+  } else if (body.event === "restored" && attempt.status === "in_progress" && manuallyPaused) {
     // An organizer pause is open: its window already preserves this student's
     // time (the countdown is frozen and the pause is credited on resume), so a
     // connection outage inside it must NOT also credit — that would grant the

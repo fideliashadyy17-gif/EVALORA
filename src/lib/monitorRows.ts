@@ -22,7 +22,7 @@ export interface MonitorAttemptInput {
   status: string;
   started_at: string;
   submitted_at: string | null;
-  /** Manual organizer pause state (migration 0098). Legacy rows: never paused. */
+  /** Pause state (migrations 0098/0099). Legacy rows: never paused. */
   pause_reasons?: string[] | null;
   paused_at?: string | null;
   track: ExamTrack | null;
@@ -51,8 +51,8 @@ export interface MonitorRow {
   started_at: string;
   submitted_at: string | null;
   deadline: string;
-  /** Organizer pause reasons open on this attempt: 'assessment' and/or 'student'. Empty = composing. */
-  pause_reasons: ("assessment" | "student")[];
+  /** Pause reasons open on this attempt: organizer ('assessment'/'student') and/or automatic ('connection'). Empty = composing. */
+  pause_reasons: ("assessment" | "student" | "connection")[];
   /** When the current manual pause window opened (null when not paused). */
   paused_at: string | null;
   connection: ConnectionStatus;
@@ -93,11 +93,12 @@ export function paperForAttempt<T extends PaperRow>(rows: T[], order: unknown, t
   return track ? paperForTrack(rows, track) : rows;
 }
 
-function parseRowPauseReasons(value: unknown): ("assessment" | "student")[] {
+function parseRowPauseReasons(value: unknown): ("assessment" | "student" | "connection")[] {
   if (!Array.isArray(value)) return [];
-  const out: ("assessment" | "student")[] = [];
+  const out: ("assessment" | "student" | "connection")[] = [];
   if (value.includes("assessment")) out.push("assessment");
   if (value.includes("student")) out.push("student");
+  if (value.includes("connection")) out.push("connection");
   return out;
 }
 

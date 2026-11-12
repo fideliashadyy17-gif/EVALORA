@@ -28,7 +28,7 @@ interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
+  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
   questions: (PublicQuestion & {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */

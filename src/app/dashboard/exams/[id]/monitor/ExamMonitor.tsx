@@ -359,7 +359,7 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
                         {r.status === "in_progress" && r.pause_reasons.length > 0 && (
                           <p className="mt-1">
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
-                              ⏸ Paused · {r.pause_reasons.includes("assessment") ? "assessment" : ""}{r.pause_reasons.includes("assessment") && r.pause_reasons.includes("student") ? " + " : ""}{r.pause_reasons.includes("student") ? "individual" : ""}
+                              ⏸ Paused · {[r.pause_reasons.includes("assessment") ? "assessment" : null, r.pause_reasons.includes("student") ? "individual" : null, r.pause_reasons.includes("connection") ? "connection lost" : null].filter(Boolean).join(" + ")}
                             </span>
                             {r.paused_at && <span className="mt-0.5 block text-[11px] text-ink-soft">since {clock(r.paused_at)}</span>}
                           </p>

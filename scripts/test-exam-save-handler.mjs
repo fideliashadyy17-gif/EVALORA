@@ -77,6 +77,7 @@ virtual.require = (id) => {
   if (id === "next/server") return { NextResponse: { json: (body, init) => Response.json(body, init) } };
   if (id === "@/lib/examTrack") return examTrack;
   if (id === "@/lib/examPause") return examPause;
+  if (id === "@/lib/connectionLost") return { resumeConnectionPause: async () => null, isConnectionLost: () => false, connectionLostAnchor: () => null, pauseForConnectionLost: async () => null };
   if (id === "@/lib/responseTools") return {
     validateAnswerPayload: (_type, raw) => ({ ok: true, answer: raw }),
   };

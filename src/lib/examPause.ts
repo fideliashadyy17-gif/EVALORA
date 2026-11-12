@@ -3,10 +3,14 @@
  *
  * Three pause reasons exist on the platform and they are tracked separately:
  *
- *   CONNECTION_PAUSE — automatic, from a confirmed internet outage. Owned by
- *     the presence heartbeat + exam_connection_events ledger (migration 0097,
- *     src/lib/presence.ts). It credits `extension_minutes` when the server
- *     confirms the student is back.
+ *   CONNECTION_PAUSE — automatic, from a confirmed internet outage
+ *     (migration 0099, src/lib/connectionLost.ts): attempt reason
+ *     'connection', anchored at the last server-confirmed heartbeat. While it
+ *     is open the countdown is frozen and NO timeout handler may submit the
+ *     attempt; the candidate's own return clears it and the paused duration
+ *     joins `extension_minutes`, so remaining time continues from the moment
+ *     of disconnection. Short outages additionally ride the 0097 presence
+ *     credit rail (exam_connection_events), which the ledger deduplicates.
  *   ASSESSMENT_PAUSE — the organizer paused the whole examination
  *     (`exams.status = 'paused'`, attempt reason 'assessment').
  *   STUDENT_PAUSE — the organizer paused one student (attempt reason
@@ -30,9 +34,23 @@
  * Pure functions only: no DOM, no database, no clock of their own.
  */
 
-/** The manual pause reasons stored in `exam_attempts.pause_reasons`. */
+/** The manual (organizer-owned) pause reasons stored in `exam_attempts.pause_reasons`. */
 export const MANUAL_PAUSE_REASONS = ["assessment", "student"] as const;
 export type ManualPauseReason = (typeof MANUAL_PAUSE_REASONS)[number];
+
+/**
+ * The AUTOMATIC pause reason (migration 0099): the server confirmed the
+ * candidate's device went silent. A connection pause freezes the deadline
+ * exactly like a manual one and is cleared only by the candidate's own
+ * authenticated return — never by an organizer action, and it can never
+ * cancel an organizer pause either. Disconnection is an interrupted attempt,
+ * not a completed one: no timeout handler may submit a paused attempt.
+ */
+export const CONNECTION_PAUSE_REASON = "connection";
+
+/** Every pause reason that can appear in `exam_attempts.pause_reasons`. */
+export const PAUSE_REASONS = ["assessment", "student", CONNECTION_PAUSE_REASON] as const;
+export type PauseReason = (typeof PAUSE_REASONS)[number];
 
 /** Fields the pause rules read from an attempt row. All optional: a legacy row without them is simply never paused. */
 export interface PausableAttempt {
@@ -51,9 +69,35 @@ export function parsePauseReasons(value: unknown): ManualPauseReason[] {
   return MANUAL_PAUSE_REASONS.filter((reason) => set.has(reason));
 }
 
-/** True when at least one manual pause reason is open on this attempt. */
-export function isManuallyPaused(attempt: PausableAttempt | null | undefined): boolean {
+/** Every open pause reason, manual or automatic, normalized and deduplicated. */
+export function parseAllPauseReasons(value: unknown): PauseReason[] {
+  if (!Array.isArray(value)) return [];
+  const set = new Set<PauseReason>();
+  for (const entry of value) {
+    if (entry === "assessment" || entry === "student" || entry === CONNECTION_PAUSE_REASON) set.add(entry);
+  }
+  return PAUSE_REASONS.filter((reason) => set.has(reason));
+}
+
+/** True while the automatic CONNECTION_LOST pause is open on this attempt. */
+export function hasConnectionPause(attempt: PausableAttempt | null | undefined): boolean {
+  return parseAllPauseReasons(attempt?.pause_reasons).includes(CONNECTION_PAUSE_REASON);
+}
+
+/** True while at least one ORGANIZER-owned reason is open (notice/409 semantics). */
+export function hasOrganizerPause(attempt: PausableAttempt | null | undefined): boolean {
   return parsePauseReasons(attempt?.pause_reasons).length > 0;
+}
+
+/**
+ * True when ANY pause reason — organizer or connection — is open. Every
+ * freeze gate (deadline math, sweep exclusion, composition block) keys off
+ * this, so a disconnected candidate's attempt is structurally excluded from
+ * every timeout handler while its pause is open. The name is historical: the
+ * organizer reasons arrived first (0098), the automatic one in 0099.
+ */
+export function isManuallyPaused(attempt: PausableAttempt | null | undefined): boolean {
+  return parseAllPauseReasons(attempt?.pause_reasons).length > 0;
 }
 
 /**

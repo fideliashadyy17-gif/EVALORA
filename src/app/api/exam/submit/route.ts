@@ -1,6 +1,7 @@
 import { loadAttemptContext } from "@/lib/exam";
 import { submissionWindow } from "@/lib/examDeadline";
-import { isManuallyPaused, manualPauseMs } from "@/lib/examPause";
+import { hasOrganizerPause, isManuallyPaused, manualPauseMs } from "@/lib/examPause";
+import { resumeConnectionPause } from "@/lib/connectionLost";
 import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -47,13 +48,13 @@ export async function POST(request: Request) {
   const nowMs = Date.now();
   // Pause-aware: an open organizer pause extends the window by its live
   // duration, so a confirmation during a pause is never mis-recorded as late.
-  const window = submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs));
+  let window = submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs));
 
   // Feature B/C: composition AND submission are blocked while an organizer
   // pause (assessment-wide or individual) is open. The paper stays exactly as
   // it is; the student's client re-enables submission within one heartbeat of
   // the resume — no refresh, no lost answers.
-  if (isManuallyPaused(attempt)) {
+  if (isManuallyPaused(attempt) && hasOrganizerPause(attempt)) {
     return NextResponse.json(
       {
         error: "This assessment is paused by your organizer, so it cannot be submitted right now. Your answers and remaining time are preserved and submission will re-open automatically when the assessment resumes.",
@@ -62,6 +63,18 @@ export async function POST(request: Request) {
       },
       { status: 409, headers },
     );
+  }
+  if (isManuallyPaused(attempt)) {
+    // Connection-only pause: an explicit submit is a legitimate, candidate-
+    // initiated completion. Clear the pause first (crediting the outage so
+    // the submission is never mis-recorded as late), then proceed normally.
+    const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+    if (resumed) {
+      attempt.pause_reasons = resumed.reasons;
+      attempt.paused_at = null;
+      if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+      window = submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs));
+    }
   }
 
   // Already submitted: report the stored facts. No grading, no write.

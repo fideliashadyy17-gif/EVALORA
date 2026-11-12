@@ -7,12 +7,17 @@
 // ONE window so credit can never double.
 import assert from "node:assert/strict";
 import {
+  CONNECTION_PAUSE_REASON,
   isManuallyPaused,
+  hasConnectionPause,
+  hasOrganizerPause,
   manualPauseMs,
   effectiveExtensionMs,
+  parseAllPauseReasons,
   parsePauseReasons,
   pauseNoticeKind,
 } from "../src/lib/examPause.ts";
+import { CONNECTION_LOST_AFTER_MS, connectionLostAnchor, isConnectionLost } from "../src/lib/connectionLost.ts";
 import { attemptDeadline, submissionWindow } from "../src/lib/examDeadline.ts";
 
 let checks = 0;
@@ -97,6 +102,57 @@ check("sanitizePauseMs: malformed pause input can never move a deadline EARLIER"
     const w = submissionWindow(EXAM, { started_at: STARTED, extension_minutes: 0 }, NOW, 0, bad);
     assert.equal(w.deadline, "2026-11-12T12:30:00.000Z", `input ${String(bad)}`);
   }
+});
+
+// ── CONNECTION_LOST (migration 0099) ──────────────────────────────────────
+
+check("connection: the automatic reason freezes the countdown like any pause", () => {
+  const attempt = { pause_reasons: [CONNECTION_PAUSE_REASON], paused_at: "2026-11-12T11:50:00.000Z", extension_minutes: 0 };
+  assert.equal(isManuallyPaused(attempt), true, "every freeze gate keys off this");
+  assert.equal(hasConnectionPause(attempt), true);
+  assert.equal(hasOrganizerPause(attempt), false, "but it is NOT an organizer pause");
+  assert.equal(manualPauseMs(attempt, NOW), 10 * 60_000, "the outage duration joins the deadline live");
+  assert.equal(effectiveExtensionMs(attempt, NOW), 10 * 60_000);
+  const w = submissionWindow(EXAM, { started_at: STARTED }, NOW, 0, manualPauseMs(attempt, NOW));
+  assert.equal(w.reached, false, "a connection-paused attempt can never be past its deadline");
+  assert.equal(w.deadline, "2026-11-12T12:40:00.000Z", "deadline slides with the open outage");
+});
+
+check("connection: candidate-facing notices stay organizer-only", () => {
+  const connOnly = { pause_reasons: ["connection"], paused_at: "2026-11-12T11:50:00.000Z" };
+  assert.equal(pauseNoticeKind(connOnly), null, "the presence UI owns the connection banner");
+  assert.deepEqual(parsePauseReasons(["connection", "student"]), ["student"], "manual parse ignores the automatic reason");
+  assert.deepEqual(parseAllPauseReasons(["bogus", "connection", "student", "connection"]), ["student", "connection"], "full parse: known reasons, deduplicated, stable order");
+  assert.equal(hasConnectionPause({ pause_reasons: ["wifi"] }), false, "unknown reasons are not connection pauses");
+});
+
+check("connection: independent reasons compose; organizer pauses win the notice", () => {
+  const both = { pause_reasons: ["assessment", "connection"], paused_at: "2026-11-12T11:45:00.000Z" };
+  assert.equal(isManuallyPaused(both), true);
+  assert.equal(hasConnectionPause(both), true);
+  assert.equal(hasOrganizerPause(both), true);
+  assert.equal(pauseNoticeKind(both), "assessment", "the organizer message is the one shown");
+});
+
+check("isConnectionLost: the server-evidence rule for declaring an outage", () => {
+  const started = { id: "a", status: "in_progress", started_at: "2026-11-12T11:00:00.000Z" };
+  assert.equal(isConnectionLost(started, "2026-11-12T11:59:00.000Z", NOW), false, "a fresh heartbeat is connected");
+  assert.equal(isConnectionLost(started, "2026-11-12T11:58:55.001Z", NOW), false, "64.999 s silent is ordinary latency");
+  assert.equal(isConnectionLost(started, "2026-11-12T11:58:54.999Z", NOW), true, "past the threshold the outage is confirmed");
+  assert.equal(CONNECTION_LOST_AFTER_MS, 65_000, "online window (45 s) + one heartbeat (20 s)");
+  assert.equal(isConnectionLost(started, null, NOW), true, "no heartbeat ever: anchored at the start");
+  assert.equal(isConnectionLost({ ...started, status: "auto_submitted" }, "2026-11-12T11:00:00.000Z", NOW), false, "closed attempts are out of scope");
+  assert.equal(isConnectionLost({ ...started, pause_reasons: ["student"] }, "2026-11-12T11:00:00.000Z", NOW), false, "an organizer pause owns the window");
+  assert.equal(isConnectionLost({ id: "x", status: "in_progress" }, null, NOW), false, "no evidence at all: nothing is invented");
+});
+
+check("connectionLostAnchor: the evidence instant, clamped, never invented", () => {
+  const started = { started_at: "2026-11-12T11:00:00.000Z" };
+  assert.equal(connectionLostAnchor(started, "2026-11-12T11:50:00.000Z", NOW).anchorIso, "2026-11-12T11:50:00.000Z", "the last confirmed heartbeat");
+  assert.equal(connectionLostAnchor(started, null, NOW).anchorIso, "2026-11-12T11:00:00.000Z", "or the start when the device never spoke");
+  assert.equal(connectionLostAnchor(started, "2026-11-12T13:00:00.000Z", NOW).anchorIso, "2026-11-12T12:00:00.000Z", "a future claim collapses to now");
+  assert.equal(connectionLostAnchor({}, "garbage", NOW), null, "unreadable evidence yields nothing");
+  assert.equal(connectionLostAnchor({ started_at: "garbage" }, null, NOW), null, "and never a made-up instant");
 });
 
 console.log(`\n${checks} checks passed`);
