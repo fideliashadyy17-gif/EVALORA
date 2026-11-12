@@ -220,19 +220,25 @@ export async function POST(request: Request) {
     );
 
   const guestKeyHash = sha256(guest_key);
-  const { data: existingCandidate } = await admin
+  // One candidate PER PERSON PER BROWSER — never one per browser. A shared
+  // device (lab, tablet cart, family phone) must admit every distinct
+  // authorized student, while the same student on the same browser always
+  // resumes their own record. The database unique index
+  // uq_exam_candidate_shared_identity (migration 0096) enforces exactly this
+  // shape, so the lookup must select the person's own row instead of assuming
+  // the browser holds only one candidate (the pre-0096 code returned 409 for
+  // the second student on a shared browser — the production "code works for
+  // some students but not others" symptom).
+  const samePerson = (row: Record<string, unknown>) =>
+    String(row.first_name ?? "").trim().toLowerCase() === first_name.trim().toLowerCase() &&
+    String(row.last_name ?? "").trim().toLowerCase() === last_name.trim().toLowerCase() &&
+    String(row.class_id ?? "") === selectedClassId;
+  const { data: browserCandidates } = await admin
     .from("exam_candidates")
     .select("*")
     .eq("exam_id", exam.id)
-    .eq("guest_key_hash", guestKeyHash)
-    .maybeSingle();
-  if (existingCandidate) {
-    const sameName =
-      String(existingCandidate.first_name ?? "").trim().toLowerCase() === first_name.toLowerCase() &&
-      String(existingCandidate.last_name ?? "").trim().toLowerCase() === last_name.toLowerCase();
-    if (!sameName || String(existingCandidate.class_id ?? "") !== selectedClassId)
-      return NextResponse.json({ error: "This browser already has an attempt under different candidate details. Ask the organizer for help." }, { status: 409 });
-  }
+    .eq("guest_key_hash", guestKeyHash);
+  const existingCandidate = (browserCandidates ?? []).find(samePerson) ?? null;
 
   let candidate = existingCandidate;
   if (candidate) {
@@ -269,8 +275,25 @@ export async function POST(request: Request) {
       })
       .select("*")
       .single();
-    if (error || !data) return NextResponse.json({ error: "Could not create your candidate record." }, { status: 500 });
-    candidate = data;
+    if (error || !data) {
+      // The insert can only collide with the per-person-per-browser unique
+      // index when the SAME person's record was created between the lookup
+      // and the insert (a double-tap or two simultaneous tabs). Re-read and
+      // resume the winning row so the operation is idempotent under
+      // concurrency instead of failing the student with an infrastructure
+      // error. Any other failure is reported as what it is — never as an
+      // invalid code.
+      const { data: raced } = await admin
+        .from("exam_candidates")
+        .select("*")
+        .eq("exam_id", exam.id)
+        .eq("guest_key_hash", guestKeyHash);
+      const winner = (raced ?? []).find(samePerson) ?? null;
+      if (!winner) return NextResponse.json({ error: "Could not create your candidate record." }, { status: 500 });
+      candidate = winner;
+    } else {
+      candidate = data;
+    }
   }
 
   // One candidate can now legitimately own several attempts (each authorized
@@ -384,8 +407,23 @@ export async function POST(request: Request) {
       })
       .select("*")
       .single();
-    if (error || !data) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
-    attempt = data;
+    if (error || !data) {
+      // uq_exam_attempts_one_active allows exactly one in_progress attempt per
+      // candidate. Two simultaneous joins by the SAME person (double-tap, two
+      // tabs) race here; the loser must resume the winner's attempt, not fail
+      // with an infrastructure error.
+      const { data: racedRows } = await admin
+        .from("exam_attempts")
+        .select("*")
+        .eq("exam_id", exam.id)
+        .eq("candidate_id", candidate.id)
+        .order("attempt_number", { ascending: false });
+      const racedActive = (racedRows ?? []).find((row) => row.status === "in_progress") ?? null;
+      if (!racedActive) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
+      attempt = racedActive;
+    } else {
+      attempt = data;
+    }
     await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
   }
 
