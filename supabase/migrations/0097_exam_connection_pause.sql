@@ -41,7 +41,7 @@ create table if not exists public.exam_connection_events (
   credit_ms bigint not null default 0,
   extension_minutes_before integer not null default 0,
   extension_minutes_after integer not null default 0,
-  reason text,
+  refusal_reason text,
   created_at timestamptz not null default now()
 );
 
