@@ -58,6 +58,8 @@ const {
   normaliseDataTableSpec,
   dataTableHasWork,
   resizeDataTable,
+  insertDataTableRow,
+  insertDataTableColumn,
 } = require(`${outDir}/lib/dataTableSpec.js`);
 
 let passed = 0;
@@ -135,6 +137,25 @@ console.log("Graph specification");
   const huge = normaliseGraphSpec({ points: Array.from({ length: 400 }, (_, i) => ({ x: i, y: i })) });
   ok("point count is capped", huge.points.length <= 200);
   ok("degenerate domains are repaired", normaliseGraphSpec({ domain: { xMin: 5, xMax: 5, yMin: 3, yMax: 3 } }).domain.xMax > 5);
+
+  // Freehand strokes and highlighted regions (spec additions; old payloads
+  // without them must still normalise to empty arrays, never crash).
+  const legacy = normaliseGraphSpec({ points: [{ x: 1, y: 1 }] });
+  ok("legacy graphs normalise with empty strokes", Array.isArray(legacy.strokes) && legacy.strokes.length === 0);
+  ok("legacy graphs normalise with empty regions", Array.isArray(legacy.regions) && legacy.regions.length === 0);
+
+  const drawn = normaliseGraphSpec({
+    strokes: [{ id: "s1", points: [{ x: 0, y: 0 }, { x: 1, y: 1 }, { x: 2, y: 0 }], color: "#1d4ed8", width: 3 }],
+    regions: [{ id: "r1", x1: -2, y1: -2, x2: 2, y2: 2, label: "solution set" }],
+  });
+  ok("freehand stroke survives normalisation", drawn.strokes.length === 1 && drawn.strokes[0].points.length === 3);
+  ok("stroke colour and width survive", drawn.strokes[0].color === "#1d4ed8" && drawn.strokes[0].width === 3);
+  ok("region survives with its label", drawn.regions.length === 1 && drawn.regions[0].label === "solution set");
+  ok("a stroke alone counts as work", graphSpecHasWork(drawn));
+  ok("a single-point stroke is dropped", normaliseGraphSpec({ strokes: [{ points: [{ x: 1, y: 1 }] }] }).strokes.length === 0);
+  ok("stroke count is capped", normaliseGraphSpec({ strokes: Array.from({ length: 200 }, (_, i) => ({ points: [{ x: i, y: 0 }, { x: i, y: 1 }] })) }).strokes.length <= 40);
+  ok("stroke points are capped", normaliseGraphSpec({ strokes: [{ points: Array.from({ length: 2000 }, (_, i) => ({ x: i, y: 0 })) }] }).strokes[0].points.length <= 600);
+  ok("region count is capped", normaliseGraphSpec({ regions: Array.from({ length: 100 }, (_, i) => ({ x1: i, y1: 0, x2: i + 1, y2: 1 })) }).regions.length <= 20);
 }
 
 /* ─── Geometry specification ─────────────────────────────────────── */
@@ -172,6 +193,42 @@ console.log("Geometry specification");
   });
   const mid = resolveGeometry(midpoint).points.get("M");
   ok("midpoint resolves to the average", mid && near(mid.x, 3) && near(mid.y, 2));
+
+  // Angle bisector: a derived point one unit from the vertex along the
+  // internal bisector of angle A-V-B; it must follow its three parents.
+  const bisectorSpec = normaliseGeometrySpec({
+    points: [
+      { id: "A", x: 2, y: 0 },
+      { id: "V", x: 0, y: 0 },
+      { id: "B", x: 0, y: 2 },
+      { id: "BIS", kind: "bisector", dependsOn: ["A", "V", "B"] },
+    ],
+  });
+  ok("bisector kind survives normalisation", bisectorSpec.points.find((p) => p.id === "BIS").kind === "bisector");
+  const bis = resolveGeometry(bisectorSpec).points.get("BIS");
+  const inv = 1 / Math.SQRT2;
+  ok("bisector of a right angle points at 45°", bis && near(bis.x, inv, 1e-9) && near(bis.y, inv, 1e-9));
+  ok("bisector point sits one unit from the vertex", bis && near(Math.hypot(bis.x, bis.y), 1, 1e-9));
+  const moved = normaliseGeometrySpec({
+    points: [
+      { id: "A", x: 0, y: 3 },
+      { id: "V", x: 0, y: 0 },
+      { id: "B", x: 3, y: 0 },
+      { id: "BIS", kind: "bisector", dependsOn: ["A", "V", "B"] },
+    ],
+  });
+  const movedBis = resolveGeometry(moved).points.get("BIS");
+  ok("bisector follows its parents when they move", movedBis && near(movedBis.x, inv, 1e-9) && near(movedBis.y, inv, 1e-9));
+  const degenerate = normaliseGeometrySpec({
+    points: [
+      { id: "A", x: 0, y: 0 },
+      { id: "V", x: 0, y: 0 },
+      { id: "B", x: 1, y: 0 },
+      { id: "BIS", kind: "bisector", dependsOn: ["A", "V", "B"] },
+    ],
+  });
+  ok("degenerate bisector never resolves to NaN", !resolveGeometry(degenerate).points.has("BIS") ||
+    Number.isFinite(resolveGeometry(degenerate).points.get("BIS").x));
 
   const badRefs = normaliseGeometrySpec({ lines: [{ id: "L", a: "missing", b: "also-missing" }] });
   ok("lines with unknown points are dropped", badRefs.lines.length === 0);
@@ -261,6 +318,22 @@ console.log("Data table specification");
 
   const long = normaliseDataTableSpec({ rows: [["x".repeat(500)]] });
   ok("cells are bounded", long.rows[0][0].length === 200);
+
+  // Insert-at-position keeps existing cells in place (frequency tables where
+  // a candidate forgot a row in the middle).
+  const insertedRow = insertDataTableRow(table, 1);
+  ok("insert row adds one row", insertedRow.rows.length === table.rows.length + 1);
+  ok("inserted row is empty", insertedRow.rows[1].every((cell) => cell === ""));
+  ok("rows below shift down unchanged", insertedRow.rows[2][0] === "10–19");
+  ok("rows above stay put", insertedRow.rows[0][1] === "4");
+  const insertedColumn = insertDataTableColumn(table, 1);
+  ok("insert column adds one column", insertedColumn.columns.length === table.columns.length + 1);
+  ok("inserted column is empty", insertedColumn.rows.every((row) => row[1] === ""));
+  ok("columns to the right shift", insertedColumn.columns[2] === "Frequency" && insertedColumn.rows[0][2] === "4");
+  ok("insert clamps beyond the grid", insertDataTableRow(table, 99).rows.length === table.rows.length + 1);
+  const full = resizeDataTable(table, 40, 10);
+  ok("insert respects the row limit", insertDataTableRow(full, 0).rows.length === 40);
+  ok("insert respects the column limit", insertDataTableColumn(full, 0).columns.length === 10);
 }
 
 /* ─── Response workspace inference ───────────────────────────────── */
