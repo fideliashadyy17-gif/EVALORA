@@ -35,6 +35,15 @@ export interface AssessPart {
   accepted?: string[];
   /** Two progressive hints: nudge, then first-step set-up. Never the answer. */
   hints: [string, string];
+  /** MYP strand tag for this part, e.g. "B(ii)" — visible to candidates. */
+  strand?: string;
+  /**
+   * Keyword rubric for short written justifications (text parts): groups of
+   * synonymous phrases; the part earns its marks when at least
+   * `minKeywordGroups` groups are matched. Never sent to candidates.
+   */
+  keywords?: string[][];
+  minKeywordGroups?: number;
 }
 
 export interface PublicAssessPart {
@@ -46,6 +55,7 @@ export interface PublicAssessPart {
   unit?: string;
   placeholder?: string;
   hints: [string, string];
+  strand?: string;
 }
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
@@ -88,6 +98,18 @@ export function normaliseAssessParts(raw: unknown): AssessPart[] {
       points,
       hints: [hint1, hint2],
     };
+    if (str(entry.strand).trim()) part.strand = str(entry.strand).trim().slice(0, 16);
+    if (Array.isArray(entry.keywords)) {
+      const groups = entry.keywords
+        .filter((g): g is unknown[] => Array.isArray(g))
+        .map((g) => g.filter((w): w is string => typeof w === "string" && w.trim().length > 0).map((w) => w.trim().toLowerCase()).slice(0, 8))
+        .filter((g) => g.length).slice(0, 6);
+      if (groups.length) {
+        part.keywords = groups;
+        const mk = num(entry.minKeywordGroups);
+        part.minKeywordGroups = mk !== null && mk >= 1 ? Math.min(groups.length, Math.floor(mk)) : groups.length;
+      }
+    }
     if (str(entry.unit).trim()) part.unit = str(entry.unit).trim().slice(0, 24);
     if (str(entry.placeholder).trim()) part.placeholder = str(entry.placeholder).trim().slice(0, 60);
     if (kind === "numeric") {
@@ -122,6 +144,7 @@ export function publicAssessParts(parts: AssessPart[]): PublicAssessPart[] {
     points: p.points,
     ...(p.unit ? { unit: p.unit } : {}),
     ...(p.placeholder ? { placeholder: p.placeholder } : {}),
+    ...(p.strand ? { strand: p.strand } : {}),
     hints: [p.hints[0], p.hints[1]] as [string, string],
   }));
 }
@@ -231,6 +254,14 @@ export function scoreAssessParts(parts: AssessPart[], answer: unknown, maxOverri
     } else if (part.kind === "expression") {
       const got = typeof given === "string" ? canonicalExpression(given) : "";
       correct = got.length > 0 && (part.accepted ?? []).some((a) => canonicalExpression(a) === got);
+    } else if (part.keywords?.length) {
+      // Keyword rubric: credit an exact accepted variant, or when enough
+      // concept groups are present, so a correct justification in the
+      // student's own words still scores.
+      const got = typeof given === "string" ? normText(given) : "";
+      const exact = got.length > 0 && (part.accepted ?? []).some((a) => normText(a) === got);
+      const matched = part.keywords.filter((group) => group.some((w) => got.includes(normText(w)))).length;
+      correct = exact || (got.length > 0 && matched >= (part.minKeywordGroups ?? part.keywords.length));
     } else {
       const got = typeof given === "string" ? normText(given) : "";
       correct = got.length > 0 && (part.accepted ?? []).some((a) => normText(a) === got);

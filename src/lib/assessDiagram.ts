@@ -40,6 +40,8 @@ export interface AssessDiagramSpec {
   xMin?: number; xMax?: number; yMin?: number; yMax?: number;
   xLabel?: string; yLabel?: string;
   fiveNumber?: { min: number; q1: number; median: number; q3: number; max: number };
+  /** Several box plots on shared axes, for comparing data sets. */
+  boxPlots?: { label: string; min: number; q1: number; median: number; q3: number; max: number }[];
   points?: [number, number][];
   joinPoints?: boolean;
   bars?: { from: number; to: number; height: number }[];
@@ -113,6 +115,15 @@ export function normaliseAssessDiagram(raw: unknown): AssessDiagramSpec | null {
     if (vals.every((v) => v !== null)) {
       spec.fiveNumber = { min: vals[0]!, q1: vals[1]!, median: vals[2]!, q3: vals[3]!, max: vals[4]! };
     }
+  }
+  if (Array.isArray(raw.boxPlots)) {
+    spec.boxPlots = raw.boxPlots.slice(0, 4).flatMap((b) => {
+      if (!isRecord(b)) return [];
+      const vals = [n(b.min), n(b.q1), n(b.median), n(b.q3), n(b.max)];
+      return vals.every((v) => v !== null)
+        ? [{ label: s(b.label), min: vals[0]!, q1: vals[1]!, median: vals[2]!, q3: vals[3]!, max: vals[4]! }]
+        : [];
+    });
   }
   if (Array.isArray(raw.points)) {
     spec.points = raw.points.slice(0, 120).flatMap((p) => {

@@ -299,6 +299,7 @@ export function publicQuestion(
   // curriculum metadata, never answer information.
   out.topic = q.topic ?? null;
   out.criterion = typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
+  out.strand = typeof cfg.strand === "string" ? cfg.strand : null;
   if (q.type === "assess_parts") {
     out.assess_parts = publicAssessParts(assessPartsFromConfig(cfg));
   }
