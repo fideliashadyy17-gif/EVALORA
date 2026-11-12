@@ -129,6 +129,18 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // React test renderer mounts this component without a `document`).
   const pageHidden = () => typeof document !== "undefined" && document.visibilityState === "hidden";
   const presenceMeta = useRef({ current_question: 1, total_questions: 1, saved_count: 0, pending_saves: 0 });
+  /*
+   * Individual connection-pause state. The browser only ever CLAIMS an outage
+   * window; the server validates it against its own clock and the last
+   * confirmed heartbeat, and credits the pause through the attempt's
+   * extension (see /api/exam/presence). One student's outage never touches
+   * another student's timer: everything here is keyed to this attempt.
+   */
+  const [connState, setConnState] = useState<"online" | "lost" | "restored">("online");
+  const [pauseNotice, setPauseNotice] = useState<string | null>(null);
+  const outageRef = useRef<{ fails: number; lostAt: number | null; hiddenMs: number; toReport: { lost_at: string; hidden_ms: number } | null }>({ fails: 0, lostAt: null, hiddenMs: 0, toReport: null });
+  const connStateRef = useRef(connState);
+  connStateRef.current = connState;
   const [state, setState] = useState<ExamState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
@@ -340,10 +352,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       setPresence(null);
       return;
     }
-    const heartbeat = async (event: "heartbeat" | "leave") => {
+    const heartbeat = async (event: "heartbeat" | "leave" | "restored") => {
+      const outage = outageRef.current;
       try {
         const meta = presenceMeta.current;
-        await fetch("/api/exam/presence", {
+        const res = await fetch("/api/exam/presence", {
           method: "POST",
           headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
           body: JSON.stringify({
@@ -353,20 +366,85 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             saved_count: meta.saved_count,
             pending_saves: meta.pending_saves,
             event,
+            ...(event === "restored" && outage.toReport ? outage.toReport : {}),
           }),
           keepalive: event === "leave",
         });
+        if (!res.ok) throw new Error(`presence ${res.status}`);
+        const data = (await res.json().catch(() => null)) as
+          | { deadline?: string; pause_credit?: { credit_ms: number; extension_minutes: number } | null }
+          | null;
+        outage.fails = 0;
+        if (event === "restored") outage.toReport = null;
+        if (outage.lostAt !== null) {
+          // Back online after a confirmed outage: the server has validated the
+          // window; resync to its authoritative deadline and resume.
+          outage.lostAt = null;
+          outage.hiddenMs = 0;
+          setConnState("restored");
+          setPauseNotice(
+            data?.pause_credit && data.pause_credit.credit_ms > 0
+              ? `Connection restored — ${Math.round(data.pause_credit.credit_ms / 60000)} minute(s) of paused time added back to your countdown.`
+              : "Connection restored — your remaining assessment time is continuing.",
+          );
+          window.setTimeout(() => setConnState((c) => (c === "restored" ? "online" : c)), 8000);
+        } else if (connStateRef.current !== "online") {
+          setConnState("online");
+        }
+        if (data?.deadline) {
+          // Server-authoritative countdown resync (includes any pause credit).
+          setState((prev) => (prev ? { ...prev, attempt: { ...prev.attempt, deadline: data.deadline as string } } : prev));
+        }
+        // Reconnected: push any answers that were queued while offline.
+        if (activeRef.current && queueRef.current?.state().pending) void queueRef.current.flush();
       } catch {
-        // Offline: the next heartbeat (or the roster refresh) recovers on its own.
+        // The server is unreachable from this device. A hidden page is not an
+        // outage (heartbeats pause on purpose), so only a visible page with
+        // repeated failed heartbeats — or the browser's own offline event —
+        // starts the individual pause window.
+        outage.fails += 1;
+        if (outage.lostAt === null && (outage.fails >= 2 || (typeof navigator !== "undefined" && navigator.onLine === false))) {
+          outage.lostAt = Date.now();
+          setConnState("lost");
+          setPauseNotice(null);
+        }
       }
     };
+
 
     void heartbeat("heartbeat");
     const beat = setInterval(() => {
       if (pageHidden()) return;
+      if (outageRef.current.lostAt !== null) {
+        const lost = outageRef.current;
+        lost.toReport = { lost_at: new Date(lost.lostAt ?? Date.now()).toISOString(), hidden_ms: Math.round(lost.hiddenMs) };
+        void heartbeat("restored");
+        return;
+      }
       void heartbeat("heartbeat");
     }, PRESENCE_HEARTBEAT_MS);
 
+    // While an outage window is open, time the page spends hidden is tracked
+    // so the server can subtract it (a lid closed for 20 minutes is not a
+    // 20-minute internet outage).
+    const hiddenWatch = setInterval(() => {
+      const outage = outageRef.current;
+      if (outage.lostAt !== null && pageHidden()) outage.hiddenMs += 1000;
+    }, 1000);
+    const onOffline = () => {
+      const outage = outageRef.current;
+      if (outage.lostAt === null && !pageHidden()) {
+        outage.lostAt = Date.now();
+        setConnState("lost");
+      }
+    };
+    const onOnline = () => {
+      if (outageRef.current.lostAt !== null && !pageHidden()) void heartbeat("restored");
+    };
+    if (typeof window !== "undefined") {
+      window.addEventListener("offline", onOffline);
+      window.addEventListener("online", onOnline);
+    }
     const onHide = () => {
       if (pageHidden()) void heartbeat("leave");
     };
@@ -378,8 +456,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
     return () => {
       clearInterval(beat);
+      clearInterval(hiddenWatch);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onHide);
-      if (typeof window !== "undefined") window.removeEventListener("pagehide", pageHide);
+      if (typeof window !== "undefined") {
+        window.removeEventListener("pagehide", pageHide);
+        window.removeEventListener("offline", onOffline);
+        window.removeEventListener("online", onOnline);
+      }
     };
   }, [attemptActive, attemptId, token]);
 
@@ -434,6 +517,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // an early submission. Polling stops the moment the server reports the attempt
   // closed, and is throttled so a stalled screen cannot flood the route.
   const lastDeadlineCheckAt = useRef(0);
+  const frozenRemaining = useRef<number | null>(null);
   useEffect(() => {
     if (!state || state.attempt.status !== "in_progress") return;
     const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
@@ -539,7 +623,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const { exam, attempt, questions } = state;
   const submitted = attempt.status !== "in_progress";
-  const remaining = Math.max(0, (new Date(attempt.deadline).getTime() - (now + offset.current)) / 1000);
+  const liveRemaining = Math.max(0, (new Date(attempt.deadline).getTime() - (now + offset.current)) / 1000);
+  // During a confirmed local outage the countdown FREEZES at the value it had
+  // when the connection was lost — the server independently validates the
+  // pause and credits it, and the resynced deadline takes over on return.
+  const remaining = connState === "lost" && frozenRemaining.current !== null ? frozenRemaining.current : liveRemaining;
+  if (connState === "lost" && frozenRemaining.current === null) frozenRemaining.current = liveRemaining;
+  if (connState !== "lost") frozenRemaining.current = null;
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
   const currentKeyLine = answerKeyLine(current?.reveal?.summary);
@@ -551,6 +641,24 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const examBody = (
     <div className="min-h-screen bg-cream">
+      {(connState !== "online" || pauseNotice) && !submitted && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={cn(
+            "px-4 py-2 text-center text-sm font-semibold print:hidden",
+            connState === "lost" ? "bg-amber-100 text-amber-900" : "bg-evergreen-100 text-evergreen-900",
+          )}
+        >
+          {connState === "lost" ? (
+            <>CONNECTION LOST — Your assessment time has been paused. Your progress is being preserved; keep working, it saves automatically when you are back online.</>
+          ) : connState === "restored" ? (
+            <>CONNECTION RESTORED — {pauseNotice ?? "Your remaining assessment time is continuing."}</>
+          ) : (
+            <>{pauseNotice}</>
+          )}
+        </div>
+      )}
       <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Logo href={null} iconOnly />
@@ -565,7 +673,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           </div>
           {!submitted && (
             <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
-              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>Time remaining</p>
+              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>{connState === "lost" ? "Time paused" : "Time remaining"}</p>
               <p className="font-display text-2xl font-bold tabular-nums leading-none">{Number.isFinite(remaining) ? mmss(Math.ceil(remaining)) : "—"}</p>
             </div>
           )}

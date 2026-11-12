@@ -1,6 +1,7 @@
 import { Badge, Button, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { attemptDeadline } from "@/lib/exam";
+import { presenceConnection } from "@/lib/presence";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import { Activity, Eye, TriangleAlert, Users } from "lucide-react";
@@ -63,6 +64,28 @@ export default async function ExaminationMonitoringPage({
     incidentQuery,
   ]);
   const attempts = (rawAttempts ?? []) as unknown as AttemptRow[];
+
+  // Live connection state per attempt: heartbeats (exam_presence) plus the
+  // server-validated pause-credit ledger (exam_connection_events). Read-only;
+  // supervisors see who is online, whose timer is paused for a connectivity
+  // problem, and how much pause time the server has credited automatically.
+  const activeIds = attempts.filter((a) => a.status === "in_progress").map((a) => a.id);
+  const [{ data: presenceRows }, { data: creditRows }] = await Promise.all([
+    activeIds.length
+      ? admin.from("exam_presence").select("attempt_id, last_seen_at, pending_saves, unconfirmed_lost_at").in("attempt_id", activeIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+    activeIds.length
+      ? admin.from("exam_connection_events").select("attempt_id, credit_ms").in("attempt_id", activeIds)
+      : Promise.resolve({ data: [] as unknown[] }),
+  ]);
+  const presenceBy = new Map(
+    ((presenceRows ?? []) as { attempt_id: string; last_seen_at: string | null; pending_saves: number | null; unconfirmed_lost_at: string | null }[])
+      .map((row) => [row.attempt_id, row]),
+  );
+  const creditBy = new Map<string, number>();
+  for (const row of (creditRows ?? []) as { attempt_id: string; credit_ms: number | null }[]) {
+    creditBy.set(row.attempt_id, (creditBy.get(row.attempt_id) ?? 0) + Math.max(0, Number(row.credit_ms ?? 0)));
+  }
   const activeAttempts = attempts.filter((a) => a.status === "in_progress");
   const back = sp.exam ? `/admin/examinations/monitoring?exam=${sp.exam}` : "/admin/examinations/monitoring";
   const now = Date.now();
@@ -132,15 +155,38 @@ export default async function ExaminationMonitoringPage({
         {attempts.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No attempts match.</p>
         ) : (
-          <Table head={["Candidate / examination", "Started", "Server deadline", "Saved answers", "Extension", "Status", "Actions"]}>
+          <Table head={["Candidate / examination", "Started", "Server deadline", "Connection", "Saved answers", "Extension", "Status", "Actions"]}>
             {attempts.map((a) => {
               const deadline = a.exams ? attemptDeadline(a.exams, a.started_at, a.extension_minutes) : null;
               const remaining = deadline ? Math.ceil((deadline.getTime() - now) / 60000) : null;
+              const presence = presenceBy.get(a.id);
+              const conn = a.status === "in_progress" ? presenceConnection(presence?.last_seen_at ?? null, now) : null;
+              const lostSince = presence?.unconfirmed_lost_at ? Date.parse(presence.unconfirmed_lost_at) : null;
+              const lostMin = lostSince !== null && Number.isFinite(lostSince) ? Math.max(0, Math.round((now - lostSince) / 60000)) : null;
+              const creditedMin = Math.round((creditBy.get(a.id) ?? 0) / 60000);
               return (
                 <tr key={a.id}>
                   <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exams?.title}{a.exam_candidates?.candidate_ref ? ` · ${a.exam_candidates.candidate_ref}` : ""}</span></td>
                   <td className="text-ink-soft">{fmtDateTime(a.started_at)}</td>
                   <td>{deadline ? fmtDateTime(deadline.toISOString()) : "—"}<span className="block text-xs text-ink-soft">{a.status === "in_progress" && remaining !== null ? (remaining < 0 ? `${Math.abs(remaining)} min overdue` : `${remaining} min left`) : a.submitted_at ? `Submitted ${fmtDateTime(a.submitted_at)}` : ""}</span></td>
+                  <td>
+                    {conn === null ? <span className="text-xs text-ink-soft">—</span> : conn === "online" ? (
+                      <span className="text-xs font-semibold text-evergreen-700">● Online</span>
+                    ) : conn === "idle" ? (
+                      <span className="text-xs font-semibold text-amber-600">● Reconnecting</span>
+                    ) : (
+                      <span className="text-xs font-semibold text-red-700">● Connection lost{lostMin !== null && lostMin > 0 ? ` · ${lostMin} min · timer paused on return` : ""}</span>
+                    )}
+                    <span className="block text-xs text-ink-soft">
+                      {a.status === "in_progress" ? (
+                        <>
+                          {presence?.last_seen_at ? `Heartbeat ${fmtDateTime(presence.last_seen_at)}` : "No heartbeat yet"}
+                          {Number(presence?.pending_saves ?? 0) > 0 ? ` · ${presence?.pending_saves} answer(s) syncing` : ""}
+                          {creditedMin > 0 ? ` · +${creditedMin} min pause credited` : ""}
+                        </>
+                      ) : ""}
+                    </span>
+                  </td>
                   <td className="tabular-nums">{a.exam_answers[0]?.count ?? 0}</td>
                   <td>{Number(a.extension_minutes) > 0 ? <Badge tone="gold">+{a.extension_minutes} min</Badge> : "—"}</td>
                   <td><StatusBadge status={a.status} /></td>
