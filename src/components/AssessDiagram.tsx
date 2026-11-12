@@ -198,6 +198,12 @@ function Axes({ spec }: { spec: AssessDiagramSpec }) {
     xMin = spec.xMin ?? Math.floor(spec.fiveNumber.min - (spec.fiveNumber.max - spec.fiveNumber.min) * 0.08);
     xMax = spec.xMax ?? Math.ceil(spec.fiveNumber.max + (spec.fiveNumber.max - spec.fiveNumber.min) * 0.08);
   }
+  if (spec.kind === "box_plot" && spec.boxPlots?.length) {
+    const lo = Math.min(...spec.boxPlots.map((b) => b.min)); const hi = Math.max(...spec.boxPlots.map((b) => b.max));
+    xMin = spec.xMin ?? Math.floor(lo - (hi - lo) * 0.08);
+    xMax = spec.xMax ?? Math.ceil(hi + (hi - lo) * 0.08);
+    yMax = spec.boxPlots.length;
+  }
   const sx = (x: number) => L + ((x - xMin) / (xMax - xMin || 1)) * pw;
   const sy = (y: number) => T + ph - ((y - yMin) / (yMax - yMin || 1)) * ph;
   const ticks = (min: number, max: number, count = 8) => {
@@ -241,6 +247,20 @@ function Axes({ spec }: { spec: AssessDiagramSpec }) {
           {pts.map((p, i) => <circle key={i} cx={sx(p[0])} cy={sy(p[1])} r={spec.kind === "term_graph" ? 4.5 : 3.4} fill={gold} stroke="#8a6d14" strokeWidth={1.2} />)}
         </g>
       )}
+
+      {spec.kind === "box_plot" && (spec.boxPlots ?? []).map((b, i) => {
+        const cy = spec.boxPlots!.length - i - 0.5;
+        return (
+          <g key={`bp${i}`}>
+            <line x1={sx(b.min)} y1={sy(cy)} x2={sx(b.max)} y2={sy(cy)} stroke={accent} strokeWidth={2.2} />
+            <line x1={sx(b.min)} y1={sy(cy - 0.22)} x2={sx(b.min)} y2={sy(cy + 0.22)} stroke={accent} strokeWidth={2.2} />
+            <line x1={sx(b.max)} y1={sy(cy - 0.22)} x2={sx(b.max)} y2={sy(cy + 0.22)} stroke={accent} strokeWidth={2.2} />
+            <rect x={sx(b.q1)} y={sy(cy + 0.3)} width={Math.max(2, sx(b.q3) - sx(b.q1))} height={sy(cy - 0.3) - sy(cy + 0.3)} fill="#c9a227" fillOpacity={0.35} stroke={accent} strokeWidth={2} />
+            <line x1={sx(b.median)} y1={sy(cy + 0.3)} x2={sx(b.median)} y2={sy(cy - 0.3)} stroke={accent} strokeWidth={2.6} />
+            <text x={L + 4} y={sy(cy + 0.48)} fontSize={12} fontWeight={700} fill={ink}>{b.label}</text>
+          </g>
+        );
+      })}
 
       {spec.kind === "box_plot" && f && (
         <g>

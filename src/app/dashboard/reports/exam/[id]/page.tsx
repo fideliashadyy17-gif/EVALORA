@@ -31,7 +31,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
 
   const [{ data: attempts }, { data: qq }, { count: candidateTotal }] = await Promise.all([
     supabase.from("exam_attempts").select("*, exam_candidates(full_name, candidate_ref), exam_answers(question_id, is_correct, points_awarded)").eq("exam_id", id).order("score", { ascending: false, nullsFirst: false }),
-    supabase.from("quiz_questions").select("question_id, questions(prompt, prompt_doc, type, topic, difficulty)").eq("quiz_id", exam.quiz_id),
+    supabase.from("quiz_questions").select("question_id, questions(prompt, prompt_doc, type, topic, difficulty, config)").eq("quiz_id", exam.quiz_id),
     supabase.from("exam_candidates").select("id", { count: "exact", head: true }).eq("exam_id", id),
   ]);
 
@@ -42,13 +42,15 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   const passCount = pcts.filter((p) => p >= passMark).length;
 
   const qStats = (qq ?? []).map((r) => {
-    const q = r.questions as unknown as { prompt: string; type: string; topic: string | null; difficulty: string };
+    const q = r.questions as unknown as { prompt: string; type: string; topic: string | null; difficulty: string; config: Record<string, unknown> | null };
+    const crit = typeof q.config?.myp_criterion === "string" ? q.config.myp_criterion : null;
+    const strand = typeof q.config?.strand === "string" ? q.config.strand : null;
     const answers = list.flatMap((a) =>
       ((a.exam_answers as { question_id: string; is_correct: boolean | null }[]) ?? []).filter((x) => x.question_id === r.question_id),
     );
     const graded = answers.filter((x) => x.is_correct !== null);
     const correct = answers.filter((x) => x.is_correct === true).length;
-    return { ...q, question_id: r.question_id, answered: answers.length, pct: graded.length ? Math.round((correct / graded.length) * 100) : null };
+    return { ...q, crit, strand, question_id: r.question_id, answered: answers.length, pct: graded.length ? Math.round((correct / graded.length) * 100) : null };
   });
 
   const csv = toCsv([
@@ -135,7 +137,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                 <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-evergreen-100">
                   <div className={`h-full ${(q.pct ?? 0) >= 70 ? "bg-evergreen-600" : (q.pct ?? 0) >= 40 ? "bg-gold-500" : "bg-red-500"}`} style={{ width: `${q.pct ?? 0}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-ink-soft">{q.answered} answers · {q.difficulty}{q.topic ? ` · ${q.topic}` : ""} · {hintsByQuestion.get(q.question_id) ?? 0} hint openings</p>
+                <p className="mt-1 text-xs text-ink-soft">{q.answered} answers · {q.difficulty}{q.topic ? ` · ${q.topic}` : ""}{q.crit ? ` · Criterion ${q.crit}${q.strand ? ` ${q.strand}` : ""}` : ""} · {hintsByQuestion.get(q.question_id) ?? 0} hint openings</p>
               </div>
             ))}
           </div>

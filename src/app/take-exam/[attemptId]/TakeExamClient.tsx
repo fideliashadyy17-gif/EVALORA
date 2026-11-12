@@ -36,6 +36,7 @@ interface ExamState {
     saved_answer: Record<string, unknown> | null;
     topic?: string | null;
     criterion?: string | null;
+    strand?: string | null;
     result: {
       is_correct: boolean | null;
       points_awarded: number | null;
@@ -734,6 +735,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                       const p = max ? (got / max) * 100 : 0;
                       return p >= 70 ? "Strong" : p >= 40 ? "Developing" : "Needs work";
                     };
+                    // Indicative MYP level band from the criterion percentage.
+                    const levelBand = (got: number, max: number) => {
+                      const p = max ? (got / max) * 100 : 0;
+                      return p >= 85 ? "7–8" : p >= 65 ? "5–6" : p >= 40 ? "3–4" : "1–2";
+                    };
                     const rows = (m: Map<string, { got: number; max: number }>) => [...m.entries()].map(([k, v]) => (
                       <li key={k} className="flex items-center justify-between gap-3 py-1 text-sm">
                         <span className="font-medium capitalize">{k}</span>
@@ -746,8 +752,15 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                         <p className="mt-1 text-sm text-ink-soft">Hints used: <strong className="text-evergreen-900">{usage.length}</strong> on {hintedQuestions} question{hintedQuestions === 1 ? "" : "s"} — using a hint never costs marks here; it shows where to revise.</p>
                         <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By topic</p>
                         <ul>{rows(byTopic)}</ul>
-                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By MYP criterion</p>
-                        <ul>{rows(byCriterion)}</ul>
+                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By MYP criterion (indicative level band)</p>
+                        <ul>
+                          {[...byCriterion.entries()].map(([k, v]) => (
+                            <li key={k} className="flex items-center justify-between gap-3 py-1 text-sm">
+                              <span className="font-medium">{k}</span>
+                              <span className="text-ink-soft">{v.got}/{v.max} · <strong className="text-evergreen-900">Level {levelBand(v.got, v.max)}</strong></span>
+                            </li>
+                          ))}
+                        </ul>
                       </div>
                     );
                   })()}
@@ -768,6 +781,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <div className="mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">Question {index + 1} of {questions.length}</Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
+                {current.criterion ? (
+                  <Badge tone="green">
+                    Criterion {current.criterion}
+                    {current.strand ? ` · ${current.strand}` : ""}
+                    {" — "}
+                    {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[current.criterion] ?? ""}
+                  </Badge>
+                ) : null}
                 {/* Inline, keyed by question: the hint can never belong to the
                     previous question, and opening it touches no answer, timer,
                     save queue or submission state. */}

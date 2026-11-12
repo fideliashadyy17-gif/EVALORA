@@ -45,6 +45,7 @@ export interface PublicQuestion {
   assess_parts?: PublicAssessPart[] | null;
   topic?: string | null;
   criterion?: string | null;
+  strand?: string | null;
 }
 
 /**
@@ -406,6 +407,7 @@ export function QuestionRunner({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-evergreen-700 px-1.5 text-sm font-bold text-white">{part.label}</span>
                     {part.prompt ? <span className="min-w-0 flex-1 font-medium"><MathText text={part.prompt} /></span> : <span className="flex-1" />}
+                    {part.strand ? <span className="rounded-md bg-evergreen-700/10 px-2 py-0.5 text-[11px] font-bold text-evergreen-900">Criterion {part.strand}</span> : null}
                     <span className="text-xs font-semibold text-ink-soft">{part.points} mark{part.points === 1 ? "" : "s"}</span>
                     <button
                       type="button"
