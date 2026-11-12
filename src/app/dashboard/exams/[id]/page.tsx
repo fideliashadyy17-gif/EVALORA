@@ -13,7 +13,7 @@ import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -24,7 +24,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; e?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -228,6 +228,11 @@ export default async function ExamDetailPage({
       {sp.added && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Added {sp.added} candidate(s). Each has a personal access code below.</p>}
       {sp.room_error && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The examination was created, but its proctoring room could not be confirmed. Contact an administrator before opening it.</p>}
       {sp.ok === "created" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination created. Its unique link and access code are stored with the exam and shown below.</p>}
+      {sp.ok === "paused" && <p role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">Assessment paused. Every participant in progress is frozen: their answers, question position and remaining time are preserved, submissions are blocked, and each participant sees the pause notice. Resume when ready — the frozen time is added back automatically.</p>}
+      {sp.ok === "resumed" && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Assessment resumed. Participants continue from their preserved position with their remaining time; the paused time was added to their deadline. No answers or attempts were changed.</p>}
+      {sp.e === "not_open" && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">Only an open examination can be paused.</p>}
+      {sp.e === "not_paused" && <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">This examination is not paused.</p>}
+      {sp.e === "pause_failed" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">The pause state could not be changed. Nothing was modified — try again.</p>}
 
       <div className="mb-6">
         <ExaminationAccessCard
@@ -249,7 +254,7 @@ export default async function ExamDetailPage({
 
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
-          <Badge tone={exam.status === "open" ? "amber" : "gray"}>{exam.status}</Badge>
+          <Badge tone={exam.status === "open" ? "amber" : exam.status === "paused" ? "gold" : "gray"}>{exam.status}</Badge>
           <div className="min-w-[280px] flex-1">
             <p className="text-sm text-ink-soft">
               Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
@@ -263,10 +268,18 @@ export default async function ExamDetailPage({
             </div>}
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
-            {exam.status !== "open" ? (
+            {exam.status === "paused" ? (
+              /* A paused examination resumes ONLY through the pause RPC so
+                 every attempt's frozen time is credited and its 'assessment'
+                 pause reason cleared — never through the plain open toggle. */
+              <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="resume" /><Button type="submit">Resume assessment</Button></form>
+            ) : exam.status !== "open" ? (
               <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="open" /><Button type="submit">Open examination</Button></form>
             ) : (
-              <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="closed" /><Button type="submit" variant="danger">Close examination</Button></form>
+              <>
+                <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="pause" /><Button type="submit" variant="outline">Pause assessment</Button></form>
+                <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="closed" /><Button type="submit" variant="danger">Close examination</Button></form>
+              </>
             )}
             <form action={publishResults}>
               <input type="hidden" name="exam_id" value={id} />

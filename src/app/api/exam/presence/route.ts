@@ -1,5 +1,6 @@
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
 import { isUuid } from "@/lib/examMessaging";
+import { isManuallyPaused, manualPauseMs, pauseNoticeKind } from "@/lib/examPause";
 import {
   buildRoster,
   connectionPauseCredit,
@@ -73,7 +74,12 @@ export async function POST(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
   const { attempt, exam } = ctx;
   if (!exam) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers: NO_STORE });
-  if (attempt.status !== "in_progress" || new Date() > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0))) {
+  const nowMs0 = Date.now();
+  const manuallyPaused = isManuallyPaused(attempt);
+  if (
+    attempt.status !== "in_progress" ||
+    new Date(nowMs0) > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, nowMs0))
+  ) {
     return NextResponse.json({ error: "This examination is closed." }, { status: 409, headers: NO_STORE });
   }
 
@@ -85,7 +91,34 @@ export async function POST(request: Request) {
   // device, and only once per window (unique ledger index). Every other
   // request path leaves `extension_minutes` untouched.
   let pauseCredit: { credit_ms: number; extension_minutes: number; deadline: string } | null = null;
-  if (body.event === "restored" && attempt.status === "in_progress") {
+  if (body.event === "restored" && attempt.status === "in_progress" && manuallyPaused) {
+    // An organizer pause is open: its window already preserves this student's
+    // time (the countdown is frozen and the pause is credited on resume), so a
+    // connection outage inside it must NOT also credit — that would grant the
+    // same minutes twice. Record the return, credit nothing.
+    const claimedLostMs = body.lost_at ? Date.parse(body.lost_at) : null;
+    if (claimedLostMs !== null && Number.isFinite(claimedLostMs)) {
+      await admin
+        .from("exam_connection_events")
+        .upsert(
+          {
+            attempt_id: attempt.id,
+            exam_id: attempt.exam_id,
+            organization_id: exam.organization_id,
+            event_kind: "credit_refused",
+            lost_at: new Date(claimedLostMs).toISOString(),
+            restored_at: now.toISOString(),
+            claimed_ms: Math.max(0, now.getTime() - claimedLostMs),
+            hidden_ms: body.hidden_ms ?? 0,
+            credit_ms: 0,
+            extension_minutes_before: Number(attempt.extension_minutes ?? 0),
+            extension_minutes_after: Number(attempt.extension_minutes ?? 0),
+            refusal_reason: "manual_pause_open",
+          },
+          { onConflict: "attempt_id,lost_at", ignoreDuplicates: true },
+        );
+    }
+  } else if (body.event === "restored" && attempt.status === "in_progress") {
     const { data: prevPresence } = await admin
       .from("exam_presence")
       .select("last_seen_at")
@@ -202,9 +235,14 @@ export async function POST(request: Request) {
       server_now: now.toISOString(),
       heartbeat_ms: PRESENCE_HEARTBEAT_MS,
       // Always echo the authoritative deadline so a returning device resyncs
-      // its countdown to the server state (including any pause credit).
-      deadline: attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0)).toISOString(),
+      // its countdown to the server state (including any pause credit and any
+      // open organizer pause, which freezes the countdown live).
+      deadline: attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, now.getTime())).toISOString(),
       pause_credit: pauseCredit,
+      // Manual (organizer) pause state, so the student's page shows the pause
+      // banner and blocks composition within one heartbeat — no refresh needed.
+      paused: manuallyPaused,
+      pause_notice: pauseNoticeKind(attempt),
     },
     { headers: NO_STORE },
   );

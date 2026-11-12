@@ -247,8 +247,8 @@ function load(source, overrides = {}) {
 const route = load("src/app/api/exam/presence/route.ts", {
   "@/lib/supabase/server": { createAdminClient: () => admin },
   "@/lib/exam": {
-    attemptDeadline: (exam, startedAt, ext = 0) =>
-      new Date(Date.parse(startedAt) + (exam.duration_minutes + Number(ext ?? 0)) * 60_000),
+    attemptDeadline: (exam, startedAt, ext = 0, pauseMs = 0) =>
+      new Date(Date.parse(startedAt) + (exam.duration_minutes + Number(ext ?? 0)) * 60_000 + Math.max(0, Number(pauseMs ?? 0))),
     loadAttemptContext: async (a, attemptId, token) => {
       const attempt = tables.exam_attempts.find((x) => x.id === attemptId && x.access_token === token);
       if (!attempt) return null;
@@ -396,6 +396,92 @@ const gus = makeAttempt("in_progress", 70); // started 70 min ago, 60 min paper
   check("an attempt already past its deadline is refused, not extended", () => {
     assert.equal(res.status, 409);
     assert.equal(gus.extension_minutes, 0);
+  });
+}
+
+/* Manual (organizer) pause — heartbeat echo + credit refusal while paused */
+const pam = makeAttempt("in_progress", 10, 0);
+pam.pause_reasons = ["assessment"];
+pam.paused_at = iso(Date.now() - 4 * 60_000); // organizer paused 4 minutes ago
+seedPresence(pam.id, 20_000);
+{
+  const res = await post(pam, { event: "heartbeat", current_question: 5, saved_count: 1, pending_saves: 0 });
+  const body = await res.json();
+  check("manual pause: heartbeat echoes paused + assessment notice and a frozen deadline", () => {
+    assert.equal(res.status, 200);
+    assert.equal(body.paused, true);
+    assert.equal(body.pause_notice, "assessment");
+    // Deadline = raw 60 min + the LIVE pause duration (>= 4 min), so the
+    // countdown cannot reach zero while the organizer pause is open.
+    const deadlineMs = Date.parse(body.deadline);
+    const rawMs = Date.parse(pam.started_at) + 60 * 60_000;
+    assert.ok(deadlineMs >= rawMs + 4 * 60_000, `deadline carries the open pause (${deadlineMs - rawMs} ms)`);
+    assert.equal(pam.extension_minutes, 0, "no stored credit while the pause is open");
+    assert.equal(body.pause_credit, null);
+  });
+}
+{
+  // An outage INSIDE the manual pause must not also credit connection time.
+  const lostAt = Date.now() - 3 * 60_000;
+  const res = await post(pam, { event: "restored", lost_at: iso(lostAt), hidden_ms: 0 });
+  const body = await res.json();
+  check("manual pause open: reconnection credit is REFUSED and ledgered, never double-granted", () => {
+    assert.equal(res.status, 200);
+    assert.equal(body.pause_credit, null, "no connection credit while the manual pause preserves time");
+    assert.equal(pam.extension_minutes, 0, "extension untouched");
+    const ev = tables.exam_connection_events.find((e) => e.attempt_id === pam.id && e.event_kind === "credit_refused");
+    assert.ok(ev, "the refusal is recorded in the append-only ledger");
+    assert.equal(ev.refusal_reason, "manual_pause_open");
+    assert.equal(ev.credit_ms, 0);
+    assert.equal(ev.extension_minutes_before, 0);
+    assert.equal(ev.extension_minutes_after, 0);
+    // Duplicate restored events stay a single ledger row (unique window index).
+    assert.equal(tables.exam_connection_events.filter((e) => e.attempt_id === pam.id).length, 1);
+  });
+  const res2 = await post(pam, { event: "restored", lost_at: iso(lostAt), hidden_ms: 0 });
+  check("manual pause: a duplicate refusal cannot add a second ledger row", async () => {
+    assert.equal(res2.status, 200);
+    assert.equal(tables.exam_connection_events.filter((e) => e.attempt_id === pam.id).length, 1);
+  });
+}
+{
+  // Resume: reasons cleared, paused_at kept null; the next restored event
+  // credits normally again (the refusal was scoped to the open pause only).
+  pam.pause_reasons = [];
+  pam.paused_at = null;
+  const res = await post(pam, { event: "heartbeat" });
+  const body = await res.json();
+  check("manual pause cleared: heartbeat reports unpaused with the plain deadline", () => {
+    assert.equal(body.paused, false);
+    assert.equal(body.pause_notice, null);
+    assert.equal(body.deadline, iso(Date.parse(pam.started_at) + 60 * 60_000));
+  });
+  // Backdate the server's last contact so the outage window is real (a
+  // second presence row would violate the primary key).
+  tables.exam_presence.find((r) => r.attempt_id === pam.id).last_seen_at = iso(Date.now() - 5 * 60_000);
+  const lostAt = Date.now() - 4.5 * 60_000;
+  const res2 = await post(pam, { event: "restored", lost_at: iso(lostAt), hidden_ms: 0 });
+  const body2 = await res2.json();
+  check("after the manual pause clears, connection credit works again for THIS attempt", () => {
+    assert.equal(res2.status, 200);
+    assert.ok(body2.pause_credit, "credit granted again");
+    assert.ok(pam.extension_minutes >= 4 && pam.extension_minutes <= 5, `extension ${pam.extension_minutes}`);
+  });
+}
+{
+  // An individually paused student ('student' reason) gets the same treatment.
+  const ivan = makeAttempt("in_progress", 10, 0);
+  ivan.pause_reasons = ["student"];
+  ivan.paused_at = iso(Date.now() - 2 * 60_000);
+  seedPresence(ivan.id, 20_000);
+  const res = await post(ivan, { event: "heartbeat" });
+  const body = await res.json();
+  check("individual student pause: notice kind is 'student' and only THIS attempt is frozen", () => {
+    assert.equal(body.paused, true);
+    assert.equal(body.pause_notice, "student");
+    const rawMs = Date.parse(ivan.started_at) + 60 * 60_000;
+    assert.ok(Date.parse(body.deadline) >= rawMs + 2 * 60_000);
+    assert.equal(pam.extension_minutes >= 4, true, "other attempts keep their own state");
   });
 }
 

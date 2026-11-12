@@ -26,6 +26,7 @@ const SUBMITTED = "aaaaaaaa-2222-4222-8222-222222222222";
 
 try {
   await db.exec(`
+    create role anon nologin;
     create role authenticated nologin;
     create role service_role nologin;
     create publication supabase_realtime;

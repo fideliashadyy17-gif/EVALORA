@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { manualPauseMs } from "@/lib/examPause";
 import { MESSAGE_CAP_PER_ATTEMPT, MESSAGE_PAGE_SIZE, isUuid, normalizeMessageBody } from "@/lib/examMessaging";
 import { requireStaffSession, staffExamAccess } from "@/lib/monitorAccess";
 import { createClient } from "@/lib/supabase/server";
@@ -71,7 +72,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
   if (attempt.status !== "in_progress") {
     return NextResponse.json({ error: "This attempt is closed. Messages can only be sent during the examination." }, { status: 409, headers: NO_STORE });
   }
-  if (new Date() > attemptDeadline(exam, attempt.started_at as string, Number(attempt.extension_minutes ?? 0))) {
+  // Pause-aware: staff can always reach a paused participant.
+  if (new Date() > attemptDeadline(exam, attempt.started_at as string, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt as { pause_reasons?: string[] | null; paused_at?: string | null }, Date.now()))) {
     return NextResponse.json({ error: "The deadline has passed. Messages can no longer be sent." }, { status: 409, headers: NO_STORE });
   }
   const normalized = normalizeMessageBody(parsed.data.body);

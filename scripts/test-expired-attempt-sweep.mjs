@@ -17,6 +17,7 @@ writeFileSync(path.join(dir, 'exam.js'), compile(readFileSync('src/lib/exam.ts',
 // lifecycle and the same deadline rule the candidate routes use, so both are
 // compiled from source here too.
 writeFileSync(path.join(dir, 'examDeadline.js'), compile(readFileSync('src/lib/examDeadline.ts', 'utf8')));
+writeFileSync(path.join(dir, 'examPause.js'), compile(readFileSync('src/lib/examPause.ts', 'utf8')));
 writeFileSync(path.join(dir, 'examSubmission.js'), compile(readFileSync('src/lib/examSubmission.ts', 'utf8')));
 writeFileSync(path.join(dir, 'expiredAttempts.js'), compile(readFileSync('src/lib/expiredAttempts.ts', 'utf8')));
 // Stubs for the two modules exam.ts imports from. Grading rule for the fixture: a saved answer
@@ -157,6 +158,29 @@ await check('an authorized extension moves the deadline, and removing it closes 
   db.attempts[0].extension_minutes = 0;
   assert.equal((await sweepExpiredAttempts(admin, NOW)).closed.length, 1, 'without the extension it has expired');
   console.log('  ✓ extension honoured on both sides');
+});
+
+await check('a manually paused attempt is NEVER swept, however far past its deadline', async () => {
+  // Organizer paused the whole assessment 10 minutes ago; the raw deadline
+  // passed 60 minutes before that. The open pause keeps the attempt alive.
+  seed([attempt({started_at: iso(NOW - 4 * 60 * MIN), pause_reasons: ['assessment'], paused_at: iso(NOW - 10 * MIN)})]);
+  const r = await sweepExpiredAttempts(admin, NOW);
+  assert.equal(r.expired, 0, 'the paused attempt is not even counted as expired');
+  assert.equal(db.writes.length, 0);
+  assert.equal(db.attempts[0].status, 'in_progress');
+  // An individually paused student is protected the same way.
+  reset();
+  seed([attempt({started_at: iso(NOW - 4 * 60 * MIN), pause_reasons: ['student'], paused_at: iso(NOW - 10 * MIN)})]);
+  assert.equal((await sweepExpiredAttempts(admin, NOW)).expired, 0);
+  // Once the pause clears, the stored extension decides again: without credit
+  // it is expired; with the RPC-folded extension it stays open.
+  reset();
+  seed([attempt({started_at: iso(NOW - 4 * 60 * MIN), pause_reasons: [], paused_at: null})]);
+  assert.deepEqual((await sweepExpiredAttempts(admin, NOW)).closed, ['a1'], 'resume without credit closes it normally');
+  reset();
+  seed([attempt({started_at: iso(NOW - 4 * 60 * MIN), extension_minutes: 120, pause_reasons: [], paused_at: null})]);
+  assert.equal((await sweepExpiredAttempts(admin, NOW)).expired, 0, 'credited pause time keeps it open');
+  console.log('  ✓ paused attempts are structurally exempt from the sweep');
 });
 
 await check('the exam window end is the earlier limit when it precedes the duration', async () => {

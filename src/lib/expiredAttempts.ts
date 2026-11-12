@@ -17,6 +17,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { submissionWindow } from "./examDeadline";
+import { isManuallyPaused, manualPauseMs } from "./examPause";
 import { applyDeadlineSubmission } from "./examSubmission";
 
 /** Maximum in-progress attempts examined per sweep. Bounded so one run stays short. */
@@ -29,6 +30,9 @@ export interface OpenAttemptRow {
   started_at: string;
   extension_minutes: number | null;
   question_order: unknown;
+  /** Manual organizer pause state (migration 0098). Legacy rows: never paused. */
+  pause_reasons?: string[] | null;
+  paused_at?: string | null;
 }
 
 export interface ExamForDeadline {
@@ -67,11 +71,15 @@ export interface SweepResult {
  * candidate route exactly because both read `submissionWindow`.
  */
 export function isPastDeadline(
-  attempt: Pick<OpenAttemptRow, "started_at" | "extension_minutes">,
+  attempt: Pick<OpenAttemptRow, "started_at" | "extension_minutes" | "pause_reasons" | "paused_at">,
   exam: Pick<ExamForDeadline, "duration_minutes" | "ends_at">,
   nowMs: number,
 ): boolean {
-  return submissionWindow(exam, attempt, nowMs).reached;
+  // A manually paused attempt is never past its deadline: the open pause
+  // joins the window exactly like an extension, so the sweep structurally
+  // cannot close an attempt an organizer has paused.
+  if (isManuallyPaused(attempt)) return false;
+  return submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs)).reached;
 }
 
 /** Constant-time check of `Authorization: Bearer <secret>`. Digests make the comparison length-independent. */
@@ -91,7 +99,7 @@ export function cronAuthorized(header: string | null, secret: string): boolean {
 export async function sweepExpiredAttempts(admin: SupabaseClient, nowMs: number = Date.now()): Promise<SweepResult> {
   const { data: open, error: openError } = await admin
     .from("exam_attempts")
-    .select("id, exam_id, candidate_id, started_at, extension_minutes, question_order")
+    .select("id, exam_id, candidate_id, started_at, extension_minutes, question_order, pause_reasons, paused_at")
     .eq("status", "in_progress")
     .order("started_at", { ascending: true })
     .limit(SWEEP_BATCH);

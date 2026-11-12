@@ -1,5 +1,6 @@
 import { attemptRows, loadAttemptContext } from "@/lib/exam";
 import { submissionWindow } from "@/lib/examDeadline";
+import { isManuallyPaused, manualPauseMs, pauseNoticeKind, parsePauseReasons } from "@/lib/examPause";
 import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
@@ -38,7 +39,11 @@ export async function GET(request: Request) {
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const nowMs = Date.now();
-  const window = submissionWindow(exam, attempt, nowMs);
+  // An open organizer pause freezes the countdown: the paused duration joins
+  // the deadline exactly like an extension, and on resume the database folds
+  // it into extension_minutes with no discontinuity (src/lib/examPause.ts).
+  const pausedNow = isManuallyPaused(attempt);
+  const window = submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs));
   // The client renders its countdown against this instant. It is display-only:
   // a wrong device clock or a stalled countdown cannot change the decision below.
   // A record that cannot produce a deadline reports the largest representable
@@ -54,7 +59,10 @@ export async function GET(request: Request) {
 
   // Automatic closure — only ever after the official deadline. The whole rule,
   // including grading the answers saved before that instant, lives in one place.
-  if (attempt.status === "in_progress" && window.reached) {
+  // A manually paused attempt is NEVER auto-closed: its window cannot be
+  // reached while the pause is open, and this guard makes that explicit even
+  // for a malformed pause record.
+  if (attempt.status === "in_progress" && window.reached && !pausedNow) {
     const closed = await applyDeadlineSubmission(admin, attempt, exam, { reason: "deadline", nowMs });
     if (closed.outcome === "closed" || closed.outcome === "already_closed") {
       attempt.status = closed.status;
@@ -126,6 +134,13 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      // Manual pause state (organizer). The connection pause is reported by
+      // the presence heartbeat instead; both freeze the countdown, but only
+      // this one blocks composition.
+      paused: pausedNow,
+      pause_reasons: parsePauseReasons(attempt.pause_reasons),
+      paused_at: pausedNow && typeof attempt.paused_at === "string" ? attempt.paused_at : null,
+      pause_notice: pauseNoticeKind(attempt),
       attempt_number: Number(attempt.attempt_number ?? 1),
       previous_attempt_id: (attempt.previous_attempt_id as string | null | undefined) ?? null,
       started_at: attempt.started_at,

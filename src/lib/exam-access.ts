@@ -53,6 +53,7 @@ export interface ExamAccessAvailability {
     | "link_disabled"
     | "link_scheduled"
     | "link_expired"
+    | "exam_paused"
     | "exam_not_open"
     | "opens_later"
     | "window_closed";
@@ -236,6 +237,13 @@ export function examAccessAvailability(
       reason: "link_expired",
     };
 
+  if (exam.status === "paused")
+    return {
+      ok: false,
+      error: "This examination has been paused by the organizer. If you already started it, reopen your link to return to your saved attempt; new entries resume when the organizer unpauses.",
+      label: "Paused by organizer",
+      reason: "exam_paused",
+    };
   if (exam.status !== "open")
     return { ok: false, error: "This examination is not open.", label: `Status: ${exam.status}`, reason: "exam_not_open" };
   if (exam.starts_at && Date.parse(exam.starts_at) > now.getTime())

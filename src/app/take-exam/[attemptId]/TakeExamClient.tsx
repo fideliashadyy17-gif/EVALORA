@@ -28,7 +28,7 @@ interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null };
+  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
   questions: (PublicQuestion & {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */
@@ -138,6 +138,17 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
    */
   const [connState, setConnState] = useState<"online" | "lost" | "restored">("online");
   const [pauseNotice, setPauseNotice] = useState<string | null>(null);
+  /*
+   * Manual organizer pause (assessment-wide or individual). The server owns
+   * this state: /api/exam/state delivers it with the paper and every
+   * heartbeat echoes it, so a pause or resume reaches this screen within one
+   * heartbeat WITHOUT a refresh. While paused the countdown freezes, answers
+   * cannot be saved (the server refuses them), and everything already saved
+   * is preserved.
+   */
+  const [manualPause, setManualPause] = useState<{ paused: boolean; notice: "assessment" | "student" | null }>({ paused: false, notice: null });
+  const manualPauseRef = useRef(manualPause);
+  manualPauseRef.current = manualPause;
   const outageRef = useRef<{ fails: number; lostAt: number | null; hiddenMs: number; toReport: { lost_at: string; hidden_ms: number } | null }>({ fails: 0, lostAt: null, hiddenMs: 0, toReport: null });
   const connStateRef = useRef(connState);
   connStateRef.current = connState;
@@ -268,6 +279,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // attempt closes, the flag drops and the browser behaves normally again.
   useProtectedSurface(Boolean(token) && attemptStatus === "in_progress" && activePolicy.clipboard);
 
+  const loadRef = useRef<(() => Promise<void>) | null>(null);
   const load = useCallback(async () => {
     if (!token) return;
     let res: Response;
@@ -319,11 +331,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
     offset.current = new Date(data.server_now).getTime() - Date.now();
     setState(data);
+    setManualPause({ paused: Boolean(data.attempt.paused), notice: data.attempt.pause_notice ?? null });
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
     setSavedIds(new Set(data.questions.filter((q) => q.saved_answer && !pending.some((entry) => entry.questionId === q.question_id)).map((q) => q.question_id)));
     if (activeRef.current && pending.length) void queueRef.current.flush();
   }, [attemptId, token]);
 
+  loadRef.current = load;
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     presenceMeta.current = {
@@ -372,8 +386,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         });
         if (!res.ok) throw new Error(`presence ${res.status}`);
         const data = (await res.json().catch(() => null)) as
-          | { deadline?: string; pause_credit?: { credit_ms: number; extension_minutes: number } | null }
+          | { deadline?: string; pause_credit?: { credit_ms: number; extension_minutes: number } | null; paused?: boolean; pause_notice?: "assessment" | "student" | null }
           | null;
+        // Organizer pause transitions arrive on the heartbeat: update the
+        // banner immediately, and reload the paper when the pause lifts so
+        // the credited deadline and any queued saves resync in one step.
+        if (typeof data?.paused === "boolean") {
+          const was = manualPauseRef.current.paused;
+          setManualPause({ paused: data.paused, notice: data.pause_notice ?? null });
+          if (was && !data.paused) void loadRef.current?.();
+        }
         outage.fails = 0;
         if (event === "restored") outage.toReport = null;
         if (outage.lostAt !== null) {
@@ -560,6 +582,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   function save(questionId: string, quizQuestionId: string, payload: Record<string, unknown>, newFlagged = flagged) {
     const queue = queueRef.current;
+    // While the organizer pause is open the server refuses saves; the client
+    // does not even queue them — the runner is disabled and the draft stays
+    // visible on screen exactly as it was.
+    if (manualPauseRef.current.paused) return false;
     if (!queue || !activeRef.current || !queue.enqueue(questionId, quizQuestionId, payload, newFlagged)) return false;
     setSavedIds((previous) => { const next = new Set(previous); next.delete(questionId); return next; });
     // Keep the most recent response visible when navigating away and back,
@@ -577,6 +603,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   }
 
   function requestSubmit() {
+    if (manualPauseRef.current.paused) return;
     if (dirtyRef.current) { setDraftWarning(true); return; }
     setSubmitError(null);
     setConfirmSubmit(true);
@@ -627,9 +654,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // During a confirmed local outage the countdown FREEZES at the value it had
   // when the connection was lost — the server independently validates the
   // pause and credits it, and the resynced deadline takes over on return.
-  const remaining = connState === "lost" && frozenRemaining.current !== null ? frozenRemaining.current : liveRemaining;
-  if (connState === "lost" && frozenRemaining.current === null) frozenRemaining.current = liveRemaining;
-  if (connState !== "lost") frozenRemaining.current = null;
+  const countdownFrozen = connState === "lost" || manualPause.paused;
+  const remaining = countdownFrozen && frozenRemaining.current !== null ? frozenRemaining.current : liveRemaining;
+  if (countdownFrozen && frozenRemaining.current === null) frozenRemaining.current = liveRemaining;
+  if (!countdownFrozen) frozenRemaining.current = null;
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
   const currentKeyLine = answerKeyLine(current?.reveal?.summary);
@@ -641,6 +669,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const examBody = (
     <div className="min-h-screen bg-cream">
+      {manualPause.paused && !submitted && (
+        <div role="status" aria-live="polite" className="border-b border-sky-300 bg-sky-100 px-4 py-3 text-center text-sm font-semibold text-sky-950 print:hidden">
+          {manualPause.notice === "student"
+            ? <>ASSESSMENT PAUSED FOR YOU — Your organizer has paused your assessment. Your answers and remaining time are preserved. Please wait to be resumed.</>
+            : <>ASSESSMENT PAUSED — Your assessment has temporarily been paused by the organizer. Your answers and remaining time are preserved. Please wait for the assessment to resume.</>}
+        </div>
+      )}
       {(connState !== "online" || pauseNotice) && !submitted && (
         <div
           role="status"
@@ -673,7 +708,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           </div>
           {!submitted && (
             <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
-              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>{connState === "lost" ? "Time paused" : "Time remaining"}</p>
+              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>{countdownFrozen ? "Time paused" : "Time remaining"}</p>
               <p className="font-display text-2xl font-bold tabular-nums leading-none">{Number.isFinite(remaining) ? mmss(Math.ceil(remaining)) : "—"}</p>
             </div>
           )}
@@ -931,7 +966,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 key={`${current.question_id}-${runnerVersion}`}
                 question={current}
                 initial={current.saved_answer}
-                disabled={submitted || submitting}
+                disabled={submitted || submitting || manualPause.paused}
                 submitLabel="Save answer"
                 autosave
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}

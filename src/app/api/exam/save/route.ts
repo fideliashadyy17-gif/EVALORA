@@ -1,4 +1,5 @@
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { isManuallyPaused, manualPauseMs } from "@/lib/examPause";
 import { attemptAllowsQuizRow, parseTrack } from "@/lib/examTrack";
 import { createAdminClient } from "@/lib/supabase/server";
 import { validateAnswerPayload } from "@/lib/responseTools";
@@ -26,7 +27,17 @@ export async function POST(request: Request) {
   const { attempt, exam } = ctx;
   if (attempt.status !== "in_progress")
     return NextResponse.json({ error: "This attempt is already submitted." }, { status: 409 });
-  if (new Date() > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0)))
+  // An organizer pause blocks composition: the answer stays in the browser's
+  // save queue and syncs automatically when the pause is lifted. The pause
+  // also freezes the deadline (elapsed pause joins the extension), so a paused
+  // attempt can never expire mid-pause.
+  const nowMs = Date.now();
+  if (isManuallyPaused(attempt))
+    return NextResponse.json(
+      { error: "This assessment is paused by your organizer. Your answer is saved in this browser and will sync automatically when the assessment resumes.", paused: true },
+      { status: 409 },
+    );
+  if (new Date(nowMs) > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, nowMs)))
     return NextResponse.json({ error: "Time has expired." }, { status: 409 });
 
   // The question must belong to this exam's paper.

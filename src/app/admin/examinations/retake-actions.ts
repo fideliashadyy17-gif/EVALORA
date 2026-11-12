@@ -126,7 +126,10 @@ export async function approveRetakeAsAdmin(formData: FormData) {
     if (!Number.isFinite(currentEnd) || currentEnd < windowEnd)
       examPatch.ends_at = new Date(Math.max(windowEnd, Date.now())).toISOString();
   }
-  if (reopenExam && exam.status !== "open") examPatch.status = "open";
+  // A paused examination is never flipped to open here: resuming must run the
+  // pause RPC so frozen attempts get their 'assessment' reason cleared and
+  // their paused time credited. Reopen only applies to closed/draft/scheduled.
+  if (reopenExam && exam.status !== "open" && exam.status !== "paused") examPatch.status = "open";
   if (Object.keys(examPatch).length) {
     await admin.from("exams").update(examPatch).eq("id", exam.id);
   }

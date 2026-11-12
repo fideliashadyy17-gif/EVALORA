@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { manualPauseMs } from "@/lib/examPause";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import {
   accessCodeMatches,
@@ -80,7 +81,12 @@ export async function POST(request: Request) {
   // fields, the candidate's class and the examination's open status are still
   // verified below.
   let retakeGrant: Awaited<ReturnType<typeof findUsableGrant>> = null;
-  if (!availability.ok) {
+  // A paused examination is a temporary organizer hold, not a closed link:
+  // the candidate identity flow below still runs, and the attempt branch
+  // decides — resuming an active attempt is allowed, starting a new one is
+  // refused until the organizer resumes.
+  const examPaused = exam.status === "paused" && availability.reason === "exam_paused";
+  if (!availability.ok && !examPaused) {
     const { data: existingByKey } = await admin
       .from("exam_candidates")
       .select("*")
@@ -309,6 +315,13 @@ export async function POST(request: Request) {
   const latestAttempt = rowsForCandidate[0] ?? null;
   let attempt: Record<string, unknown> | null = activeAttempt;
 
+  // Paused examination gate: only an active attempt may be resumed.
+  if (exam.status === "paused" && !attempt)
+    return NextResponse.json(
+      { error: "This examination has been paused by the organizer and is not accepting entries right now. If you already started it, reopen this link with the same details to return to your saved attempt." },
+      { status: 409 },
+    );
+
   if (!attempt && latestAttempt) {
     // A submitted paper is locked. Only an explicit approval may create another
     // attempt; `read_only_reentry` merely lets the student view the result.
@@ -429,10 +442,13 @@ export async function POST(request: Request) {
 
   const finalAttempt = attempt;
   if (!finalAttempt) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
+  // Pause-aware: a resumed attempt under an open manual pause echoes the
+  // frozen deadline, never the raw one.
   const deadline = attemptDeadline(
     exam,
     String(finalAttempt.started_at ?? ""),
     Number(finalAttempt.extension_minutes ?? 0),
+    manualPauseMs(finalAttempt as { pause_reasons?: string[] | null; paused_at?: string | null }, Date.now()),
   );
   return NextResponse.json({
     attempt_id: finalAttempt.id,

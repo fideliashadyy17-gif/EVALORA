@@ -307,6 +307,7 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
   };
 
   const deadline = load("src/lib/examDeadline.ts");
+  const examPause = load("src/lib/examPause.ts");
   const submission = (() => {
     const file = path.resolve("src/lib/examSubmission.ts");
     const mod = new Module(file);
@@ -316,6 +317,7 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     Module._load = function (request, parent) {
       if (parent?.filename === file) {
         if (request === "./examDeadline") return deadline;
+        if (request === "./examPause") return examPause;
         if (request === "./exam") return examModule;
       }
       return originalLoad.apply(this, arguments);
@@ -342,6 +344,7 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     Module._load = function (request, parent) {
       if (parent?.filename === file) {
         if (request === "./examDeadline") return deadline;
+        if (request === "./examPause") return examPause;
         if (request === "./examSubmission") return submission;
       }
       return originalLoad.apply(this, arguments);
@@ -359,17 +362,18 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     }
   })();
 
-  const routes = loadRoutes({ admin, examModule, submission, deadline, db });
+  const routes = loadRoutes({ admin, examModule, submission, deadline, examPause, db });
   return { db, admin, deadline, submission, sweep, routes, now };
 }
 
 /** Compiles the three real route handlers against the seams above. */
-function loadRoutes({ admin, examModule, submission, deadline, db }) {
+function loadRoutes({ admin, examModule, submission, deadline, examPause, db }) {
   const deadlineAndSubmission = { ...deadline, ...submission };
   const stubs = {
     "@/lib/exam": examModule,
     "@/lib/examSubmission": { applyDeadlineSubmission: submission.applyDeadlineSubmission },
     "@/lib/examDeadline": deadline,
+    "@/lib/examPause": examPause,
     "@/lib/supabase/server": { createAdminClient: () => admin },
     "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
     "@/lib/live": { publicQuestion: (row) => ({ question_id: row.questions.id, quiz_question_id: row.id }), answerReveal: () => null },

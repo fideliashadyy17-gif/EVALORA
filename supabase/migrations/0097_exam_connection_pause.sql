@@ -87,5 +87,9 @@ as $$
   returning extension_minutes;
 $$;
 
-revoke all on function public.exam_attempt_add_extension_minutes(uuid, integer) from public;
+-- Supabase's default privileges grant EXECUTE to anon/authenticated on new
+-- functions; revoke from every non-server role explicitly so only the backend
+-- (service_role) can ever add extension minutes. Applied to production
+-- together with migration 0098's hardening pass.
+revoke all on function public.exam_attempt_add_extension_minutes(uuid, integer) from public, anon, authenticated;
 grant execute on function public.exam_attempt_add_extension_minutes(uuid, integer) to service_role;
