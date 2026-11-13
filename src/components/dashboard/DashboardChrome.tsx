@@ -130,6 +130,7 @@ export function DashboardChrome({
               <Link
                 key={n.href + n.label}
                 href={n.href}
+                prefetch={false}
                 onClick={() => setOpen(false)}
                 className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
               >
@@ -141,8 +142,8 @@ export function DashboardChrome({
         </div>
       ))}
 
-      {canSwitchWorkspace && <Link href="/workspaces" className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
-      <Link href="/" className={cn(navLink, "mt-3", navIdle)}>
+      {canSwitchWorkspace && <Link href="/workspaces" prefetch={false} className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
+      <Link href="/" prefetch={false} className={cn(navLink, "mt-3", navIdle)}>
         <BookOpenCheck className="h-5 w-5 shrink-0" />
         Public website
       </Link>

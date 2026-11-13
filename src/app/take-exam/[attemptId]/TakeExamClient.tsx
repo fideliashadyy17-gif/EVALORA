@@ -10,7 +10,12 @@ import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
 import { questionFeedback, resultSummary } from "@/lib/examFeedback";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
-import { ExamSaveQueue, type ExamQueueState } from "@/lib/examSaveQueue";
+import {
+  ExamSaveQueue,
+  createDurableExamQueueStorage,
+  createQueueIdempotencyKey,
+  type ExamQueueState,
+} from "@/lib/examSaveQueue";
 import { Badge, Button, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
@@ -139,6 +144,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const queueRef = useRef<ExamSaveQueue | null>(null);
+  const submitIdempotencyRef = useRef<string | null>(null);
+  const hasLoadedStateRef = useRef(false);
+  const lastPresenceSentAtRef = useRef(0);
   const activeRef = useRef(false);
   const dirtyRef = useRef(false);
   const [answerDirty, setAnswerDirtyState] = useState(false);
@@ -257,48 +265,99 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // attempt closes, the flag drops and the browser behaves normally again.
   useProtectedSurface(Boolean(token) && attemptStatus === "in_progress" && activePolicy.clipboard);
 
-  const load = useCallback(async () => {
-    if (!token) return;
+  const ensureQueue = useCallback((currentToken: string) => {
+    if (queueRef.current) return queueRef.current;
+    // Durable local queue: sessionStorage primary + localStorage backup when available,
+    // so queued answers survive both refreshes and accidental tab closures during outages.
+    // No attempt token is ever stored in the recovery queue.
+    const sessionStore = {
+      getItem: (key: string) => sessionStorage.getItem(key),
+      setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
+      removeItem: (key: string) => sessionStorage.removeItem(key),
+    };
+    const storage = createDurableExamQueueStorage(
+      sessionStore,
+      typeof localStorage !== "undefined" ? localStorage : undefined,
+    );
+    queueRef.current = new ExamSaveQueue(storage, `evalora-exam-pending-${attemptId}`, async (entry) => {
+      let response: Response;
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 12_000);
+      try {
+        response = await fetch("/api/exam/save", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            attempt_id: attemptId,
+            token: currentToken,
+            question_id: entry.questionId,
+            quiz_question_id: entry.quizQuestionId,
+            answer: entry.answer,
+            flagged: entry.flagged,
+            ...(entry.idempotencyKey ? { idempotency_key: entry.idempotencyKey } : {}),
+            ...(entry.queuedAt ? { client_queued_at: entry.queuedAt } : {}),
+            ...(entry.recoveredFromStorage || entry.queuedAt ? { recovery: true } : {}),
+          }),
+          signal: controller.signal,
+        });
+      } catch {
+        throw new Error("Connection interrupted. Your answer is safely saved on this device and will sync automatically when you reconnect.");
+      } finally {
+        clearTimeout(timer);
+      }
+      if (!response.ok) {
+        if (response.status === 409) throw new Error("The examination is closed or time has expired. Contact your invigilator about unsaved answers.");
+        throw new Error("The answer could not be confirmed yet. It remains safely queued on this device; retry or wait for reconnection.");
+      }
+      if (typeof response.json === "function") {
+        const ack = (await response.json().catch(() => ({ ok: true }))) as { ok?: boolean } | null;
+        if (ack && ack.ok === false) {
+          throw new Error("Server persistence could not be verified. Your answer remains safely queued for retry.");
+        }
+      }
+    }, setQueueState, (entry) => setSavedIds((previous) => new Set(previous).add(entry.questionId)));
+    return queueRef.current;
+  }, [attemptId]);
+
+  const load = useCallback(async (): Promise<boolean> => {
+    if (!token) return false;
+    const queue = ensureQueue(token);
+    // Flush any pre-deadline locally queued answers BEFORE reading `/api/exam/state`
+    // so an outage-delayed reload never auto-closes an expired attempt ahead of its queued saves.
+    if (queue.state().pending > 0) {
+      await queue.flush();
+    }
+    const pendingBeforeState = queue.state().pending;
     let res: Response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12_000);
     try {
+      const headers: Record<string, string> = { Authorization: `Bearer ${token}` };
+      if (pendingBeforeState > 0) headers["X-Exam-Pending-Saves"] = String(pendingBeforeState);
       res = await fetch(`/api/exam/state?attempt_id=${encodeURIComponent(attemptId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers,
         cache: "no-store",
+        signal: controller.signal,
       });
     } catch {
-      setError("Could not connect to the examination. Check your connection and reload this page.");
-      return;
+      if (!hasLoadedStateRef.current) {
+        setError("Could not connect to the examination. Your saved and queued answers on this device are protected — check your connection and retry.");
+      }
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
     const data: ExamState | null = await res.json().catch(() => null);
-    if (!res.ok || !data) { setError("Could not load the examination. Please contact your invigilator."); return; }
-    setError(null);
-    activeRef.current = data.attempt.status === "in_progress";
-    if (!queueRef.current) {
-      // sessionStorage survives refresh in this tab but is cleared when the
-      // tab closes; no attempt token is included in the recovery queue.
-      const storage = {
-        getItem: (key: string) => sessionStorage.getItem(key),
-        setItem: (key: string, value: string) => sessionStorage.setItem(key, value),
-        removeItem: (key: string) => sessionStorage.removeItem(key),
-      };
-      queueRef.current = new ExamSaveQueue(storage, `evalora-exam-pending-${attemptId}`, async (entry) => {
-        let response: Response;
-        try {
-          response = await fetch("/api/exam/save", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ attempt_id: attemptId, token, question_id: entry.questionId, quiz_question_id: entry.quizQuestionId, answer: entry.answer, flagged: entry.flagged }),
-          });
-        } catch {
-          throw new Error("Connection interrupted. Your answer is not yet confirmed; reconnect and retry.");
-        }
-        if (!response.ok) {
-          if (response.status === 409) throw new Error("The examination is closed or time has expired. Contact your invigilator about unsaved answers.");
-          throw new Error("The answer could not be confirmed. Retry or contact your invigilator.");
-        }
-      }, setQueueState, (entry) => setSavedIds((previous) => new Set(previous).add(entry.questionId)));
+    if (!res.ok || !data) {
+      if (!hasLoadedStateRef.current) {
+        setError("Could not load the examination right now. Your answers on this device are protected — retry or contact your invigilator.");
+      }
+      return false;
     }
-    const pending = queueRef.current.snapshot();
+    setError(null);
+    hasLoadedStateRef.current = true;
+    activeRef.current = data.attempt.status === "in_progress";
+    const pending = queue.snapshot();
     if (activeRef.current && pending.length) {
       const byQuestion = new Map(pending.map((entry) => [entry.questionId, entry]));
       data.questions = data.questions.map((question) => {
@@ -310,8 +369,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     setState(data);
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
     setSavedIds(new Set(data.questions.filter((q) => q.saved_answer && !pending.some((entry) => entry.questionId === q.question_id)).map((q) => q.question_id)));
-    if (activeRef.current && pending.length) void queueRef.current.flush();
-  }, [attemptId, token]);
+    if (activeRef.current && pending.length) void queue.flush();
+    return true;
+  }, [attemptId, token, ensureQueue]);
 
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
@@ -343,6 +403,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
     const heartbeat = async (event: "heartbeat" | "leave") => {
       try {
+        lastPresenceSentAtRef.current = Date.now();
         const meta = presenceMeta.current;
         await fetch("/api/exam/presence", {
           method: "POST",
@@ -426,22 +487,63 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     return () => clearInterval(t);
   }, []);
 
-  // When the displayed countdown reaches zero, ask the server to check the
-  // official deadline. This never submits anything itself: `/api/exam/state`
-  // recomputes the deadline from `started_at` + duration + extension on the
-  // server and closes the attempt only once that instant has truly passed, so a
-  // suspended tab, a device clock running fast, a throttled interval or a
-  // manipulated countdown can cause at most one extra read of the paper — never
-  // an early submission. Polling stops the moment the server reports the attempt
-  // closed, and is throttled so a stalled screen cannot flood the route.
-  const lastDeadlineCheckAt = useRef(0);
+  // Throttled presence update when question position or save/queue count changes,
+  // replacing the duplicate loop previously run inside ExamMessenger.
   useEffect(() => {
-    if (!state || state.attempt.status !== "in_progress") return;
+    if (!token || !attemptActive || !hasLoadedStateRef.current) return;
+    const elapsed = Date.now() - lastPresenceSentAtRef.current;
+    const delay = Math.max(400, 4_000 - elapsed);
+    const timer = setTimeout(() => {
+      if (pageHidden()) return;
+      lastPresenceSentAtRef.current = Date.now();
+      const meta = presenceMeta.current;
+      void fetch("/api/exam/presence", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          attempt_id: attemptId,
+          current_question: meta.current_question,
+          total_questions: meta.total_questions,
+          saved_count: meta.saved_count,
+          pending_saves: meta.pending_saves,
+          event: "heartbeat",
+        }),
+      }).catch(() => undefined);
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [attemptActive, attemptId, token, index, savedIds.size, queueState.pending]);
+
+  // When the displayed countdown reaches zero, ask the server to check the
+  // official deadline (after flushing any pending saves inside `load()`).
+  // Uses exponential backoff (3s -> 6s -> 12s -> 24s -> 60s) and an in-flight
+  // guard so simultaneous deadline expiries during an outage never flood `/api/exam/state`.
+  const nextDeadlineCheckAt = useRef(0);
+  const deadlineCheckFailures = useRef(0);
+  const deadlineCheckBusy = useRef(false);
+  useEffect(() => {
+    if (!state || state.attempt.status !== "in_progress") {
+      deadlineCheckFailures.current = 0;
+      nextDeadlineCheckAt.current = 0;
+      return;
+    }
     const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
     if (!Number.isFinite(remaining) || remaining > 0) return;
-    if (now - lastDeadlineCheckAt.current < 2000) return;
-    lastDeadlineCheckAt.current = now;
-    void load();
+    if (deadlineCheckBusy.current || now < nextDeadlineCheckAt.current) return;
+    deadlineCheckBusy.current = true;
+    void load()
+      .then((ok) => {
+        if (ok) {
+          deadlineCheckFailures.current = 0;
+          nextDeadlineCheckAt.current = Date.now() + 5_000;
+        } else {
+          deadlineCheckFailures.current += 1;
+          const backoff = Math.min(60_000, 3_000 * 2 ** Math.min(deadlineCheckFailures.current - 1, 4));
+          nextDeadlineCheckAt.current = Date.now() + backoff;
+        }
+      })
+      .finally(() => {
+        deadlineCheckBusy.current = false;
+      });
   }, [now, state, load]);
   useEffect(() => {
     const retry = () => { if (activeRef.current) void queueRef.current?.flush(); };
@@ -503,26 +605,56 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     if (!token || submitting || !queueRef.current || dirtyRef.current) return;
     setSubmitting(true);
     setSubmitError(null);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15_000);
     try {
       const saved = await queueRef.current.flush();
       if (!saved || queueRef.current.state().pending) {
-        setSubmitError("Some answers are not confirmed. Reconnect and retry saving before submitting, or contact your invigilator.");
+        setSubmitError("Some answers are not confirmed yet. They are safely saved on this device — reconnect and retry saving before submitting.");
         return;
       }
+      submitIdempotencyRef.current ??= createQueueIdempotencyKey();
       const response = await fetch("/api/exam/submit", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ attempt_id: attemptId, token }),
+        body: JSON.stringify({
+          attempt_id: attemptId,
+          token,
+          idempotency_key: submitIdempotencyRef.current,
+        }),
+        signal: controller.signal,
       });
       if (!response.ok) {
-        setSubmitError("Submission was not confirmed. Please retry or contact your invigilator.");
+        setSubmitError("Submission was not confirmed. Your answers remain saved — please retry or contact your invigilator.");
         return;
       }
+      const payload = typeof response.json === "function"
+        ? ((await response.json().catch(() => null)) as { ok?: boolean; status?: string } | null)
+        : { ok: true, status: "submitted" };
+      if (!payload || payload.ok === false || (payload.status && payload.status === "in_progress")) {
+        setSubmitError("Server persistence could not be verified yet. Please retry submitting.");
+        return;
+      }
+      submitIdempotencyRef.current = null;
       setConfirmSubmit(false);
-      await load();
+      const reloaded = await load();
+      if (!reloaded) {
+        setState((prev) =>
+          prev
+            ? {
+                ...prev,
+                attempt: {
+                  ...prev.attempt,
+                  status: payload.status ?? "submitted",
+                },
+              }
+            : prev,
+        );
+      }
     } catch {
-      setSubmitError("Could not connect. Submission was not confirmed; reconnect and retry.");
+      setSubmitError("Could not connect. Submission was not confirmed; your answers are preserved — reconnect and retry.");
     } finally {
+      clearTimeout(timer);
       setSubmitting(false);
     }
   }
@@ -532,6 +664,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       <Centered>
         <h1 className="font-display text-2xl font-semibold text-evergreen-950">Examination unavailable</h1>
         <p className="mt-2 text-ink-soft">{error}</p>
+        {queueState.pending > 0 && (
+          <p role="status" className="mt-3 rounded-lg bg-evergreen-50 p-3 text-xs text-evergreen-900">
+            {queueState.pending} answer(s) are safely preserved on this device and will sync automatically when the connection recovers.
+          </p>
+        )}
+        {token ? (
+          <div className="mt-4">
+            <Button onClick={() => { setError(null); void load(); }}>Retry connection</Button>
+          </div>
+        ) : null}
         <a href="/exam-access" className="mt-4 inline-block font-semibold text-evergreen-700 underline underline-offset-2">Go to examination entry</a>
       </Centered>
     );
@@ -970,6 +1112,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           totalQuestions={questions.length}
           savedCount={savedIds.size}
           pendingSaves={queueState.pending}
+          managePresence={false}
         />
       ) : null}
     </>

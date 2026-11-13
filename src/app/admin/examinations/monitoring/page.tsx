@@ -57,11 +57,32 @@ export default async function ExaminationMonitoringPage({
   if (sp.severity) incidentQuery = incidentQuery.eq("severity", sp.severity);
   if (sp.incident) incidentQuery = incidentQuery.eq("status", sp.incident);
 
-  const [{ data: exams }, { data: rawAttempts }, { data: incidents }] = await Promise.all([
-    admin.from("exams").select("id, title, status, organization_id, settings, organizations(name)").order("created_at", { ascending: false }).limit(300),
-    attemptQuery,
-    incidentQuery,
+  const safeList = async <T,>(query: PromiseLike<{ data: T[] | null; error?: unknown }>): Promise<{ data: T[]; degraded: boolean }> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const res = await Promise.race([
+        Promise.resolve(query),
+        new Promise<{ data: null; error: { message: string } }>((resolve) => {
+          timer = setTimeout(() => resolve({ data: null, error: { message: "timeout" } }), 6_500);
+        }),
+      ]);
+      if (res.error) return { data: [], degraded: true };
+      return { data: res.data ?? [], degraded: false };
+    } catch {
+      return { data: [], degraded: true };
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
+  const [examsResult, attemptsResult, incidentsResult] = await Promise.all([
+    safeList(admin.from("exams").select("id, title, status, organization_id, settings, organizations(name)").order("created_at", { ascending: false }).limit(300)),
+    safeList(attemptQuery),
+    safeList(incidentQuery),
   ]);
+  const exams = examsResult.data;
+  const rawAttempts = attemptsResult.data;
+  const incidents = incidentsResult.data;
   const attempts = (rawAttempts ?? []) as unknown as AttemptRow[];
   const activeAttempts = attempts.filter((a) => a.status === "in_progress");
   const back = sp.exam ? `/admin/examinations/monitoring?exam=${sp.exam}` : "/admin/examinations/monitoring";

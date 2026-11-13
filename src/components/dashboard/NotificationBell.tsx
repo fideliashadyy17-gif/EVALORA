@@ -19,6 +19,19 @@ export interface NotificationItem {
 
 const LIST_LIMIT = 8;
 const COLUMNS = "id,title,body,link,created_at,read_at";
+const SHARED_LOAD_TTL_MS = 2_500;
+
+let sharedNotificationsCache: {
+  at: number;
+  promise: Promise<{
+    list: { data: unknown[] | null; error: unknown };
+    count: { count: number | null; error: unknown };
+  }>;
+} | null = null;
+
+function invalidateSharedNotificationsCache() {
+  sharedNotificationsCache = null;
+}
 
 /**
  * Floating notifications popover used by the workspace chrome.
@@ -59,22 +72,36 @@ export function NotificationBell({
   const triggerRef = useRef<HTMLButtonElement | null>(null);
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const [list, count] = await Promise.all([
-      supabase
-        .from("notifications")
-        .select(COLUMNS)
-        .order("created_at", { ascending: false })
-        .limit(LIST_LIMIT),
-      supabase.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
-    ]);
-    if (list.error || count.error) {
+    try {
+      const nowMs = Date.now();
+      let request = sharedNotificationsCache && nowMs - sharedNotificationsCache.at < SHARED_LOAD_TTL_MS
+        ? sharedNotificationsCache.promise
+        : null;
+      if (!request) {
+        const supabase = createClient();
+        request = Promise.all([
+          supabase
+            .from("notifications")
+            .select(COLUMNS)
+            .order("created_at", { ascending: false })
+            .limit(LIST_LIMIT),
+          supabase.from("notifications").select("id", { count: "exact", head: true }).is("read_at", null),
+        ]).then(([list, count]) => ({ list, count }));
+        sharedNotificationsCache = { at: nowMs, promise: request };
+      }
+      const { list, count } = await request;
+      if (list.error || count.error) {
+        invalidateSharedNotificationsCache();
+        setError("Notifications could not be loaded.");
+        return;
+      }
+      setError(null);
+      setItems((list.data ?? []) as NotificationItem[]);
+      setUnread(count.count ?? 0);
+    } catch {
+      invalidateSharedNotificationsCache();
       setError("Notifications could not be loaded.");
-      return;
     }
-    setError(null);
-    setItems((list.data ?? []) as NotificationItem[]);
-    setUnread(count.count ?? 0);
   }, []);
 
   // Keep the badge honest across navigation, matching the previous behaviour.
@@ -112,6 +139,7 @@ export function NotificationBell({
 
   useEffect(() => {
     if (open) {
+      invalidateSharedNotificationsCache();
       void load();
       panelRef.current?.focus();
     }
@@ -134,6 +162,7 @@ export function NotificationBell({
       setError("That notification could not be marked as read.");
       return;
     }
+    invalidateSharedNotificationsCache();
     await load();
   }
 
@@ -149,6 +178,7 @@ export function NotificationBell({
       setError("Notifications could not be marked as read.");
       return;
     }
+    invalidateSharedNotificationsCache();
     await load();
   }
 

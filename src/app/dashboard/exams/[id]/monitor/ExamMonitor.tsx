@@ -68,17 +68,31 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
   selectedRef.current = selectedId;
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<Record<string, { client_message_id: string; body: string }>>({});
+  const refreshingRef = useRef(false);
+  const refreshFailuresRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    const controller = typeof AbortController === "function" ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 10_000) : null;
     try {
-      const response = await fetch(`/api/monitor/exams/${examId}`, { cache: "no-store" });
+      const response = await fetch(`/api/monitor/exams/${examId}`, {
+        cache: "no-store",
+        ...(controller ? { signal: controller.signal } : {}),
+      });
       if (!response.ok) throw new Error(String(response.status));
       const data = (await response.json()) as MonitorSnapshot;
+      refreshFailuresRef.current = 0;
       setOffsetMs(Date.parse(data.server_now) - Date.now());
       setSnapshot(data);
       setLoadError(null);
     } catch {
+      refreshFailuresRef.current += 1;
       setLoadError("Live progress could not be refreshed. Retrying automatically.");
+    } finally {
+      if (timer) clearTimeout(timer);
+      refreshingRef.current = false;
     }
   }, [examId]);
 
@@ -158,12 +172,23 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
     };
   }, [examId, scheduleRefresh, loadThread]);
 
-  // Reconciliation: a reload every few seconds while the tab is visible, whatever realtime did.
+  // Reconciliation: a reload every few seconds while the tab is visible, whatever realtime did,
+  // with adaptive backoff on repeated refresh errors to prevent request storms.
   useEffect(() => {
-    const id = setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, MONITOR_RECONCILE_MS);
-    return () => clearInterval(id);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const loop = async () => {
+      if (cancelled) return;
+      if (document.visibilityState === "visible") await refresh();
+      if (cancelled) return;
+      const delay = Math.min(60_000, MONITOR_RECONCILE_MS * Math.pow(2, Math.min(refreshFailuresRef.current, 3)));
+      timer = setTimeout(() => void loop(), delay);
+    };
+    timer = setTimeout(() => void loop(), MONITOR_RECONCILE_MS);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
   }, [refresh]);
 
   // The clock for remaining time: one tick a second, corrected by the server offset.
