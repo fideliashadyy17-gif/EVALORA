@@ -212,7 +212,7 @@ export function resultSummary(questions: ResultQuestion[], passPercent = DEFAULT
     pendingManual: pendingCount > 0,
     pendingCount,
     message: passed
-      ? passMessage({ percent, passPercent, strongTopics, weakTopics, pendingCount })
+      ? passMessage({ percent, passPercent, strongTopics, weakTopics, criteria, pendingCount })
       : belowPassMessage({ percent, passPercent, strongTopics, weakTopics, topics, pendingCount }),
   };
 }
@@ -234,25 +234,45 @@ export interface MessageInput {
   strongTopics: string[];
   weakTopics: string[];
   topics?: TopicScore[];
+  /** Criterion bands (MYP criterion letters) when the paper is criterion-mapped. */
+  criteria?: CriterionScore[];
   pendingCount: number;
 }
 
 /**
- * Encouraging, honest message for a candidate at or above the pass mark.
- * It never claims mastery: any topic below "Strong" is named as still to
- * strengthen, and a pending manual mark is disclosed.
+ * Formal result message for a candidate at or above the pass mark — the
+ * wording of a recorded e-assessment result, not of a celebration postcard.
+ * It never claims mastery the evidence does not support: any topic below
+ * "Strong" is named as still to strengthen, the criterion bands are reported
+ * plainly, and a pending manual mark is disclosed.
  */
+function criterionNarrative(criteria: CriterionScore[]): string {
+  const word = (letters: string[]) =>
+    letters.length === 1 ? `Criterion ${letters[0]}` : `Criteria ${list(letters, 4)}`;
+  const strong = criteria.filter((entry) => entry.band === "Strong").map((entry) => entry.criterion);
+  const developing = criteria.filter((entry) => entry.band === "Developing").map((entry) => entry.criterion);
+  const weak = criteria.filter((entry) => entry.band === "Needs work").map((entry) => entry.criterion);
+  if (weak.length && strong.length)
+    return ` Reported bands: ${word(strong)} ${strong.length === 1 ? "is" : "are"} Strong; ${word(weak)} still not secure — read the examiner's feedback for ${weak.length === 1 ? "that criterion" : "those criteria"} before relying on this result.`;
+  if (weak.length)
+    return ` Note, however, that ${word(weak)} ${weak.length === 1 ? "is" : "are"} not yet secure despite the pass mark; read the feedback for ${weak.length === 1 ? "that criterion" : "those criteria"}.`;
+  if (strong.length)
+    return ` No criterion is in the lowest band; ${word(strong)} ${strong.length === 1 ? "is" : "are"} reported Strong${developing.length ? `, with the remainder at Developing (${developing.join(", ")})` : ""}.`;
+  return " All criteria are at Developing level; consistent timed practice is what moves them into Strong.";
+}
+
 export function passMessage(input: MessageInput): string {
-  const base = `Congratulations! You have achieved the required average with ${input.percent}% against a pass mark of ${input.passPercent}%. Your performance shows that you are making good progress towards your upcoming examination. You are on the right track and building the skills needed to face challenging examination questions.`;
+  const base = `Formal result — MYP e-assessment: you have met the pass requirement, with ${input.percent}% against a pass mark of ${input.passPercent}%. This records that, on this occasion, your work satisfied the standard for this paper. The result is reported alongside the criterion bands, the marking scheme and the question-level feedback below.`;
+  const criteriaLine = input.criteria?.length ? criterionNarrative(input.criteria) : "";
   const strengthen = input.weakTopics.length
-    ? ` Do not read this as mastery of every topic: ${list(input.weakTopics)} still need work, so revise those before the examination.`
+    ? ` This is not a certification of mastery in every topic: ${list(input.weakTopics)} still ${input.weakTopics.length === 1 ? "needs" : "need"} work. Revise those areas before your next formal assessment.`
     : input.topics?.some((topic) => topic.band === "Developing")
-      ? ` Keep strengthening the topics marked “Developing” — a pass mark is a floor, not a ceiling.`
-      : " Keep practising under timed conditions so this standard holds on the day.";
+      ? ` The pass mark is a floor, not a ceiling — keep strengthening the topics marked “Developing”.`
+      : " Sustain this standard under timed, exam-room conditions.";
   const pending = input.pendingCount
     ? ` ${input.pendingCount} structured answer${input.pendingCount === 1 ? " is" : "s are"} still awaiting your examiner's mark, so this percentage may change.`
     : "";
-  return `${base}${strengthen}${pending} Well done!`;
+  return `${base}${criteriaLine}${strengthen}${pending}`;
 }
 
 /**
@@ -267,5 +287,5 @@ export function belowPassMessage(input: MessageInput): string {
   const pending = input.pendingCount
     ? ` ${input.pendingCount} structured answer${input.pendingCount === 1 ? " is" : "s are"} still awaiting marking, so this percentage may rise.`
     : "";
-  return `You have not yet reached the required average (${input.percent}% against a pass mark of ${input.passPercent}%), but this is an opportunity to improve before your upcoming examination.${target} Review the feedback underneath each question, study the marking scheme carefully and practise similar problems. Focus on understanding the mathematical methods rather than memorising answers: the worked solutions show the reasoning a marker is looking for. With consistent practice, you can improve your performance.${pending} Keep working hard!`;
+  return `You have not yet met the pass requirement (${input.percent}% against a pass mark of ${input.passPercent}%), but this is an opportunity to improve before your next formal assessment.${target} Review the feedback underneath each question, study the marking scheme carefully and practise similar problems. Focus on understanding the mathematical methods rather than memorising answers: the worked solutions show the reasoning a marker is looking for. With consistent practice, you can improve your performance.${pending} Keep working hard!`;
 }
