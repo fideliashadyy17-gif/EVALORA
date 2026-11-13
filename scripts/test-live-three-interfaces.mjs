@@ -103,6 +103,34 @@ const matchingRow = makeRow({
 ok("matching public sides hide pair mapping", !JSON.stringify(live.publicQuestion(matchingRow, {})).includes("H2O → Water"));
 ok("matching reveal releases pairs", live.answerReveal(matchingRow).summary[0] === "H2O → Water");
 
+const assessWorkspaceRow = makeRow({
+  questions: {
+    ...makeRow().questions,
+    type: "assess_parts",
+    prompt: "Construct and explain each representation.",
+    question_options: [],
+    config: {
+      parts: [{ id: "a", label: "(a)", prompt: "State the probability.", kind: "numeric", points: 1, answer: 0.75, tolerance: 0, hints: ["Count favourable outcomes first.", "Divide favourable outcomes by all outcomes."] }],
+      response_tools: ["probability_tree", "stem_leaf", "venn", "statistics", "data_table"],
+      response_requirement: "probability_tree",
+      response_default_tool: "probability_tree",
+      response_probability_tree: { title: "Draw tree", starter: { rootLabel: "First draw" } },
+      response_stem_leaf: { title: "Leaves", starter: { layout: "back_to_back", leftLeafLabel: "A", rightLeafLabel: "B" } },
+      response_venn: { title: "Sets", starter: { sets: 3, labels: ["P", "Q", "R"] }, allow_set_change: false },
+      response_stats: { title: "Frequency", chart: "histogram", starter: { chart: "histogram", values: [2, 4, 4] } },
+      response_data_table: { title: "Frequencies", starter: { columns: ["Value", "f"], rows: [["2", ""], ["4", ""]] } },
+    },
+  },
+});
+const assessWorkspacePublic = live.publicQuestion(assessWorkspaceRow, {});
+const assessWorkspace = assessWorkspacePublic.response_workspace;
+ok("assess-parts public workspace includes every configured construction", Boolean(
+  assessWorkspace?.statistics && assessWorkspace?.dataTable && assessWorkspace?.venn &&
+  assessWorkspace?.probabilityTree && assessWorkspace?.stemLeaf,
+));
+ok("assess-parts public workspace preserves tree and stem-leaf starters", assessWorkspace?.probabilityTree?.starter?.rootLabel === "First draw" && assessWorkspace?.stemLeaf?.starter?.layout === "back_to_back");
+ok("assess-parts workspace strips typed-answer keys", !JSON.stringify(assessWorkspacePublic).includes('"answer":0.75'));
+
 /* ── Server phases and deadlines ───────────────────────────────────── */
 const now = new Date("2026-11-04T12:00:00.000Z");
 const baseSession = {

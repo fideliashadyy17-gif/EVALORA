@@ -32,6 +32,14 @@ import {
   normaliseDataTableSpec,
   type DataTableSpec,
 } from "./dataTableSpec";
+import { emptyVennSpec, normaliseVennSpec, vennSpecHasWork, type VennSpec } from "./vennSpec";
+import {
+  emptyProbabilityTreeSpec,
+  normaliseProbabilityTreeSpec,
+  probabilityTreeHasWork,
+  type ProbabilityTreeSpec,
+} from "./probabilityTreeSpec";
+import { emptyStemLeafSpec, normaliseStemLeafSpec, stemLeafHasWork, type StemLeafSpec } from "./stemLeafSpec";
 
 export const RESPONSE_TOOLS = [
   { id: "rich_text", label: "Structured writing", hint: "Paragraphs, headings, lists, tables, step-by-step working." },
@@ -42,6 +50,9 @@ export const RESPONSE_TOOLS = [
   { id: "graph", label: "Graph workspace", hint: "Draw or plot a coordinate graph as structured, editable data." },
   { id: "geometry", label: "Geometry workspace", hint: "Construct points, lines, circles, polygons, angles and measurements." },
   { id: "statistics", label: "Statistics workspace", hint: "Enter data and draw a dot plot, bar chart, histogram, box plot or cumulative-frequency chart." },
+  { id: "venn", label: "Venn diagram workspace", hint: "Build a two- or three-set Venn diagram and fill each region." },
+  { id: "probability_tree", label: "Probability tree workspace", hint: "Create and extend labelled probability branches as editable data." },
+  { id: "stem_leaf", label: "Stem-and-leaf workspace", hint: "Construct a stem-and-leaf diagram with an editable key and rows." },
 ] as const;
 
 export type ResponseToolId = (typeof RESPONSE_TOOLS)[number]["id"];
@@ -78,6 +89,30 @@ export interface ResponseDataTableConfig {
   starter: DataTableSpec;
 }
 
+export interface ResponseVennConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  starter: VennSpec;
+  /** A teacher may fix the number of sets so every candidate answers the same question. */
+  allowSetChange: boolean;
+}
+
+export interface ResponseProbabilityTreeConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  starter: ProbabilityTreeSpec;
+  allowStructure: boolean;
+}
+
+export interface ResponseStemLeafConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  starter: StemLeafSpec;
+}
+
 export interface ResponseWorkspace {
   /** Empty for question types that have their own native interface. */
   tools: ResponseToolId[];
@@ -85,8 +120,13 @@ export interface ResponseWorkspace {
   geometry: ResponseGeometryConfig;
   statistics: ResponseStatsConfig;
   dataTable: ResponseDataTableConfig;
+  venn: ResponseVennConfig;
+  probabilityTree: ResponseProbabilityTreeConfig;
+  stemLeaf: ResponseStemLeafConfig;
   guidance: string;
-  requirement: "any" | "text" | "graph" | "geometry" | "statistics" | "data_table";
+  requirement: "any" | "text" | "graph" | "geometry" | "statistics" | "data_table" | "venn" | "probability_tree" | "stem_leaf";
+  /** Preferred first visible construction tab, when a question has one. */
+  defaultTool: ResponseToolId | null;
   /** Where the tool set came from — shown to the teacher, never to candidates. */
   source: "native" | "configured" | "inferred";
 }
@@ -96,6 +136,9 @@ const GEOMETRY_LANGUAGE = /\b(geometry|geometric|construct|construction|triangle
 const SCIENCE_LANGUAGE = /\b(science|physics|chemistry|biology|molecule|atom|reaction|solution|concentration|velocity|acceleration|force|energy|voltage|resistance|moles?|mass|density|pressure|temperature|units?)\b/i;
 const STATISTICS_LANGUAGE = /\b(statistics?|statistical|data set|dataset|frequency|frequenc(?:y|ies) table|histogram|dot plot|bar chart|box (?:and[- ]whisker )?plot|quartiles?|interquartile|iqr|median|mean|standard deviation|distribution|cumulative frequency|stem[- ]and[- ]leaf)\b/i;
 const DATA_TABLE_LANGUAGE = /\b(complete the (?:frequency |data )?table|copy and complete the table|fill in the table|table below|frequency table|data table)\b/i;
+const VENN_LANGUAGE = /\b(venn|universal set|intersection|union|complement|two[- ]set|three[- ]set|\bξ\b|\bn\(A\)|\bn\(B\)|\bn\(C\)|belong to (?:both|neither)|overlap)\b/i;
+const TREE_LANGUAGE = /\b(probability tree|tree diagram|branches?|without replacement|with replacement|two[- ]stage probability)\b/i;
+const STEM_LEAF_LANGUAGE = /\b(stem[- ]and[- ]leaf|stem and leaf|stems? and leaves)\b/i;
 
 function hasWord(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
@@ -124,6 +167,9 @@ export function inferResponseTools(question: { prompt?: string | null; prompt_do
   if (hasWord(text, GEOMETRY_LANGUAGE)) tools.push("geometry");
   if (hasWord(text, SCIENCE_LANGUAGE)) tools.push("science");
   if (hasWord(text, STATISTICS_LANGUAGE)) tools.push("statistics");
+  if (hasWord(text, VENN_LANGUAGE)) tools.push("venn");
+  if (hasWord(text, TREE_LANGUAGE)) tools.push("probability_tree");
+  if (hasWord(text, STEM_LEAF_LANGUAGE)) tools.push("stem_leaf");
   return tools;
 }
 
@@ -142,9 +188,12 @@ export function responseWorkspaceFor(question: {
   const rawGeometry = asRecord(cfg.response_geometry);
   const rawStats = asRecord(cfg.response_stats);
   const rawTable = asRecord(cfg.response_data_table);
+  const rawVenn = asRecord(cfg.response_venn);
+  const rawProbabilityTree = asRecord(cfg.response_probability_tree);
+  const rawStemLeaf = asRecord(cfg.response_stem_leaf);
   const guidance = typeof cfg.response_guidance === "string" ? cfg.response_guidance.slice(0, 1000) : "";
   const requirementRaw = typeof cfg.response_requirement === "string" ? cfg.response_requirement : "any";
-  const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table"].includes(requirementRaw)
+  const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table", "venn", "probability_tree", "stem_leaf"].includes(requirementRaw)
     ? requirementRaw
     : "any") as ResponseWorkspace["requirement"];
 
@@ -152,27 +201,40 @@ export function responseWorkspaceFor(question: {
   const geometryStarter = normaliseGeometrySpec(rawGeometry.starter ?? cfg.response_geometry_starter ?? null, emptyGeometrySpec());
   const statsStarter = normaliseStatsSpec(rawStats.starter ?? null, emptyStatsSpec());
   const tableStarter = normaliseDataTableSpec(rawTable.starter ?? null, emptyDataTableSpec());
+  const vennStarter = normaliseVennSpec(rawVenn.starter ?? cfg.response_venn_starter ?? null, emptyVennSpec());
+  const probabilityTreeStarter = normaliseProbabilityTreeSpec(rawProbabilityTree.starter ?? cfg.response_probability_tree_starter ?? null, emptyProbabilityTreeSpec());
+  const stemLeafStarter = normaliseStemLeafSpec(rawStemLeaf.starter ?? cfg.response_stem_leaf_starter ?? null, emptyStemLeafSpec());
   const rawChart = rawStats.chart;
   const statsChart: StatsChartType | "any" = rawChart === "any" || rawChart === undefined
     ? "any"
     : isStatsChartType(rawChart) ? rawChart : "any";
 
-  if (NATIVE_TYPES.has(question.type)) {
+  // A multi-part question marks a typed answer per part, so its native
+  // interface is never replaced. It may, however, opt into a *working*
+  // workspace that a candidate opens per part to show a method; that only
+  // happens when the teacher configured tools explicitly, so every existing
+  // paper keeps exactly the interface it has today.
+  const partsWorkingConfigured = question.type === "assess_parts" && uniqueTools(cfg.response_tools).length > 0;
+
+  if (NATIVE_TYPES.has(question.type) && !partsWorkingConfigured) {
     return {
       tools: [],
       graph: { enabled: false, title: "Graph", instructions: "", allowFunctions: true, starter: graphStarter },
       geometry: { enabled: false, title: "Geometry", instructions: "", starter: geometryStarter },
       statistics: { enabled: false, title: "Statistics", instructions: "", chart: "any", starter: statsStarter },
       dataTable: { enabled: false, title: "Data table", instructions: "", starter: tableStarter },
+      venn: { enabled: false, title: "Venn diagram", instructions: "", starter: vennStarter, allowSetChange: true },
+      probabilityTree: { enabled: false, title: "Probability tree", instructions: "", starter: probabilityTreeStarter, allowStructure: true },
+      stemLeaf: { enabled: false, title: "Stem-and-leaf diagram", instructions: "", starter: stemLeafStarter },
       guidance,
       requirement: "any",
+      defaultTool: null,
       source: "native",
     };
   }
 
   const configured = uniqueTools(cfg.response_tools);
   const tools = configured.length ? configured : inferResponseTools(question);
-
   return {
     tools,
     graph: {
@@ -201,8 +263,29 @@ export function responseWorkspaceFor(question: {
       instructions: typeof rawTable.instructions === "string" ? rawTable.instructions.slice(0, 400) : "",
       starter: tableStarter,
     },
+    venn: {
+      enabled: tools.includes("venn"),
+      title: typeof rawVenn.title === "string" && rawVenn.title.trim() ? rawVenn.title.slice(0, 80) : "Your Venn diagram",
+      instructions: typeof rawVenn.instructions === "string" ? rawVenn.instructions.slice(0, 400) : "",
+      starter: vennStarter,
+      allowSetChange: rawVenn.allow_set_change !== false,
+    },
+    probabilityTree: {
+      enabled: tools.includes("probability_tree"),
+      title: typeof rawProbabilityTree.title === "string" && rawProbabilityTree.title.trim() ? rawProbabilityTree.title.slice(0, 80) : "Your probability tree",
+      instructions: typeof rawProbabilityTree.instructions === "string" ? rawProbabilityTree.instructions.slice(0, 400) : "",
+      starter: probabilityTreeStarter,
+      allowStructure: rawProbabilityTree.allow_structure !== false,
+    },
+    stemLeaf: {
+      enabled: tools.includes("stem_leaf"),
+      title: typeof rawStemLeaf.title === "string" && rawStemLeaf.title.trim() ? rawStemLeaf.title.slice(0, 80) : "Your stem-and-leaf diagram",
+      instructions: typeof rawStemLeaf.instructions === "string" ? rawStemLeaf.instructions.slice(0, 400) : "",
+      starter: stemLeafStarter,
+    },
     guidance,
     requirement,
+    defaultTool: uniqueTools([cfg.response_default_tool])[0] ?? tools.find((tool) => !["rich_text", "math", "table", "science"].includes(tool)) ?? null,
     source: configured.length ? "configured" : "inferred",
   };
 }
@@ -221,6 +304,9 @@ export interface StructuredAnswer {
   geometry: GeometrySpec | null;
   statistics: StatsSpec | null;
   data_table: DataTableSpec | null;
+  venn?: VennSpec | null;
+  probability_tree?: ProbabilityTreeSpec | null;
+  stem_leaf?: StemLeafSpec | null;
   saved_at?: string;
 }
 
@@ -235,6 +321,9 @@ export const ANSWER_LIMITS = {
   tableRows: 40,
   tableColumns: 10,
   tableCell: 200,
+  vennRegions: 8,
+  probabilityTreeNodes: 80,
+  stemLeafRows: 60,
 } as const;
 
 export interface AnswerValidation {
@@ -285,6 +374,19 @@ export function validateAnswerPayload(type: string, raw: unknown): AnswerValidat
     // Keep the historical permissive behaviour for objective answers, but
     // never accept values of a type the scorer would treat as malformed.
     const answer = { ...raw };
+    if ("working" in answer) {
+      const working = answer.working;
+      if (!isRecord(working)) return { ok: false, answer: {}, error: "The working has an invalid format." };
+      const entries = Object.entries(working).slice(0, 12);
+      const cleanWorking: Record<string, unknown> = {};
+      for (const [partId, payload] of entries) {
+        if (!/^[A-Za-z0-9_-]{1,12}$/.test(partId)) continue;
+        const validated = validateAnswerPayload("open_ended", payload);
+        if (!validated.ok) return { ok: false, answer: {}, error: validated.error ?? "The working has an invalid format." };
+        cleanWorking[partId] = validated.answer;
+      }
+      answer.working = cleanWorking;
+    }
     if ("option_id" in answer && typeof answer.option_id !== "string") return { ok: false, answer: {}, error: "Invalid selection." };
     if ("option_ids" in answer && !(Array.isArray(answer.option_ids) && answer.option_ids.every((v) => typeof v === "string"))) {
       return { ok: false, answer: {}, error: "Invalid selection." };
@@ -349,6 +451,35 @@ export function validateAnswerPayload(type: string, raw: unknown): AnswerValidat
     clean.statistics = null;
   }
 
+  if (raw.probability_tree !== undefined && raw.probability_tree !== null) {
+    if (!isRecord(raw.probability_tree)) return { ok: false, answer: {}, error: "The probability tree has an invalid format." };
+    const tree = normaliseProbabilityTreeSpec(raw.probability_tree);
+    if (tree.nodes.length > ANSWER_LIMITS.probabilityTreeNodes) return { ok: false, answer: {}, error: "The probability tree has too many branches." };
+    clean.probability_tree = tree;
+  } else if (raw.probability_tree === null) {
+    clean.probability_tree = null;
+  }
+
+  if (raw.stem_leaf !== undefined && raw.stem_leaf !== null) {
+    if (!isRecord(raw.stem_leaf)) return { ok: false, answer: {}, error: "The stem-and-leaf diagram has an invalid format." };
+    const stemLeaf = normaliseStemLeafSpec(raw.stem_leaf);
+    if (stemLeaf.rows.length > ANSWER_LIMITS.stemLeafRows) return { ok: false, answer: {}, error: "The stem-and-leaf diagram has too many rows." };
+    clean.stem_leaf = stemLeaf;
+  } else if (raw.stem_leaf === null) {
+    clean.stem_leaf = null;
+  }
+
+  if (raw.venn !== undefined && raw.venn !== null) {
+    if (!isRecord(raw.venn)) return { ok: false, answer: {}, error: "The Venn diagram has an invalid format." };
+    const venn = normaliseVennSpec(raw.venn);
+    if (Object.keys(venn.regions).length > ANSWER_LIMITS.vennRegions) {
+      return { ok: false, answer: {}, error: "The Venn diagram has too many regions." };
+    }
+    clean.venn = venn;
+  } else if (raw.venn === null) {
+    clean.venn = null;
+  }
+
   if (raw.data_table !== undefined && raw.data_table !== null) {
     if (!isRecord(raw.data_table)) return { ok: false, answer: {}, error: "The data table has an invalid format." };
     if (tablePayloadTooLarge(raw.data_table)) {
@@ -381,6 +512,14 @@ function docHasRealContent(doc: Record<string, unknown>): boolean {
 export function answerHasWork(answer: Record<string, unknown> | null | undefined): boolean {
   if (!answer) return false;
   if (typeof answer.text === "string" && answer.text.trim()) return true;
+  if (typeof answer.value === "number" && Number.isFinite(answer.value)) return true;
+  if (typeof answer.value === "string" && answer.value.trim()) return true;
+  // Assess-parts answers are a map of stable part id → typed value. They are
+  // first-class candidate work even when the optional construction workspace is
+  // also present, so marker summaries must not call them an empty response.
+  if (isRecord(answer.parts) && Object.values(answer.parts).some((value) =>
+    (typeof value === "string" && value.trim()) || (typeof value === "number" && Number.isFinite(value)))) return true;
+  if (isRecord(answer.working) && Object.values(answer.working).some((value) => isRecord(value) && answerHasWork(value))) return true;
   if (isRecord(answer.doc) && docHasRealContent(answer.doc)) return true;
   const graph = answer.graph;
   if (graph && isRecord(graph)) {
@@ -401,6 +540,15 @@ export function answerHasWork(answer: Record<string, unknown> | null | undefined
   if (answer.data_table && isRecord(answer.data_table)) {
     if (dataTableHasWork(normaliseDataTableSpec(answer.data_table))) return true;
   }
+  if (answer.venn && isRecord(answer.venn)) {
+    if (vennSpecHasWork(normaliseVennSpec(answer.venn))) return true;
+  }
+  if (answer.probability_tree && isRecord(answer.probability_tree)) {
+    if (probabilityTreeHasWork(normaliseProbabilityTreeSpec(answer.probability_tree))) return true;
+  }
+  if (answer.stem_leaf && isRecord(answer.stem_leaf)) {
+    if (stemLeafHasWork(normaliseStemLeafSpec(answer.stem_leaf))) return true;
+  }
   return false;
 }
 
@@ -414,5 +562,15 @@ export function describeAnswerComponents(answer: Record<string, unknown> | null 
   if (isRecord(answer.geometry) && answerHasWork({ geometry: answer.geometry })) parts.push("geometry construction");
   if (isRecord(answer.statistics) && statsSpecHasWork(normaliseStatsSpec(answer.statistics))) parts.push("statistics chart");
   if (isRecord(answer.data_table) && dataTableHasWork(normaliseDataTableSpec(answer.data_table))) parts.push("data table");
+  if (isRecord(answer.venn) && vennSpecHasWork(normaliseVennSpec(answer.venn))) parts.push("Venn diagram");
+  if (isRecord(answer.probability_tree) && probabilityTreeHasWork(normaliseProbabilityTreeSpec(answer.probability_tree))) parts.push("probability tree");
+  if (isRecord(answer.stem_leaf) && stemLeafHasWork(normaliseStemLeafSpec(answer.stem_leaf))) parts.push("stem-and-leaf diagram");
+  if (isRecord(answer.parts) && Object.values(answer.parts).some((value) =>
+    (typeof value === "string" && value.trim()) || (typeof value === "number" && Number.isFinite(value)))) {
+    parts.push("typed part answers");
+  }
+  if (isRecord(answer.working) && Object.values(answer.working).some((value) => isRecord(value) && answerHasWork(value))) {
+    parts.push("per-part working");
+  }
   return parts.length ? parts : ["Empty response"];
 }

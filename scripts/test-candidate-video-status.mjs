@@ -14,6 +14,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/components/Logo'||req==='@/components/RichContent')return {Logo:()=>null,RichContent:()=>null};
  if(req==='@/components/ExamCorrige')return {ExamCorrige:()=>null};
  if(req==='@/lib/examResults')return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>''};
+ if(req==='@/lib/examFeedback')return {questionFeedback:()=>({assessed:null,scheme:null,improve:null,any:false}),resultSummary:(questions,pass)=>({awarded:0,max:0,percent:0,passPercent:pass,passed:false,objective:{awarded:0,max:0,percent:0,count:0},structured:{awarded:0,max:0,percent:0,count:0},topics:[],criteria:[],strongTopics:[],weakTopics:[],pendingManual:false,pendingCount:0,message:'summary'})};
  if(req==='@/lib/integrity')return {parseIntegrityPolicy:raw=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
  if(req==='@/lib/integrityMonitor')return {IntegrityMonitor:class{start(){}stop(){}}};
  if(req==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};

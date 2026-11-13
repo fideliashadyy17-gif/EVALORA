@@ -21,6 +21,7 @@ const QUESTION_TYPES = [
   "matching",
   "poll",
   "open_ended",
+  "assess_parts",
   "slide",
 ] as const;
 

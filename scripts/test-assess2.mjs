@@ -84,7 +84,11 @@ check("the original Assess Prep papers are untouched by the new migrations", () 
 check("criterion + strand reach the candidate payload and feedback", () => {
   assert.ok(readFileSync("src/lib/live.ts", "utf8").includes("out.strand"));
   const client = readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf8");
-  assert.ok(client.includes("Criterion {current.criterion}") && client.includes("levelBand"));
+  // The banding moved into the shared, reusable result summary so the same
+  // computation serves the candidate screen, a teacher report and print.
+  assert.ok(client.includes("Criterion {current.criterion}"));
+  assert.ok(client.includes("resultSummary(") && client.includes("questionFeedback("));
+  assert.ok(readFileSync("src/lib/examFeedback.ts", "utf8").includes("levelBand("));
   const runner = readFileSync("src/components/QuestionRunner.tsx", "utf8");
   assert.ok(runner.includes("Criterion {part.strand}"));
 });

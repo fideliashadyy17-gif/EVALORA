@@ -5,8 +5,12 @@ import {
   countAxis,
   cumulativeFrequencies,
   dotPlotStacks,
+  groupedCumulativePoints,
+  groupedSeries,
   histogramBins,
+  normaliseFiveNumberSummary,
   normaliseStatsSpec,
+  statsIsGrouped,
   statsSpecSummary,
   statsSummary,
   valueAxis,
@@ -149,16 +153,20 @@ export function StatsView({
   const description = `${STATS_CHART_LABELS[clean.chart]}: ${statsSpecSummary(clean)}`;
   const summary = showSummary ?? clean.showSummary;
 
+  const grouped = statsIsGrouped(clean);
   let chart: ReactNode;
   if (clean.chart === "bar_chart") chart = <BarChart spec={clean} />;
-  else if (clean.chart === "histogram") chart = <HistogramChart spec={clean} />;
+  else if (clean.chart === "histogram") chart = grouped ? <GroupedHistogramChart spec={clean} /> : <HistogramChart spec={clean} />;
   else if (clean.chart === "box_plot") chart = <BoxPlotChart spec={clean} />;
-  else if (clean.chart === "cumulative_frequency") chart = <CumulativeChart spec={clean} />;
+  else if (clean.chart === "cumulative_frequency") chart = grouped ? <GroupedCumulativeChart spec={clean} /> : <CumulativeChart spec={clean} />;
+  else if (clean.chart === "frequency_polygon") chart = grouped ? <GroupedPolygonChart spec={clean} /> : <PolygonChart spec={clean} />;
   else chart = <DotPlotChart spec={clean} />;
 
   const empty = clean.chart === "bar_chart"
     ? clean.categories.filter((category) => category.label.trim() || category.value).length === 0
-    : clean.values.length === 0;
+    : grouped
+      ? !(clean.groups ?? []).some((group) => group.frequency > 0) || (clean.groups ?? []).length === 0
+      : clean.values.length === 0;
   const computed = clean.chart === "bar_chart" ? null : statsSummary(clean.values);
 
   return (
@@ -182,7 +190,21 @@ export function StatsView({
         </svg>
       </div>
 
-      {summary && computed && computed.count > 0 && (
+      {summary && grouped && (() => {
+        const series = groupedSeries(clean.groups ?? []);
+        if (!series.rows.length) return null;
+        return (
+          <ul className="stats-summary" aria-label="Grouped data summary">
+            <li><span>Classes</span> <strong>{series.rows.length}</strong></li>
+            <li><span>Σf</span> <strong>{formatNumber(series.totalFrequency)}</strong></li>
+            {series.estimatedMean !== null ? (
+              <li><span>Estimated mean</span> <strong>{formatNumber(series.estimatedMean)}</strong></li>
+            ) : null}
+          </ul>
+        );
+      })()}
+
+      {summary && !grouped && computed && computed.count > 0 && (
         <ul className="stats-summary" aria-label="Summary statistics">
           {[
             ["Mean", computed.mean],
@@ -201,7 +223,30 @@ export function StatsView({
       {!compact && showTable && clean.chart !== "box_plot" && (
         <details className="stats-data-details">
           <summary>View the data</summary>
-          {clean.chart === "bar_chart" ? (
+          {grouped ? (
+            <table>
+              <thead>
+                <tr>
+                  <th scope="col">Class</th>
+                  <th scope="col">Midpoint</th>
+                  <th scope="col">f</th>
+                  <th scope="col">f &times; midpoint</th>
+                  <th scope="col">Cumulative f</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedSeries(clean.groups ?? []).rows.map((row) => (
+                  <tr key={row.label}>
+                    <th scope="row">{row.label}</th>
+                    <td>{formatNumber(row.midpoint)}</td>
+                    <td>{formatNumber(row.frequency)}</td>
+                    <td>{formatNumber(row.frequency * row.midpoint)}</td>
+                    <td>{formatNumber(row.cumulative)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : clean.chart === "bar_chart" ? (
             <table>
               <thead><tr><th scope="col">Category</th><th scope="col">Value</th></tr></thead>
               <tbody>
@@ -397,7 +442,22 @@ function CumulativeChart({ spec }: { spec: StatsSpec }) {
 }
 
 function BoxPlotChart({ spec }: { spec: StatsSpec }) {
-  const box = boxPlotSummary(spec.values);
+  // When a question asks for construction from a five-number summary, preserve
+  // and draw precisely the values entered by the candidate. Raw data retains
+  // the existing derived-box-plot behaviour for exploratory questions.
+  const entered = normaliseFiveNumberSummary((spec as StatsSpec & { fiveNumberSummary?: unknown }).fiveNumberSummary);
+  const computed = boxPlotSummary(spec.values);
+  const box = entered ? {
+    count: spec.values.length,
+    min: entered.min,
+    whiskerLow: entered.min,
+    q1: entered.q1,
+    median: entered.median,
+    q3: entered.q3,
+    whiskerHigh: entered.max,
+    max: entered.max,
+    outliers: [],
+  } : computed;
   if (!box) return null;
   const candidates = [box.min, box.max, ...box.outliers];
   let min = Math.min(...candidates);
@@ -458,6 +518,170 @@ function BoxPlotChart({ spec }: { spec: StatsSpec }) {
       <text x={x(box.whiskerLow)} y={mid - cap / 2 - 6} fontSize={10} textAnchor="middle" fill="#4b5a52">{formatNumber(box.whiskerLow)}</text>
       <text x={x(box.whiskerHigh)} y={mid - cap / 2 - 6} fontSize={10} textAnchor="middle" fill="#4b5a52">{formatNumber(box.whiskerHigh)}</text>
       <AxisTitle x={(PLOT_LEFT + PLOT_RIGHT) / 2} y={HEIGHT - 12}>{spec.xLabel}</AxisTitle>
+    </g>
+  );
+}
+
+/* ─── Grouped-series charts ─────────────────────────────────────────
+ *
+ * A histogram of a grouped table must have area proportional to frequency, so
+ * the bar height is the frequency *density* (frequency ÷ class width). With
+ * equal widths that is a constant multiple of the frequency and the picture is
+ * the familiar one; with unequal widths it is the only honest picture, and the
+ * y-axis says so. The candidate's table is the source: the chart never invents
+ * a bar the table does not support.
+ */
+
+function GroupedHistogramChart({ spec }: { spec: StatsSpec }) {
+  const series = groupedSeries(spec.groups ?? []);
+  if (!series.rows.length) return null;
+  const density = series.unequalWidths;
+  const heights = series.rows.map((row) => (density ? row.frequencyDensity : row.frequency));
+  const maxHeight = Math.max(1, ...heights.filter((value) => Number.isFinite(value)));
+  const axis = countAxis(maxHeight, 6);
+  const x = xScale(series.minBoundary, series.maxBoundary);
+  const y = yScale(axis.max);
+  const edges = series.rows.map((row) => row.from).concat(series.maxBoundary);
+  const stride = Math.max(1, Math.ceil(edges.length / 10));
+  const axisLabel = density ? "Frequency density" : (spec.yLabel || "Frequency");
+
+  return (
+    <g>
+      <CountAxis maximum={maxHeight} label={axisLabel} />
+      <NumericAxis
+        min={series.minBoundary}
+        max={series.maxBoundary}
+        label={spec.xLabel}
+        ticks={edges.filter((_, index) => index % stride === 0 || index === edges.length - 1)}
+      />
+      {series.rows.map((row) => {
+        const left = x(row.from);
+        const right = x(row.to);
+        const height = density ? row.frequencyDensity : row.frequency;
+        const top = y(height);
+        return (
+          <g key={`${row.from}-${row.to}`}>
+            <rect
+              x={left + 1}
+              y={top}
+              width={Math.max(1, right - left - 2)}
+              height={Math.max(0, PLOT_BOTTOM - top)}
+              fill="#0a5c36"
+              stroke="#ffffff"
+              strokeWidth={1}
+            >
+              <title>{`${row.label}: f = ${formatNumber(row.frequency)}${density ? `, density = ${formatNumber(row.frequencyDensity)}` : ""}`}</title>
+            </rect>
+            {row.frequency > 0 && (
+              <text x={(left + right) / 2} y={top - 5} fontSize={11} textAnchor="middle" fill="#0a5c36" fontWeight={600}>
+                {formatNumber(row.frequency)}
+              </text>
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
+function GroupedCumulativeChart({ spec }: { spec: StatsSpec }) {
+  const points = groupedCumulativePoints(spec.groups ?? []);
+  if (points.length < 2) return null;
+  const series = groupedSeries(spec.groups ?? []);
+  const min = series.minBoundary;
+  const max = series.maxBoundary;
+  const total = points[points.length - 1].cumulative;
+  const axis = countAxis(total, 6);
+  const x = xScale(min, max);
+  const y = yScale(axis.max);
+
+  // A cumulative frequency curve is a smooth polygon through the plotted
+  // points (upper class boundaries), not a staircase: that is what a student
+  // is taught to read a median from.
+  const path = points
+    .map((point, index) => `${index === 0 ? "M" : "L"} ${x(point.value)} ${y(point.cumulative)}`)
+    .join(" ");
+  const edgeTicks = points.map((point) => point.value);
+
+  return (
+    <g>
+      <CountAxis maximum={total} label={spec.yLabel || "Cumulative frequency"} />
+      <NumericAxis min={min} max={max} label={spec.xLabel} ticks={edgeTicks} />
+      <path d={path} fill="none" stroke="#0a5c36" strokeWidth={2.4} strokeLinejoin="round" />
+      {points.map((point) => (
+        <circle key={point.value} cx={x(point.value)} cy={y(point.cumulative)} r={4} fill="#0a5c36" stroke="#ffffff" strokeWidth={1.5}>
+          <title>{`x ≤ ${formatNumber(point.value)}: ${point.cumulative}`}</title>
+        </circle>
+      ))}
+      <text x={PLOT_LEFT + 6} y={PLOT_TOP + 12} fontSize={11} fill="#4b5a52">
+        n = {formatNumber(total)}
+      </text>
+    </g>
+  );
+}
+
+/** Frequency polygon through the class midpoints (grouped data). */
+function GroupedPolygonChart({ spec }: { spec: StatsSpec }) {
+  const series = groupedSeries(spec.groups ?? []);
+  if (!series.rows.length) return null;
+  const maxCount = Math.max(1, ...series.rows.map((row) => row.frequency));
+  const axis = countAxis(maxCount, 6);
+  const x = xScale(series.minBoundary, series.maxBoundary);
+  const y = yScale(axis.max);
+  const points = series.rows.map((row) => ({ x: x(row.midpoint), y: y(row.frequency), row }));
+
+  return (
+    <g>
+      <CountAxis maximum={maxCount} label={spec.yLabel || "Frequency"} />
+      <NumericAxis
+        min={series.minBoundary}
+        max={series.maxBoundary}
+        label={spec.xLabel}
+        ticks={series.rows.map((row) => row.midpoint)}
+      />
+      <path
+        d={points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}
+        fill="none"
+        stroke="#0a5c36"
+        strokeWidth={2.2}
+      />
+      {points.map((point) => (
+        <g key={point.row.label}>
+          <circle cx={point.x} cy={point.y} r={4.5} fill="#0a5c36" stroke="#ffffff" strokeWidth={1.5}>
+            <title>{`${point.row.label} (midpoint ${formatNumber(point.row.midpoint)}): ${formatNumber(point.row.frequency)}`}</title>
+          </circle>
+          <text x={point.x} y={point.y - 9} fontSize={10} textAnchor="middle" fill="#0a5c36" fontWeight={600}>
+            {formatNumber(point.row.frequency)}
+          </text>
+        </g>
+      ))}
+    </g>
+  );
+}
+
+/** Frequency polygon over raw observations (one point per distinct value). */
+function PolygonChart({ spec }: { spec: StatsSpec }) {
+  const stacks = dotPlotStacks(spec.values);
+  if (!stacks.length) return null;
+  let min = Math.min(...stacks.map((stack) => stack.value));
+  let max = Math.max(...stacks.map((stack) => stack.value));
+  if (min === max) { min -= 1; max += 1; }
+  const maxCount = Math.max(1, ...stacks.map((stack) => stack.count));
+  const axis = countAxis(maxCount, 6);
+  const x = xScale(min, max);
+  const y = yScale(axis.max);
+  const path = stacks.map((stack, index) => `${index === 0 ? "M" : "L"} ${x(stack.value)} ${y(stack.count)}`).join(" ");
+
+  return (
+    <g>
+      <CountAxis maximum={maxCount} label={spec.yLabel || "Frequency"} />
+      <NumericAxis min={min} max={max} label={spec.xLabel} />
+      <path d={path} fill="none" stroke="#0a5c36" strokeWidth={2.2} />
+      {stacks.map((stack) => (
+        <circle key={stack.value} cx={x(stack.value)} cy={y(stack.count)} r={4} fill="#0a5c36" stroke="#ffffff" strokeWidth={1.5}>
+          <title>{`${formatNumber(stack.value)}: ${stack.count}`}</title>
+        </circle>
+      ))}
     </g>
   );
 }

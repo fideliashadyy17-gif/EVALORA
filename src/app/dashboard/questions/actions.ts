@@ -22,7 +22,7 @@ const QuestionSchema = z.object({
   id: z.string().optional(),
   type: z.enum([
     "single_choice", "multiple_select", "true_false", "short_answer",
-    "numeric", "ordering", "matching", "poll", "open_ended", "slide",
+    "numeric", "ordering", "matching", "poll", "open_ended", "assess_parts", "slide",
   ]),
   prompt: z.string().min(1),
   prompt_doc: z.unknown().optional().nullable(),

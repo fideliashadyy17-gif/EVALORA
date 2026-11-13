@@ -1,5 +1,6 @@
 import { RichContent } from "@/components/RichContent";
 import { AnswerResponseView } from "@/components/AnswerResponseView";
+import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
@@ -54,7 +55,7 @@ export default async function ExamDetailPage({
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
-      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, grading_method, moderation_status, questions(prompt, prompt_doc, points, type))")
+      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, grading_method, moderation_status, questions(prompt, prompt_doc, points, type, config))")
       .eq("exam_id", id)
       .order("started_at"),
     supabase
@@ -75,15 +76,19 @@ export default async function ExamDetailPage({
     grading_method: string;
     moderation_status: string;
     answer: { text?: string };
-    questions: { prompt: string; points: number; type: string };
+    questions: { prompt: string; prompt_doc?: import("@/lib/content").RichDoc | null; points: number; type: string; config?: Record<string, unknown> | null };
   };
   const answersOf = (a: { exam_answers?: unknown; status: string }) =>
     ((a.exam_answers as MarkableAnswer[] | null) ?? []).filter(
-      (ans) => ans.questions.type === "open_ended" && a.status !== "in_progress",
+      (ans) => ["open_ended", "assess_parts"].includes(ans.questions.type) && a.status !== "in_progress",
     );
 
+  // Open-ended responses require a first human mark. Assess-parts responses
+  // receive their typed-part partial credit automatically, then remain visible
+  // below for a marker to inspect the submitted construction and moderate a
+  // result when the saved working merits an adjustment.
   const awaitingMarking = (attempts ?? []).flatMap((a) =>
-    answersOf(a).filter((ans) => ans.is_correct === null).map((ans) => ({ attempt: a, ans })),
+    answersOf(a).filter((ans) => ans.questions.type === "open_ended" && ans.is_correct === null).map((ans) => ({ attempt: a, ans })),
   );
   const gradedWritten = (attempts ?? []).flatMap((a) =>
     answersOf(a).filter((ans) => ans.is_correct !== null).map((ans) => ({ attempt: a, ans })),
@@ -385,7 +390,7 @@ export default async function ExamDetailPage({
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
                     <div className="mt-2 rounded-lg bg-white p-3">
-                      <AnswerResponseView answer={ans.answer} />
+                      <AnswerResponseView answer={ans.answer} assessParts={publicAssessParts(assessPartsFromConfig(ans.questions.config))} />
                     </div>
                     {rubric && canMark ? (
                       <div className="mt-3 rounded-lg border border-gold-600/30 bg-gold-50/40 p-3">
@@ -531,7 +536,7 @@ export default async function ExamDetailPage({
 
           <Card className="p-6">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="font-display text-lg font-semibold text-evergreen-950">Moderation ({gradedWritten.length} written answers marked)</h2>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Moderation ({gradedWritten.length} constructed responses marked)</h2>
               <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline" className="text-xs">Full grade history</ButtonLink>
             </div>
             <p className="mt-1 text-xs text-ink-soft">
@@ -560,6 +565,14 @@ export default async function ExamDetailPage({
                         <span className="ml-auto text-xs text-ink-soft">{GRADING_METHOD_LABEL[ans.grading_method] ?? ans.grading_method}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-ink-soft">{ans.questions.prompt}</p>
+                      {ans.questions.type === "assess_parts" ? (
+                        <details className="mt-2 rounded-lg border border-evergreen-900/10 bg-white p-2">
+                          <summary className="cursor-pointer text-xs font-semibold text-evergreen-800">Review typed answers and submitted working</summary>
+                          <div className="mt-2">
+                            <AnswerResponseView answer={ans.answer} assessParts={publicAssessParts(assessPartsFromConfig(ans.questions.config))} />
+                          </div>
+                        </details>
+                      ) : null}
                       {perGrader.size > 0 && (
                         <p className="mt-1 text-[11px] text-ink-soft">
                           Criterion totals by marker: {[...perGrader.values()].map((v) => Number(v)).join(" · ")}

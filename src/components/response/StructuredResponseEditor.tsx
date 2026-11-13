@@ -13,12 +13,20 @@ import { emptyGraphSpec, graphSpecHasWork, normaliseGraphSpec, type GraphSpec } 
 import { emptyGeometrySpec, geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 import { emptyStatsSpec, normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "@/lib/statsSpec";
 import { emptyDataTableSpec, dataTableHasWork, normaliseDataTableSpec, type DataTableSpec } from "@/lib/dataTableSpec";
+import { VennEditor } from "@/components/venn/VennEditor";
+import { emptyVennSpec, normaliseVennSpec, vennSpecHasWork, type VennSpec } from "@/lib/vennSpec";
+import { ProbabilityTreeEditor } from "@/components/probability/ProbabilityTreeEditor";
+import { ProbabilityTreeView } from "@/components/probability/ProbabilityTreeView";
+import { emptyProbabilityTreeSpec, normaliseProbabilityTreeSpec, probabilityTreeHasWork, type ProbabilityTreeSpec } from "@/lib/probabilityTreeSpec";
+import { StemLeafEditor } from "@/components/stem-leaf/StemLeafEditor";
+import { StemLeafView } from "@/components/stem-leaf/StemLeafView";
+import { emptyStemLeafSpec, normaliseStemLeafSpec, stemLeafHasWork, type StemLeafSpec } from "@/lib/stemLeafSpec";
 import type { ResponseWorkspace } from "@/lib/responseTools";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table";
+type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table" | "venn" | "probability_tree" | "stem_leaf";
 
 /**
  * The student composition environment for constructed responses.
@@ -38,6 +46,7 @@ export function StructuredResponseEditor({
   submitLabel = "Save answer",
   emit,
   onDirtyChange,
+  onPayloadChange,
 }: {
   workspace: ResponseWorkspace;
   initial: Record<string, unknown> | null;
@@ -46,6 +55,8 @@ export function StructuredResponseEditor({
   submitLabel?: string;
   emit: (payload: Record<string, unknown>) => boolean | void;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Receives the latest local construction before it has been saved. */
+  onPayloadChange?: (payload: Record<string, unknown>) => void;
 }) {
   const initialDoc = useMemo<RichDoc>(() => {
     const raw = initial?.doc;
@@ -70,6 +81,18 @@ export function StructuredResponseEditor({
     const base = saved ? normaliseStatsSpec(saved) : normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
     return workspace.statistics.chart === "any" ? base : { ...base, chart: workspace.statistics.chart };
   });
+  const [venn, setVenn] = useState<VennSpec>(() => {
+    const saved = initial?.venn;
+    return saved ? normaliseVennSpec(saved) : normaliseVennSpec(workspace.venn.starter, emptyVennSpec());
+  });
+  const [probabilityTree, setProbabilityTree] = useState<ProbabilityTreeSpec>(() => {
+    const saved = initial?.probability_tree;
+    return saved ? normaliseProbabilityTreeSpec(saved) : normaliseProbabilityTreeSpec(workspace.probabilityTree.starter, emptyProbabilityTreeSpec());
+  });
+  const [stemLeaf, setStemLeaf] = useState<StemLeafSpec>(() => {
+    const saved = initial?.stem_leaf;
+    return saved ? normaliseStemLeafSpec(saved) : normaliseStemLeafSpec(workspace.stemLeaf.starter, emptyStemLeafSpec());
+  });
   const [dataTable, setDataTable] = useState<DataTableSpec>(() => {
     const saved = initial?.data_table;
     return saved ? normaliseDataTableSpec(saved) : normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec());
@@ -78,8 +101,15 @@ export function StructuredResponseEditor({
   const graphOn = workspace.graph.enabled;
   const geometryOn = workspace.geometry.enabled;
   const statsOn = workspace.statistics.enabled;
+  const vennOn = workspace.venn.enabled;
+  const probabilityTreeOn = workspace.probabilityTree.enabled;
+  const stemLeafOn = workspace.stemLeaf.enabled;
   const tableOn = workspace.dataTable.enabled;
-  const [tab, setTab] = useState<Tab>("written");
+  const [tab, setTab] = useState<Tab>(() => {
+    const desired = workspace.defaultTool;
+    if (desired === "graph" || desired === "geometry" || desired === "statistics" || desired === "data_table" || desired === "venn" || desired === "probability_tree" || desired === "stem_leaf") return desired;
+    return workspace.tools.includes("rich_text") ? "written" : "graph";
+  });
   const [dirty, setDirty] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const lastEmitted = useRef<string>(JSON.stringify(initial ?? {}));
@@ -87,7 +117,7 @@ export function StructuredResponseEditor({
   // A workspace without prose (rare, teacher-configured) opens on its first tool.
   useEffect(() => {
     if (!workspace.tools.includes("rich_text")) {
-      setTab(graphOn ? "graph" : geometryOn ? "geometry" : statsOn ? "statistics" : tableOn ? "data_table" : "written");
+      setTab(graphOn ? "graph" : geometryOn ? "geometry" : statsOn ? "statistics" : tableOn ? "data_table" : vennOn ? "venn" : probabilityTreeOn ? "probability_tree" : stemLeafOn ? "stem_leaf" : "written");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -96,6 +126,7 @@ export function StructuredResponseEditor({
     const graphWork = graphSpecHasWork(graph) ? graph : null;
     const geometryWork = geometrySpecHasWork(geometry) ? geometry : null;
     const statsWork = statsSpecHasWork(statistics) ? statistics : null;
+    const vennWork = vennSpecHasWork(venn) ? venn : null;
     const tableWork = dataTableHasWork(dataTable) ? dataTable : null;
     return {
       version: 1,
@@ -107,8 +138,11 @@ export function StructuredResponseEditor({
       ...(geometryOn || geometryWork ? { geometry: geometryWork } : {}),
       ...(statsOn || statsWork ? { statistics: statsWork } : {}),
       ...(tableOn || tableWork ? { data_table: tableWork } : {}),
+      ...(vennOn || vennWork ? { venn: vennWork } : {}),
+      ...(probabilityTreeOn || probabilityTreeHasWork(probabilityTree) ? { probability_tree: probabilityTreeHasWork(probabilityTree) ? probabilityTree : null } : {}),
+      ...(stemLeafOn || stemLeafHasWork(stemLeaf) ? { stem_leaf: stemLeafHasWork(stemLeaf) ? stemLeaf : null } : {}),
     };
-  }, [doc, graph, geometry, statistics, dataTable, graphOn, geometryOn, statsOn, tableOn]);
+  }, [doc, graph, geometry, statistics, dataTable, venn, probabilityTree, stemLeaf, graphOn, geometryOn, statsOn, tableOn, vennOn, probabilityTreeOn, stemLeafOn]);
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -158,12 +192,26 @@ export function StructuredResponseEditor({
   const geometryPreview = geometryOn && geometrySpecHasWork(geometry) ? geometry : null;
   const statsPreview = statsOn && statsSpecHasWork(statistics) ? statistics : null;
   const tablePreview = tableOn && dataTableHasWork(dataTable) ? dataTable : null;
+  const vennPreview = vennOn && vennSpecHasWork(venn) ? venn : null;
+  const probabilityTreePreview = probabilityTreeOn && probabilityTreeHasWork(probabilityTree) ? probabilityTree : null;
+  const stemLeafPreview = stemLeafOn && stemLeafHasWork(stemLeaf) ? stemLeaf : null;
   const missingRequired =
     (workspace.requirement === "graph" && !graphPreview) ||
     (workspace.requirement === "geometry" && !geometryPreview) ||
     (workspace.requirement === "statistics" && !statsPreview) ||
     (workspace.requirement === "data_table" && !tablePreview) ||
+    (workspace.requirement === "venn" && !vennPreview) ||
+    (workspace.requirement === "probability_tree" && !probabilityTreePreview) ||
+    (workspace.requirement === "stem_leaf" && !stemLeafPreview) ||
     (workspace.requirement === "text" && !docToPlainText(doc).trim());
+
+  // This lets an assess-parts runner include unsaved construction state in its
+  // own atomic answer payload. Keep the callback in a ref: its parent commonly
+  // recreates the callback while saving, and making that identity a dependency
+  // would turn a harmless state hand-off into a render loop.
+  const payloadChangeRef = useRef(onPayloadChange);
+  payloadChangeRef.current = onPayloadChange;
+  useEffect(() => { payloadChangeRef.current?.(payload()); }, [payload]);
 
   return (
     <div className="structured-response" data-testid="structured-response">
@@ -191,6 +239,21 @@ export function StructuredResponseEditor({
         {tableOn && (
           <button type="button" role="tab" aria-selected={tab === "data_table"} className={cn("structured-tab", tab === "data_table" && "is-active")} onClick={() => setTab("data_table")}>
             ▦ Data table {tablePreview ? "✓" : ""}
+          </button>
+        )}
+        {vennOn && (
+          <button type="button" role="tab" aria-selected={tab === "venn"} className={cn("structured-tab", tab === "venn" && "is-active")} onClick={() => setTab("venn")}>
+            ◎ Venn diagram {vennPreview ? "✓" : ""}
+          </button>
+        )}
+        {probabilityTreeOn && (
+          <button type="button" role="tab" aria-selected={tab === "probability_tree"} className={cn("structured-tab", tab === "probability_tree" && "is-active")} onClick={() => setTab("probability_tree")}>
+            ⑂ Probability tree {probabilityTreePreview ? "✓" : ""}
+          </button>
+        )}
+        {stemLeafOn && (
+          <button type="button" role="tab" aria-selected={tab === "stem_leaf"} className={cn("structured-tab", tab === "stem_leaf" && "is-active")} onClick={() => setTab("stem_leaf")}>
+            ┃ Stem-and-leaf {stemLeafPreview ? "✓" : ""}
           </button>
         )}
         <span className="ml-auto hidden text-[11px] text-ink-soft sm:inline">
@@ -310,6 +373,52 @@ export function StructuredResponseEditor({
         </div>
       )}
 
+      {tab === "venn" && vennOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">
+            {workspace.venn.instructions || "Build the diagram the question asks for: name the sets, then write the value of each region."}
+          </p>
+          <VennEditor
+            value={venn}
+            onChange={(next) => { setVenn(next); markDirty(); }}
+            allowSetChange={workspace.venn.allowSetChange}
+            disabled={disabled}
+          />
+          {!disabled && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="structured-reset"
+                onClick={() => {
+                  setVenn(normaliseVennSpec(workspace.venn.starter, emptyVennSpec()));
+                  markDirty();
+                }}
+              >
+                Reset Venn diagram
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === "probability_tree" && probabilityTreeOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">{workspace.probabilityTree.instructions || "Build the branches, label each event and write every branch probability."}</p>
+          <ProbabilityTreeEditor value={probabilityTree} onChange={(next) => { setProbabilityTree(next); markDirty(); }} disabled={disabled} allowStructure={workspace.probabilityTree.allowStructure} />
+          {!disabled && <div className="mt-2"><Button variant="outline" onClick={() => { setProbabilityTree(normaliseProbabilityTreeSpec(workspace.probabilityTree.starter, emptyProbabilityTreeSpec())); markDirty(); }}>Reset probability tree</Button></div>}
+          {probabilityTreePreview && <details className="mt-3"><summary className="cursor-pointer text-xs font-semibold text-evergreen-800">Preview of the tree you will submit</summary><ProbabilityTreeView spec={probabilityTreePreview} /></details>}
+        </div>
+      )}
+
+      {tab === "stem_leaf" && stemLeafOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">{workspace.stemLeaf.instructions || "Complete the stems, ordered leaves and key directly in the diagram."}</p>
+          <StemLeafEditor value={stemLeaf} onChange={(next) => { setStemLeaf(next); markDirty(); }} disabled={disabled} />
+          {!disabled && <div className="mt-2"><Button variant="outline" onClick={() => { setStemLeaf(normaliseStemLeafSpec(workspace.stemLeaf.starter, emptyStemLeafSpec())); markDirty(); }}>Reset stem-and-leaf diagram</Button></div>}
+          {stemLeafPreview && <details className="mt-3"><summary className="cursor-pointer text-xs font-semibold text-evergreen-800">Preview of the diagram you will submit</summary><StemLeafView spec={stemLeafPreview} /></details>}
+        </div>
+      )}
+
       {tab === "data_table" && tableOn && (
         <div className="structured-pane">
           <p className="structured-hint">
@@ -363,11 +472,15 @@ function requirementLabel(requirement: ResponseWorkspace["requirement"]): string
     case "geometry": return "a geometric construction";
     case "statistics": return "a statistics chart";
     case "data_table": return "a completed data table";
+    case "venn": return "a Venn diagram";
+    case "probability_tree": return "a probability tree";
+    case "stem_leaf": return "a stem-and-leaf diagram";
     default: return "a response";
   }
 }
 
 export function isStructuredWorkspace(workspace: ResponseWorkspace): boolean {
   return workspace.tools.includes("rich_text") || workspace.graph.enabled || workspace.geometry.enabled ||
-    workspace.statistics.enabled || workspace.dataTable.enabled;
+    workspace.statistics.enabled || workspace.dataTable.enabled || workspace.venn.enabled ||
+    workspace.probabilityTree.enabled || workspace.stemLeaf.enabled;
 }

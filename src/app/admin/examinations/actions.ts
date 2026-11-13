@@ -467,7 +467,7 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
 
   const { data: answer, error: answerError } = await admin
     .from("exam_answers")
-    .select("*, questions(organization_id, points), exam_attempts!inner(id, exam_id, status, exams(organization_id, quiz_id))")
+    .select("*, questions(organization_id, points, type), exam_attempts!inner(id, exam_id, status, exams(organization_id, quiz_id))")
     .eq("id", answerId)
     .maybeSingle();
   if (answerError || !answer) go(back, "e=answer");
@@ -478,8 +478,12 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
     status: string;
     exams: { organization_id: string; quiz_id: string | null } | null;
   };
-  const question = answer!.questions as unknown as { organization_id: string; points: number } | null;
-  if (!attempt || !attempt.exams?.quiz_id || !question || question.organization_id !== attempt.exams.organization_id) go(back, "e=answer");
+  const question = answer!.questions as unknown as { organization_id: string; points: number; type: string } | null;
+  // This first-mark path is deliberately reserved for genuinely manual
+  // constructed responses. Typed assess-parts answers are auto-scored (with
+  // partial credit) and can only be changed through the audited moderation
+  // workflow, preserving the server-scored result as the starting evidence.
+  if (!attempt || !attempt.exams?.quiz_id || !question || question.organization_id !== attempt.exams.organization_id || question.type !== "open_ended") go(back, "e=answer");
   if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) go(back, "e=in_progress");
   const { data: paperQuestion, error: paperError } = await admin.from("quiz_questions").select("id, points")
     .eq("quiz_id", attempt.exams!.quiz_id!).eq("question_id", answer!.question_id).maybeSingle();

@@ -283,13 +283,25 @@ export function publicQuestion(
     // Short-answer question_options contain accepted answers. They must
     // never be serialized before an authorized reveal.
     options: optionBackedTypes.includes(q.type) ? options : [],
-    response_workspace: workspace.tools.length || workspace.graph.enabled || workspace.geometry.enabled
+    // Send the complete candidate-safe workspace. The editor reads the starter
+    // and constraints for every enabled construction (not only graph/geometry);
+    // omitting a configured Venn/tree/stem-leaf/statistics/table block leaves a
+    // typed assess-parts question with a broken working tab after refresh.
+    response_workspace: workspace.tools.length || workspace.graph.enabled || workspace.geometry.enabled ||
+      workspace.statistics?.enabled || workspace.dataTable?.enabled || workspace.venn?.enabled ||
+      workspace.probabilityTree?.enabled || workspace.stemLeaf?.enabled
       ? {
           tools: workspace.tools,
           graph: workspace.graph,
           geometry: workspace.geometry,
+          statistics: workspace.statistics,
+          dataTable: workspace.dataTable,
+          venn: workspace.venn,
+          probabilityTree: workspace.probabilityTree,
+          stemLeaf: workspace.stemLeaf,
           guidance: workspace.guidance,
           requirement: workspace.requirement,
+          defaultTool: workspace.defaultTool,
           // `source` is an authoring diagnostic, not candidate information.
           source: "configured",
         }
@@ -330,6 +342,29 @@ export interface AnswerReveal {
   correct_order: string[];
   matching_pairs: { left: string; right: string }[];
   summary: string[];
+  /** Marking scheme / guidance — populated only by the released feedback path. */
+  marking_criteria?: string | null;
+  next_time_hint?: string | null;
+}
+
+/**
+ * The pedagogical block a candidate sees *after* their result is released:
+ * what the question assessed, the marking scheme, and how to approach the same
+ * idea next time. It deliberately contains no answer key — the key travels in
+ * `summary`, which the release path already gated — so appending this to a
+ * released reveal cannot leak anything earlier than it is due.
+ *
+ * Never call this before submission + publication: `/api/exam/state` is the
+ * single place that decides, and it only builds a reveal inside that gate.
+ */
+export function releasedFeedback(row: SessionQuestionRow): { marking_criteria: string | null; next_time_hint: string | null } {
+  const cfg = (row.questions.config ?? {}) as Record<string, unknown>;
+  const text = (value: unknown, max: number) =>
+    typeof value === "string" && value.trim() ? value.trim().slice(0, max) : null;
+  return {
+    marking_criteria: text(cfg.marking_criteria, 2400),
+    next_time_hint: text(cfg.next_time_hint, 800),
+  };
 }
 
 /** Builds the answer key for an organizer-authorized reveal. Server only. */
