@@ -5,7 +5,8 @@ import { fmtDateTime, toCsv } from "@/lib/utils";
 import Link from "next/link";
 import { setResultsPublished } from "../../../actions/competitions";
 import { Notice, StatusBadge, Table } from "../../../ui";
-import { aggregateCriterionStats } from "@/lib/examResults";
+import type { DocxReport } from "@/lib/docxExport";
+import { MYP_CRITERIA, criterionOfConfig, formatCriterionStats, participantCriterionStats, sumCriterionStats, type CriterionQuestion } from "@/lib/examResults";
 
 interface CompRow {
   id: string;
@@ -14,6 +15,7 @@ interface CompRow {
   quiz_id: string | null;
   results_published: boolean;
   status: string;
+  title?: string | null;
 }
 
 export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string } }) {
@@ -48,11 +50,13 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
       .select("participant_id, organizations(name), classes(name)")
       .eq("competition_id", comp.id)
       .not("participant_id", "is", null),
-    admin
-      .from("quiz_questions")
-      .select("id, quiz_question_id, questions(config, points), position")
-      .eq("quiz_id", comp.quiz_id ?? "")
-      .order("position"),
+    comp.quiz_id
+      ? admin
+          .from("quiz_questions")
+          .select("question_id, points, position, questions(config, points)")
+          .eq("quiz_id", comp.quiz_id)
+          .order("position")
+      : Promise.resolve({ data: [] }),
   ]);
 
   const stats = new Map<string, { answered: number; correct: number }>();
@@ -72,10 +76,11 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
     ]),
   );
 
-  const byOrg = new Map<string, { participants: number; totalScore: number; best: number }>();
+  const byOrg = new Map<string, { participants: number; totalScore: number; best: number; ids: string[] }>();
   for (const p of participants ?? []) {
     const org = regByParticipant.get(p.id)?.org ?? "Independent / unassigned";
-    const row = byOrg.get(org) ?? { participants: 0, totalScore: 0, best: 0 };
+    const row = byOrg.get(org) ?? { participants: 0, totalScore: 0, best: 0, ids: [] };
+    row.ids.push(p.id);
     row.participants++;
     row.totalScore += Number(p.score);
     row.best = Math.max(row.best, Number(p.score));
@@ -86,87 +91,86 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
     .sort((a, b) => b.avg - a.avg || b.totalScore - a.totalScore);
 
   // --- MYP Criterion Aggregation ---
-  const criterionStats = aggregateCriterionStats(
-    participants ?? [],
-    answers ?? [],
-    questions ?? []
+  // The paper: each question's criterion (questions.config.myp_criterion) and the
+  // marks it carries in this quiz (the quiz's own override, else the question's).
+  const paper: CriterionQuestion[] = ((questions ?? []) as unknown as {
+    question_id: string;
+    points: number | null;
+    questions: { config: Record<string, unknown> | null; points: number | null } | null;
+  }[]).map((row) => ({
+    question_id: row.question_id,
+    criterion: criterionOfConfig(row.questions?.config),
+    points: row.points ?? row.questions?.points ?? 0,
+  }));
+  // One breakdown per participant, one per organisation, and one for the session.
+  const criteriaByParticipant = participantCriterionStats((participants ?? []).map((p) => p.id), answers ?? [], paper);
+  const criterionStats = sumCriterionStats(criteriaByParticipant.values(), paper);
+  const criteriaByOrg = new Map(
+    [...byOrg.entries()].map(([org, v]) => [org, sumCriterionStats(v.ids.map((id) => criteriaByParticipant.get(id)), paper)]),
   );
+  const criterionHead = MYP_CRITERIA.map((c) => `Criterion ${c}`);
+  const criterionCells = (id: string) => MYP_CRITERIA.map((c) => formatCriterionStats(criteriaByParticipant.get(id)?.[c]));
 
-  const csv = toCsv([
-    ["Rank", "Participant", "Ref", "Organization", "Class", "Score", "Answered", "Correct", "Status", "Criterion A", "Criterion B", "Criterion C", "Criterion D"],
-    ...(participants ?? []).map((p, i) => {
-      const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
-      const reg = regByParticipant.get(p.id);
-      // Calculate per-participant criterion marks for CSV if needed, but for simplicity we use class/org stats
-      return [
-        i + 1, p.display_name, p.participant_ref ?? "", reg?.org ?? "", reg?.cls ?? "", Number(p.score), s.answered, s.correct, p.status,
-        "A: " + (criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.marks}/${criterionStats.A.max} (${criterionStats.A.percentage}%)`),
-        "B: " + (criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.marks}/${criterionStats.B.max} (${criterionStats.B.percentage}%)`),
-        "C: " + (criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.marks}/${criterionStats.C.max} (${criterionStats.C.percentage}%)`),
-        "D: " + (criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.marks}/${criterionStats.D.max} (${criterionStats.D.percentage}%)`),
-      ];
-    }),
-  ]);
+  const rankingHead = ["Rank", "Participant", "Ref", "Organization", "Class", "Score", "Answered", "Correct", "Status", ...criterionHead];
+  const rankingRows = (participants ?? []).map((p, i) => {
+    const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
+    const reg = regByParticipant.get(p.id);
+    return [i + 1, p.display_name, p.participant_ref ?? "", reg?.org ?? "", reg?.cls ?? "", Number(p.score), s.answered, s.correct, p.status, ...criterionCells(p.id)];
+  });
+
+  const csv = toCsv([rankingHead, ...rankingRows]);
 
   // Excel Data
-  const excelData = [
-    ["Rank", "Participant", "Ref", "Organization", "Class", "Score", "Answered", "Correct", "Status", "Criterion A", "Criterion B", "Criterion C", "Criterion D"],
-    ...(participants ?? []).map((p, i) => {
-      const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
-      const reg = regByParticipant.get(p.id);
-      return [
-        i + 1, p.display_name, p.participant_ref ?? "", reg?.org ?? "", reg?.cls ?? "", Number(p.score), s.answered, s.correct, p.status,
-        criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.marks}/${criterionStats.A.max} (${criterionStats.A.percentage}%)`,
-        criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.marks}/${criterionStats.B.max} (${criterionStats.B.percentage}%)`,
-        criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.marks}/${criterionStats.C.max} (${criterionStats.C.percentage}%)`,
-        criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.marks}/${criterionStats.D.max} (${criterionStats.D.percentage}%)`,
-      ];
-    }),
-  ];
+  const excelData = [rankingHead, ...rankingRows];
 
-  // Word HTML
-  const wordHtml = `
-    <h1>Competition Results: ${comp.id}</h1>
-    <p><strong>Publication state:</strong> ${comp.results_published ? "Published" : "Under review (not published)"}</p>
-    <h2>Individual Ranking</h2>
-    <table border="1" cellpadding="5" cellspacing="0">
-      <tr>
-        <th>#</th><th>Participant</th><th>Organization / class</th><th>Score</th><th>Answered</th><th>Correct</th><th>Status</th>
-        <th>Criterion A</th><th>Criterion B</th><th>Criterion C</th><th>Criterion D</th>
-      </tr>
-      ${(participants ?? []).map((p, i) => {
-        const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
-        const reg = regByParticipant.get(p.id);
-        return `<tr>
-          <td>${i + 1}${i === 0 ? " 🥇" : i === 1 ? " 🥈" : i === 2 ? " 🥉" : ""}</td>
-          <td>${p.display_name}${p.participant_ref ? `<br/><small>ref ${p.participant_ref}</small>` : ""}</td>
-          <td>${reg?.org ?? "—"}${reg?.cls ? `<br/>${reg.cls}` : ""}</td>
-          <td>${Number(p.score).toLocaleString()}</td>
-          <td>${s.answered}</td>
-          <td>${s.correct}</td>
-          <td>${p.status}</td>
-          <td>${criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.marks}/${criterionStats.A.max} (${criterionStats.A.percentage}%)`}</td>
-          <td>${criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.marks}/${criterionStats.B.max} (${criterionStats.B.percentage}%)`}</td>
-          <td>${criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.marks}/${criterionStats.C.max} (${criterionStats.C.percentage}%)`}</td>
-          <td>${criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.marks}/${criterionStats.D.max} (${criterionStats.D.percentage}%)`}</td>
-        </tr>`;
-      }).join("")}
-    </table>
-    <h2>Organization Ranking</h2>
-    <table border="1" cellpadding="5" cellspacing="0">
-      <tr><th>#</th><th>Organization</th><th>Participants</th><th>Average score</th><th>Best score</th><th>Total</th></tr>
-      ${orgRanking.map((r, i) => `<tr>
-        <td>${i + 1}</td><td>${r.org}</td><td>${r.participants}</td><td>${r.avg.toLocaleString()}</td><td>${r.best.toLocaleString()}</td><td>${r.totalScore.toLocaleString()}</td>
-      </tr>`).join("")}
-    </table>
-    <h2>Criterion Breakdown</h2>
-    <ul>
-      <li><strong>Criterion A (Knowing/Understanding):</strong> ${criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.marks}/${criterionStats.A.max} (${criterionStats.A.percentage}%)`}</li>
-      <li><strong>Criterion B (Investigating Patterns):</strong> ${criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.marks}/${criterionStats.B.max} (${criterionStats.B.percentage}%)`}</li>
-      <li><strong>Criterion C (Communicating):</strong> ${criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.marks}/${criterionStats.C.max} (${criterionStats.C.percentage}%)`}</li>
-      <li><strong>Criterion D (Applying Mathematics):</strong> ${criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.marks}/${criterionStats.D.max} (${criterionStats.D.percentage}%)`}</li>
-    </ul>
-  `;
+  // Word document (built as data; every value is escaped by the .docx builder)
+  const wordReport: DocxReport = {
+    title: comp.title ? `Competition Results: ${comp.title}` : "Competition Results",
+    subtitle: `Publication state: ${comp.results_published ? "Published" : "Under review (not published)"} · Generated ${fmtDateTime(new Date().toISOString())}`,
+    sections: [
+      {
+        heading: "Individual Ranking",
+        emptyNote: "Nobody has joined the session yet.",
+        table: {
+          head: ["#", "Participant", "Organization / class", "Score", "Answered", "Correct", "Status", ...criterionHead],
+          rows: (participants ?? []).map((p, i) => {
+            const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
+            const reg = regByParticipant.get(p.id);
+            return [
+              `${i + 1}${i === 0 ? " 🥇" : i === 1 ? " 🥈" : i === 2 ? " 🥉" : ""}`,
+              `${p.display_name}${p.participant_ref ? `\nref ${p.participant_ref}` : ""}`,
+              `${reg?.org ?? "—"}${reg?.cls ? `\n${reg.cls}` : ""}`,
+              Number(p.score).toLocaleString(),
+              s.answered,
+              s.correct,
+              p.status,
+              ...criterionCells(p.id),
+            ];
+          }),
+        },
+      },
+      {
+        heading: "Organization Ranking",
+        table: {
+          head: ["#", "Organization", "Participants", "Average score", "Best score", "Total", ...criterionHead],
+          rows: orgRanking.map((r, i) => [
+            i + 1, r.org, r.participants, r.avg.toLocaleString(), r.best.toLocaleString(), r.totalScore.toLocaleString(),
+            ...MYP_CRITERIA.map((c) => formatCriterionStats(criteriaByOrg.get(r.org)?.[c], "percent")),
+          ]),
+        },
+      },
+      {
+        heading: "Criterion Breakdown",
+        paragraphs: ["All participants together: marks awarded out of the marks available on each criterion."],
+        bullets: [
+          `Criterion A (Knowing/Understanding): ${formatCriterionStats(criterionStats.A)}`,
+          `Criterion B (Investigating Patterns): ${formatCriterionStats(criterionStats.B)}`,
+          `Criterion C (Communicating): ${formatCriterionStats(criterionStats.C)}`,
+          `Criterion D (Applying Mathematics): ${formatCriterionStats(criterionStats.D)}`,
+        ],
+      },
+    ],
+  };
 
   return (
     <>
@@ -193,10 +197,10 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
             {comp.results_published ? "Unpublish results" : "Validate & publish rankings"}
           </Button>
         </form>
-        
+
         <ExportButton filename="competition-results.csv" csv={csv} label="Export CSV" />
         <ExportExcelButton filename="competition-results.xlsx" data={excelData} label="Export Excel" />
-        <ExportWordButton filename="competition-results.docx" html={wordHtml} label="Export Word" />
+        <ExportWordButton filename="competition-results.docx" report={wordReport} label="Export Word" />
         <PrintButton />
         <Link href={`/dashboard/reports/session/${comp.session_id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
           Full session analytics (workspace) →
@@ -208,7 +212,7 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
         {(participants ?? []).length === 0 ? (
           <p className="text-sm text-ink-soft">Nobody has joined the session yet.</p>
         ) : (
-          <Table head={["#", "Participant", "Organization / class", "Score", "Answered", "Correct", "Status", "Criterion A", "Criterion B", "Criterion C", "Criterion D"]}>
+          <Table head={["#", "Participant", "Organization / class", "Score", "Answered", "Correct", "Status", ...criterionHead]}>
             {(participants ?? []).map((p, i) => {
               const s = stats.get(p.id) ?? { answered: 0, correct: 0 };
               const reg = regByParticipant.get(p.id);
@@ -224,12 +228,11 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
                   <td className="tabular-nums">{s.answered}</td>
                   <td className="tabular-nums">{s.correct}</td>
                   <td><StatusBadge status={p.status} /></td>
-                  
-                  {/* Criterion Columns */}
-                  <td className="tabular-nums">{criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.marks}/${criterionStats.A.max}`}</td>
-                  <td className="tabular-nums">{criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.marks}/${criterionStats.B.max}`}</td>
-                  <td className="tabular-nums">{criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.marks}/${criterionStats.C.max}`}</td>
-                  <td className="tabular-nums">{criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.marks}/${criterionStats.D.max}`}</td>
+
+                  {/* Criterion Columns: this participant's marks on each criterion */}
+                  {MYP_CRITERIA.map((c) => (
+                    <td key={c} className="tabular-nums">{formatCriterionStats(criteriaByParticipant.get(p.id)?.[c], "marks")}</td>
+                  ))}
                 </tr>
               );
             })}
@@ -240,7 +243,7 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
       <h2 className="mt-8 font-display text-lg font-semibold text-evergreen-950">Organization ranking (school-vs-school)</h2>
       <p className="mt-0.5 text-sm text-ink-soft">Ranked by average participant score. Generated {fmtDateTime(new Date().toISOString())}.</p>
       <div className="mt-3">
-        <Table head={["#", "Organization", "Participants", "Average score", "Best score", "Total", "Criterion A", "Criterion B", "Criterion C", "Criterion D"]}>
+        <Table head={["#", "Organization", "Participants", "Average score", "Best score", "Total", ...criterionHead]}>
           {orgRanking.map((r, i) => (
             <tr key={r.org}>
               <td className="font-display font-semibold">{i + 1}</td>
@@ -249,12 +252,11 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
               <td className="tabular-nums">{r.avg.toLocaleString()}</td>
               <td className="tabular-nums">{r.best.toLocaleString()}</td>
               <td className="tabular-nums">{r.totalScore.toLocaleString()}</td>
-              
-              {/* Class-wide criterion averages */}
-              <td className="tabular-nums">{criterionStats.A.notAssessed ? "Not assessed" : `${criterionStats.A.percentage}%`}</td>
-              <td className="tabular-nums">{criterionStats.B.notAssessed ? "Not assessed" : `${criterionStats.B.percentage}%`}</td>
-              <td className="tabular-nums">{criterionStats.C.notAssessed ? "Not assessed" : `${criterionStats.C.percentage}%`}</td>
-              <td className="tabular-nums">{criterionStats.D.notAssessed ? "Not assessed" : `${criterionStats.D.percentage}%`}</td>
+
+              {/* This organisation's criterion averages */}
+              {MYP_CRITERIA.map((c) => (
+                <td key={c} className="tabular-nums">{formatCriterionStats(criteriaByOrg.get(r.org)?.[c], "percent")}</td>
+              ))}
             </tr>
           ))}
         </Table>

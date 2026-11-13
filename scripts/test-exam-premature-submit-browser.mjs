@@ -125,6 +125,10 @@ await page.route("**/api/exam/**", async (route) => {
     return route.fulfill({ status: 200, json: { server_now: new Date().toISOString(), messages: [], unread_from_teacher: 0 } });
   }
   if (url.pathname === "/api/exam/presence") return route.fulfill({ status: 200, json: { ok: true } });
+  // Live feature controls: a read of six booleans. It can never close, extend or submit an attempt.
+  if (url.pathname === "/api/exam/live-features" && request.method() === "GET") {
+    return route.fulfill({ status: 200, json: { features: { standard_keyboard: true, math_keyboard: true, symbols: true, scientific_keyboard: true, equation_editor: true, latex: true } } });
+  }
   throw new Error(`Unexpected request ${url.pathname}`);
 });
 

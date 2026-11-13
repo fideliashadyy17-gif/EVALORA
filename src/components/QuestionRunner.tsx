@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
 import type { PublicAssessPart } from "@/lib/assessParts";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
 
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
@@ -69,6 +70,7 @@ export function QuestionRunner({
   markings,
   autosave = false,
   onHintUse,
+  liveFeatures,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -83,6 +85,11 @@ export function QuestionRunner({
   autosave?: boolean;
   /** Records that a per-part hint was opened at a level (examinations only). */
   onHintUse?: (partId: string, level: number) => void;
+  /**
+   * Organiser's live tool switches for written answers (see @/lib/liveFeatures).
+   * Omitted — previews, practice, authoring — means every tool is available.
+   */
+  liveFeatures?: LiveFeatureControls;
 }) {
   /** Marked options win over the neutral/selected styling after submission. */
   const optionClass = (id: string, idle: string, picked: string) => {
@@ -494,6 +501,7 @@ export function QuestionRunner({
                         initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
                         disabled={disabled}
                         autosave={autosave}
+                        liveFeatures={liveFeatures}
                         submitLabel="Save working"
                         emit={(payload) => {
                           const nextWorking = { ...workingPartsRef.current, [part.id]: payload };
@@ -541,6 +549,7 @@ export function QuestionRunner({
             initial={initial ?? null}
             disabled={disabled}
             autosave={autosave}
+            liveFeatures={liveFeatures}
             submitLabel={submitLabel}
             emit={(payload) => {
               const accepted = emit(payload);

@@ -5,6 +5,7 @@ import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { parseCsvRecords } from "@/lib/csv";
 import { defaultLiveSessionSettings } from "@/lib/live";
+import { isLiveFeatureKey, withLiveFeature } from "@/lib/liveFeatures";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -529,4 +530,67 @@ export async function setResultsPublished(formData: FormData) {
     .eq("id", id);
   await audit(ctx, published ? "competition.results_published" : "competition.results_unpublished", "competitions", id, comp?.organization_id);
   redirect(`/admin/competitions/${id}?tab=results&ok=${published ? "results_published" : "results_unpublished"}`);
+}
+
+/* ── Live assessment feature controls ─────────────────────────────── */
+
+/**
+ * Switch one answer tool on or off for the participants of a live session.
+ *
+ * The flag is stored under `quiz_sessions.settings.live_features`; every other
+ * session setting is written back exactly as it was read. A tool is only ever
+ * disabled by an explicit `false` (see @/lib/liveFeatures), so a session nobody
+ * touched keeps every tool. Participants pick the change up from their own
+ * `/api/live/state` poll within a couple of seconds.
+ *
+ * Like every action in this file it re-checks the super-admin session itself:
+ * a server action is a public endpoint, whatever page rendered the form.
+ */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function setLiveFeature(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const sessionId = fstr(formData, "session_id", 60);
+  const competitionRaw = fstr(formData, "competition_id", 60);
+  const competitionId = competitionRaw && UUID_RE.test(competitionRaw) ? competitionRaw : null;
+  const feature = String(formData.get("feature") ?? "");
+  const enabled = String(formData.get("enabled")) === "1";
+  if (!sessionId || !UUID_RE.test(sessionId) || !isLiveFeatureKey(feature)) return;
+
+  const admin = createAdminClient();
+  // Pausing and resuming a live session rewrite this same `settings` column
+  // (they add and remove `pause_snapshot`, which decides how much time is given
+  // back when the session resumes), and both change `status`. So the write
+  // below only lands while the status is still the one that was read; if the
+  // organiser paused or resumed in between, the row is read again. A tool
+  // switch can therefore never overwrite a pause that happened meanwhile.
+  let saved: { id: string; organization_id: string | null } | null = null;
+  for (let attempt = 0; attempt < 4 && !saved; attempt += 1) {
+    const { data: session } = await admin
+      .from("quiz_sessions")
+      .select("id, organization_id, status, settings")
+      .eq("id", sessionId)
+      .maybeSingle();
+    if (!session) break;
+
+    const { data: updated, error } = await admin
+      .from("quiz_sessions")
+      .update({ settings: withLiveFeature(session.settings, feature, enabled) })
+      .eq("id", session.id)
+      .eq("status", session.status)
+      .select("id")
+      .maybeSingle();
+    if (error) break;
+    if (updated) saved = { id: session.id, organization_id: session.organization_id };
+  }
+  if (saved) {
+    await audit(ctx, enabled ? "live_session.feature_enabled" : "live_session.feature_disabled", "quiz_sessions", saved.id, saved.organization_id, {
+      feature,
+      ...(competitionId ? { competition_id: competitionId } : {}),
+    });
+  }
+  // Re-render both screens that show the switches, so they always display what
+  // is actually stored — including when the write did not go through.
+  revalidatePath("/admin/competitions/live");
+  if (competitionId) revalidatePath(`/admin/competitions/${competitionId}`);
 }

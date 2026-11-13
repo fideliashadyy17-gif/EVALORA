@@ -2,6 +2,7 @@ import { Badge, Button, ButtonLink, PageTitle, Select, StatCard } from "@/compon
 import { requireSuperAdmin } from "@/lib/auth";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { fmtDateTime } from "@/lib/utils";
 import { Activity, CheckCircle2, Radio, Users } from "lucide-react";
 import type { Metadata } from "next";
@@ -9,6 +10,7 @@ import Link from "next/link";
 import { adminEndSession } from "../../actions";
 import { setCompetitionStatus, startCompetitionSession } from "../../actions/competitions";
 import { ConfirmField, Section, StatusBadge, Table } from "../../ui";
+import { LiveFeatureToggles } from "../LiveFeatureToggles";
 
 export const metadata: Metadata = { title: "Live competition monitoring" };
 export const dynamic = "force-dynamic";
@@ -47,16 +49,6 @@ interface ParticipantRow {
   last_seen_at: string;
 }
 
-// Live Feature Controls
-export interface LiveFeatureControls {
-  math_keyboard?: boolean;
-  symbols?: boolean;
-  scientific_keyboard?: boolean;
-  equation_editor?: boolean;
-  latex?: boolean;
-  standard_keyboard?: boolean;
-}
-
 export default async function LiveCompetitionMonitoringPage({
   searchParams,
 }: {
@@ -81,7 +73,7 @@ export default async function LiveCompetitionMonitoringPage({
     admin.from("organizations").select("id, name").order("name").limit(500),
     admin
       .from("quiz_sessions")
-      .select("*, organizations(name), quizzes(title), session_participants(count), settings")
+      .select("*, organizations(name), quizzes(title), session_participants(count)")
       .in("status", ["lobby", "live", "paused"])
       .order("created_at", { ascending: false })
       .limit(100),
@@ -137,26 +129,6 @@ export default async function LiveCompetitionMonitoringPage({
     </form>
   );
 
-  // Live Feature Controls Update Action
-  async function updateLiveFeatures(compId: string, features: LiveFeatureControls) {
-    "use server";
-    const adminClient = createAdminClient();
-    const comp = comps.find((c) => c.id === compId);
-    const session = comp?.session_id ? sessionById.get(comp.session_id) : undefined;
-    if (!session) return { error: "No session found" };
-    
-    const currentSettings = (session.settings ?? {}) as Record<string, unknown>;
-    const newSettings = { ...currentSettings, live_features: features };
-    
-    const { error } = await adminClient
-      .from("quiz_sessions")
-      .update({ settings: newSettings })
-      .eq("id", session.id);
-    
-    if (error) return { error: error.message };
-    return { ok: true, settings: newSettings };
-  }
-
   return (
     <>
       <PageTitle
@@ -197,24 +169,6 @@ export default async function LiveCompetitionMonitoringPage({
             const connectedHere = plist.filter((p) => Date.parse(p.last_seen_at) >= connectedCutoff).length;
             const finishedHere = plist.filter((p) => p.status === "finished").length;
             const questions = c.quiz_id ? questionCounts.get(c.quiz_id) ?? 0 : 0;
-            
-            // Live Feature Controls State
-            const currentFeatures = (session?.settings?.live_features ?? {}) as LiveFeatureControls;
-            
-            // Live Feature Controls Update Action (Client-side wrapper)
-            async function handleFeatureToggle(feature: keyof LiveFeatureControls, val: boolean) {
-              "use server";
-              const adminClient = createAdminClient();
-              const { error } = await adminClient
-                .from("quiz_sessions")
-                .update({ settings: { ...session?.settings ?? {}, live_features: { ...currentFeatures, [feature]: val } } })
-                .eq("id", session?.id ?? "");
-              if (!error) {
-                // Trigger reload via Next.js router if possible, but server action context is limited here.
-                // We'll rely on the client-side wrapper to handle the reload.
-              }
-            }
-
             return (
               <tr key={c.id}>
                 <td>
@@ -264,57 +218,14 @@ export default async function LiveCompetitionMonitoringPage({
                   {c.quiz_id && questions === 0 && <p className="mt-1 text-xs text-amber-800">Attached quiz has no questions.</p>}
                 </td>
                 <td>
+                  {/* Live Feature Controls: answer tools allowed for this session's participants */}
                   {session ? (
-                    <div className="flex flex-wrap gap-1">
-                      <FeatureToggle 
-                        label="Standard Keyboard" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.standard_keyboard ?? true}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("standard_keyboard", val);
-                          window.location.reload();
-                        }}
-                      />
-                      <FeatureToggle 
-                        label="Math Keyboard" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.math_keyboard ?? false}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("math_keyboard", val);
-                          window.location.reload();
-                        }}
-                      />
-                      <FeatureToggle 
-                        label="Symbols" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.symbols ?? false}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("symbols", val);
-                          window.location.reload();
-                        }}
-                      />
-                      <FeatureToggle 
-                        label="Scientific Keyboard" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.scientific_keyboard ?? false}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("scientific_keyboard", val);
-                          window.location.reload();
-                        }}
-                      />
-                      <FeatureToggle 
-                        label="Equation Editor" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.equation_editor ?? false}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("equation_editor", val);
-                          window.location.reload();
-                        }}
-                      />
-                      <FeatureToggle 
-                        label="LaTeX Support" 
-                        enabled={(session.settings?.live_features as LiveFeatureControls)?.latex ?? false}
-                        onToggle={async (val) => {
-                          await handleFeatureToggle("latex", val);
-                          window.location.reload();
-                        }}
-                      />
-                    </div>
+                    <LiveFeatureToggles
+                      sessionId={session.id}
+                      competitionId={c.id}
+                      features={(session.settings?.live_features ?? null) as LiveFeatureControls | null}
+                      compact
+                    />
                   ) : <span className="text-xs text-ink-soft">No session</span>}
                 </td>
               </tr>
@@ -343,28 +254,10 @@ export default async function LiveCompetitionMonitoringPage({
                   </form>
                 </td>
               </tr>
-            ))}\n          </Table>\n        )}\n      </Section>\n    </>
-  );
-}
-
-// Helper component for feature toggles
-function FeatureToggle({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: (val: boolean) => Promise<void> }) {
-  const [loading, setLoading] = React.useState(false);
-  return (
-    <div className="flex items-center justify-between p-1 border border-evergreen-900/10 rounded-lg bg-white text-[10px]">
-      <span className="font-medium text-evergreen-950">{label}</span>
-      <Button 
-        variant={enabled ? "gold" : "outline"} 
-        size="sm"
-        disabled={loading}
-        onClick={async () => {
-          setLoading(true);
-          await onToggle(!enabled);
-          setLoading(false);
-        }}
-      >
-        {enabled ? "Enabled" : "Disabled"}
-      </Button>
-    </div>
+            ))}
+          </Table>
+        )}
+      </Section>
+    </>
   );
 }

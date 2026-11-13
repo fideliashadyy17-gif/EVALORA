@@ -3,6 +3,7 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,20 +13,11 @@ import {
   startCompetitionSession,
 } from "../../actions/competitions";
 import { Notice, StatusBadge } from "../../ui";
+import { LiveFeatureToggles } from "../LiveFeatureToggles";
 import { CodesTab } from "./tabs/CodesTab";
 import { ParticipantsTab } from "./tabs/ParticipantsTab";
 import { ResultsTab } from "./tabs/ResultsTab";
 import { SettingsTab } from "./tabs/SettingsTab";
-
-// Live Feature Controls
-export interface LiveFeatureControls {
-  math_keyboard?: boolean;
-  symbols?: boolean;
-  scientific_keyboard?: boolean;
-  equation_editor?: boolean;
-  latex?: boolean;
-  standard_keyboard?: boolean;
-}
 
 export const metadata: Metadata = { title: "Competition" };
 export const dynamic = "force-dynamic";
@@ -77,7 +69,7 @@ export default async function CompetitionDetailPage({
   {
     const head = { count: "exact" as const, head: true };
     const sessionRes = comp.session_id
-      ? await admin.from("quiz_sessions").select("*, settings").eq("id", comp.session_id).maybeSingle()
+      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at, settings").eq("id", comp.session_id).maybeSingle()
       : { data: null };
     const session = sessionRes.data;
     const [participants, finished, answers, questions, registrations, codes, connectedRes] = await Promise.all([
@@ -101,25 +93,6 @@ export default async function CompetitionDetailPage({
       <Button type="submit" variant={variant}>{label}</Button>
     </form>
   );
-
-  // Live Feature Controls Update Action
-  async function updateLiveFeatures(features: LiveFeatureControls) {
-    "use server";
-    const adminClient = createAdminClient();
-    const session = monitor?.session;
-    if (!session) return { error: "No session found" };
-    
-    const currentSettings = (session.settings ?? {}) as Record<string, unknown>;
-    const newSettings = { ...currentSettings, live_features: features };
-    
-    const { error } = await adminClient
-      .from("quiz_sessions")
-      .update({ settings: newSettings })
-      .eq("id", session.id);
-    
-    if (error) return { error: error.message };
-    return { ok: true, settings: newSettings };
-  }
 
   return (
     <>
@@ -229,66 +202,19 @@ export default async function CompetitionDetailPage({
                       Participant join code:{" "}
                       <span className="rounded-md bg-cream px-2 py-1 font-mono text-lg font-bold tracking-widest text-evergreen-900">{monitor.session.join_code}</span>
                     </p>
-                    
+
                     {/* LIVE FEATURE CONTROLS PANEL */}
                     <div className="mt-4 border-t border-evergreen-900/10 pt-4">
                       <h3 className="font-display text-base font-semibold text-evergreen-950 mb-3">Live Assessment Feature Controls</h3>
-                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {/* Standard Keyboard */}
-                        <FeatureToggle 
-                          label="Standard Keyboard" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.standard_keyboard ?? true}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), standard_keyboard: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                        {/* Math Keyboard */}
-                        <FeatureToggle 
-                          label="Math Keyboard" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.math_keyboard ?? false}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), math_keyboard: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                        {/* Symbols */}
-                        <FeatureToggle 
-                          label="Symbols" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.symbols ?? false}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), symbols: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                        {/* Scientific Keyboard */}
-                        <FeatureToggle 
-                          label="Scientific Keyboard" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.scientific_keyboard ?? false}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), scientific_keyboard: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                        {/* Equation Editor */}
-                        <FeatureToggle 
-                          label="Equation Editor" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.equation_editor ?? false}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), equation_editor: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                        {/* LaTeX Support */}
-                        <FeatureToggle 
-                          label="LaTeX Support" 
-                          enabled={(monitor.session.settings?.live_features as LiveFeatureControls)?.latex ?? false}
-                          onToggle={async (val) => {
-                            const res = await updateLiveFeatures({ ...((monitor.session.settings?.live_features ?? {}) as LiveFeatureControls), latex: val });
-                            if (res.ok) window.location.reload();
-                          }}
-                        />
-                      </div>
+                      <p className="mb-3 text-xs text-ink-soft">
+                        Answer tools available to this session&apos;s participants. Every tool is enabled until you switch it off;
+                        a change reaches connected participants within a few seconds and never alters what they have already written.
+                      </p>
+                      <LiveFeatureToggles
+                        sessionId={monitor.session.id}
+                        competitionId={id}
+                        features={(monitor.session.settings?.live_features ?? null) as LiveFeatureControls | null}
+                      />
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
@@ -355,27 +281,5 @@ export default async function CompetitionDetailPage({
         {tab === "settings" && <SettingsTab comp={comp} sp={sp} />}
       </div>
     </>
-  );
-}
-
-// Helper component for feature toggles
-function FeatureToggle({ label, enabled, onToggle }: { label: string; enabled: boolean; onToggle: (val: boolean) => Promise<void> }) {
-  const [loading, setLoading] = React.useState(false);
-  return (
-    <div className="flex items-center justify-between p-2 border border-evergreen-900/10 rounded-lg bg-white">
-      <span className="text-sm font-medium text-evergreen-950">{label}</span>
-      <Button 
-        variant={enabled ? "gold" : "outline"} 
-        size="sm"
-        disabled={loading}
-        onClick={async () => {
-          setLoading(true);
-          await onToggle(!enabled);
-          setLoading(false);
-        }}
-      >
-        {enabled ? "Enabled" : "Disabled"}
-      </Button>
-    </div>
   );
 }
