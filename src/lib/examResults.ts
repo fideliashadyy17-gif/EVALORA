@@ -1,4 +1,4 @@
-import type { RichDoc } from "./content";
+import type { RichDoc } from "@/lib/content";
 
 /**
  * Post-submission result of one examination question.
@@ -107,4 +107,65 @@ export function answerKeyLine(summary: string[] | null | undefined): string | nu
   const keys = (summary ?? []).filter((entry) => typeof entry === "string" && entry.trim().length > 0);
   if (!keys.length) return null;
   return `Correct answer: ${keys.join(", ")}`;
+}
+
+/**
+ * Aggregates MYP criterion scores (A, B, C, D) from participant answers.
+ * Returns a map of criterion -> { marks, max, percentage, notAssessed }.
+ */
+export interface CriterionStats {
+  marks: number;
+  max: number;
+  percentage: number | null; // null if not assessed
+  notAssessed: boolean;
+}
+
+export function aggregateCriterionStats(
+  participants: { id: string; score: number | string }[],
+  answers: { participant_id: string; question_id: string; is_correct: boolean | null; points_awarded: number | null }[],
+  questions: {
+    id: string;
+    quiz_question_id: string;
+    config: Record<string, unknown> | null;
+    points: number | null;
+  }[]
+): Record<"A" | "B" | "C" | "D", CriterionStats> {
+  const stats: Record<"A" | "B" | "C" | "D", { marks: number; max: number; answered: number }> = {
+    A: { marks: 0, max: 0, answered: 0 },
+    B: { marks: 0, max: 0, answered: 0 },
+    C: { marks: 0, max: 0, answered: 0 },
+    D: { marks: 0, max: 0, answered: 0 },
+  };
+
+  const qMap = new Map(questions.map((q) => [q.quiz_question_id, q]));
+
+  for (const a of answers) {
+    const q = qMap.get(a.question_id);
+    if (!q) continue;
+    const config = q.config ?? {};
+    const criterion = config.myp_criterion as "A" | "B" | "C" | "D" | undefined;
+    if (!criterion) continue;
+
+    const max = Number(q.points ?? 0);
+    const marks = Number(a.points_awarded ?? 0);
+    
+    stats[criterion].max += max;
+    stats[criterion].answered += 1;
+    if (a.is_correct !== null) {
+      stats[criterion].marks += marks;
+    }
+  }
+
+  const result: Record<"A" | "B" | "C" | "D", CriterionStats> = {} as any;
+  for (const crit of ["A", "B", "C", "D"] as const) {
+    const s = stats[crit];
+    const percentage = s.answered > 0 && s.max > 0 ? Math.round((s.marks / s.max) * 100) : null;
+    result[crit] = {
+      marks: s.marks,
+      max: s.max,
+      percentage,
+      notAssessed: s.answered === 0,
+    };
+  }
+  return result;
 }

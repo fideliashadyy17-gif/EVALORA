@@ -25,6 +25,11 @@ import { PresenceRail } from "@/components/PresenceRail";
 import { answerStateFor } from "@/lib/hintAttention";
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
+// --- LIVE ASSESSMENT FEATURE CONTROLS ---
+// Realtime sync logic for student-facing tools
+import { createClient } from "@/lib/supabase/client";
+import { useEffect as useEffectRealtime } from "react";
+
 interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
@@ -49,6 +54,16 @@ interface ExamState {
     } | null;
     reveal?: { correct_option_ids: string[]; summary: string[]; marking_criteria?: string | null; next_time_hint?: string | null } | null;
   })[];
+}
+
+// Live Feature Controls State
+export interface LiveFeatureControls {
+  math_keyboard?: boolean;
+  symbols?: boolean;
+  scientific_keyboard?: boolean;
+  equation_editor?: boolean;
+  latex?: boolean;
+  standard_keyboard?: boolean;
 }
 
 function LocalCamera() {
@@ -170,6 +185,48 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     setLk(null); setVideoError(null); setMediaError(null); setVideoRetry((n) => n + 1);
   }, []);
   const offset = useRef(0);
+
+  // --- REALTIME LIVE FEATURE CONTROLS ---
+  const [liveFeatures, setLiveFeatures] = useState<LiveFeatureControls>({
+    standard_keyboard: true,
+    math_keyboard: false,
+    symbols: false,
+    scientific_keyboard: false,
+    equation_editor: false,
+    latex: false,
+  });
+
+  useEffectRealtime(() => {
+    if (!token || !attemptActive || !state?.exam.id) return;
+    const supabase = createClient();
+    const sessionChannel = supabase
+      .channel(`public:quiz_sessions:exam:${state.exam.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "quiz_sessions" },
+        (payload) => {
+          const settings = (payload.new?.settings ?? {}) as Record<string, unknown>;
+          const features = (settings.live_features ?? {}) as LiveFeatureControls;
+          setLiveFeatures(features);
+        }
+      )
+      .subscribe();
+    
+    // Initial fetch to get current state
+    const fetchFeatures = async () => {
+      const res = await fetch(`/api/exam/live-features?attempt_id=${encodeURIComponent(attemptId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.features) setLiveFeatures(data.features);
+      }
+    };
+    void fetchFeatures();
+
+    return () => { supabase.removeChannel(sessionChannel); };
+  }, [token, attemptActive, state?.exam.id, attemptId]);
 
   // A single short tone, created only after the candidate has interacted with
   // the page (browser autoplay rules) and never allowed to break the paper.
@@ -309,7 +366,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     offset.current = new Date(data.server_now).getTime() - Date.now();
     setState(data);
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
-    setSavedIds(new Set(data.questions.filter((q) => q.saved_answer && !pending.some((entry) => entry.questionId === q.question_id)).map((q) => q.question_id)));
+    setSavedIds(new Set(data.questions.filter((q) => q.saved_answer && !pending.some((entry) => entry.question_id === q.question_id)).map((q) => q.question_id)));
     if (activeRef.current && pending.length) void queueRef.current.flush();
   }, [attemptId, token]);
 
@@ -372,7 +429,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       if (pageHidden()) void heartbeat("leave");
     };
     const pageHide = () => {
-      if (typeof navigator === "undefined" || navigator.onLine !== false) void heartbeat("leave");
+      if (typeof navigator !== "undefined" && navigator.onLine !== false) void heartbeat("leave");
     };
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", onHide);
     if (typeof window !== "undefined") window.addEventListener("pagehide", pageHide);
@@ -527,6 +584,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
   }
 
+  // --- RICH CONTENT EDITOR INTEGRATION ---
+  // The RichContentEditor in @/components/editor/RichContentEditor.tsx must now
+  // read from `liveFeatures` state to dynamically toggle math keyboard, symbols,
+  // scientific keyboard, equation editor, latex support, and standard keyboard.
+  // We pass the liveFeatures down via context or props (here, we assume the editor
+  // component reads from a global context or we pass it directly. For simplicity,
+  // we'll pass it as a prop to QuestionRunner which passes it to RichContentEditor).
+
   if (error) {
     return (
       <Centered>
@@ -626,8 +691,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     </span>
                   )}
                 </button>
-              ))}
-            </div>
+              ))}\n            </div>
             {showCorrige ? (
               <p className="mt-3 text-xs text-ink-soft">
                 {correctCount} correct · {answeredCount} answered · {questions.length - answeredCount} left blank (0 marks)
@@ -774,43 +838,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                                   {topic.awarded}/{topic.max} · <strong className={topic.band === "Strong" ? "text-evergreen-800" : topic.band === "Developing" ? "text-gold-700" : "text-red-700"}>{topic.band}</strong>
                                 </span>
                               </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {summary.criteria.length ? (
-                          <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
-                            <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by MYP criterion (indicative level band)</p>
-                            <ul className="mt-1 divide-y divide-evergreen-900/10">
-                              {summary.criteria.map((criterion) => (
-                                <li key={criterion.criterion} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                                  <span className="min-w-0 flex-1">
-                                    <strong>Criterion {criterion.criterion}</strong>
-                                    <span className="block text-xs text-ink-soft">
-                                      {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[criterion.criterion] ?? ""}
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 text-right text-ink-soft">
-                                    {criterion.awarded}/{criterion.max} · <strong className="text-evergreen-900">Level {criterion.level}</strong>
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                            <p className="mt-2 text-[11px] text-ink-soft">The level band is indicative only: it is derived from the marks on this paper, not from an eAssessment moderation.</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-                  <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
+                            ))}\n                          </ul>\n                        </div>\n\n                        {summary.criteria.length ? (\n                          <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">\n                            <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by MYP criterion (indicative level band)</p>\n                            <ul className="mt-1 divide-y divide-evergreen-900/10">\n                              {summary.criteria.map((criterion) => (\n                                <li key={criterion.criterion} className="flex items-center justify-between gap-3 py-1.5 text-sm">\n                                  <span className="min-w-0 flex-1">\n                                    <strong>Criterion {criterion.criterion}</strong>\n                                    <span className="block text-xs text-ink-soft">\n                                      {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[criterion.criterion] ?? ""}\n                                    </span>\n                                  </span>\n                                  <span className="shrink-0 text-right text-ink-soft">\n                                    {criterion.awarded}/{criterion.max} · <strong className="text-evergreen-900">Level {criterion.level}</strong>\n                                  </span>\n                                </li>\n                              ))}\n                            </ul>\n                            <p className="mt-2 text-[11px] text-ink-soft">The level band is indicative only: it is derived from the marks on this paper, not from an eAssessment moderation.</p>\n                          </div>\n                        ) : null}\n                      </div>\n                    );\n                  })()}\n                  <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
                     <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
                     <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
                   </div>
                 </div>
               ) : (
                 <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
-              )}
-              <RetakePanel attemptId={attemptId} token={token} submitted={submitted} />
+              )}\n              <RetakePanel attemptId={attemptId} token={token} submitted={submitted} />
             </Card>
           ) : null}
 
@@ -875,6 +910,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 }}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
+                // Pass live feature controls to the editor
+                liveFeatures={liveFeatures}
               />
 
               {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}
@@ -919,62 +956,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                           </div>
                         ) : null}
                       </dl>
-                    );
-                  })()}
-                  {/* The marking scheme is published for every question, so a blank one is revision material too. */}
-                </div>
-              )}
-
-              <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-evergreen-900/10 pt-4">
-                <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>← Previous</Button>
-                <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>Next →</Button>
-                {!submitted && (
-                  <Button variant="danger" className="ml-auto" onClick={requestSubmit}>Submit examination</Button>
-                )}
-              </div>
-            </Card>
-          )}
-
-          {confirmSubmit && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-evergreen-950/70 px-4">
-              <Card className="w-full max-w-md p-6">
-                <h2 className="font-display text-xl font-semibold text-evergreen-950">Submit your paper?</h2>
-                <p className="mt-2 text-sm text-ink-soft">
-                  You have answered {savedIds.size} of {questions.length} questions
-                  {flagged.length ? ` and flagged ${flagged.length} for review` : ""}.
-                  After submission you cannot change any answer.
-                </p>
-                {submitError && <p role="alert" className="mt-3 text-sm text-red-700">{submitError}</p>}
-                <div className="mt-4 flex gap-2">
-                  <Button variant="danger" className="flex-1" disabled={submitting} onClick={() => void submit()}>{submitting ? "Checking saves…" : "Yes, submit now"}</Button>
-                  <Button variant="outline" className="flex-1" disabled={submitting} onClick={() => setConfirmSubmit(false)}>Keep working</Button>
-                </div>
-              </Card>
-            </div>
-          )}
-        </section>
-      </main>
-    </div>
-  );
-
-  // The messenger is a sibling of the paper: it never wraps, replaces or remounts it.
-  return (
-    <>
-      {examBody}
-      {token ? (
-        <ExamMessenger
-          attemptId={attemptId}
-          token={token}
-          active={!submitted}
-          questionNumber={index + 1}
-          totalQuestions={questions.length}
-          savedCount={savedIds.size}
-          pendingSaves={queueState.pending}
-        />
-      ) : null}
-    </>
-  );
-}
+                    );\n                  })()}\n                  {/* The marking scheme is published for every question, so a blank one is revision material too. */}\n                </div>
+              )}\n\n              <div className=\"mt-6 flex flex-wrap items-center gap-2 border-t border-evergreen-900/10 pt-4\">\n                <Button variant=\"outline\" disabled={index === 0} onClick={() => navigateTo(index - 1)}>← Previous</Button>\n                <Button variant=\"outline\" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>Next →</Button>\n                {!submitted && (\n                  <Button variant=\"danger\" className=\"ml-auto\" onClick={requestSubmit}>Submit examination</Button>\n                )}\n              </div>\n            </Card>\n          )}\n\n          {confirmSubmit && (\n            <div className=\"fixed inset-0 z-50 flex items-center justify-center bg-evergreen-950/70 px-4\">\n              <Card className=\"w-full max-w-md p-6\">\n                <h2 className=\"font-display text-xl font-semibold text-evergreen-950\">Submit your paper?</h2>\n                <p className=\"mt-2 text-sm text-ink-soft\">\n                  You have answered {savedIds.size} of {questions.length} questions\n                  {flagged.length ? ` and flagged ${flagged.length} for review` : ""}.\n                  After submission you cannot change any answer.\n                </p>\n                {submitError && <p role=\"alert\" className=\"mt-3 text-sm text-red-700\">{submitError}</p>}\n                <div className=\"mt-4 flex gap-2\">\n                  <Button variant=\"danger\" className=\"flex-1\" disabled={submitting} onClick={() => void submit()}>{submitting ? \"Checking saves…\" : \"Yes, submit now\"}</Button>\n                  <Button variant=\"outline\" className=\"flex-1\" disabled={submitting} onClick={() => setConfirmSubmit(false)}>Keep working</Button>\n                </div>\n              </Card>\n            </div>\n          )}\n        </section>\n      </main>\n    </div>\n  );\n\n  // The messenger is a sibling of the paper: it never wraps, replaces or remounts it.\n  return (\n    <>\n      {examBody}\n      {token ? (\n        <ExamMessenger\n          attemptId={attemptId}\n          token={token}\n          active={!submitted}\n          questionNumber={index + 1}\n          totalQuestions={questions.length}\n          savedCount={savedIds.size}\n          pendingSaves={queueState.pending}\n        />\n      ) : null}\n    </>\n  );\n}
 
 function Centered({ children }: { children: React.ReactNode }) {
   return (

@@ -94,6 +94,18 @@ export interface UploadResult {
   error?: string;
 }
 
+// --- LIVE FEATURE CONTROLS INTEGRATION ---
+// The RichContentEditor now accepts a `liveFeatures` prop to dynamically toggle
+// toolbars/components based on the Realtime channel state from TakeExamClient.tsx
+export interface LiveFeatureControls {
+  math_keyboard?: boolean;
+  symbols?: boolean;
+  scientific_keyboard?: boolean;
+  equation_editor?: boolean;
+  latex?: boolean;
+  standard_keyboard?: boolean;
+}
+
 export function RichContentEditor({
   value,
   onChange,
@@ -105,6 +117,8 @@ export function RichContentEditor({
   allowLinks = true,
   placeholder,
   minHeight,
+  // Live feature controls passed from TakeExamClient
+  liveFeatures,
 }: {
   value: RichDoc | null;
   onChange: (doc: RichDoc) => void;
@@ -117,6 +131,7 @@ export function RichContentEditor({
   allowLinks?: boolean;
   placeholder?: string;
   minHeight?: string;
+  liveFeatures?: LiveFeatureControls;
 }) {
   const [mode, setMode] = useState<Mode>("text");
   const [showKeyboard, setShowKeyboard] = useState(false);
@@ -137,6 +152,24 @@ export function RichContentEditor({
   const latexRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const initialDoc = useMemo(() => value ?? emptyDoc(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Default live features if not provided (e.g. teacher view)
+  const currentFeatures = liveFeatures ?? {
+    standard_keyboard: true,
+    math_keyboard: true,
+    symbols: true,
+    scientific_keyboard: true,
+    equation_editor: true,
+    latex: true,
+  };
+
+  // Dynamically adjust allowed modes based on live features
+  const canUseMath = currentFeatures.math_keyboard ?? true;
+  const canUseSymbols = currentFeatures.symbols ?? true;
+  const canUseScientific = currentFeatures.scientific_keyboard ?? true;
+  const canUseEquationEditor = currentFeatures.equation_editor ?? true;
+  const canUseLatex = currentFeatures.latex ?? true;
+  const canUseStandard = currentFeatures.standard_keyboard ?? true;
 
   const openMathEditor = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
     setEditingPos(pos);
@@ -254,7 +287,7 @@ export function RichContentEditor({
     // Remaining MathLive placeholders are editing slots, not final content.
     // Remove only empty placeholders so the stored LaTeX remains valid for
     // KaTeX and all participant-facing renderers.
-    const clean = latex.trim().replace(/\\placeholder\{\}/g, "");
+    const clean = latex.trim().replace(/\\placeholder{}/g, "");
     if (!clean) return;
     if (!applyMathNode(clean)) insertMathNode(clean, display);
   }
@@ -262,6 +295,7 @@ export function RichContentEditor({
   function switchMode(next: Mode) {
     setSwitchMsg(null);
     if (next === "latex") {
+      if (!canUseLatex) return; // Blocked by live feature control
       const fromField = mfRef.current?.getValue();
       setLatexDraft(editingPos != null ? (fromField ?? mathDraft) : (fromField || mathDraft));
       setMode("latex");
@@ -269,6 +303,7 @@ export function RichContentEditor({
       return;
     }
     if (next === "math") {
+      if (!canUseEquationEditor) return; // Blocked by live feature control
       if (mode === "latex" && latexDraft.trim()) {
         const err = validateLatex(latexDraft);
         if (err) {
@@ -292,6 +327,7 @@ export function RichContentEditor({
   }
 
   function onKeyboardKey(key: MathKey) {
+    if (!canUseSymbols && !canUseScientific && !canUseMath) return; // Blocked
     if (mode === "math" && mfRef.current) {
       mfRef.current.insert(key.i);
       return;
@@ -358,34 +394,41 @@ export function RichContentEditor({
       {/* Mode selector */}
       <div className="flex flex-wrap items-center gap-2 border-b border-evergreen-900/10 bg-cream/60 px-3 py-2">
         <div className="inline-flex rounded-lg border border-evergreen-900/20 bg-white p-0.5" role="tablist" aria-label="Editing mode">
-          {(
-            [
-              ["text", "Text / Word"],
-              ["math", "Math √(x)"],
-              ["latex", "LaTeX \\frac{}"],
-            ] as [Mode, string][]
-          ).map(([m, label]) => (
+          {[
+            ["text", "Text / Word"],
+            ["math", "Math √(x)"],
+            ["latex", "LaTeX \\frac{}"],
+          ].map(([m, label]) => (
             <button
               key={m}
               type="button"
               role="tab"
               aria-selected={mode === m}
               onClick={() => switchMode(m)}
-              className={`rounded-md px-3 py-1.5 text-[13px] font-semibold ${mode === m ? "bg-evergreen-700 text-white" : "text-evergreen-900 hover:bg-evergreen-50"}`}
+              disabled={
+                (m === "math" && !canUseEquationEditor) ||
+                (m === "latex" && !canUseLatex)
+              }
+              className={`rounded-md px-3 py-1.5 text-[13px] font-semibold ${mode === m ? "bg-evergreen-700 text-white" : "text-evergreen-900 hover:bg-evergreen-50"} ${(!canUseEquationEditor && m === "math") || (!canUseLatex && m === "latex") ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               {label}
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={`${btn} ${showKeyboard ? btnActive : ""}`}
-          onClick={() => setShowKeyboard((s) => !s)}
-          aria-pressed={showKeyboard}
-          title="Toggle the permanent mathematical keyboard"
-        >
-          ∑ Math keyboard
-        </button>
+        
+        {/* Dynamic Math Keyboard Toggle */}
+        {canUseMath && (
+          <button
+            type="button"
+            className={`${btn} ${showKeyboard ? btnActive : ""}`}
+            onClick={() => setShowKeyboard((s) => !s)}
+            aria-pressed={showKeyboard}
+            title="Toggle the permanent mathematical keyboard"
+          >
+            ∑ Math keyboard
+          </button>
+        )}
+        
         {editingPos != null && (
           <span className="rounded-full bg-gold-100 px-2.5 py-1 text-xs font-medium text-gold-900">
             Editing equation — Apply writes it back into the document
@@ -509,13 +552,21 @@ export function RichContentEditor({
             </>
           )}
           {allowImages && <button type="button" className={btn} onClick={() => setShowImageUrlRow((s) => !s)} title="Insert image from URL">🌐</button>}
-          <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
-          <button type="button" className={`${btn} font-semibold`} onClick={() => switchMode("math")} title="Insert a mathematical equation at the cursor">
-            √ Insert equation
-          </button>
-          <button type="button" className={btn} onClick={() => switchMode("latex")} title="Write LaTeX source">
-            {"\\frac{}"} LaTeX
-          </button>
+          
+          {/* Equation Editor Toggle */}
+          {canUseEquationEditor && (
+            <button type="button" className={`${btn} font-semibold`} onClick={() => switchMode("math")} title="Insert a mathematical equation at the cursor">
+              √ Insert equation
+            </button>
+          )}
+          
+          {/* LaTeX Toggle */}
+          {canUseLatex && (
+            <button type="button" className={btn} onClick={() => switchMode("latex")} title="Write LaTeX source">
+              {"\\frac{}"} LaTeX
+            </button>
+          )}
+          
           <button type="button" className={btn} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} title="Clear formatting of selection">⌫ fmt</button>
         </div>
       )}
@@ -536,7 +587,7 @@ export function RichContentEditor({
       {uploadError && <p className="border-b border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800">{uploadError}</p>}
 
       {/* MATH MODE panel (visual mathematical editing) */}
-      {mode === "math" && (
+      {mode === "math" && canUseEquationEditor && (
         <div className="border-b border-evergreen-900/10 bg-evergreen-50/50 px-3 py-3">
           <MathField
             initialValue={mathDraft}
@@ -566,12 +617,16 @@ export function RichContentEditor({
             <button type="button" className={btn} onClick={() => { setMathDraft(""); mfRef.current?.setValue(""); }}>
               Clear
             </button>
-            <button type="button" className={btn} onClick={() => mfRef.current?.toggleKeyboard()} title="MathLive on-screen keyboard">
-              ⌨ Symbols keyboard
-            </button>
-            <button type="button" className={btn} onClick={() => switchMode("latex")}>
-              {"</>"} Edit as LaTeX
-            </button>
+            {canUseSymbols && (
+              <button type="button" className={btn} onClick={() => mfRef.current?.toggleKeyboard()} title="MathLive on-screen keyboard">
+                ⌨ Symbols keyboard
+              </button>
+            )}
+            {canUseLatex && (
+              <button type="button" className={btn} onClick={() => switchMode("latex")}>
+                {"</>"} Edit as LaTeX
+              </button>
+            )}
           </div>
           <p className="mt-2 text-xs text-ink-soft">
             Type naturally: <kbd>/</kbd> makes a fraction, <kbd>^</kbd> a power, <kbd>_</kbd> a subscript, “sqrt” becomes √.
@@ -581,7 +636,7 @@ export function RichContentEditor({
       )}
 
       {/* LaTeX MODE panel */}
-      {mode === "latex" && (
+      {mode === "latex" && canUseLatex && (
         <div className="border-b border-evergreen-900/10 bg-evergreen-50/50 px-3 py-3">
           <label className="text-xs font-semibold uppercase tracking-wide text-evergreen-800" htmlFor="rce-latex-src">
             LaTeX source
@@ -593,7 +648,7 @@ export function RichContentEditor({
             onChange={(e) => setLatexDraft(e.target.value)}
             rows={3}
             spellCheck={false}
-            placeholder="\frac{x^2+1}{\sqrt{x+3}}"
+            placeholder="\\frac{x^2+1}{\\sqrt{x+3}}"
             className="mt-1 w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 font-mono text-sm text-evergreen-950 focus:border-evergreen-600 focus:outline-none"
           />
           {latexError ? (
@@ -642,7 +697,7 @@ export function RichContentEditor({
         inserting a previous sibling makes React try to insert before a node
         that is no longer a child of this shell (NotFoundError).
       */}
-      <div className="border-t border-evergreen-900/10 bg-cream/70 px-3 py-2" hidden={!showKeyboard}>
+      <div className="border-t border-evergreen-900/10 bg-cream/70 px-3 py-2" hidden={!showKeyboard || !canUseMath}>
           <div className="scroll-slim flex gap-1 overflow-x-auto pb-2" role="tablist" aria-label="Symbol categories">
             {MATH_CATEGORIES.map((c) => (
               <button
@@ -690,12 +745,14 @@ export function RichContentEditor({
       {/* Bubble menus */}
       <BubbleMenu
         editor={editor}
-        shouldShow={() => isMathSelected}
+        shouldShow={() => isMathSelected && canUseEquationEditor}
         tippyOptions={{ duration: 120 }}
         className="flex items-center gap-1 rounded-lg border border-evergreen-900/20 bg-white p-1 shadow-lg"
       >
         <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "math"); }}>√ Edit</button>
-        <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "latex"); }}>{"</>"} LaTeX</button>
+        {canUseLatex && (
+          <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "latex"); }}>{"</>"} LaTeX</button>
+        )}
         <button type="button" className={btn} onClick={toggleMathDisplay}>Inline/display</button>
         <button type="button" className={`${btn} text-red-700`} onClick={() => editor.chain().focus().deleteSelection().run()}>Delete</button>
       </BubbleMenu>
@@ -730,7 +787,7 @@ export function RichContentEditor({
         editor={editor}
         shouldShow={() => inTable}
         tippyOptions={{ duration: 120 }}
-        className="flex max-w-[92vw] flex-wrap items-center gap-1 rounded-lg border border-evergreen-900/20 bg-white p-1 shadow-lg"
+        className="flex max-w-[92vw] flex-wrap items-center gap-1 rounded-lg border border-evergreen-900/20 bg-white p-1.5 shadow-lg"
       >
         <button type="button" className={btn} onClick={() => editor.chain().focus().addRowAfter().run()}>Row +</button>
         <button type="button" className={btn} onClick={() => editor.chain().focus().addColumnAfter().run()}>Col +</button>
