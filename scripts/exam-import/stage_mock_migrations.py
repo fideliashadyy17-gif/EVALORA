@@ -184,11 +184,97 @@ select ({quoted(cfg['prefix'])} || lpad((100 + (x->>'n')::int)::text, 12, '0')):
        'approved', 'manual', {quoted(CLASS_ID)}
   from public.mock_migration_stage s
   cross join lateral jsonb_array_elements(
-         (regexp_match(s.content, $j$jsonb_array_elements\\('(.*?)'::jsonb\\)$j$))[1]::jsonb) as x
+         -- The original migration is a SQL string literal, so PostgreSQL turns a
+         -- doubled apostrophe into one while parsing it. Reading the file as
+         -- text skips that step, so it has to be applied here — otherwise every
+         -- apostrophe the paper prints (student's, 'only') arrives doubled.
+         replace((regexp_match(s.content, $j$jsonb_array_elements\('(.*?)'::jsonb\)$j$))[1],
+                 chr(39) || chr(39), chr(39))::jsonb) as x
  where s.file = {quoted(path.name)}
 on conflict (id) do nothing;""")
 
     return "\n\n".join(statements)
+
+
+def rowhashes_sql(paper):
+    source = f"myp-mock-{paper}-mock"
+    return f"""select string_agg((config->>'question_number') || ':' || md5(prompt), ' '
+                 order by ((config->>'question_number')::int)) as prompts,
+       string_agg((config->>'question_number') || ':' || md5(explanation), ' '
+                 order by ((config->>'question_number')::int)) as explanations
+  from public.questions where config->>'source' = '{source}';"""
+
+
+def assembly_sql(paper):
+    """Run the paper's assembly file from the staged text, statement by statement.
+
+    The file is ordered (options, accepted variants, paper items, the
+    examination row, hints, self-check) and every statement ends with a fixed
+    marker, so each one can be located with plain string positions rather than
+    regular expressions. What executes is the authored text, so the cover-page
+    prose and the hint bodies are character-exact.
+
+    Two details are load-bearing:
+      * the outer block uses a $asm$ tag, because a bare $$ inside the body
+        (even inside a string literal) would end the block early;
+      * the self-check's own "do $$ ... end $$;" markers are therefore built
+        with chr(36), never written literally.
+    """
+    assembly = parts(paper)[-1].name
+    literal_blocks = [
+        ("insert into question_options", "on conflict (id) do nothing;"),
+        ("insert into quiz_questions", "on conflict (quiz_id, question_id) do nothing;"),
+        ("insert into exams", "on conflict (id) do nothing;"),
+        ("insert into question_hints", "on conflict (id) do nothing;"),
+    ]
+    steps = []
+    for head, tail in literal_blocks:
+        steps.append(f"""  -- every {head} statement, executed as written
+  loop
+    v_at := position({quoted(head)} in v_sql);
+    exit when v_at = 0;
+    v_sql := substr(v_sql, v_at);
+    v_len := position({quoted(tail)} in v_sql);
+    if v_len = 0 then
+      raise exception 'unterminated statement starting with %', {quoted(head)};
+    end if;
+    v_len := v_len + {len(tail)} - 1;
+    execute substr(v_sql, 1, v_len);
+    v_sql := substr(v_sql, v_len + 1);
+  end loop;""")
+
+    # The paper's own self-check, delimited by "do $$" / "end $$;".
+    steps.append("""  -- the paper's own self-check, which aborts if the paper is incomplete
+  loop
+    v_at := position(v_do_head in v_sql);
+    exit when v_at = 0;
+    v_sql := substr(v_sql, v_at);
+    v_len := position(v_do_tail in v_sql);
+    if v_len = 0 then
+      raise exception 'unterminated self-check block in the assembly text';
+    end if;
+    v_len := v_len + length(v_do_tail) - 1;
+    execute substr(v_sql, 1, v_len);
+    v_sql := substr(v_sql, v_len + 1);
+  end loop;""")
+
+    body = "\n\n".join(steps)
+    return f"""-- Run {assembly} verbatim from the staged text.
+do $asm$
+declare
+  v_sql text;
+  v_at int;
+  v_len int;
+  v_do_head text := 'do ' || chr(36) || chr(36);
+  v_do_tail text := 'end ' || chr(36) || chr(36) || ';';
+begin
+  select content into v_sql from public.mock_migration_stage where file = {quoted(assembly)};
+  if v_sql is null then
+    raise exception 'assembly staged text missing for {assembly}';
+  end if;
+
+{body}
+end $asm$;"""
 
 
 def verify_sql():
@@ -208,6 +294,10 @@ def main():
         print(apply_sql(sys.argv[sys.argv.index("--apply") + 1]))
     elif "--verify" in sys.argv:
         print(verify_sql())
+    elif "--assembly" in sys.argv:
+        print(assembly_sql(sys.argv[sys.argv.index("--assembly") + 1]))
+    elif "--rowhashes" in sys.argv:
+        print(rowhashes_sql(sys.argv[sys.argv.index("--rowhashes") + 1]))
     elif "--expected" in sys.argv:
         for paper in PAPERS:
             rows = sorted((r for path in parts(paper) for r in payload_rows(path.read_text())),

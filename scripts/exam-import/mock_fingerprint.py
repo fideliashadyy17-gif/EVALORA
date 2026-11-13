@@ -51,6 +51,10 @@ def main():
 
     if "--sql" in sys.argv:
         # Concatenated in question order, which is the order the source walked.
+        # Sort on the integer question number, never on the text: the database's
+        # default collation does not order text the way the source does, and a
+        # string_agg fed a text key concatenates in a different order than the
+        # paper (that mismatch is a bug in the check, not in the data).
         print("select config->>'mock_exam_key' as paper,")
         print("       count(*)::int as questions,")
         print("       md5(string_agg(prompt, '' order by (config->>'question_number')::int)) as prompts,")
