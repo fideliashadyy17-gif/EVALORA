@@ -11,7 +11,10 @@ execSync(
   { stdio: "inherit" },
 );
 // Compiled utils.js requires clsx/tailwind-merge — make them resolvable from /tmp.
-execSync("ln -sf \"$(pwd)/node_modules\" /tmp/evalora-test/node_modules");
+// -n: replace the link itself. Without it, a second run follows the existing
+// link and creates node_modules/node_modules inside the project, which breaks
+// ESLint and the Turbopack build when it points at another checkout.
+execSync("ln -sfn \"$(pwd)/node_modules\" /tmp/evalora-test/node_modules");
 const require = createRequire(import.meta.url);
 const { parseCsv, parseCsvRecords, isEmail } = require("/tmp/evalora-test/csv.js");
 const { genCode, toCsv, slugify } = require("/tmp/evalora-test/utils.js");

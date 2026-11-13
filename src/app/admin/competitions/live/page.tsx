@@ -2,6 +2,7 @@ import { Badge, Button, ButtonLink, PageTitle, Select, StatCard } from "@/compon
 import { requireSuperAdmin } from "@/lib/auth";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { fmtDateTime } from "@/lib/utils";
 import { Activity, CheckCircle2, Radio, Users } from "lucide-react";
 import type { Metadata } from "next";
@@ -9,6 +10,7 @@ import Link from "next/link";
 import { adminEndSession } from "../../actions";
 import { setCompetitionStatus, startCompetitionSession } from "../../actions/competitions";
 import { ConfirmField, Section, StatusBadge, Table } from "../../ui";
+import { LiveFeatureToggles } from "../LiveFeatureToggles";
 
 export const metadata: Metadata = { title: "Live competition monitoring" };
 export const dynamic = "force-dynamic";
@@ -37,6 +39,7 @@ interface SessionRow {
   display_token_version?: number;
   created_at: string;
   ended_at: string | null;
+  settings?: Record<string, unknown> | null;
 }
 
 interface ParticipantRow {
@@ -159,7 +162,7 @@ export default async function LiveCompetitionMonitoringPage({
           No live or ready-to-start competitions match. Publish or schedule a competition to bring it into the operations room.
         </p>
       ) : (
-        <Table head={["Competition", "Session", "Participants / progress", "Answers", "Status", "Controls"]}>
+        <Table head={["Competition", "Session", "Participants / progress", "Answers", "Status", "Controls", "Live Feature Controls"]}>
           {comps.map((c) => {
             const session = c.session_id ? sessionById.get(c.session_id) : undefined;
             const plist = session ? bySession.get(session.id) ?? [] : [];
@@ -213,6 +216,17 @@ export default async function LiveCompetitionMonitoringPage({
                   </div>
                   {!c.quiz_id && <p className="mt-1 text-xs text-amber-800">Attach a quiz in Settings before starting.</p>}
                   {c.quiz_id && questions === 0 && <p className="mt-1 text-xs text-amber-800">Attached quiz has no questions.</p>}
+                </td>
+                <td>
+                  {/* Live Feature Controls: answer tools allowed for this session's participants */}
+                  {session ? (
+                    <LiveFeatureToggles
+                      sessionId={session.id}
+                      competitionId={c.id}
+                      features={(session.settings?.live_features ?? null) as LiveFeatureControls | null}
+                      compact
+                    />
+                  ) : <span className="text-xs text-ink-soft">No session</span>}
                 </td>
               </tr>
             );

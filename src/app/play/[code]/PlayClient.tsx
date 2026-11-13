@@ -7,6 +7,7 @@ import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner
 import { Badge, Button, Card, Field, Input } from "@/components/ui";
 import { AVATARS, type AvatarKey } from "@/lib/avatars";
 import type { RichDoc } from "@/lib/content";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { createClient } from "@/lib/supabase/client";
 import { mmss } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -56,6 +57,8 @@ interface LiveState {
     question_started_at: string | null;
     question_deadline_at: string | null;
     time_per_question_seconds: number;
+    /** Answer tools the organiser allows; absent (older server) = every tool. */
+    live_features?: LiveFeatureControls;
   };
   progress: { index: number; total: number; remaining_after_current: number };
   question: PublicQuestion | null;
@@ -516,6 +519,7 @@ export function PlayClient({ code }: { code: string }) {
             question={question}
             onAnswer={answer}
             disabled={submitting || Boolean(session.answer_locked) || session.phase === "time_expired" || (remaining !== null && remaining <= 0)}
+            liveFeatures={session.live_features}
           />
           {submitMessage && <p className="mt-4 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">{submitMessage}</p>}
           {(session.phase === "time_expired" || (remaining !== null && remaining <= 0)) && (

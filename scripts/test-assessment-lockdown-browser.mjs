@@ -179,6 +179,10 @@ await context.route("**/api/**", async (route) => {
     return route.fulfill({ status: 200, json: { server_now: new Date().toISOString(), messages: [], unread_from_teacher: 0 } });
   }
   if (path === "/api/exam/presence") return route.fulfill({ status: 200, json: { ok: true } });
+  // Live feature controls: read-only; an examination nobody restricted has every answer tool.
+  if (path === "/api/exam/live-features" && request.method() === "GET") {
+    return route.fulfill({ status: 200, json: { features: { standard_keyboard: true, math_keyboard: true, symbols: true, scientific_keyboard: true, equation_editor: true, latex: true } } });
+  }
   if (path === "/api/live/state") return route.fulfill({ status: 200, json: liveQuizState() });
   if (path === "/api/live/answer") return route.fulfill({ status: 200, json: { ok: true } });
   if (path === "/api/live/screen") return route.fulfill({ status: 200, json: publicScreenState() });

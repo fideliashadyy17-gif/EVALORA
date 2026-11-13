@@ -23,6 +23,8 @@ await page.route('**/api/exam/**',async route=>{const request=route.request();co
  // Candidate messenger (ExamMessenger): an empty thread and an accepted heartbeat.
  if(url.pathname==='/api/exam/messages'){return route.fulfill({status:200,json:{server_now:new Date().toISOString(),messages:[],unread_from_teacher:0}});}
  if(url.pathname==='/api/exam/presence'){return route.fulfill({status:200,json:{ok:true}});}
+ // Live feature controls: an examination nobody restricted has every answer tool (read-only endpoint).
+ if(url.pathname==='/api/exam/live-features'){assert.equal(request.method(),'GET');assert.equal(request.headers().authorization,`Bearer ${token}`);return route.fulfill({status:200,json:{features:{standard_keyboard:true,math_keyboard:true,symbols:true,scientific_keyboard:true,equation_editor:true,latex:true}}});}
  throw Error('Unexpected request '+url.pathname);
 });
 try {

@@ -24,6 +24,7 @@ const browserSuites = new Set([
   "test-exam-messaging-routes.mjs",
   "test-exam-premature-submit-browser.mjs",
   "test-cron-sweep-routes.mjs",
+  "test-live-features-browser.mjs",
 ]);
 
 const results = [];

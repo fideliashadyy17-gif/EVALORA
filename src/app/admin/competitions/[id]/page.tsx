@@ -3,6 +3,7 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -12,6 +13,7 @@ import {
   startCompetitionSession,
 } from "../../actions/competitions";
 import { Notice, StatusBadge } from "../../ui";
+import { LiveFeatureToggles } from "../LiveFeatureToggles";
 import { CodesTab } from "./tabs/CodesTab";
 import { ParticipantsTab } from "./tabs/ParticipantsTab";
 import { ResultsTab } from "./tabs/ResultsTab";
@@ -55,7 +57,7 @@ export default async function CompetitionDetailPage({
   const quiz = comp.quizzes as unknown as { id: string; title: string; status: string } | null;
 
   let monitor: {
-    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; display_token_version?: number; created_at: string } | null;
+    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; display_token_version?: number; created_at: string; settings?: Record<string, unknown> | null } | null;
     participants: number;
     connected: number;
     finished: number;
@@ -67,7 +69,7 @@ export default async function CompetitionDetailPage({
   {
     const head = { count: "exact" as const, head: true };
     const sessionRes = comp.session_id
-      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at").eq("id", comp.session_id).maybeSingle()
+      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at, settings").eq("id", comp.session_id).maybeSingle()
       : { data: null };
     const session = sessionRes.data;
     const [participants, finished, answers, questions, registrations, codes, connectedRes] = await Promise.all([
@@ -200,6 +202,21 @@ export default async function CompetitionDetailPage({
                       Participant join code:{" "}
                       <span className="rounded-md bg-cream px-2 py-1 font-mono text-lg font-bold tracking-widest text-evergreen-900">{monitor.session.join_code}</span>
                     </p>
+
+                    {/* LIVE FEATURE CONTROLS PANEL */}
+                    <div className="mt-4 border-t border-evergreen-900/10 pt-4">
+                      <h3 className="font-display text-base font-semibold text-evergreen-950 mb-3">Live Assessment Feature Controls</h3>
+                      <p className="mb-3 text-xs text-ink-soft">
+                        Answer tools available to this session&apos;s participants. Every tool is enabled until you switch it off;
+                        a change reaches connected participants within a few seconds and never alters what they have already written.
+                      </p>
+                      <LiveFeatureToggles
+                        sessionId={monitor.session.id}
+                        competitionId={id}
+                        features={(monitor.session.settings?.live_features ?? null) as LiveFeatureControls | null}
+                      />
+                    </div>
+
                     <div className="mt-4 flex flex-wrap gap-2">
                       <form action={startCompetitionSession}>
                         <input type="hidden" name="id" value={id} />

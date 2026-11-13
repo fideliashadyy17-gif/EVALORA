@@ -25,6 +25,13 @@ import { PresenceRail } from "@/components/PresenceRail";
 import { answerStateFor } from "@/lib/hintAttention";
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
+// --- LIVE ASSESSMENT FEATURE CONTROLS ---
+// Which answer tools the organiser allows for this sitting (see @/lib/liveFeatures).
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
+
+/** How often an open paper re-checks the organiser's tool switches. */
+const LIVE_FEATURES_REFRESH_MS = 60_000;
+
 interface ExamState {
   server_now: string;
   exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
@@ -50,6 +57,9 @@ interface ExamState {
     reveal?: { correct_option_ids: string[]; summary: string[]; marking_criteria?: string | null; next_time_hint?: string | null } | null;
   })[];
 }
+
+// Live Feature Controls State — the shape is shared with the editor and the admin screens.
+export type { LiveFeatureControls };
 
 function LocalCamera() {
   const tracks = useTracks([Track.Source.Camera]);
@@ -170,6 +180,44 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     setLk(null); setVideoError(null); setMediaError(null); setVideoRetry((n) => n + 1);
   }, []);
   const offset = useRef(0);
+
+  // --- LIVE FEATURE CONTROLS ---
+  // Every tool is available until the server says otherwise: a candidate never
+  // starts a paper with the mathematics tools missing. The switches come from
+  // the candidate's own examination through the attempt token — the browser's
+  // anonymous database connection cannot (and must not) read assessment
+  // settings, so there is no direct subscription to any table here. A failed or
+  // slow request changes nothing: the last confirmed switches stay in force.
+  // `undefined` means "nothing restricted"; the editor resolves the switches
+  // with the shared rule (a tool is off only when explicitly switched off).
+  const [liveFeatures, setLiveFeatures] = useState<LiveFeatureControls | undefined>(undefined);
+
+  useEffect(() => {
+    if (!token || !attemptActive) return;
+    let cancelled = false;
+    const fetchFeatures = async () => {
+      try {
+        const res = await fetch(`/api/exam/live-features?attempt_id=${encodeURIComponent(attemptId)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json()) as { features?: unknown };
+        if (cancelled || !data.features || typeof data.features !== "object" || Array.isArray(data.features)) return;
+        const next = data.features as LiveFeatureControls;
+        // Same switches as before: keep the same object so nothing re-renders.
+        setLiveFeatures((current) => (JSON.stringify(current ?? null) === JSON.stringify(next) ? current : next));
+      } catch {
+        // Offline or interrupted: keep the tools the candidate already has.
+      }
+    };
+    void fetchFeatures();
+    const timer = setInterval(() => void fetchFeatures(), LIVE_FEATURES_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [token, attemptActive, attemptId]);
 
   // A single short tone, created only after the candidate has interacted with
   // the page (browser autoplay rules) and never allowed to break the paper.
@@ -527,6 +575,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
   }
 
+  // --- RICH CONTENT EDITOR INTEGRATION ---
+  // `liveFeatures` is passed as a prop: QuestionRunner → StructuredResponseEditor →
+  // RichContentEditor, which shows or hides the math keyboard, symbols keyboard,
+  // scientific groups, equation editor, LaTeX mode and plain typing accordingly.
+
   if (error) {
     return (
       <Centered>
@@ -875,6 +928,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 }}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
+                // Pass live feature controls to the editor
+                liveFeatures={liveFeatures}
               />
 
               {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}

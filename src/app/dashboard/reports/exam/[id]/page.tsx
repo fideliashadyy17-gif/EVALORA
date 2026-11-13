@@ -1,11 +1,13 @@
 import { RichContent } from "@/components/RichContent";
 import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
-import { ExportButton, PrintButton } from "@/components/ExportTools";
+import { ExportButton, PrintButton, ExportExcelButton, ExportWordButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import type { DocxReport } from "@/lib/docxExport";
+import { MYP_CRITERIA, criterionOfConfig, formatCriterionStats, participantCriterionStats, type CriterionQuestion } from "@/lib/examResults";
 
 export const metadata: Metadata = { title: "Examination report" };
 export const dynamic = "force-dynamic";
@@ -31,7 +33,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
 
   const [{ data: attempts }, { data: qq }, { count: candidateTotal }] = await Promise.all([
     supabase.from("exam_attempts").select("*, exam_candidates(full_name, candidate_ref), exam_answers(question_id, is_correct, points_awarded)").eq("exam_id", id).order("score", { ascending: false, nullsFirst: false }),
-    supabase.from("quiz_questions").select("question_id, questions(prompt, prompt_doc, type, topic, difficulty, config)").eq("quiz_id", exam.quiz_id),
+    supabase.from("quiz_questions").select("question_id, points, questions(prompt, prompt_doc, type, topic, difficulty, config, points), position").eq("quiz_id", exam.quiz_id).order("position"),
     supabase.from("exam_candidates").select("id", { count: "exact", head: true }).eq("exam_id", id),
   ]);
 
@@ -53,8 +55,40 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
     return { ...q, crit, strand, question_id: r.question_id, answered: answers.length, pct: graded.length ? Math.round((correct / graded.length) * 100) : null };
   });
 
+  // --- MYP Criterion Aggregation ---
+  // The paper: each question's criterion (questions.config.myp_criterion) and the
+  // marks it carries in this examination (the paper's override, else the question's).
+  const paper: CriterionQuestion[] = ((qq ?? []) as unknown as {
+    question_id: string;
+    points: number | null;
+    questions: { config: Record<string, unknown> | null; points: number | null } | null;
+  }[]).map((r) => ({
+    question_id: r.question_id,
+    criterion: criterionOfConfig(r.questions?.config),
+    points: r.points ?? r.questions?.points ?? 0,
+  }));
+  // One breakdown per attempt (per candidate), keyed by attempt id.
+  const criteriaByAttempt = participantCriterionStats(
+    list.map((a) => a.id),
+    list.flatMap((a) =>
+      ((a.exam_answers as { question_id: string; is_correct: boolean | null; points_awarded: number | null }[]) ?? []).map((ans) => ({
+        participant_id: a.id,
+        question_id: ans.question_id,
+        is_correct: ans.is_correct,
+        points_awarded: ans.points_awarded,
+      })),
+    ),
+    paper,
+  );
+  const criterionHead = MYP_CRITERIA.map((c) => `Criterion ${c}`);
+  const criterionCells = (attemptId: string) => MYP_CRITERIA.map((c) => formatCriterionStats(criteriaByAttempt.get(attemptId)?.[c]));
+
+  const questionHead = ["Question", "Type", "Topic", "Difficulty", "Answered", "% Correct", "Criterion"];
+  const questionRows = qStats.map((q, i) => [`Q${i + 1}`, q.type, q.topic ?? "", q.difficulty, q.answered, q.pct ?? "n/a", q.crit ? `Criterion ${q.crit}${q.strand ? ` ${q.strand}` : ""}` : ""]);
+  const candidateHead = ["Candidate", "Reference", "Status", "Score", "Max", "%", "Result", "Hints used", "Submitted", ...criterionHead];
+
   const csv = toCsv([
-    ["Candidate", "Reference", "Status", "Score", "Max", "%", "Result", "Hints used", "Submitted"],
+    candidateHead,
     ...list.map((a) => {
       const pct = a.score !== null && a.max_score ? Math.round((Number(a.score) / Number(a.max_score)) * 1000) / 10 : "";
       return [
@@ -67,19 +101,67 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
         typeof pct === "number" ? (pct >= passMark ? "PASS" : "FAIL") : "",
         hintsByAttempt.get(a.id) ?? 0,
         a.submitted_at ?? "",
+        ...criterionCells(a.id),
       ];
     }),
     [],
-    ["Question", "Type", "Topic", "Difficulty", "Answered", "% Correct"],
-    ...qStats.map((q, i) => [`Q${i + 1}`, q.type, q.topic ?? "", q.difficulty, q.answered, q.pct ?? "n/a"]),
+    questionHead,
+    ...questionRows,
   ]);
+
+  // Rows shared by the Excel sheet and the Word document
+  const candidateRows = list.map((a) => {
+    const pct = a.score !== null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
+    return [
+      (a.exam_candidates as { full_name: string } | null)?.full_name ?? "",
+      (a.exam_candidates as { candidate_ref: string | null } | null)?.candidate_ref ?? "",
+      a.status,
+      a.score !== null ? Number(a.score) : "",
+      a.max_score !== null ? Number(a.max_score) : "",
+      pct !== null ? `${pct.toFixed(0)}%` : "",
+      typeof pct === "number" ? (pct >= passMark ? "PASS" : "FAIL") : "",
+      hintsByAttempt.get(a.id) ?? 0,
+      a.submitted_at ?? "",
+      ...criterionCells(a.id),
+    ];
+  });
+
+  // Excel Data
+  const excelData = [candidateHead, ...candidateRows, [], questionHead, ...questionRows];
+
+  // Word document (built as data; every value is escaped by the .docx builder)
+  const wordReport: DocxReport = {
+    title: `Examination Report: ${exam.title}`,
+    subtitle: `Pass mark: ${passMark}% · Results: ${settings.results_published ? "published" : "not yet published"}`,
+    sections: [
+      {
+        heading: "Candidate Results",
+        emptyNote: "No attempts yet.",
+        table: {
+          head: ["Candidate", "Reference", "Status", "Score", "Max", "%", "Result", "Hints", "Submitted", ...criterionHead],
+          rows: candidateRows,
+        },
+      },
+      {
+        heading: "Question & Topic Analysis",
+        table: { head: questionHead, rows: questionRows },
+      },
+    ],
+  };
 
   return (
     <>
       <PageTitle
         title={exam.title}
         subtitle={`Pass mark ${passMark}% · Results ${settings.results_published ? "published" : "not yet published"}`}
-        action={<div className="flex gap-2 print:hidden"><ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} /><PrintButton /></div>}
+        action={
+          <div className="flex gap-2 print:hidden">
+            <ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} />
+            <ExportExcelButton filename={`exam-${exam.access_code}.xlsx`} data={excelData} />
+            <ExportWordButton filename={`exam-${exam.access_code}.docx`} report={wordReport} />
+            <PrintButton />
+          </div>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -101,6 +183,9 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                   <th className="py-2 pr-2 font-medium">%</th>
                   <th className="py-2 pr-2 font-medium">Hints</th>
                   <th className="py-2 font-medium">Result</th>
+                  {criterionHead.map((label) => (
+                    <th key={label} className="py-2 pl-2 font-medium">{label}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -116,6 +201,9 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                       <td className="py-2 pr-2 tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
                       <td className="py-2 pr-2 tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
                       <td className="py-2">{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
+                      {MYP_CRITERIA.map((c) => (
+                        <td key={c} className="py-2 pl-2 tabular-nums">{formatCriterionStats(criteriaByAttempt.get(a.id)?.[c])}</td>
+                      ))}
                     </tr>
                   );
                 })}

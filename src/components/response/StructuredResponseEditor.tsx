@@ -9,6 +9,7 @@ import { GeometryView } from "@/components/geometry/GeometryView";
 import { StatsEditor } from "@/components/stats/StatsEditor";
 import { DataTableEditor } from "@/components/stats/DataTableEditor";
 import { emptyDoc, docToPlainText, textToDoc, type RichDoc } from "@/lib/content";
+import type { LiveFeatureControls } from "@/lib/liveFeatures";
 import { emptyGraphSpec, graphSpecHasWork, normaliseGraphSpec, type GraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec, geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 import { emptyStatsSpec, normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "@/lib/statsSpec";
@@ -47,6 +48,7 @@ export function StructuredResponseEditor({
   emit,
   onDirtyChange,
   onPayloadChange,
+  liveFeatures,
 }: {
   workspace: ResponseWorkspace;
   initial: Record<string, unknown> | null;
@@ -57,6 +59,8 @@ export function StructuredResponseEditor({
   onDirtyChange?: (dirty: boolean) => void;
   /** Receives the latest local construction before it has been saved. */
   onPayloadChange?: (payload: Record<string, unknown>) => void;
+  /** Organiser's live tool switches for the written answer. Omitted = every tool. */
+  liveFeatures?: LiveFeatureControls;
 }) {
   const initialDoc = useMemo<RichDoc>(() => {
     const raw = initial?.doc;
@@ -283,6 +287,7 @@ export function StructuredResponseEditor({
               allowImages={false}
               allowLinks={false}
               placeholder="Write your answer…"
+              liveFeatures={liveFeatures}
             />
           )}
           {workspace.tools.includes("science") && (

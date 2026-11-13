@@ -10,6 +10,7 @@ import {
   seededShuffle,
 } from "@/lib/live";
 import { isResultsStage, parsePresentationStage, stageLabel } from "@/lib/liveControl";
+import { liveFeaturesFromSettings } from "@/lib/liveFeatures";
 import { loadRankingView } from "@/lib/liveControlServer";
 import { revealedPodium, withMovement } from "@/lib/liveRanking";
 import { buildRoster, PRESENCE_HEARTBEAT_MS, type PresenceSourceRow } from "@/lib/presence";
@@ -285,6 +286,9 @@ export async function GET(request: Request) {
       question_started_at: session.question_started_at,
       question_deadline_at: deadline,
       time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
+      // Answer tools the organiser allows in this session. Six booleans from
+      // the participant's own session; every tool unless one was switched off.
+      live_features: liveFeaturesFromSettings(session.settings),
     },
     progress: {
       index,

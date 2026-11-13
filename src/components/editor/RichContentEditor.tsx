@@ -16,12 +16,13 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
 import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
 import { DataTableBlock, GeometryBlock, GraphBlock, StatsBlock, emptyDiagramSpec, type DiagramKind, type DiagramSpec } from "./diagramNodes";
 import { DiagramEditorDialog } from "./DiagramEditorDialog";
+import { resolveLiveFeatures, type LiveFeatureControls } from "@/lib/liveFeatures";
 
 type Mode = "text" | "math" | "latex";
 
@@ -94,6 +95,34 @@ export interface UploadResult {
   error?: string;
 }
 
+// --- LIVE FEATURE CONTROLS INTEGRATION ---
+// The RichContentEditor accepts a `liveFeatures` prop so an organiser can switch
+// individual answer tools off for the candidates of one live assessment. The
+// shape and the single resolution rule live in @/lib/liveFeatures: a tool is
+// removed only by an explicit `false`, so authoring screens (which pass nothing)
+// and assessments nobody restricted keep every tool.
+export type { LiveFeatureControls };
+
+/**
+ * Groups of the on-screen mathematics keyboard that form the "scientific
+ * keyboard". They are hidden when that switch is off; the everyday groups
+ * (basic, fractions, powers, equations, algebra, geometry, Greek letters, sets,
+ * structures) stay available as long as the mathematics keyboard itself is on.
+ */
+const SCIENTIFIC_CATEGORY_IDS: ReadonlySet<string> = new Set([
+  "trigonometry",
+  "functions",
+  "limits",
+  "derivatives",
+  "integrals",
+  "sums-products",
+  "matrices",
+  "statistics",
+  "vectors",
+  "sequences",
+  "science-units",
+]);
+
 export function RichContentEditor({
   value,
   onChange,
@@ -105,6 +134,8 @@ export function RichContentEditor({
   allowLinks = true,
   placeholder,
   minHeight,
+  // Live feature controls passed down from the candidate screens
+  liveFeatures,
 }: {
   value: RichDoc | null;
   onChange: (doc: RichDoc) => void;
@@ -117,9 +148,11 @@ export function RichContentEditor({
   allowLinks?: boolean;
   placeholder?: string;
   minHeight?: string;
+  /** Organiser's live tool switches. Omitted (authoring) = every tool. */
+  liveFeatures?: LiveFeatureControls;
 }) {
   const [mode, setMode] = useState<Mode>("text");
-  const [showKeyboard, setShowKeyboard] = useState(false);
+  const [keyboardRequested, setShowKeyboard] = useState(false);
   const [kbCategory, setKbCategory] = useState(MATH_CATEGORIES[1].id);
   const [mathDraft, setMathDraft] = useState("");
   const [latexDraft, setLatexDraft] = useState("");
@@ -138,7 +171,49 @@ export function RichContentEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const initialDoc = useMemo(() => value ?? emptyDoc(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const openMathEditor = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
+  // Every tool unless the organiser explicitly switched it off (teacher and
+  // authoring views pass no `liveFeatures` at all).
+  const currentFeatures = resolveLiveFeatures(liveFeatures);
+
+  // Dynamically adjust allowed modes based on live features
+  const canUseMath = currentFeatures.math_keyboard;
+  const canUseSymbols = currentFeatures.symbols;
+  const canUseScientific = currentFeatures.scientific_keyboard;
+  const canUseEquationEditor = currentFeatures.equation_editor;
+  const canUseLatex = currentFeatures.latex;
+  const canUseStandard = currentFeatures.standard_keyboard;
+  // The mathematics keyboard is shown when the candidate asked for it AND the
+  // organiser allows it. If it is switched back on, it reopens as it was left.
+  const showKeyboard = keyboardRequested && canUseMath;
+
+  // The editor instance and its node views keep the callbacks they were created
+  // with, so anything they call reads the *current* switches through this ref.
+  const featuresRef = useRef(currentFeatures);
+  useEffect(() => {
+    featuresRef.current = currentFeatures;
+  });
+
+  // A tool that is switched off while it is open closes without touching the
+  // document: the candidate returns to the text view and keeps everything
+  // already written.
+  useEffect(() => {
+    if ((mode === "math" && !canUseEquationEditor) || (mode === "latex" && !canUseLatex)) setMode("text");
+  }, [mode, canUseEquationEditor, canUseLatex]);
+  useEffect(() => {
+    if (canUseSymbols) return;
+    const keyboard = (window as unknown as { mathVirtualKeyboard?: { hide?: () => void } }).mathVirtualKeyboard;
+    keyboard?.hide?.();
+  }, [canUseSymbols]);
+
+  const openMathEditor = (pos: number, latex: string, display: boolean, requestedMode: Mode = "math") => {
+    // Never open a tool the organiser switched off. When only one of the two
+    // equation tools is left, an edit request uses that one.
+    const allowed = featuresRef.current;
+    const toMode: Mode | null =
+      requestedMode === "latex"
+        ? allowed.latex ? "latex" : allowed.equation_editor ? "math" : null
+        : allowed.equation_editor ? "math" : allowed.latex ? "latex" : null;
+    if (!toMode) return;
     setEditingPos(pos);
     setEditingDisplay(display);
     setMathDraft(latex);
@@ -179,7 +254,16 @@ export function RichContentEditor({
         "aria-label": ariaLabel ?? "Content editor",
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
         ...(minHeight ? { style: `min-height:${minHeight}` } : {}),
+        // No operating-system keyboard on touch devices while typing is off.
+        ...(canUseStandard ? {} : { inputmode: "none" }),
       },
+      // Standard keyboard switched off by the organiser: typed, pasted and
+      // dropped text is refused. Moving the cursor, deleting and every maths
+      // tool that is still allowed keep working, and nothing already written is
+      // changed. With the switch on (the default) these handlers do nothing.
+      handleTextInput: () => !featuresRef.current.standard_keyboard,
+      handlePaste: () => !featuresRef.current.standard_keyboard,
+      handleDrop: () => !featuresRef.current.standard_keyboard,
     },
     onUpdate: ({ editor }) => onChange(editor.getJSON() as RichDoc),
     onCreate: ({ editor }) => {
@@ -262,6 +346,7 @@ export function RichContentEditor({
   function switchMode(next: Mode) {
     setSwitchMsg(null);
     if (next === "latex") {
+      if (!canUseLatex) return; // Blocked by live feature control
       const fromField = mfRef.current?.getValue();
       setLatexDraft(editingPos != null ? (fromField ?? mathDraft) : (fromField || mathDraft));
       setMode("latex");
@@ -269,6 +354,7 @@ export function RichContentEditor({
       return;
     }
     if (next === "math") {
+      if (!canUseEquationEditor) return; // Blocked by live feature control
       if (mode === "latex" && latexDraft.trim()) {
         const err = validateLatex(latexDraft);
         if (err) {
@@ -292,6 +378,7 @@ export function RichContentEditor({
   }
 
   function onKeyboardKey(key: MathKey) {
+    if (!canUseMath) return; // The mathematics keyboard is switched off
     if (mode === "math" && mfRef.current) {
       mfRef.current.insert(key.i);
       return;
@@ -351,7 +438,10 @@ export function RichContentEditor({
     }).run();
   }
 
-  const cat = MATH_CATEGORIES.find((c) => c.id === kbCategory) ?? MATH_CATEGORIES[0];
+  const keyboardCategories = canUseScientific
+    ? MATH_CATEGORIES
+    : MATH_CATEGORIES.filter((c) => !SCIENTIFIC_CATEGORY_IDS.has(c.id));
+  const cat = keyboardCategories.find((c) => c.id === kbCategory) ?? keyboardCategories[0];
 
   return (
     <div className={`rce-shell ${compact ? "rce-compact" : ""}`}>
@@ -371,21 +461,35 @@ export function RichContentEditor({
               role="tab"
               aria-selected={mode === m}
               onClick={() => switchMode(m)}
-              className={`rounded-md px-3 py-1.5 text-[13px] font-semibold ${mode === m ? "bg-evergreen-700 text-white" : "text-evergreen-900 hover:bg-evergreen-50"}`}
+              disabled={
+                (m === "math" && !canUseEquationEditor) ||
+                (m === "latex" && !canUseLatex)
+              }
+              className={`rounded-md px-3 py-1.5 text-[13px] font-semibold ${mode === m ? "bg-evergreen-700 text-white" : "text-evergreen-900 hover:bg-evergreen-50"} ${(!canUseEquationEditor && m === "math") || (!canUseLatex && m === "latex") ? "opacity-40 cursor-not-allowed" : ""}`}
             >
               {label}
             </button>
           ))}
         </div>
-        <button
-          type="button"
-          className={`${btn} ${showKeyboard ? btnActive : ""}`}
-          onClick={() => setShowKeyboard((s) => !s)}
-          aria-pressed={showKeyboard}
-          title="Toggle the permanent mathematical keyboard"
-        >
-          ∑ Math keyboard
-        </button>
+
+        {/* Dynamic Math Keyboard Toggle */}
+        {canUseMath && (
+          <button
+            type="button"
+            className={`${btn} ${showKeyboard ? btnActive : ""}`}
+            onClick={() => setShowKeyboard((s) => !s)}
+            aria-pressed={showKeyboard}
+            title="Toggle the permanent mathematical keyboard"
+          >
+            ∑ Math keyboard
+          </button>
+        )}
+
+        {!canUseStandard && (
+          <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-950" role="status">
+            Typing is switched off by the organizer for this assessment — use the mathematics tools.
+          </span>
+        )}
         {editingPos != null && (
           <span className="rounded-full bg-gold-100 px-2.5 py-1 text-xs font-medium text-gold-900">
             Editing equation — Apply writes it back into the document
@@ -510,12 +614,20 @@ export function RichContentEditor({
           )}
           {allowImages && <button type="button" className={btn} onClick={() => setShowImageUrlRow((s) => !s)} title="Insert image from URL">🌐</button>}
           <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
-          <button type="button" className={`${btn} font-semibold`} onClick={() => switchMode("math")} title="Insert a mathematical equation at the cursor">
-            √ Insert equation
-          </button>
-          <button type="button" className={btn} onClick={() => switchMode("latex")} title="Write LaTeX source">
-            {"\\frac{}"} LaTeX
-          </button>
+          {/* Equation Editor Toggle */}
+          {canUseEquationEditor && (
+            <button type="button" className={`${btn} font-semibold`} onClick={() => switchMode("math")} title="Insert a mathematical equation at the cursor">
+              √ Insert equation
+            </button>
+          )}
+
+          {/* LaTeX Toggle */}
+          {canUseLatex && (
+            <button type="button" className={btn} onClick={() => switchMode("latex")} title="Write LaTeX source">
+              {"\\frac{}"} LaTeX
+            </button>
+          )}
+
           <button type="button" className={btn} onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()} title="Clear formatting of selection">⌫ fmt</button>
         </div>
       )}
@@ -536,7 +648,7 @@ export function RichContentEditor({
       {uploadError && <p className="border-b border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800">{uploadError}</p>}
 
       {/* MATH MODE panel (visual mathematical editing) */}
-      {mode === "math" && (
+      {mode === "math" && canUseEquationEditor && (
         <div className="border-b border-evergreen-900/10 bg-evergreen-50/50 px-3 py-3">
           <MathField
             initialValue={mathDraft}
@@ -566,12 +678,16 @@ export function RichContentEditor({
             <button type="button" className={btn} onClick={() => { setMathDraft(""); mfRef.current?.setValue(""); }}>
               Clear
             </button>
-            <button type="button" className={btn} onClick={() => mfRef.current?.toggleKeyboard()} title="MathLive on-screen keyboard">
-              ⌨ Symbols keyboard
-            </button>
-            <button type="button" className={btn} onClick={() => switchMode("latex")}>
-              {"</>"} Edit as LaTeX
-            </button>
+            {canUseSymbols && (
+              <button type="button" className={btn} onClick={() => mfRef.current?.toggleKeyboard()} title="MathLive on-screen keyboard">
+                ⌨ Symbols keyboard
+              </button>
+            )}
+            {canUseLatex && (
+              <button type="button" className={btn} onClick={() => switchMode("latex")}>
+                {"</>"} Edit as LaTeX
+              </button>
+            )}
           </div>
           <p className="mt-2 text-xs text-ink-soft">
             Type naturally: <kbd>/</kbd> makes a fraction, <kbd>^</kbd> a power, <kbd>_</kbd> a subscript, “sqrt” becomes √.
@@ -581,7 +697,7 @@ export function RichContentEditor({
       )}
 
       {/* LaTeX MODE panel */}
-      {mode === "latex" && (
+      {mode === "latex" && canUseLatex && (
         <div className="border-b border-evergreen-900/10 bg-evergreen-50/50 px-3 py-3">
           <label className="text-xs font-semibold uppercase tracking-wide text-evergreen-800" htmlFor="rce-latex-src">
             LaTeX source
@@ -644,14 +760,14 @@ export function RichContentEditor({
       */}
       <div className="border-t border-evergreen-900/10 bg-cream/70 px-3 py-2" hidden={!showKeyboard}>
           <div className="scroll-slim flex gap-1 overflow-x-auto pb-2" role="tablist" aria-label="Symbol categories">
-            {MATH_CATEGORIES.map((c) => (
+            {keyboardCategories.map((c) => (
               <button
                 key={c.id}
                 type="button"
                 role="tab"
-                aria-selected={kbCategory === c.id}
+                aria-selected={cat.id === c.id}
                 onClick={() => setKbCategory(c.id)}
-                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${kbCategory === c.id ? "bg-evergreen-700 text-white" : "bg-white text-evergreen-900 border border-evergreen-900/15 hover:bg-evergreen-50"}`}
+                className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${cat.id === c.id ? "bg-evergreen-700 text-white" : "bg-white text-evergreen-900 border border-evergreen-900/15 hover:bg-evergreen-50"}`}
               >
                 {c.label}
               </button>
@@ -694,8 +810,12 @@ export function RichContentEditor({
         tippyOptions={{ duration: 120 }}
         className="flex items-center gap-1 rounded-lg border border-evergreen-900/20 bg-white p-1 shadow-lg"
       >
-        <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "math"); }}>√ Edit</button>
-        <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "latex"); }}>{"</>"} LaTeX</button>
+        {canUseEquationEditor && (
+          <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "math"); }}>√ Edit</button>
+        )}
+        {canUseLatex && (
+          <button type="button" className={btn} onClick={() => { const c = currentMathNode(); if (c) openMathEditor(c.pos, c.latex, c.display, "latex"); }}>{"</>"} LaTeX</button>
+        )}
         <button type="button" className={btn} onClick={toggleMathDisplay}>Inline/display</button>
         <button type="button" className={`${btn} text-red-700`} onClick={() => editor.chain().focus().deleteSelection().run()}>Delete</button>
       </BubbleMenu>

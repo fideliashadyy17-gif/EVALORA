@@ -80,6 +80,10 @@ await page.route('**/api/exam/**', async (route) => {
   if (url.pathname === '/api/exam/submit') { store.submits += 1; return route.fulfill({ status: 200, json: { ok: true } }); }
   if (url.pathname === '/api/exam/integrity') return route.fulfill({ status: 200, json: { ok: true, recorded: false, count: 0, level: 'none', reason: 'duplicate' } });
   if (url.pathname === '/api/exam/presence') return route.fulfill({ status: 200, json: { ok: true } });
+  // Live feature controls: read-only; an examination nobody restricted has every answer tool.
+  if (url.pathname === '/api/exam/live-features' && request.method() === 'GET') {
+    return route.fulfill({ status: 200, json: { features: { standard_keyboard: true, math_keyboard: true, symbols: true, scientific_keyboard: true, equation_editor: true, latex: true } } });
+  }
   if (url.pathname === '/api/exam/messages/read') {
     // Same contract as the server: marks the teacher's messages up to the given time as read.
     const { up_to } = request.postDataJSON();
