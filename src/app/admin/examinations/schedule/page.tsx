@@ -35,6 +35,7 @@ function localInputValue(value: string | null) {
 }
 
 function phase(exam: ExamRow, now: number) {
+  if (exam.status === "paused") return { label: "Paused", tone: "amber" as const };
   if (exam.status === "closed") return { label: "Closed", tone: "gray" as const };
   if (exam.ends_at && Date.parse(exam.ends_at) < now) return { label: "Window ended", tone: "red" as const };
   if (exam.starts_at && Date.parse(exam.starts_at) > now) return { label: "Upcoming", tone: "amber" as const };
@@ -123,6 +124,7 @@ export default async function ExaminationSchedulePage({
                 <option value="draft">Draft</option>
                 <option value="scheduled">Scheduled</option>
                 <option value="open">Open</option>
+                <option value="paused">Paused (organizer hold)</option>
                 <option value="closed">Closed</option>
               </Select>
             </Field>

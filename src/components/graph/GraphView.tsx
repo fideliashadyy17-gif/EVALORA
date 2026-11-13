@@ -82,6 +82,27 @@ export function GraphView({
               ))}
             </g>
           )}
+          {(spec.regions ?? []).filter((r) => r.visible).map((r) => {
+            const x = Math.min(toX(r.x1), toX(r.x2));
+            const y = Math.min(toY(r.y1), toY(r.y2));
+            const w = Math.abs(toX(r.x2) - toX(r.x1));
+            const h = Math.abs(toY(r.y2) - toY(r.y1));
+            return (
+              <g key={r.id}>
+                <rect x={x} y={y} width={w} height={h} fill={r.color} fillOpacity={0.14} stroke={r.color} strokeWidth={1.2} strokeDasharray="6 4" />
+                {r.label ? (
+                  <text x={x + 5} y={y + 15} fontSize={11} fill={r.color} fontWeight={600}>{r.label}</text>
+                ) : null}
+              </g>
+            );
+          })}
+          {(spec.strokes ?? []).filter((s) => s.visible && s.points.length >= 2).map((s) => (
+            <polyline
+              key={s.id}
+              points={s.points.map((p) => `${toX(p.x)},${toY(p.y)}`).join(" ")}
+              fill="none" stroke={s.color} strokeWidth={s.width} strokeLinecap="round" strokeLinejoin="round"
+            />
+          ))}
           {spec.segments.filter((s) => s.visible).map((s) => (
             <g key={s.id}>
               <line x1={toX(s.x1)} y1={toY(s.y1)} x2={toX(s.x2)} y2={toY(s.y2)}

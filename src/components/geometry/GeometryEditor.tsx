@@ -21,13 +21,13 @@ import { GeometryView } from "./GeometryView";
 
 type Tool =
   | "move" | "point" | "segment" | "line" | "ray" | "circle" | "polygon" | "angle"
-  | "midpoint" | "intersection" | "perpendicular" | "parallel" | "label" | "delete";
+  | "midpoint" | "intersection" | "perpendicular" | "parallel" | "bisector" | "label" | "delete";
 
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 const btn = "inline-flex min-h-10 items-center justify-center gap-1 rounded-lg border border-evergreen-900/20 bg-white px-2.5 py-1.5 text-[12.5px] font-semibold text-evergreen-950 hover:bg-evergreen-50 disabled:opacity-40";
 const active = "border-evergreen-700 bg-evergreen-700 text-white hover:bg-evergreen-700";
 
-const POINT_TOOLS: Tool[] = ["segment", "line", "ray", "circle", "polygon", "angle", "midpoint", "perpendicular", "parallel"];
+const POINT_TOOLS: Tool[] = ["segment", "line", "ray", "circle", "polygon", "angle", "midpoint", "perpendicular", "parallel", "bisector"];
 const HINTS: Partial<Record<Tool, string>> = {
   segment: "Tap two points to create a segment (tap empty space to create a point).",
   line: "Tap two points to create a straight line.",
@@ -39,6 +39,7 @@ const HINTS: Partial<Record<Tool, string>> = {
   intersection: "Tap two lines or segments; their intersection becomes a point that follows both.",
   perpendicular: "Tap a point, then a line: a perpendicular is constructed through the point.",
   parallel: "Tap a point, then a line: a parallel is constructed through the point.",
+  bisector: "Tap a point on the first arm, the vertex, then a point on the second arm: the angle bisector is constructed.",
   label: "Tap the canvas to place a text label.",
 };
 
@@ -70,6 +71,7 @@ export function GeometryEditor({
   const [labelText, setLabelText] = useState("");
   const [showSettings, setShowSettings] = useState(!compact);
   const [history, setHistory] = useState<GeometrySpec[]>([]);
+  const [future, setFuture] = useState<GeometrySpec[]>([]);
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<{ id: string; snapshot: GeometrySpec } | null>(null);
   const layout = useMemo(() => geometryLayout(spec), [spec]);
@@ -81,6 +83,7 @@ export function GeometryEditor({
   const publish = useCallback((next: GeometrySpec, remember = true) => {
     setSpec(next);
     if (remember) setHistory((previous) => [...previous.slice(-40), spec]);
+    setFuture([]);
     onChange?.(next);
   }, [onChange, spec]);
 
@@ -165,7 +168,7 @@ export function GeometryEditor({
     if (tool === "intersection") return;
     if (tool === "polygon") { setPending((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id])); return; }
     const next = [...pending, id];
-    const need = tool === "angle" ? 3 : 2;
+    const need = tool === "angle" || tool === "bisector" ? 3 : 2;
     if (next.length < need) { setPending(next); return; }
     const [first, second, third] = next;
     if (tool === "segment" || tool === "line" || tool === "ray") {
@@ -190,6 +193,38 @@ export function GeometryEditor({
         angles: [...spec.angles, {
           id: uid("ang"), a: first, vertex: second, b: third,
           color: GEOMETRY_COLORS[4], label: "", showMeasurement: true,
+        }],
+      });
+    } else if (tool === "bisector") {
+      // first = arm A, second = vertex, third = arm B. The bisector point is
+      // derived (it follows its three parents), and the ray vertex→point is
+      // the bisector itself.
+      const v = resolved.points.get(second);
+      const a = resolved.points.get(first);
+      const b = resolved.points.get(third);
+      if (!v || !a || !b) { setPending([]); return; }
+      const la = Math.hypot(a.x - v.x, a.y - v.y);
+      const lb = Math.hypot(b.x - v.x, b.y - v.y);
+      let bx = v.x + 1;
+      let by = v.y;
+      if (la > 1e-9 && lb > 1e-9) {
+        const dx = (a.x - v.x) / la + (b.x - v.x) / lb;
+        const dy = (a.y - v.y) / la + (b.y - v.y) / lb;
+        const len = Math.hypot(dx, dy);
+        if (len > 1e-9) { bx = v.x + dx / len; by = v.y + dy / len; }
+      }
+      const bisectorPoint: GeometryPoint = {
+        ...createPoint(bx, by, "bisector"),
+        dependsOn: [first, second, third],
+        label: `B${spec.points.filter((p) => p.kind === "bisector").length + 1}`,
+        showLabel: false,
+      };
+      publish({
+        ...spec,
+        points: [...spec.points, bisectorPoint],
+        lines: [...spec.lines, {
+          id: uid("l"), kind: "ray", a: second, b: bisectorPoint.id, relation: null,
+          color: GEOMETRY_COLORS[4], style: "dashed", width: 2, label: "", showMeasurement: false,
         }],
       });
     } else if (tool === "midpoint") {
@@ -297,6 +332,7 @@ export function GeometryEditor({
     dragRef.current = null;
     if (!drag) return;
     setHistory((previous) => [...previous.slice(-40), drag.snapshot]);
+    setFuture([]);
   }
 
   function updateDomain(patch: Partial<GeometrySpec["domain"]>) {
@@ -317,6 +353,18 @@ export function GeometryEditor({
     setHistory((previous) => {
       if (!previous.length) return previous;
       const last = previous[previous.length - 1];
+      setFuture((f) => [...f, spec]);
+      setSpec(last);
+      onChange?.(last);
+      return previous.slice(0, -1);
+    });
+  }
+
+  function redo() {
+    setFuture((previous) => {
+      if (!previous.length) return previous;
+      const last = previous[previous.length - 1];
+      setHistory((h) => [...h, spec]);
       setSpec(last);
       onChange?.(last);
       return previous.slice(0, -1);
@@ -346,7 +394,7 @@ export function GeometryEditor({
     <section className="graph-editor geometry-editor" aria-label={title} data-testid="geometry-editor">
       <div className="flex flex-wrap items-center gap-1.5 border-b border-evergreen-900/10 bg-cream/60 px-2 py-2">
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-evergreen-800">Geometry</span>
-        {!readOnly && ((["move", "point", "segment", "line", "ray", "circle", "polygon", "angle", "midpoint", "intersection", "perpendicular", "parallel", "label", "delete"] as Tool[]).map((item) => (
+        {!readOnly && ((["move", "point", "segment", "line", "ray", "circle", "polygon", "angle", "midpoint", "intersection", "perpendicular", "parallel", "bisector", "label", "delete"] as Tool[]).map((item) => (
           <button
             key={item}
             type="button"
@@ -359,6 +407,7 @@ export function GeometryEditor({
         )))}
         <button type="button" className={btn} onClick={() => setShowSettings((s) => !s)} aria-expanded={showSettings}>Axes…</button>
         {!readOnly && <button type="button" className={btn} onClick={undo} disabled={!history.length} aria-label="Undo">↩</button>}
+        {!readOnly && <button type="button" className={btn} onClick={redo} disabled={!future.length} aria-label="Redo">↪</button>}
         {tool === "polygon" && pending.length >= 3 && (
           <button type="button" className={`${btn} bg-evergreen-700 text-white`} onClick={finishPolygon}>Finish polygon ({pending.length})</button>
         )}
@@ -594,7 +643,7 @@ export function GeometryEditor({
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-evergreen-800">Selected construction</p>
           {selected && (
             <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span>{selected.kind === "free" ? "Point" : selected.kind === "midpoint" ? "Midpoint (follows its two points)" : selected.kind === "foot" ? "Perpendicular foot" : "Intersection (follows both lines)"}</span>
+              <span>{selected.kind === "free" ? "Point" : selected.kind === "midpoint" ? "Midpoint (follows its two points)" : selected.kind === "foot" ? "Perpendicular foot" : selected.kind === "bisector" ? "Bisector point (follows its angle)" : "Intersection (follows both lines)"}</span>
               <label className="flex items-center gap-1">Label
                 <input value={selected.label} onChange={(e) => publish({ ...spec, points: spec.points.map((p) => p.id === selected.id ? { ...p, label: e.target.value.slice(0, 12) } : p) }, false)}
                   className="h-9 w-20 rounded-md border border-evergreen-900/20 px-2" />
@@ -661,6 +710,7 @@ const TOOL_LABEL: Record<Tool, string> = {
   intersection: "✕ Intersection",
   perpendicular: "⊥ Perpendicular",
   parallel: "∥ Parallel",
+  bisector: "⊾ Bisector",
   label: "T Label",
   delete: "⌫ Delete",
 };

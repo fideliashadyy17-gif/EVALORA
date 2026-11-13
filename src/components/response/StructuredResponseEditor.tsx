@@ -279,7 +279,11 @@ export function StructuredResponseEditor({
               value={doc}
               onChange={(next) => { setDoc(next); markDirty(); }}
               ariaLabel="Your written answer"
-              allowDiagrams={false}
+              // Inline graphs, constructions, charts and data tables can be
+              // embedded in the written answer itself: the doc carries their
+              // full structured specification, so one answer can combine text,
+              // mathematics, tables and diagrams exactly as the candidate built it.
+              allowDiagrams
               allowImages={false}
               allowLinks={false}
               placeholder="Write your answer…"

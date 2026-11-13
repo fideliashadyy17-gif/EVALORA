@@ -116,6 +116,12 @@ console.log('exam-track: all checks passed');
   }).outputText;
   const accessFile = path.join(dir, 'exam-access.cjs');
   writeFileSync(accessFile, accessSrc);
+  // exam-access.ts imports "./examLink.ts" (the shared link-window rule);
+  // place a transpiled copy at the exact specifier so require resolves.
+  const linkSrc = ts.transpileModule(readFileSync('src/lib/examLink.ts', 'utf8'), {
+    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
+  }).outputText;
+  writeFileSync(path.join(dir, 'examLink.ts'), linkSrc);
   const {parseExamAccessSettings, mergeEligibleClassIds} = await import(accessFile);
   const AP1 = '11111111-1111-4111-8111-111111111111';
   const AP2 = '22222222-2222-4222-8222-222222222222';

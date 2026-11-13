@@ -5,7 +5,7 @@ import { fmtDateTime } from "@/lib/utils";
 import { Video } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { setExamStatus } from "./actions";
+import { pauseExam, setExamStatus } from "./actions";
 
 export const metadata: Metadata = { title: "Examinations" };
 export const dynamic = "force-dynamic";
@@ -65,7 +65,7 @@ export default async function ExamsPage({
             return (
               <Card key={e.id} className="flex flex-col p-5">
                 <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone={e.status === "open" ? "amber" : e.status === "closed" ? "gray" : "green"}>{e.status}</Badge>
+                  <Badge tone={e.status === "open" ? "amber" : e.status === "paused" ? "gold" : e.status === "closed" ? "gray" : "green"}>{e.status}</Badge>
                   {Boolean(settings.proctoring) && (
                     <Badge tone="gold"><Video className="h-3.5 w-3.5" /> Proctored</Badge>
                   )}
@@ -80,7 +80,11 @@ export default async function ExamsPage({
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-evergreen-900/10 pt-4 text-sm">
                   <Link href={`/dashboard/exams/${e.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Manage</Link>
-                  {e.status !== "open" ? (
+                  {e.status === "paused" ? (
+                    /* Resuming a paused exam runs the pause RPC (credits every
+                       frozen attempt) — the plain open toggle can never do it. */
+                    <form action={pauseExam}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="pause_action" value="resume" /><button className="text-gold-700 underline-offset-2 hover:underline">Resume</button></form>
+                  ) : e.status !== "open" ? (
                     <form action={setExamStatus}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="status" value="open" /><button className="text-gold-700 underline-offset-2 hover:underline">Open exam</button></form>
                   ) : (
                     <form action={setExamStatus}><input type="hidden" name="id" value={e.id} /><input type="hidden" name="status" value="closed" /><button className="text-red-700 underline-offset-2 hover:underline">Close</button></form>

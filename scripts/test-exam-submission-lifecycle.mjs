@@ -83,6 +83,10 @@ function makeDb() {
     papers: new Map(), // quizId -> rows
     incidents: [],
     resultEvents: [],
+    presence: [{ attempt_id: AID, exam_id: "e1", last_seen_at: null, fresh: true }],
+    pauseEvents: [],
+    connectionEvents: [],
+    rpcCalls: [],
     writes: [],
     fail: {}, // table -> "grading" | "close" | "candidate"
     closeRace: null, // attemptId closed by "somebody else" mid-flight
@@ -153,6 +157,11 @@ function makeAdmin(db) {
         st.patch = row;
         return api;
       },
+      upsert(row, _opts) {
+        st.op = "insert";
+        st.patch = row;
+        return api;
+      },
       update(patch) {
         st.op = "update";
         st.patch = patch;
@@ -194,7 +203,41 @@ function makeAdmin(db) {
     };
     return api;
   }
-  return { from: table };
+  /**
+   * Mirror of exam_attempt_set_pause (0098/0099) against the virtual clock:
+   * one reason added/removed per call, the anchor clamped to
+   * [started_at, now], credit folded into extension_minutes only when the
+   * LAST reason clears. The SQL itself is asserted by the PGlite suites.
+   */
+  async function rpc(fn, args) {
+    db.rpcCalls.push({ fn, args });
+    if (fn !== "exam_attempt_set_pause") return { data: null, error: { message: "unknown rpc" } };
+    const attempt = db.attempts.get(args.p_attempt_id);
+    if (!attempt || attempt.status !== "in_progress") return { data: null, error: null };
+    const reasons = [...(attempt.pause_reasons ?? [])];
+    if (args.p_paused) {
+      if (reasons.includes(args.p_reason)) return { data: { paused: true, reasons, credited_minutes: 0, duplicate: true }, error: null };
+      reasons.push(args.p_reason);
+      if (reasons.length === 1) {
+        const clamp = args.p_paused_at
+          ? Math.min(Math.max(Date.parse(args.p_paused_at), Date.parse(attempt.started_at)), clockMs)
+          : clockMs;
+        attempt.paused_at = new Date(clamp).toISOString();
+      }
+      attempt.pause_reasons = reasons;
+      return { data: { paused: true, reasons, credited_minutes: 0, paused_at: attempt.paused_at }, error: null };
+    }
+    const idx = reasons.indexOf(args.p_reason);
+    if (idx < 0) return { data: { paused: reasons.length > 0, reasons, credited_minutes: 0, duplicate: true }, error: null };
+    reasons.splice(idx, 1);
+    attempt.pause_reasons = reasons;
+    if (reasons.length > 0) return { data: { paused: true, reasons, credited_minutes: 0 }, error: null };
+    const credited = attempt.paused_at ? Math.max(0, Math.ceil((clockMs - Date.parse(attempt.paused_at)) / 60000)) : 0;
+    attempt.extension_minutes = (attempt.extension_minutes ?? 0) + credited;
+    attempt.paused_at = null;
+    return { data: { paused: false, reasons: [], credited_minutes: credited, extension_minutes: attempt.extension_minutes }, error: null };
+  }
+  return { from: table, rpc };
 }
 
 function rowsOf(db, name) {
@@ -214,6 +257,15 @@ function rowsOf(db, name) {
       return db.incidents;
     case "exam_result_events":
       return db.resultEvents;
+    case "exam_presence":
+      // `fresh` rows heartbeat 10 s before the virtual clock: the default
+      // fixture is a candidate the server is still hearing from.
+      return db.presence.map((row) =>
+        row.fresh ? { ...row, last_seen_at: new Date(clockMs - 10_000).toISOString() } : row);
+    case "exam_pause_events":
+      return db.pauseEvents;
+    case "exam_connection_events":
+      return db.connectionEvents;
     default:
       return [];
   }
@@ -234,6 +286,14 @@ async function run(name, st, single) {
       db_ref.resultEvents.push(row);
     }
     else if (name === "proctoring_incidents") db_ref.incidents.push(row);
+    else if (name === "exam_pause_events") db_ref.pauseEvents.push(row);
+    else if (name === "exam_connection_events") {
+      // The real ledger deduplicates on (attempt_id, lost_at): one outage can
+      // never be credited twice, whichever rail credited it first.
+      const dupe = db_ref.connectionEvents.some(
+        (r) => r.attempt_id === row.attempt_id && r.lost_at === row.lost_at);
+      if (!dupe) db_ref.connectionEvents.push(row);
+    }
     return { data: row, error: null };
   }
 
@@ -307,6 +367,8 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
   };
 
   const deadline = load("src/lib/examDeadline.ts");
+  const examPause = load("src/lib/examPause.ts");
+  const connectionLost = load("src/lib/connectionLost.ts", { overrides: { "./examPause": examPause } });
   const submission = (() => {
     const file = path.resolve("src/lib/examSubmission.ts");
     const mod = new Module(file);
@@ -316,6 +378,7 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     Module._load = function (request, parent) {
       if (parent?.filename === file) {
         if (request === "./examDeadline") return deadline;
+        if (request === "./examPause") return examPause;
         if (request === "./exam") return examModule;
       }
       return originalLoad.apply(this, arguments);
@@ -342,7 +405,9 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     Module._load = function (request, parent) {
       if (parent?.filename === file) {
         if (request === "./examDeadline") return deadline;
+        if (request === "./examPause") return examPause;
         if (request === "./examSubmission") return submission;
+        if (request === "./connectionLost") return connectionLost;
       }
       return originalLoad.apply(this, arguments);
     };
@@ -359,17 +424,19 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     }
   })();
 
-  const routes = loadRoutes({ admin, examModule, submission, deadline, db });
+  const routes = loadRoutes({ admin, examModule, submission, deadline, examPause, connectionLost, db });
   return { db, admin, deadline, submission, sweep, routes, now };
 }
 
 /** Compiles the three real route handlers against the seams above. */
-function loadRoutes({ admin, examModule, submission, deadline, db }) {
+function loadRoutes({ admin, examModule, submission, deadline, examPause, connectionLost, db }) {
   const deadlineAndSubmission = { ...deadline, ...submission };
   const stubs = {
     "@/lib/exam": examModule,
     "@/lib/examSubmission": { applyDeadlineSubmission: submission.applyDeadlineSubmission },
     "@/lib/examDeadline": deadline,
+    "@/lib/examPause": examPause,
+    "@/lib/connectionLost": connectionLost,
     "@/lib/supabase/server": { createAdminClient: () => admin },
     "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
     "@/lib/live": { publicQuestion: (row) => ({ question_id: row.questions.id, quiz_question_id: row.id }), answerReveal: () => null },
@@ -785,6 +852,106 @@ console.log("\nResult publication is unchanged");
   // The attempt is still graded internally even when the score is not published.
   assert.equal(Number(unpublished.db.attempts.get(AID).score), 2, "grading still happened");
   ok("grading still runs for an unpublished assessment");
+}
+
+console.log("\nCONNECTION_LOST: a silent device is an interrupted attempt, never a completed one");
+
+{
+  // The 2026-11-12 incident shape, exactly: the device went silent at 11:50,
+  // five minutes BEFORE the 12:00 deadline. At 12:05 the candidate's own
+  // state call arrives. The old behaviour auto-submitted here; the permanent
+  // rule recovers: credit the whole outage, keep the paper open, never write
+  // a submission.
+  const now = Date.parse("2026-11-08T12:05:00.000Z");
+  const lost = build({ now });
+  placeStartRelativeTo(lost.db, now, -5 * MIN); // started 10:00, deadline 12:00
+  lost.db.presence = [{ attempt_id: AID, exam_id: "e1", last_seen_at: new Date(now - 15 * MIN).toISOString() }]; // silent since 11:50
+
+  const response = await lost.routes.state.GET(stateRequest());
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(body.attempt.status, "in_progress", "a disconnected candidate is NEVER auto-submitted");
+  const attempt = lost.db.attempts.get(AID);
+  assert.equal(attempt.status, "in_progress");
+  assert.equal(attempt.submitted_at, null);
+  assert.equal(Number(attempt.extension_minutes), 15, "the full outage is credited (11:50 → 12:05)");
+  assert.equal(body.attempt.deadline, "2026-11-08T12:15:00.000Z", "the countdown continues from the disconnection instant");
+  assert.equal(lost.db.candidates.get("c1").status, "in_progress", "the candidate is not marked submitted");
+  assert.equal(lost.db.resultEvents.filter((e) => e.event_type === "auto_submitted").length, 0, "no submission event exists");
+  const evs = lost.db.pauseEvents.filter((e) => e.attempt_id === AID);
+  assert.equal(evs.length, 2, "both transitions are audited");
+  assert.deepEqual([evs[0].action, evs[0].reason, evs[0].actor_id], ["pause", "connection", null]);
+  assert.deepEqual([evs[1].action, evs[1].reason, evs[1].credited_minutes], ["resume", "connection", 15]);
+  const ledger = lost.db.connectionEvents.filter((e) => e.attempt_id === AID);
+  assert.equal(ledger.length, 1, "the credited window reaches the connection ledger exactly once");
+  assert.equal(ledger[0].lost_at, new Date(now - 15 * MIN).toISOString(), "anchored at the last confirmed heartbeat");
+  assert.equal(ledger[0].credit_ms, 15 * MIN);
+  ok("state GET at a reached deadline with a silent device recovers the attempt instead of submitting it");
+
+  // The scheduled sweep sees the same attempt BEFORE the candidate returns:
+  // it pauses (frozen countdown, excluded from every later sweep) and closes
+  // nothing — even if the candidate never comes back.
+  const sw = build({ now });
+  placeStartRelativeTo(sw.db, now, -5 * MIN);
+  sw.db.presence = [{ attempt_id: AID, exam_id: "e1", last_seen_at: new Date(now - 15 * MIN).toISOString() }];
+  const result = await sw.sweep.sweepExpiredAttempts(sw.admin, now);
+  assert.deepEqual(result.connection_paused, [AID], "reported as connection-paused");
+  assert.deepEqual(result.closed, [], "never closed");
+  const swAttempt = sw.db.attempts.get(AID);
+  assert.equal(swAttempt.status, "in_progress");
+  assert.deepEqual(swAttempt.pause_reasons, ["connection"]);
+  assert.equal(swAttempt.paused_at, new Date(now - 15 * MIN).toISOString(), "anchored at the evidence instant");
+  assert.equal(Number(swAttempt.extension_minutes), 0, "credit waits for the candidate's return");
+  assert.equal(sw.db.candidates.get("c1").status, "in_progress");
+  assert.equal(sw.db.resultEvents.length, 0, "no submission evidence of any kind");
+  ok("the sweep pauses a disconnected attempt at the deadline instead of auto-submitting");
+
+  // The sweep paused at 12:05; the candidate returns at 12:20. The state
+  // call clears the connection pause and credits the whole frozen window:
+  // remaining time continues from 11:50, whenever the return happens.
+  const backNow = Date.parse("2026-11-08T12:20:00.000Z");
+  const back = build({ now: backNow });
+  placeStartRelativeTo(back.db, backNow, -20 * MIN); // started 10:00, deadline 12:00
+  const backAttempt = back.db.attempts.get(AID);
+  backAttempt.pause_reasons = ["connection"];
+  backAttempt.paused_at = "2026-11-08T11:50:00.000Z";
+  back.db.presence = [{ attempt_id: AID, exam_id: "e1", last_seen_at: "2026-11-08T11:50:00.000Z" }];
+  const backBody = await (await back.routes.state.GET(stateRequest())).json();
+  assert.equal(backBody.attempt.status, "in_progress");
+  assert.equal(Number(backAttempt.extension_minutes), 30, "11:50 → 12:20 credited in full");
+  assert.equal(backBody.attempt.deadline, "2026-11-08T12:30:00.000Z", "10 minutes of paper time remain, exactly as at 11:50");
+  assert.deepEqual(backAttempt.pause_reasons ?? [], [], "the connection pause clears on return");
+  ok("a paused attempt resumes automatically on the candidate's return, hours if need be");
+
+  // An organizer pause set before the outage survives the reconnection:
+  // reasons are independent and resume only when ALL of them clear.
+  const both = build({ now: backNow });
+  placeStartRelativeTo(both.db, backNow, -20 * MIN);
+  const bothAttempt = both.db.attempts.get(AID);
+  bothAttempt.pause_reasons = ["student", "connection"];
+  bothAttempt.paused_at = "2026-11-08T11:45:00.000Z";
+  both.db.presence = [{ attempt_id: AID, exam_id: "e1", last_seen_at: "2026-11-08T11:50:00.000Z" }];
+  const bothBody = await (await both.routes.state.GET(stateRequest())).json();
+  assert.equal(bothBody.attempt.status, "in_progress");
+  assert.equal(bothBody.attempt.paused, true, "still paused — by the organizer");
+  assert.deepEqual(bothAttempt.pause_reasons, ["student"], "only the connection reason cleared");
+  assert.equal(Number(bothAttempt.extension_minutes), 0, "no credit while an organizer reason is open");
+  assert.equal(bothBody.attempt.pause_notice, "student", "the student sees the organizer pause, not a dead countdown");
+  ok("reconnection never cancels an organizer pause; credit waits for the LAST reason");
+
+  // An explicit submit while connection-paused is a legitimate completion:
+  // the pause clears (credited) first, then the submission proceeds normally.
+  const sub = build({ now: backNow });
+  placeStartRelativeTo(sub.db, backNow, -20 * MIN);
+  const subAttempt = sub.db.attempts.get(AID);
+  subAttempt.pause_reasons = ["connection"];
+  subAttempt.paused_at = "2026-11-08T11:50:00.000Z";
+  sub.db.presence = [{ attempt_id: AID, exam_id: "e1", last_seen_at: "2026-11-08T11:50:00.000Z" }];
+  const subBody = await (await sub.routes.submit.POST(submitRequest())).json();
+  assert.equal(subBody.status, "submitted", "the candidate's own confirmation succeeds");
+  assert.equal(subBody.auto_submitted, false, "it is never dressed up as an automatic closure");
+  assert.equal(Number(subAttempt.extension_minutes), 30, "the outage was credited before the window check");
+  ok("an explicit submit clears the connection pause first and records a candidate submission");
 }
 
 Date.now = realDateNow;

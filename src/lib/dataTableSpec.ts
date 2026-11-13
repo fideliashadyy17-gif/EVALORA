@@ -98,6 +98,30 @@ export function resizeDataTable(spec: DataTableSpec, rowCount: number, columnCou
   };
 }
 
+/** Insert an empty row at `index` (clamped); existing rows keep their content. */
+export function insertDataTableRow(spec: DataTableSpec, index: number): DataTableSpec {
+  if (spec.rows.length >= DATA_TABLE_LIMITS.rows) return spec;
+  const at = Math.min(spec.rows.length, Math.max(0, Math.floor(index)));
+  const width = spec.columns.length;
+  const rows = [...spec.rows];
+  rows.splice(at, 0, Array.from({ length: width }, () => ""));
+  return { ...spec, version: DATA_TABLE_VERSION, rows };
+}
+
+/** Insert an empty column at `index` (clamped); existing columns keep their content. */
+export function insertDataTableColumn(spec: DataTableSpec, index: number): DataTableSpec {
+  if (spec.columns.length >= DATA_TABLE_LIMITS.columns) return spec;
+  const at = Math.min(spec.columns.length, Math.max(0, Math.floor(index)));
+  const columns = [...spec.columns];
+  columns.splice(at, 0, `Column ${columns.length + 1}`);
+  const rows = spec.rows.map((row) => {
+    const next = [...row];
+    next.splice(at, 0, "");
+    return next;
+  });
+  return { ...spec, version: DATA_TABLE_VERSION, columns, rows };
+}
+
 /** A compact description used in plain-text exports and accessible labels. */
 export function dataTableSummary(spec: DataTableSpec): string {
   const filled = spec.rows.reduce((total, row) => total + row.filter((cell) => cell.trim()).length, 0);

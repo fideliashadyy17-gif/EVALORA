@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 /* ─── Buttons ─────────────────────────────────────────────────────── */
 type BtnVariant = "primary" | "gold" | "outline" | "ghost" | "danger" | "dark";
@@ -51,7 +51,7 @@ export function ButtonLink({
 }
 
 /* ─── Form controls ───────────────────────────────────────────────── */
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
+export function Input(props: InputHTMLAttributes<HTMLInputElement> & { ref?: Ref<HTMLInputElement> }) {
   return (
     <input
       {...props}

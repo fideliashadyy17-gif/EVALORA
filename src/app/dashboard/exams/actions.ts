@@ -100,12 +100,67 @@ export async function setExamStatus(formData: FormData) {
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || !["open", "closed"].includes(status)) redirect("/dashboard/exams?e=status");
   const supabase = await createClient();
-  const { data, error } = await supabase.from("exams").update({ status }).eq("id", id)
-    .eq("organization_id", org.id).select("id").maybeSingle();
+  // A paused examination can never be flipped to open through the plain
+  // status control: resuming must run the pause RPC so every attempt's
+  // 'assessment' pause reason is cleared and its frozen time is credited.
+  // Closing a paused exam is allowed (emergency stop) — the pause-aware
+  // deadline math treats a non-open exam's stored window as authoritative.
+  let query = supabase.from("exams").update({ status }).eq("id", id)
+    .eq("organization_id", org.id);
+  if (status === "open") query = query.neq("status", "paused");
+  const { data, error } = await query.select("id").maybeSingle();
   if (error || !data) redirect("/dashboard/exams?e=status");
   revalidatePath("/dashboard/exams");
   revalidatePath(`/dashboard/exams/${id}`);
   redirect("/dashboard/exams?ok=status");
+}
+
+/**
+ * Organizer pause/resume of a WHOLE examination from the workspace
+ * (Feature B). Runs the same atomic exam_set_pause RPC as the monitoring
+ * surface: pausing freezes every in-progress attempt's countdown and blocks
+ * composition; resuming clears ONLY the 'assessment' pause reason, so a
+ * student who was also paused individually stays paused, and each attempt's
+ * frozen time is folded into its stored extension. Never use setExamStatus
+ * for this: flipping the status without the RPC would strand pause reasons.
+ */
+export async function pauseExam(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const id = String(formData.get("id") ?? "");
+  const action = String(formData.get("pause_action") ?? "") === "resume" ? "resume" : "pause";
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=pause");
+  const back = `/dashboard/exams/${id}`;
+  const admin = createAdminClient();
+  const { data: exam } = await admin.from("exams").select("id, organization_id, status").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (!exam) redirect("/dashboard/exams?e=pause");
+  if (action === "pause" && exam.status !== "open") redirect(`${back}?e=not_open`);
+  if (action === "resume" && exam.status !== "paused") redirect(`${back}?e=not_paused`);
+
+  const { data: result, error } = await admin.rpc("exam_set_pause", { p_exam_id: id, p_paused: action === "pause" });
+  if (error || !result) redirect(`${back}?e=pause_failed`);
+  const outcome = result as { attempts_updated?: number; error?: string };
+  if (outcome.error === "not_open") redirect(`${back}?e=not_open`);
+
+  // Audit every pause/resume transition (§10): actor, affected, states.
+  await admin.from("audit_logs").insert({
+    actor_id: ctx.user.id, organization_id: org.id,
+    action: action === "pause" ? "exam.paused" : "exam.resumed",
+    entity: "exams", entity_id: id,
+    metadata: { attempts_updated: Number(outcome.attempts_updated ?? 0), source: "workspace" },
+  });
+  await admin.from("exam_pause_events").insert({
+    organization_id: org.id, exam_id: id, attempt_id: null, actor_id: ctx.user.id,
+    scope: "exam", action, reason: "assessment",
+    pause_reasons_before: action === "pause" ? [] : ["assessment"],
+    pause_reasons_after: action === "pause" ? ["assessment"] : [],
+    credited_minutes: 0,
+  });
+  revalidatePath("/dashboard/exams");
+  revalidatePath(back);
+  revalidatePath(`${back}/monitor`);
+  redirect(`${back}?ok=${action === "pause" ? "paused" : "resumed"}`);
 }
 
 export async function deleteExam(formData: FormData) {
