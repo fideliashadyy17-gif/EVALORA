@@ -112,10 +112,16 @@ export async function GET(request: Request) {
 
   // Automatic closure — only ever after the official deadline. The whole rule,
   // including grading the answers saved before that instant, lives in one place.
-  // A manually paused attempt is NEVER auto-closed: its window cannot be
-  // reached while the pause is open, and this guard makes that explicit even
-  // for a malformed pause record.
-  if (attempt.status === "in_progress" && window.reached && !pausedNow) {
+  // A manually paused attempt is NEVER auto-closed, and if the candidate browser
+  // explicitly signals unconfirmed local pre-deadline saves (`X-Exam-Pending-Saves`),
+  // defer deadline closure on this read so queued answers flush before grading locks the attempt.
+  const rawPendingHeader = request.headers.get("x-exam-pending-saves");
+  const clientPendingSaves = rawPendingHeader !== null && /^\d+$/.test(rawPendingHeader)
+    ? Math.min(200, Number(rawPendingHeader))
+    : 0;
+  const deferDeadlineClose = attempt.status === "in_progress" && window.reached && clientPendingSaves > 0;
+
+  if (attempt.status === "in_progress" && window.reached && !pausedNow && !deferDeadlineClose) {
     const closed = await applyDeadlineSubmission(admin, attempt, exam, { reason: "deadline", nowMs });
     if (closed.outcome === "closed" || closed.outcome === "already_closed") {
       attempt.status = closed.status;

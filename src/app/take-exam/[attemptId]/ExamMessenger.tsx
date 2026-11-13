@@ -34,6 +34,8 @@ interface MessengerProps {
   totalQuestions: number;
   savedCount: number;
   pendingSaves: number;
+  /** False when the parent exam client already owns the presence heartbeat loop. */
+  managePresence?: boolean;
 }
 
 interface OutboxEntry {
@@ -79,7 +81,7 @@ function statusLine(m: ThreadMessage): string | null {
   return "Sent";
 }
 
-function ExamMessengerInner({ attemptId, token, active, questionNumber, totalQuestions, savedCount, pendingSaves }: MessengerProps) {
+function ExamMessengerInner({ attemptId, token, active, questionNumber, totalQuestions, savedCount, pendingSaves, managePresence = true }: MessengerProps) {
   const [messages, setMessages] = useState<ThreadMessage[]>([]);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState("");
@@ -266,17 +268,17 @@ function ExamMessengerInner({ attemptId, token, active, questionNumber, totalQue
   }, [attemptId, token]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !managePresence) return;
     const wait = Math.max(0, PRESENCE_MIN_GAP_MS - (Date.now() - lastPresenceRef.current));
     const timer = setTimeout(() => void sendPresence(), wait);
     return () => clearTimeout(timer);
-  }, [active, questionNumber, savedCount, pendingSaves, sendPresence]);
+  }, [active, managePresence, questionNumber, savedCount, pendingSaves, sendPresence]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !managePresence) return;
     const id = setInterval(() => void sendPresence(), PRESENCE_HEARTBEAT_MS);
     return () => clearInterval(id);
-  }, [active, sendPresence]);
+  }, [active, managePresence, sendPresence]);
 
   // ── Sending ──
   const send = () => {

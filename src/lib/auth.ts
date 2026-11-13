@@ -45,26 +45,39 @@ export interface SessionContext {
   workspaceSelected?: boolean;
 }
 
-/** Full session context or null. Server components / actions only. */
-export async function getSessionContext(): Promise<SessionContext | null> {
+const sessionCacheByHeaders = new WeakMap<object, Promise<SessionContext | null>>();
+
+function isRetryableAuthError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const err = error as { name?: string; status?: number; message?: string };
+  if (err.name === "AuthRetryableFetchError" || err.name === "AbortError") return true;
+  if (typeof err.status === "number" && err.status >= 500) return true;
+  return /fetch|network|timeout|abort/i.test(err.message ?? "");
+}
+
+async function resolveSessionContext(hdrs: Awaited<ReturnType<typeof headers>> | null): Promise<SessionContext | null> {
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  let userResult = await supabase.auth.getUser();
+  if (!userResult.data?.user && isRetryableAuthError(userResult.error)) {
+    await new Promise((r) => setTimeout(r, 200));
+    userResult = await supabase.auth.getUser();
+  }
+  const user = userResult.data?.user ?? null;
   if (!user) return null;
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .single();
+  const [{ data: profile }, { data: memberships, error: membershipsError }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .single(),
+    supabase
+      .from("organization_members")
+      .select("organization_id, role, organizations(id, name, slug, status, is_demo)")
+      .eq("user_id", user.id)
+      .eq("status", "active"),
+  ]);
   if (!profile) return null;
-
-  const { data: memberships, error: membershipsError } = await supabase
-    .from("organization_members")
-    .select("organization_id, role, organizations(id, name, slug, status, is_demo)")
-    .eq("user_id", user.id)
-    .eq("status", "active");
   // A failed membership query is not evidence that the user has no
   // organization; never silently redirect them into onboarding.
   if (membershipsError || !memberships) return null;
@@ -80,8 +93,8 @@ export async function getSessionContext(): Promise<SessionContext | null> {
   // user's verified organization memberships. Super Admins may enter
   // any tenant in audited administrative mode.
   try {
-    const hdrs = await headers();
-    tenantSlug = hdrs.get("x-evalora-tenant-slug") || getTenantSlugFromHost(hdrs.get("host"));
+    const activeHeaders = hdrs ?? (await headers());
+    tenantSlug = activeHeaders.get("x-evalora-tenant-slug") || getTenantSlugFromHost(activeHeaders.get("host"));
   } catch {
     tenantSlug = null;
   }
@@ -167,6 +180,24 @@ export async function getSessionContext(): Promise<SessionContext | null> {
     tenantDenied,
     workspaceSelected,
   };
+}
+
+/** Full session context or null. Server components / actions only. */
+export async function getSessionContext(): Promise<SessionContext | null> {
+  let hdrs: Awaited<ReturnType<typeof headers>> | null = null;
+  try {
+    hdrs = await headers();
+  } catch {
+    hdrs = null;
+  }
+  if (hdrs && typeof hdrs === "object") {
+    const existing = sessionCacheByHeaders.get(hdrs);
+    if (existing) return existing;
+    const pending = resolveSessionContext(hdrs).catch(() => null);
+    sessionCacheByHeaders.set(hdrs, pending);
+    return pending;
+  }
+  return resolveSessionContext(null).catch(() => null);
 }
 
 export async function requireUser() {

@@ -46,49 +46,58 @@ export async function loadMonitorSnapshot(
   }[];
   const attemptIds = attempts.map((a) => a.id);
 
-  // The paper: quiz rows with only the configuration needed to tell BC-only items apart.
-  const { data: quizRows } = exam.quiz_id
-    ? await supabase.from("quiz_questions").select("id, questions(id, config)").eq("quiz_id", exam.quiz_id).order("position")
-    : { data: [] as unknown[] };
-  const paper = ((quizRows ?? []) as unknown as { id: string; questions: { config?: unknown } | null }[])
-    .map((r) => ({ id: r.id, questions: r.questions ?? {} })) as PaperRow[];
-
   const classIds = [...new Set(attempts.map((a) => a.exam_candidates?.class_id).filter((id): id is string => Boolean(id)))];
   const classNames = new Map<string, string>();
-  for (const part of chunks(classIds, IN_CHUNK)) {
-    const { data } = await supabase.from("classes").select("id, name").in("id", part);
-    for (const c of data ?? []) classNames.set(c.id as string, c.name as string);
-  }
-
   const answersByAttempt = new Map<string, (SavedAnswerFacts & { quiz_question_id: string | null })[]>();
   const presenceByAttempt = new Map<string, { last_seen_at: string; current_question: number | null; pending_saves: number }>();
   const unreadByAttempt = new Map<string, number>();
-  for (const part of chunks(attemptIds, IN_CHUNK)) {
-    const { data: answers } = await supabase
-      .from("exam_answers")
-      .select("attempt_id, quiz_question_id, answer, is_correct, points_awarded")
-      .in("attempt_id", part);
-    for (const a of (answers ?? []) as { attempt_id: string; quiz_question_id: string | null; answer: unknown; is_correct: boolean | null; points_awarded: number | null }[]) {
+
+  // Load paper structure, class labels, saved answers, live presence, and unread
+  // candidate messages concurrently to cut live monitor snapshot latency.
+  const [quizRowsResult, classChunks, answerChunks, presenceResult, unreadResult] = await Promise.all([
+    exam.quiz_id
+      ? supabase.from("quiz_questions").select("id, questions(id, config)").eq("quiz_id", exam.quiz_id).order("position")
+      : Promise.resolve({ data: [] as unknown[] }),
+    Promise.all(
+      chunks(classIds, IN_CHUNK).map((part) => supabase.from("classes").select("id, name").in("id", part)),
+    ),
+    Promise.all(
+      chunks(attemptIds, IN_CHUNK).map((part) =>
+        supabase
+          .from("exam_answers")
+          .select("attempt_id, quiz_question_id, answer, is_correct, points_awarded")
+          .in("attempt_id", part),
+      ),
+    ),
+    supabase
+      .from("exam_presence")
+      .select("attempt_id, last_seen_at, current_question, pending_saves")
+      .eq("exam_id", examId),
+    supabase
+      .from("exam_messages")
+      .select("attempt_id")
+      .eq("exam_id", examId)
+      .eq("sender_kind", "candidate")
+      .is("read_at", null)
+      .limit(5000),
+  ]);
+
+  const paper = ((quizRowsResult.data ?? []) as unknown as { id: string; questions: { config?: unknown } | null }[])
+    .map((r) => ({ id: r.id, questions: r.questions ?? {} })) as PaperRow[];
+  for (const res of classChunks) {
+    for (const c of res.data ?? []) classNames.set(c.id as string, c.name as string);
+  }
+  for (const res of answerChunks) {
+    for (const a of (res.data ?? []) as { attempt_id: string; quiz_question_id: string | null; answer: unknown; is_correct: boolean | null; points_awarded: number | null }[]) {
       const list = answersByAttempt.get(a.attempt_id) ?? [];
       list.push({ answer: a.answer, is_correct: a.is_correct, points_awarded: a.points_awarded, quiz_question_id: a.quiz_question_id });
       answersByAttempt.set(a.attempt_id, list);
     }
   }
-  const { data: presence } = await supabase
-    .from("exam_presence")
-    .select("attempt_id, last_seen_at, current_question, pending_saves")
-    .eq("exam_id", examId);
-  for (const p of (presence ?? []) as { attempt_id: string; last_seen_at: string; current_question: number | null; pending_saves: number }[]) {
+  for (const p of (presenceResult.data ?? []) as { attempt_id: string; last_seen_at: string; current_question: number | null; pending_saves: number }[]) {
     presenceByAttempt.set(p.attempt_id, { last_seen_at: p.last_seen_at, current_question: p.current_question, pending_saves: p.pending_saves });
   }
-  const { data: unread } = await supabase
-    .from("exam_messages")
-    .select("attempt_id")
-    .eq("exam_id", examId)
-    .eq("sender_kind", "candidate")
-    .is("read_at", null)
-    .limit(5000);
-  for (const u of (unread ?? []) as { attempt_id: string }[]) {
+  for (const u of (unreadResult.data ?? []) as { attempt_id: string }[]) {
     unreadByAttempt.set(u.attempt_id, (unreadByAttempt.get(u.attempt_id) ?? 0) + 1);
   }
 

@@ -292,22 +292,34 @@ async function recordSubmissionEvent(
   // record, and the attempt is already closed and consistent either way.
   if (!facts.organizationId) return;
   try {
-    await admin.from("exam_result_events").insert({
+    const metadata = {
+      reason: facts.reason === "deadline" ? "deadline" : "candidate_confirmed",
+      submitted_at: facts.submittedAt,
+      deadline: facts.window.deadline,
+      bound_by: facts.window.boundBy,
+      server_now: new Date(facts.window.nowMs).toISOString(),
+      auto_score: facts.score,
+      auto_max_score: facts.max,
+    };
+    const primaryType = facts.status === "auto_submitted" ? "auto_submitted" : "submitted";
+    const inserted = await admin.from("exam_result_events").insert({
       organization_id: facts.organizationId,
       attempt_id: facts.attemptId,
       exam_id: facts.examId,
-      event_type: facts.status === "auto_submitted" ? "auto_submitted" : "submitted",
+      event_type: primaryType,
       actor_id: null,
-      metadata: {
-        reason: facts.reason === "deadline" ? "deadline" : "candidate_confirmed",
-        submitted_at: facts.submittedAt,
-        deadline: facts.window.deadline,
-        bound_by: facts.window.boundBy,
-        server_now: new Date(facts.window.nowMs).toISOString(),
-        auto_score: facts.score,
-        auto_max_score: facts.max,
-      },
+      metadata,
     });
+    if (inserted?.error && primaryType === "auto_submitted") {
+      await admin.from("exam_result_events").insert({
+        organization_id: facts.organizationId,
+        attempt_id: facts.attemptId,
+        exam_id: facts.examId,
+        event_type: "submitted",
+        actor_id: null,
+        metadata: { ...metadata, auto_submitted: true },
+      });
+    }
   } catch {
     // Evidence is desirable; a closed, consistent attempt matters more.
   }

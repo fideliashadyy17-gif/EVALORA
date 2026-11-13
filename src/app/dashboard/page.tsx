@@ -17,27 +17,70 @@ export default async function DashboardPage() {
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
 
+  let degradedMetrics = false;
+  const safeQuery = async <T,>(query: PromiseLike<T & { error?: unknown }>, fallback: T): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      const res = await Promise.race<T & { error?: unknown }>([
+        Promise.resolve(query),
+        new Promise<T & { error?: unknown }>((resolve) => {
+          timer = setTimeout(() => {
+            degradedMetrics = true;
+            resolve(fallback as T & { error?: unknown });
+          }, 5_500);
+        }),
+      ]);
+      if (res?.error) {
+        degradedMetrics = true;
+        return fallback;
+      }
+      return res;
+    } catch {
+      degradedMetrics = true;
+      return fallback;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams, platformRow] =
     await Promise.all([
-      supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]),
-      supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
-      supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
-      supabase
-        .from("organizations")
-        .select("slug, name, status, portal_enabled, custom_domain, platform_domain_status")
-        .eq("id", org.id)
-        .maybeSingle(),
+      safeQuery<{ count: number | null }>(supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
+      safeQuery<{ count: number | null }>(supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
+      safeQuery<{ count: number | null }>(supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
+      safeQuery<{ count: number | null }>(supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
+      safeQuery<{ count: number | null }>(supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]), { count: 0 }),
+      safeQuery<{ data: { id: string; title: string | null; join_code: string; created_at: string; status: string; quizzes: { title: string } | null }[] | null }>(supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
+      safeQuery<{ data: { id: string; title: string; duration_minutes: number; access_code: string; status: string }[] | null }>(supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
+      safeQuery<{
+        data: {
+          slug: string;
+          name: string;
+          status: string;
+          portal_enabled: boolean | null;
+          custom_domain: string | null;
+          platform_domain_status: string | null;
+        } | null;
+      }>(
+        supabase
+          .from("organizations")
+          .select("slug, name, status, portal_enabled, custom_domain, platform_domain_status")
+          .eq("id", org.id)
+          .maybeSingle(),
+        { data: null },
+      ),
     ]);
 
   const platform = organizationPlatformAccess(
     platformRow.data ?? { slug: org.slug, status: org.status },
   );
 
-  const entitlement = await getEntitlementFor(supabase, ctx, org.id);
+  const entitlement = await getEntitlementFor(supabase, ctx, org.id).catch(() => ({
+    planName: "Standard",
+    status: "active" as const,
+    trialEndsAt: null,
+    currentPeriodEnd: null,
+  }));
 
   return (
     <>
@@ -46,6 +89,12 @@ export default async function DashboardPage() {
         subtitle={`${org.name} · Your assessment workspace at a glance.`}
         action={<ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink>}
       />
+
+      {degradedMetrics && (
+        <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Some workspace summary counters are still refreshing. Examinations and live monitoring remain accessible from the sidebar.
+        </div>
+      )}
 
       <Card className="mb-6 flex flex-wrap items-center justify-between gap-3 border-evergreen-700/30 bg-evergreen-50 p-5">
         <div className="flex items-center gap-3">

@@ -25,34 +25,88 @@ import { enterOrgWorkspace } from "./actions/orgs";
 export const metadata: Metadata = { title: "Super Admin" };
 export const dynamic = "force-dynamic";
 
+const ADMIN_OVERVIEW_QUERY_TIMEOUT_MS = 5_000;
+
+async function safeQuery<T extends { error?: unknown }>(
+  build: () => PromiseLike<T>,
+  fallback: T,
+  onDegraded: () => void,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const result = await Promise.race<T>([
+      Promise.resolve(build()),
+      new Promise<T>((resolve) => {
+        timer = setTimeout(() => {
+          onDegraded();
+          resolve(fallback);
+        }, ADMIN_OVERVIEW_QUERY_TIMEOUT_MS);
+      }),
+    ]);
+    if (result?.error) {
+      onDegraded();
+      return fallback;
+    }
+    return result;
+  } catch {
+    onDegraded();
+    return fallback;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export default async function AdminOverview() {
   const ctx = await requireSuperAdmin();
   const admin = createAdminClient();
   const head = { count: "exact" as const, head: true };
+  let degradedQueries = 0;
+  const markDegraded = () => {
+    degradedQueries += 1;
+  };
+  const safeCount = (build: () => PromiseLike<{ count: number | null; error?: unknown }>) =>
+    safeQuery(build, { count: 0 }, markDegraded);
 
-  const [
-    users, activeUsers, orgs, students, classes, competitions, quizzes, questions, exams,
-    liveSessions, pendingPayments, activeSubs, trialSubs, openIncidents, openTickets,
-    approvedSums, recentAudit, platformOrg,
-  ] = await Promise.all([
-    admin.from("profiles").select("id", head),
-    admin.from("profiles").select("id", head).eq("status", "active"),
-    admin.from("organizations").select("id", head),
-    admin.from("students").select("id", head).eq("status", "active"),
-    admin.from("classes").select("id", head),
-    admin.from("competitions").select("id", head),
-    admin.from("quizzes").select("id", head),
-    admin.from("questions").select("id", head),
-    admin.from("exams").select("id", head),
-    admin.from("quiz_sessions").select("id", head).eq("status", "live"),
-    admin.from("payment_requests").select("id", head).eq("status", "pending"),
-    admin.from("subscriptions").select("id", head).eq("status", "active"),
-    admin.from("subscriptions").select("id", head).eq("status", "trialing"),
-    admin.from("proctoring_incidents").select("id", head).eq("status", "open"),
-    admin.from("support_tickets").select("id", head).eq("status", "open"),
-    admin.from("payment_requests").select("amount_cents, currency").eq("status", "approved").limit(2000),
-    admin.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(8),
-    admin.from("organizations").select("id, name").eq("slug", "evalora-platform").maybeSingle(),
+  // Batch queries into bounded waves (max 6 concurrent PostgREST requests) so
+  // opening /admin never spikes 20+ simultaneous database connections while
+  // isolating any slow analytics/commerce query from core exam operations.
+  const [exams, liveSessions, orgs, classes, students, platformOrg] = await Promise.all([
+    safeCount(() => admin.from("exams").select("id", head)),
+    safeCount(() => admin.from("quiz_sessions").select("id", head).eq("status", "live")),
+    safeCount(() => admin.from("organizations").select("id", head)),
+    safeCount(() => admin.from("classes").select("id", head)),
+    safeCount(() => admin.from("students").select("id", head).eq("status", "active")),
+    safeQuery<{ data: { id: string; name: string } | null; error?: unknown }>(
+      () => admin.from("organizations").select("id, name").eq("slug", "evalora-platform").maybeSingle(),
+      { data: null },
+      markDegraded,
+    ),
+  ]);
+
+  const [users, activeUsers, competitions, quizzes, questions, openIncidents] = await Promise.all([
+    safeCount(() => admin.from("profiles").select("id", head)),
+    safeCount(() => admin.from("profiles").select("id", head).eq("status", "active")),
+    safeCount(() => admin.from("competitions").select("id", head)),
+    safeCount(() => admin.from("quizzes").select("id", head)),
+    safeCount(() => admin.from("questions").select("id", head)),
+    safeCount(() => admin.from("proctoring_incidents").select("id", head).eq("status", "open")),
+  ]);
+
+  const [pendingPayments, activeSubs, trialSubs, openTickets, approvedSums, recentAudit] = await Promise.all([
+    safeCount(() => admin.from("payment_requests").select("id", head).eq("status", "pending")),
+    safeCount(() => admin.from("subscriptions").select("id", head).eq("status", "active")),
+    safeCount(() => admin.from("subscriptions").select("id", head).eq("status", "trialing")),
+    safeCount(() => admin.from("support_tickets").select("id", head).eq("status", "open")),
+    safeQuery<{ data: { amount_cents: number; currency: string }[] | null; error?: unknown }>(
+      () => admin.from("payment_requests").select("amount_cents, currency").eq("status", "approved").limit(2000),
+      { data: [] },
+      markDegraded,
+    ),
+    safeQuery<{ data: { id: string; action: string; entity: string; created_at: string }[] | null; error?: unknown }>(
+      () => admin.from("audit_logs").select("id, action, entity, created_at").order("created_at", { ascending: false }).limit(8),
+      { data: [] },
+      markDegraded,
+    ),
   ]);
 
   const revenue = new Map<string, number>();
@@ -80,6 +134,12 @@ export default async function AdminOverview() {
         title="Platform overview"
         subtitle={`You run EVALORA${ctx.profile.is_primary ? " as its Primary Super Admin" : ""} — create and operate organizations, competitions, examinations and commerce from here. Every action is audit-logged.`}
       />
+
+      {degradedQueries > 0 && (
+        <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+          Some secondary platform metrics are temporarily delayed while database load recovers. Examination management and live supervision remain fully operational.
+        </div>
+      )}
 
       {attention.length > 0 && (
         <div className="mb-6 grid gap-3 sm:grid-cols-3">

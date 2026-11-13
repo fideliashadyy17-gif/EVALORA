@@ -7,7 +7,11 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-const Body = z.object({ attempt_id: z.string().uuid(), token: z.string().uuid() });
+const Body = z.object({
+  attempt_id: z.string().uuid(),
+  token: z.string().uuid(),
+  idempotency_key: z.string().min(8).max(128).optional(),
+});
 
 const headers = { "Cache-Control": "private, no-store" };
 
@@ -87,6 +91,7 @@ export async function POST(request: Request) {
         auto_submitted: attempt.status === "auto_submitted",
         submitted_at: attempt.submitted_at ?? null,
         deadline: window.deadline,
+        ...(parsed.data.idempotency_key ? { idempotency_key: parsed.data.idempotency_key } : {}),
       },
       { headers },
     );
@@ -136,6 +141,7 @@ export async function POST(request: Request) {
       score: resultsPublished ? result.score : null,
       max_score: resultsPublished ? result.max : null,
       results_published: resultsPublished,
+      ...(parsed.data.idempotency_key ? { idempotency_key: parsed.data.idempotency_key } : {}),
     },
     { headers },
   );
