@@ -133,19 +133,24 @@ Nothing in this list is edited, renumbered, re-scored or re-published.
 
 ### Migration layout
 
-Each paper ships as four consecutive migrations, because one file per paper is
-too large for the SQL editor / migration API (~40 KB per call):
+Each paper ships as a run of consecutive migrations, because one file per paper
+is far above the ~40 KB a single SQL editor / migration-API statement accepts
+(the same budget applies after URL-encoding, so the accented and mathematical
+characters in the prose count double):
 
-| Paper | part a (paper row + first questions) | part b | part c | part d (assembly, exam, hints, self-check) |
-|---|---|---|---|---|
-| MYP2-MOCK-2026 (189) | `0097` | `0098` | `0099` | `0100` |
-| MYP4-MOCK-2026 (221) | `0101` | `0102` | `0103` | `0104` |
-| MYP5-MOCK-2026 (259) | `0105` | `0106` | `0107` | `0108` |
+| Paper | Parts (a → assembly) |
+|---|---|
+| MYP2-MOCK-2026 (189 marks) | `0097`–`0102` (a–e + assembly `f`) |
+| MYP4-MOCK-2026 (221 marks) | `0103`–`0109` (a–f + assembly `g`) |
+| MYP5-MOCK-2026 (259 marks) | `0110`–`0115` (a–e + assembly `f`) |
 
-Part boundaries are computed from the payload size by
-`build_mock_migrations.py`, so regenerating after a content edit can move them.
-Every part is independently idempotent; part `d` re-assembles any missing paper
-item and then refuses to commit unless the paper is complete.
+Part boundaries are computed from the encoded payload size by
+`build_mock_migrations.py`, which fails the build if any file would exceed the
+budget, so a content edit can never produce an unappliable file. Parts are
+numbered sequentially across the three papers (the split moves, so a fixed
+per-paper start number would collide). Every part is independently idempotent;
+the final part re-assembles any missing paper item and then refuses to commit
+unless the paper is complete.
 
 ---
 

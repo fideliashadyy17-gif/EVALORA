@@ -23,11 +23,22 @@
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 
+// Discover the parts from disk so a content edit that re-splits a paper cannot
+// silently leave this proof behind.
+const dir = new URL("../supabase/migrations/", import.meta.url);
+const MOCK_FILES = [...new Set(
+  (await import("node:fs")).readdirSync(dir).filter((f) => /^\d{4}_myp[245]_mock_[a-z]\.sql$/.test(f)),
+)].sort();
+const FILES_BY_PAPER = {};
+for (const file of MOCK_FILES) {
+  const key = file.match(/myp([245])/)[1];
+  (FILES_BY_PAPER[key] ??= []).push(file);
+}
 const PARTS = [
-  { code: "MYP2-MOCK-2026", quiz: "d2000000-0000-4000-8000-000000000001", exam: "d2000000-0000-4000-8000-000000000002", marks: 189, files: ["0097_myp2_mock_a.sql", "0098_myp2_mock_b.sql", "0099_myp2_mock_c.sql", "0100_myp2_mock_d.sql"] },
-  { code: "MYP4-MOCK-2026", quiz: "d4000000-0000-4000-8000-000000000001", exam: "d4000000-0000-4000-8000-000000000002", marks: 221, files: ["0101_myp4_mock_a.sql", "0102_myp4_mock_b.sql", "0103_myp4_mock_c.sql", "0104_myp4_mock_d.sql"] },
-  { code: "MYP5-MOCK-2026", quiz: "d5000000-0000-4000-8000-000000000001", exam: "d5000000-0000-4000-8000-000000000002", marks: 259, files: ["0105_myp5_mock_a.sql", "0106_myp5_mock_b.sql", "0107_myp5_mock_c.sql", "0108_myp5_mock_d.sql"] },
-];
+  { key: "2", code: "MYP2-MOCK-2026", quiz: "d2000000-0000-4000-8000-000000000001", exam: "d2000000-0000-4000-8000-000000000002", marks: 189 },
+  { key: "4", code: "MYP4-MOCK-2026", quiz: "d4000000-0000-4000-8000-000000000001", exam: "d4000000-0000-4000-8000-000000000002", marks: 221 },
+  { key: "5", code: "MYP5-MOCK-2026", quiz: "d5000000-0000-4000-8000-000000000001", exam: "d5000000-0000-4000-8000-000000000002", marks: 259 },
+].map((paper) => ({ ...paper, files: FILES_BY_PAPER[paper.key] ?? [] }));
 const ALL_FILES = PARTS.flatMap((p) => p.files);
 
 const ORG = "0a400000-0000-4000-8000-000000000001";
@@ -357,7 +368,7 @@ await db.exec(`delete from public.quiz_questions
                 where question_id in (select id from public.questions
                                        where config->>'question_number' = '45'
                                          and config->>'source' = 'myp-mock-myp2-mock')`);
-await db.exec(sqlOf("0100_myp2_mock_d.sql"));
+await db.exec(sqlOf(FILES_BY_PAPER["2"].at(-1)));
 const repaired = await db.query(
   `select count(*)::int as n from public.quiz_questions where quiz_id = $1`,
   ["d2000000-0000-4000-8000-000000000001"]);
@@ -374,7 +385,7 @@ await db.exec(`delete from public.questions
 const shortPaper = await db.query("select count(*)::int as n from public.quiz_questions");
 let aborted = "";
 try {
-  await db.exec(sqlOf("0100_myp2_mock_d.sql"));
+  await db.exec(sqlOf(FILES_BY_PAPER["2"].at(-1)));
 } catch (error) {
   aborted = String(error.message);
 }

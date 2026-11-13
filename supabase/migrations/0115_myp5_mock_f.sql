@@ -1,4 +1,4 @@
--- MYP5-MOCK-2026 — mock examination, part 4 of 4:
+-- MYP5-MOCK-2026 — mock examination, part 6 of 6:
 -- options, accepted variants, paper assembly, the examination row (cover page),
 -- question-level hints and the self-check. Generated, do not edit.
 -- Idempotent: fixed UUIDs + ON CONFLICT DO NOTHING; the self-check aborts the

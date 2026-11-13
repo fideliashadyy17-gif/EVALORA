@@ -7,7 +7,7 @@
 //     manual, split into per-paper parts a–d so each file fits the SQL editor
 //   · the papers reuse the existing question model (no new question type)
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, existsSync, mkdtempSync, symlinkSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync, mkdtempSync, symlinkSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -49,11 +49,21 @@ const { responseWorkspaceFor } = responseTools;
 let checks = 0;
 const check = (name, fn) => { fn(); checks += 1; console.log(`✓ ${name}`); };
 
+// Discover the paper parts from disk: a content edit can re-split a paper, and
+// this suite must follow it rather than assert a stale file list.
+const MIGRATION_DIR = "supabase/migrations";
+const mockFiles = readdirSync(MIGRATION_DIR)
+  .filter((file) => /^\d{4}_myp[245]_mock_[a-z]\.sql$/.test(file))
+  .sort();
+const filesFor = (grade) => mockFiles.filter((file) => file.includes(`_myp${grade}_`));
 const PAPERS = [
-  { key: "myp2", files: ["0097_myp2_mock_a.sql", "0098_myp2_mock_b.sql", "0099_myp2_mock_c.sql", "0100_myp2_mock_d.sql"], title: "MYP2 Mathematics — Mock Examination", code: "MYP2-MOCK-2026", quiz: "d2000000-0000-4000-8000-000000000001", exam: "d2000000-0000-4000-8000-000000000002", prefix: "d2000000-0000-4000-8000" },
-  { key: "myp4", files: ["0101_myp4_mock_a.sql", "0102_myp4_mock_b.sql", "0103_myp4_mock_c.sql", "0104_myp4_mock_d.sql"], title: "MYP4 Mathematics — Mock Examination", code: "MYP4-MOCK-2026", quiz: "d4000000-0000-4000-8000-000000000001", exam: "d4000000-0000-4000-8000-000000000002", prefix: "d4000000-0000-4000-8000" },
-  { key: "myp5", files: ["0105_myp5_mock_a.sql", "0106_myp5_mock_b.sql", "0107_myp5_mock_c.sql", "0108_myp5_mock_d.sql"], title: "MYP5 Mathematics — Mock Examination", code: "MYP5-MOCK-2026", quiz: "d5000000-0000-4000-8000-000000000001", exam: "d5000000-0000-4000-8000-000000000002", prefix: "d5000000-0000-4000-8000" },
+  { key: "myp2", files: filesFor(2), title: "MYP2 Mathematics — Mock Examination", code: "MYP2-MOCK-2026", quiz: "d2000000-0000-4000-8000-000000000001", exam: "d2000000-0000-4000-8000-000000000002", prefix: "d2000000-0000-4000-8000" },
+  { key: "myp4", files: filesFor(4), title: "MYP4 Mathematics — Mock Examination", code: "MYP4-MOCK-2026", quiz: "d4000000-0000-4000-8000-000000000001", exam: "d4000000-0000-4000-8000-000000000002", prefix: "d4000000-0000-4000-8000" },
+  { key: "myp5", files: filesFor(5), title: "MYP5 Mathematics — Mock Examination", code: "MYP5-MOCK-2026", quiz: "d5000000-0000-4000-8000-000000000001", exam: "d5000000-0000-4000-8000-000000000002", prefix: "d5000000-0000-4000-8000" },
 ];
+for (const paper of PAPERS) {
+  assert.ok(paper.files.length >= 2, `${paper.code} has no migrations on disk`);
+}
 
 // Each part carries its own payload; the paper is the concatenation of the
 // question parts (the last file is the assembly / cover-page block).
