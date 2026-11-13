@@ -290,6 +290,24 @@ check("pass threshold is stored as a platform setting with an org override", () 
   assert.ok(sql.includes("on conflict (key) do nothing"));
 });
 
+check("the authoring form can set up every workspace the papers use", () => {
+  // The papers rely on these workspace starters; the question form must be able
+  // to author them, or a teacher cannot reproduce a paper by hand.
+  const form = readFileSync("src/components/QuestionForm.tsx", "utf8");
+  for (const tool of ["rich_text", "math", "table", "data_table", "graph", "statistics", "venn"]) {
+    assert.ok(form.includes(`\"${tool}\"`), `form cannot select ${tool}`);
+  }
+  assert.ok(form.includes("response_venn"), "form cannot save a Venn workspace");
+  assert.ok(form.includes("emptyVennSpec") && form.includes("normaliseVennSpec"));
+  assert.ok(form.includes("allow_set_change"), "form cannot fix the number of sets");
+  // Feedback fields the result screen reads must be authorable too.
+  assert.ok(form.includes("next_time_hint"), "form cannot save a next-time hint");
+  assert.ok(form.includes("marking_criteria"), "form cannot save marking criteria");
+  // A new Venn diagram must never arrive pre-filled with answers.
+  const starter = form.slice(form.indexOf('config.response_venn'), form.indexOf('config.response_venn') + 700);
+  assert.ok(!/regions\s*:/.test(starter), "the Venn starter must open empty");
+});
+
 check("papers share no question with each other and no duplicate stem inside a paper", () => {
   const stems = new Map();
   for (const paper of PAPERS) {
