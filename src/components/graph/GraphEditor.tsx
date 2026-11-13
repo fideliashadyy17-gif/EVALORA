@@ -11,15 +11,17 @@ import {
   sampleGraphFunction,
   type GraphAnnotation,
   type GraphPoint,
+  type GraphRegion,
   type GraphSegment,
   type GraphSpec,
+  type GraphStroke,
   type GraphDomain,
 } from "@/lib/graphSpec";
 import { compileExpression, stripEquation } from "@/lib/mathExpr";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { GraphView } from "./GraphView";
 
-type Tool = "move" | "point" | "segment" | "annotation";
+type Tool = "move" | "point" | "segment" | "annotation" | "freehand" | "region";
 
 const uid = (prefix: string) => `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
 
@@ -56,6 +58,8 @@ export function GraphEditor({
   const [tool, setTool] = useState<Tool>("move");
   const [selected, setSelected] = useState<string | null>(null);
   const [pendingSegment, setPendingSegment] = useState<{ x1: number; y1: number } | null>(null);
+  const [pendingRegion, setPendingRegion] = useState<{ x1: number; y1: number } | null>(null);
+  const strokeRef = useRef<GraphStroke | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState<{ x: number; y: number } | null>(null);
   const [annotationText, setAnnotationText] = useState("");
   const [showSettings, setShowSettings] = useState(!compact);
@@ -128,6 +132,27 @@ export function GraphEditor({
       setAnnotationText("");
       return;
     }
+    if (tool === "freehand") {
+      // Record the pre-stroke state once so undo removes the whole stroke.
+      setHistory((previous) => [...previous.slice(-40), spec]);
+      setFuture([]);
+      strokeRef.current = {
+        id: uid("stroke"), points: [{ x: position.x, y: position.y }],
+        color: GRAPH_COLORS[2], width: 2.5, visible: true,
+      };
+      return;
+    }
+    if (tool === "region") {
+      if (!pendingRegion) { setPendingRegion({ x1: position.x, y1: position.y }); return; }
+      const region: GraphRegion = {
+        id: uid("region"), x1: pendingRegion.x1, y1: pendingRegion.y1, x2: position.x, y2: position.y,
+        color: GRAPH_COLORS[4], label: "", visible: true,
+      };
+      publish({ ...spec, regions: [...(spec.regions ?? []), region] });
+      setPendingRegion(null);
+      setSelected(region.id);
+      return;
+    }
     setSelected(null);
   }
 
@@ -141,6 +166,19 @@ export function GraphEditor({
   }
 
   function onPointerMove(event: React.PointerEvent<SVGSVGElement>) {
+    const stroke = strokeRef.current;
+    if (stroke && !readOnly) {
+      const position = pointFromEvent(event);
+      const last = stroke.points[stroke.points.length - 1];
+      // Throttle: skip negligible moves so a long stroke stays within limits.
+      if (stroke.points.length < 600 && (!last || Math.hypot(position.x - last.x, position.y - last.y) > 0.02)) {
+        stroke.points.push({ x: position.x, y: position.y });
+        const next = { ...spec, strokes: [...(spec.strokes ?? []).filter((s) => s.id !== stroke.id), { ...stroke, points: [...stroke.points] }] };
+        setSpec(next);
+        onChange?.(next);
+      }
+      return;
+    }
     const drag = dragRef.current;
     if (!drag || readOnly) return;
     const position = pointFromEvent(event);
@@ -160,6 +198,18 @@ export function GraphEditor({
   }
 
   function endDrag() {
+    const stroke = strokeRef.current;
+    if (stroke) {
+      strokeRef.current = null;
+      if (stroke.points.length < 2) {
+        // A tap without movement is not a stroke: drop it and the history entry.
+        setHistory((previous) => previous.slice(0, -1));
+        const next = { ...spec, strokes: (spec.strokes ?? []).filter((s) => s.id !== stroke.id) };
+        setSpec(next);
+        onChange?.(next);
+      }
+      return;
+    }
     const drag = dragRef.current;
     dragRef.current = null;
     if (!drag) return;
@@ -184,12 +234,22 @@ export function GraphEditor({
     publish({ ...spec, functions: spec.functions.map((f) => (f.id === id ? { ...f, ...patch } : f)) }, false);
   }
 
-  function remove(id: string, kind: "function" | "point" | "segment" | "annotation") {
+  function remove(id: string, kind: "function" | "point" | "segment" | "annotation" | "stroke" | "region") {
     if (kind === "function") publish({ ...spec, functions: spec.functions.filter((f) => f.id !== id) });
     if (kind === "point") publish({ ...spec, points: spec.points.filter((p) => p.id !== id) });
     if (kind === "segment") publish({ ...spec, segments: spec.segments.filter((s) => s.id !== id) });
     if (kind === "annotation") publish({ ...spec, annotations: spec.annotations.filter((a) => a.id !== id) });
+    if (kind === "stroke") publish({ ...spec, strokes: (spec.strokes ?? []).filter((s) => s.id !== id) });
+    if (kind === "region") publish({ ...spec, regions: (spec.regions ?? []).filter((r) => r.id !== id) });
     if (selected === id) setSelected(null);
+  }
+
+  /** Remove every drawn element but keep the axes configuration. */
+  function clearDrawing() {
+    publish({ ...spec, functions: [], points: [], segments: [], annotations: [], strokes: [], regions: [] });
+    setSelected(null);
+    setPendingSegment(null);
+    setPendingRegion(null);
   }
 
   function undo() {
@@ -244,6 +304,8 @@ export function GraphEditor({
 
   const selectedPoint = spec.points.find((p) => p.id === selected) ?? null;
   const selectedSegment = spec.segments.find((s) => s.id === selected) ?? null;
+  const selectedStroke = (spec.strokes ?? []).find((s) => s.id === selected) ?? null;
+  const selectedRegion = (spec.regions ?? []).find((r) => r.id === selected) ?? null;
 
   return (
     <section className="graph-editor" aria-label={title} data-testid="graph-editor">
@@ -251,13 +313,15 @@ export function GraphEditor({
         <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-evergreen-800">Graph</span>
         {!readOnly && (
           <>
-            <button type="button" className={`${toolButton} ${tool === "move" ? toolActive : ""}`} aria-pressed={tool === "move"} onClick={() => { setTool("move"); setPendingSegment(null); }}>✥ Select</button>
-            <button type="button" className={`${toolButton} ${tool === "point" ? toolActive : ""}`} aria-pressed={tool === "point"} onClick={() => { setTool("point"); setPendingSegment(null); }}>• Point</button>
-            <button type="button" className={`${toolButton} ${tool === "segment" ? toolActive : ""}`} aria-pressed={tool === "segment"} onClick={() => { setTool("segment"); setPendingSegment(null); }}>╱ Segment</button>
+            <button type="button" className={`${toolButton} ${tool === "move" ? toolActive : ""}`} aria-pressed={tool === "move"} onClick={() => { setTool("move"); setPendingSegment(null); setPendingRegion(null); }}>✥ Select</button>
+            <button type="button" className={`${toolButton} ${tool === "point" ? toolActive : ""}`} aria-pressed={tool === "point"} onClick={() => { setTool("point"); setPendingSegment(null); setPendingRegion(null); }}>• Point</button>
+            <button type="button" className={`${toolButton} ${tool === "segment" ? toolActive : ""}`} aria-pressed={tool === "segment"} onClick={() => { setTool("segment"); setPendingSegment(null); setPendingRegion(null); }}>╱ Segment</button>
             {allowFunctions && <button type="button" className={toolButton} onClick={addFunction}>ƒ(x) Function</button>}
             {allowAnnotations && (
-              <button type="button" className={`${toolButton} ${tool === "annotation" ? toolActive : ""}`} aria-pressed={tool === "annotation"} onClick={() => { setTool("annotation"); setPendingSegment(null); }}>T Label</button>
+              <button type="button" className={`${toolButton} ${tool === "annotation" ? toolActive : ""}`} aria-pressed={tool === "annotation"} onClick={() => { setTool("annotation"); setPendingSegment(null); setPendingRegion(null); }}>T Label</button>
             )}
+            <button type="button" className={`${toolButton} ${tool === "freehand" ? toolActive : ""}`} aria-pressed={tool === "freehand"} onClick={() => { setTool("freehand"); setPendingSegment(null); setPendingRegion(null); }}>✎ Freehand</button>
+            <button type="button" className={`${toolButton} ${tool === "region" ? toolActive : ""}`} aria-pressed={tool === "region"} onClick={() => { setTool("region"); setPendingSegment(null); setPendingRegion(null); }}>▨ Region</button>
           </>
         )}
         <span className="mx-1 h-5 w-px bg-evergreen-900/15" />
@@ -270,6 +334,7 @@ export function GraphEditor({
           <>
             <button type="button" className={toolButton} onClick={undo} disabled={!history.length} aria-label="Undo">↩</button>
             <button type="button" className={toolButton} onClick={redo} disabled={!future.length} aria-label="Redo">↪</button>
+            <button type="button" className={toolButton} onClick={clearDrawing} aria-label="Clear drawing">🗑 Clear</button>
           </>
         )}
         {spec.domain.showIntersections && <span className="text-xs text-ink-soft">{intersections.length} intersection(s)</span>}
@@ -278,6 +343,16 @@ export function GraphEditor({
       {tool === "segment" && (
         <p className="border-b border-evergreen-900/10 bg-evergreen-50 px-3 py-1.5 text-xs text-evergreen-900">
           {pendingSegment ? `First point (${formatAxisLabel(pendingSegment.x1)}, ${formatAxisLabel(pendingSegment.y1)}) — tap the second point.` : "Tap the first endpoint of the segment."}
+        </p>
+      )}
+      {tool === "region" && (
+        <p className="border-b border-evergreen-900/10 bg-evergreen-50 px-3 py-1.5 text-xs text-evergreen-900">
+          {pendingRegion ? `First corner (${formatAxisLabel(pendingRegion.x1)}, ${formatAxisLabel(pendingRegion.y1)}) — tap the opposite corner.` : "Tap one corner of the region you want to highlight."}
+        </p>
+      )}
+      {tool === "freehand" && (
+        <p className="border-b border-evergreen-900/10 bg-evergreen-50 px-3 py-1.5 text-xs text-evergreen-900">
+          Press and drag on the plane to draw a freehand curve. Undo removes the last stroke.
         </p>
       )}
       {annotationDraft && (
@@ -352,6 +427,26 @@ export function GraphEditor({
               </g>
             );
           })()}
+          {(spec.regions ?? []).filter((r) => r.visible).map((r) => {
+            const x = Math.min(toX(r.x1), toX(r.x2));
+            const y = Math.min(toY(r.y1), toY(r.y2));
+            const w = Math.abs(toX(r.x2) - toX(r.x1));
+            const h = Math.abs(toY(r.y2) - toY(r.y1));
+            return (
+              <g key={r.id} data-graph-element="region">
+                <rect x={x} y={y} width={w} height={h} fill={r.color} fillOpacity={0.14}
+                  stroke={selected === r.id ? r.color : "none"} strokeWidth={1.5} strokeDasharray="6 4"
+                  onClick={(e) => { e.stopPropagation(); setSelected(r.id); }} style={{ cursor: "pointer" }} />
+                {r.label && <text x={x + 5} y={y + 15} fontSize={11} fill={r.color} fontWeight={600} pointerEvents="none">{r.label}</text>}
+              </g>
+            );
+          })}
+          {(spec.strokes ?? []).filter((st) => st.visible && st.points.length >= 2).map((st) => (
+            <polyline key={st.id} data-graph-element="stroke"
+              points={st.points.map((pt) => `${toX(pt.x)},${toY(pt.y)}`).join(" ")}
+              fill="none" stroke={st.color} strokeWidth={st.width} strokeLinecap="round" strokeLinejoin="round"
+              onClick={(e) => { e.stopPropagation(); setSelected(st.id); }} style={{ cursor: "pointer" }} />
+          ))}
           {spec.segments.filter((s) => s.visible).map((s) => {
             const isSelected = selected === s.id;
             return (
@@ -505,7 +600,7 @@ export function GraphEditor({
         </div>
       )}
 
-      {(selectedPoint || selectedSegment) && !readOnly && (
+      {(selectedPoint || selectedSegment || selectedStroke || selectedRegion) && !readOnly && (
         <div className="graph-panel" aria-label="Selected element">
           <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-evergreen-800">Selected element</p>
           {selectedPoint && (
@@ -541,6 +636,38 @@ export function GraphEditor({
                   className="h-9 w-28 rounded-md border border-evergreen-900/20 px-2" />
               </label>
               <button type="button" className="text-sm text-red-700" onClick={() => remove(selectedSegment.id, "segment")}>Delete segment</button>
+            </div>
+          )}
+          {selectedStroke && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-ink-soft">Freehand stroke ({selectedStroke.points.length} point{selectedStroke.points.length === 1 ? "" : "s"})</span>
+              <label className="flex items-center gap-1">Colour
+                <input type="color" value={selectedStroke.color} aria-label="Stroke colour"
+                  onChange={(e) => publish({ ...spec, strokes: (spec.strokes ?? []).map((s) => s.id === selectedStroke.id ? { ...s, color: e.target.value } : s) }, false)}
+                  className="h-9 w-10 rounded border border-evergreen-900/20" />
+              </label>
+              <label className="flex items-center gap-1">Width
+                <input type="number" min={1} max={8} step={0.5} value={selectedStroke.width} aria-label="Stroke width"
+                  onChange={(e) => publish({ ...spec, strokes: (spec.strokes ?? []).map((s) => s.id === selectedStroke.id ? { ...s, width: Math.min(8, Math.max(1, Number(e.target.value) || 2.5)) } : s) })}
+                  className="h-9 w-20 rounded-md border border-evergreen-900/20 px-2" />
+              </label>
+              <button type="button" className="text-sm text-red-700" onClick={() => remove(selectedStroke.id, "stroke")}>Delete stroke</button>
+            </div>
+          )}
+          {selectedRegion && (
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="text-ink-soft">Region ({formatAxisLabel(selectedRegion.x1)}, {formatAxisLabel(selectedRegion.y1)}) → ({formatAxisLabel(selectedRegion.x2)}, {formatAxisLabel(selectedRegion.y2)})</span>
+              <label className="flex items-center gap-1">Label
+                <input value={selectedRegion.label} placeholder="e.g. solution set"
+                  onChange={(e) => publish({ ...spec, regions: (spec.regions ?? []).map((r) => r.id === selectedRegion.id ? { ...r, label: e.target.value.slice(0, 60) } : r) }, false)}
+                  className="h-9 w-36 rounded-md border border-evergreen-900/20 px-2" />
+              </label>
+              <label className="flex items-center gap-1">Colour
+                <input type="color" value={selectedRegion.color} aria-label="Region colour"
+                  onChange={(e) => publish({ ...spec, regions: (spec.regions ?? []).map((r) => r.id === selectedRegion.id ? { ...r, color: e.target.value } : r) }, false)}
+                  className="h-9 w-10 rounded border border-evergreen-900/20" />
+              </label>
+              <button type="button" className="text-sm text-red-700" onClick={() => remove(selectedRegion.id, "region")}>Delete region</button>
             </div>
           )}
         </div>

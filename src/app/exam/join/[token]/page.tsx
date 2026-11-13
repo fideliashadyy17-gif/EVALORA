@@ -46,7 +46,10 @@ export default async function SharedExamJoinPage({
     invite_activates_at: exam.invite_activates_at,
     invite_no_expiry: exam.invite_no_expiry,
   });
-  if (!availability.ok)
+  // A paused examination still renders the join form: returning students with
+  // an active attempt resume it (the API decides), while new entries are
+  // refused there with a clear "paused by the organizer" message.
+  if (!availability.ok && availability.reason !== "exam_paused")
     return <Shell title={availability.label} body={availability.error ?? exam.title} />;
 
   // Restrict class options to this exam's own class, direct links, unassigned

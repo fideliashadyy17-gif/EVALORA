@@ -76,7 +76,7 @@ execSync(`npx tsc src/lib/avatars.ts --outDir ${outDir} --rootDir src --module c
 });
 const require = createRequire(import.meta.url);
 const avatars = require(`${outDir}/lib/avatars.js`);
-const presence = compile("src/lib/presence.ts", "scripts/__virtual_presence.cjs", { "@/lib/avatars": avatars });
+const presence = compile("src/lib/presence.ts", "scripts/__virtual_presence.cjs", { "@/lib/avatars": avatars, "./avatars.ts": avatars });
 
 console.log("\nPresence classification");
 const now = Date.parse("2026-11-10T10:00:00.000Z");

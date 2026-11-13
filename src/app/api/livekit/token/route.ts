@@ -2,6 +2,7 @@ import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
 import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/platform";
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { manualPauseMs } from "@/lib/examPause";
 import { ensureProctoringRoom, recordRoomEvents } from "@/lib/proctoring";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { AccessToken } from "livekit-server-sdk";
@@ -62,7 +63,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Not authorized for this room." }, { status: 403 });
     if (ctx.attempt.status !== "in_progress")
       return NextResponse.json({ error: "Your attempt is not in progress." }, { status: 403 });
-    const deadline = attemptDeadline(exam, ctx.attempt.started_at, Number(ctx.attempt.extension_minutes ?? 0)).getTime();
+    // Pause-aware: a paused attempt's proctoring grant must not be cut short
+    // by the frozen time — its real deadline carries the open pause.
+    const deadline = attemptDeadline(exam, ctx.attempt.started_at, Number(ctx.attempt.extension_minutes ?? 0), manualPauseMs(ctx.attempt as { pause_reasons?: string[] | null; paused_at?: string | null }, Date.now())).getTime();
     const secondsRemaining = Math.floor((deadline - Date.now()) / 1000);
     if (!Number.isFinite(secondsRemaining) || secondsRemaining <= 0)
       return NextResponse.json({ error: "This examination has expired." }, { status: 403 });

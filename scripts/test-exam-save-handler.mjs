@@ -17,6 +17,11 @@ const examTrackSource = ts.transpileModule(readFileSync("src/lib/examTrack.ts", 
 }).outputText;
 const examTrack = {};
 new Function("exports", examTrackSource)(examTrack);
+const examPauseSource = ts.transpileModule(readFileSync("src/lib/examPause.ts", "utf8"), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+}).outputText;
+const examPause = {};
+new Function("exports", examPauseSource)(examPause);
 const ids = {
   attempt: "00000000-0000-4000-8000-000000000001",
   token: "00000000-0000-4000-8000-000000000002",
@@ -26,7 +31,7 @@ const ids = {
 };
 let scenario;
 function setup(overrides = {}) {
-  scenario = { exists: true, authorized: true, expired: false, status: "in_progress", dbError: false, flagError: false, flagWrites: [], writes: [], track: null, questionOrder: undefined, ...overrides };
+  scenario = { exists: true, authorized: true, expired: false, status: "in_progress", dbError: false, flagError: false, flagWrites: [], writes: [], track: null, questionOrder: undefined, pauseReasons: [], pausedAt: null, ...overrides };
 }
 const admin = {
   from(table) {
@@ -55,6 +60,7 @@ const exam = {
           attempt: {
             id: ids.attempt, status: scenario.status, started_at: "2026-01-01", extension_minutes: 0,
             track: scenario.track, question_order: scenario.questionOrder,
+            pause_reasons: scenario.pauseReasons ?? [], paused_at: scenario.pausedAt ?? null,
           },
           exam: { quiz_id: "quiz-1" },
         }
@@ -70,6 +76,8 @@ virtual.require = (id) => {
   if (id === "@/lib/supabase/server") return { createAdminClient: () => admin };
   if (id === "next/server") return { NextResponse: { json: (body, init) => Response.json(body, init) } };
   if (id === "@/lib/examTrack") return examTrack;
+  if (id === "@/lib/examPause") return examPause;
+  if (id === "@/lib/connectionLost") return { resumeConnectionPause: async () => null, isConnectionLost: () => false, connectionLostAnchor: () => null, pauseForConnectionLost: async () => null };
   if (id === "@/lib/responseTools") return {
     validateAnswerPayload: (_type, raw) => ({ ok: true, answer: raw }),
   };
@@ -131,5 +139,34 @@ await check("AB attempt can save an answer to a row in its stored paper", async 
   setup({ track: "AB", questionOrder: [ids.quizQuestion] });
   const response = await request();
   assert.equal(response.status, 200); assert.equal(scenario.writes[0].quiz_question_id, ids.quizQuestion);
+});
+await check("an organizer-paused attempt refuses the save with 409 + paused:true and NO write", async () => {
+  setup({ pauseReasons: ["assessment"], pausedAt: new Date().toISOString() });
+  const response = await request();
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.paused, true);
+  assert.match(body.error, /paused by your organizer/i);
+  assert.match(body.error, /sync automatically/i);
+  assert.equal(scenario.writes.length, 0, "the answer is never written while paused — the queue keeps it");
+});
+await check("an individually paused student is refused the same way", async () => {
+  setup({ pauseReasons: ["student"], pausedAt: new Date().toISOString() });
+  const response = await request();
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).paused, true);
+  assert.equal(scenario.writes.length, 0);
+});
+await check("a paused attempt past its RAW deadline is still refused as paused, not expired", async () => {
+  setup({ expired: true, pauseReasons: ["assessment"], pausedAt: new Date().toISOString() });
+  const response = await request();
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).paused, true, "pause refusal precedes the deadline check");
+});
+await check("cleared pause reasons resume saving normally", async () => {
+  setup({ pauseReasons: [], pausedAt: null });
+  const response = await request();
+  assert.equal(response.status, 200);
+  assert.equal(scenario.writes.length, 1);
 });
 console.log(`\n${count} exam save handler checks passed (mocked DB).`);

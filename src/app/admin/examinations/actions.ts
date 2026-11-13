@@ -11,7 +11,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 type Admin = ReturnType<typeof createAdminClient>;
-const EXAM_STATUSES = ["draft", "scheduled", "open", "closed"] as const;
+const EXAM_STATUSES = ["draft", "scheduled", "open", "paused", "closed"] as const;
 
 function safeBack(formData: FormData, fallback = "/admin/examinations") {
   const value = String(formData.get("back") ?? fallback);
@@ -242,6 +242,70 @@ export async function grantAttemptExtensionAsAdmin(formData: FormData) {
   revalidatePath("/admin/examinations/time-limits");
   revalidatePath("/admin/examinations/monitoring");
   go(back, "ok=extension_saved");
+}
+
+/**
+ * Organizer/Super Admin pause controls (migration 0098). Both actions call the
+ * SAME atomic RPCs the workspace monitor API uses, so a double-click or two
+ * admins acting at once can never interleave into a lost reason or a double
+ * credit. Every transition is audited through exam_pause_events (written by
+ * the API route/RPC caller) and the platform audit log.
+ */
+export async function pauseExamAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = String(formData.get("exam_id") ?? "");
+  const action = String(formData.get("pause_action") ?? "") === "resume" ? "resume" : "pause";
+  const back = safeBack(formData, "/admin/examinations/monitoring");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) go(back, "e=exam");
+
+  const { data: exam } = await admin.from("exams").select("id, organization_id, status, title").eq("id", examId).maybeSingle();
+  if (!exam) go(back, "e=exam");
+  if (action === "pause" && exam!.status !== "open") go(back, "e=not_open");
+  if (action === "resume" && exam!.status !== "paused") go(back, "e=not_paused");
+
+  const { data: result, error } = await admin.rpc("exam_set_pause", { p_exam_id: examId, p_paused: action === "pause" });
+  if (error || !result) go(back, "e=failed");
+  const outcome = result as { attempts_updated?: number };
+  await audit(ctx, action === "pause" ? "exam.paused" : "exam.resumed", "exams", examId, exam!.organization_id, {
+    attempts_updated: Number(outcome.attempts_updated ?? 0),
+  });
+  revalidatePath("/admin/examinations/monitoring");
+  revalidatePath("/admin/examinations/schedule");
+  go(back, action === "pause" ? "ok=exam_paused" : "ok=exam_resumed");
+}
+
+export async function pauseAttemptAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const action = String(formData.get("pause_action") ?? "") === "resume" ? "resume" : "pause";
+  const back = safeBack(formData, "/admin/examinations/monitoring");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attemptId)) go(back, "e=attempt");
+
+  const { data: attempt } = await admin
+    .from("exam_attempts")
+    .select("id, exam_id, status, pause_reasons, exams(organization_id, title)")
+    .eq("id", attemptId)
+    .maybeSingle();
+  if (!attempt) go(back, "e=attempt");
+  if (attempt!.status !== "in_progress") go(back, "e=not_in_progress");
+
+  const { data: result, error } = await admin.rpc("exam_attempt_set_pause", {
+    p_attempt_id: attemptId,
+    p_reason: "student",
+    p_paused: action === "pause",
+  });
+  if (error) go(back, "e=failed");
+  const outcome = (result ?? {}) as { credited_minutes?: number; paused?: boolean };
+  const exam = attempt!.exams as unknown as { organization_id: string };
+  await audit(ctx, action === "pause" ? "exam.attempt_paused" : "exam.attempt_resumed", "exam_attempts", attemptId, exam.organization_id, {
+    exam_id: attempt!.exam_id,
+    credited_minutes: Number(outcome.credited_minutes ?? 0),
+    paused_after: Boolean(outcome.paused),
+  });
+  revalidatePath("/admin/examinations/monitoring");
+  go(back, action === "pause" ? "ok=student_paused" : "ok=student_resumed");
 }
 
 export async function addExamCandidateAsAdmin(formData: FormData) {

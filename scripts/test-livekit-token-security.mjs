@@ -16,6 +16,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/entitlements')return {getEntitlement:async(_db,_org,o)=>{bypasses.push(o.ownerBypass);return {limits:{proctoring:o.ownerBypass||entitlement}};},getEntitlementFor:async()=>({limits:{proctoring:entitlement||session?.profile.platform_role==='super_admin'}})};
  if(req==='@/lib/platform')return {isFeatureEnabled:async(_key,o)=>flag||o.ownerBypass};
  if(req==='@/lib/proctoring')return {ensureProctoringRoom:async(_db,_exam,actor)=>{roomCreated={actor};return {id:'room-1',room_name:'exam-'+_exam.id,organization_id:_exam.organization_id,exam_id:_exam.id};},recordRoomEvents:async(_db,events)=>{roomEvents.push(...events);}};
+ if(req==='@/lib/examPause')return {manualPauseMs:()=>0,isManuallyPaused:()=>false,pauseNoticeKind:()=>null,parsePauseReasons:()=>[]};
  if(req==='@/lib/exam')return {loadAttemptContext:async()=>attemptCtx,attemptDeadline:(_e,started,ext)=>new Date(new Date(started).getTime()+(60+ext)*60000)};
  if(req==='@/lib/supabase/server')return {createAdminClient:()=>db,createClient:async()=>db};
  if(req==='livekit-server-sdk')return {AccessToken:Token};

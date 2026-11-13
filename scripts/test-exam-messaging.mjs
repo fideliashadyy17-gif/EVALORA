@@ -235,6 +235,22 @@ check('a live attempt never shows correct or incorrect from unmarked answers', (
   assert.equal(r.awaiting_grading, 1);
   assert.equal(r.marked, 1);
 });
+check('pause state surfaces on the monitor row (Feature D)', () => {
+  const plain = buildMonitorRow(base, paperForAttempt(paper, null, 'AB'), NOW);
+  assert.deepEqual(plain.pause_reasons, [], 'legacy rows are never paused');
+  assert.equal(plain.paused_at, null);
+  const assessment = buildMonitorRow(
+    {...base, pause_reasons: ['assessment'], paused_at: '2026-11-07T09:50:00Z'},
+    paperForAttempt(paper, null, 'AB'), NOW);
+  assert.deepEqual(assessment.pause_reasons, ['assessment']);
+  assert.equal(assessment.paused_at, '2026-11-07T09:50:00Z');
+  const both = buildMonitorRow(
+    {...base, pause_reasons: ['student', 'assessment'], paused_at: '2026-11-07T09:50:00Z'},
+    paperForAttempt(paper, null, 'AB'), NOW);
+  assert.deepEqual(both.pause_reasons, ['assessment', 'student'], 'reasons are normalized and ordered');
+  const junk = buildMonitorRow({...base, pause_reasons: null, paused_at: undefined}, paperForAttempt(paper, null, 'AB'), NOW);
+  assert.deepEqual(junk.pause_reasons, []);
+});
 check('connection, current question and browser-reported unsaved count come from presence', () => {
   const presence = {last_seen_at: new Date(NOW - 5_000).toISOString(), current_question: 12, pending_saves: 2};
   const r = buildMonitorRow({...base, presence}, paperForAttempt(paper, null, 'AB'), NOW);

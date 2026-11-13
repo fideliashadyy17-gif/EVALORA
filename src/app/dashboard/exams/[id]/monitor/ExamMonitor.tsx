@@ -56,6 +56,8 @@ interface ThreadState {
 
 export function ExamMonitor({ examId, initial }: { examId: string; initial: MonitorSnapshot }) {
   const [snapshot, setSnapshot] = useState<MonitorSnapshot>(initial);
+  const [pauseBusy, setPauseBusy] = useState<string | null>(null);
+  const [pauseError, setPauseError] = useState<string | null>(null);
   const [offsetMs, setOffsetMs] = useState(() => Date.parse(initial.server_now) - Date.now());
   const [now, setNow] = useState(Date.now());
   const [live, setLive] = useState<"connecting" | "live" | "reconnecting">("connecting");
@@ -86,6 +88,30 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => { debounceRef.current = null; void refresh(); }, MONITOR_REFRESH_DEBOUNCE_MS);
   }, [refresh]);
+
+  // Organizer pause/resume. The backend re-checks authorization on every call
+  // and applies the transition atomically (migration 0098); this only sends
+  // the intent and refreshes from the server snapshot.
+  const pauseAction = useCallback(async (scope: "exam" | "attempt", action: "pause" | "resume", attemptId?: string) => {
+    const key = scope === "exam" ? "exam" : attemptId ?? "exam";
+    setPauseBusy(key);
+    setPauseError(null);
+    try {
+      const response = await fetch(`/api/monitor/exams/${examId}/pause`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(scope === "exam" ? { scope, action } : { scope, action, attempt_id: attemptId }),
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as { error?: string } | null;
+      if (!response.ok) throw new Error(data?.error ?? `Request failed (${response.status}).`);
+    } catch (error) {
+      setPauseError(error instanceof Error ? error.message : "The pause state could not be changed.");
+    } finally {
+      setPauseBusy(null);
+      void refresh();
+    }
+  }, [examId, refresh]);
 
   const threadsRef = useRef(threads);
   threadsRef.current = threads;
@@ -143,6 +169,7 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
     const channel = supabase
       .channel(`exam-monitor-${examId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "exam_presence", filter: `exam_id=eq.${examId}` }, () => scheduleRefresh())
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "exam_pause_events", filter: `exam_id=eq.${examId}` }, () => scheduleRefresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "exam_messages", filter: `exam_id=eq.${examId}` }, (payload) => {
         scheduleRefresh();
         const attemptId = (payload.new as { attempt_id?: string } | null)?.attempt_id;
@@ -227,6 +254,8 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
   const thread = selectedId ? threads[selectedId] : undefined;
   const closed = selected ? selected.status !== "in_progress" : false;
 
+  const examPaused = Boolean(snapshot.exam_paused);
+  const pauseButtonCls = "rounded-xl px-4 py-2 text-sm font-semibold disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500";
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center gap-3 text-sm">
@@ -235,7 +264,34 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
         </span>
         <span className="text-ink-soft">Last refreshed {clock(snapshot.server_now)}</span>
         {loadError && <span role="alert" className="text-amber-900">{loadError}</span>}
+        <span className="ml-auto flex items-center gap-2">
+          {examPaused ? (
+            <button
+              type="button"
+              disabled={pauseBusy !== null}
+              onClick={() => void pauseAction("exam", "resume")}
+              className={`${pauseButtonCls} bg-evergreen-950 text-paper`}
+            >
+              {pauseBusy === "exam" ? "Resuming…" : "▶ Resume assessment"}
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={pauseBusy !== null}
+              onClick={() => void pauseAction("exam", "pause")}
+              className={`${pauseButtonCls} bg-amber-500 text-evergreen-950`}
+            >
+              {pauseBusy === "exam" ? "Pausing…" : "⏸ Pause assessment"}
+            </button>
+          )}
+        </span>
       </div>
+      {pauseError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-red-800">{pauseError}</p>}
+      {examPaused && (
+        <p role="status" className="rounded-xl bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900">
+          ASSESSMENT PAUSED — every active participant&apos;s countdown is frozen and composition is blocked. Answers already saved are preserved. Resume when ready; individually paused students stay paused until you resume them too.
+        </p>
+      )}
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
         <section aria-label="Candidates" className="min-w-0 overflow-x-auto rounded-2xl border border-evergreen-900/15 bg-paper">
@@ -300,16 +356,48 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
                       <td className="px-3 py-3 text-xs">
                         <p className="font-semibold text-evergreen-950">{r.status === "in_progress" ? "In progress" : r.status.replace(/_/g, " ")}</p>
                         {r.submitted_at && <p className="text-ink-soft">{clock(r.submitted_at)}</p>}
+                        {r.status === "in_progress" && r.pause_reasons.length > 0 && (
+                          <p className="mt-1">
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-bold text-amber-900">
+                              ⏸ Paused · {[r.pause_reasons.includes("assessment") ? "assessment" : null, r.pause_reasons.includes("student") ? "individual" : null, r.pause_reasons.includes("connection") ? "connection lost" : null].filter(Boolean).join(" + ")}
+                            </span>
+                            {r.paused_at && <span className="mt-0.5 block text-[11px] text-ink-soft">since {clock(r.paused_at)}</span>}
+                          </p>
+                        )}
                       </td>
                       <td className="px-3 py-3">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedId(r.attempt_id)}
-                          aria-pressed={selectedId === r.attempt_id}
-                          className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-900 hover:bg-evergreen-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
-                        >
-                          Message
-                        </button>
+                        <div className="flex flex-col gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedId(r.attempt_id)}
+                            aria-pressed={selectedId === r.attempt_id}
+                            className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-900 hover:bg-evergreen-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                          >
+                            Message
+                          </button>
+                          {r.status === "in_progress" && (
+                            r.pause_reasons.includes("student") ? (
+                              <button
+                                type="button"
+                                disabled={pauseBusy !== null}
+                                onClick={() => void pauseAction("attempt", "resume", r.attempt_id)}
+                                className="rounded-lg bg-evergreen-950 px-3 py-1.5 text-xs font-semibold text-paper hover:bg-evergreen-900 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                              >
+                                {pauseBusy === r.attempt_id ? "Resuming…" : "▶ Resume student"}
+                              </button>
+                            ) : (
+                              <button
+                                type="button"
+                                disabled={pauseBusy !== null || examPaused}
+                                title={examPaused ? "The whole assessment is already paused." : "Pause only this student's timer and composition."}
+                                onClick={() => void pauseAction("attempt", "pause", r.attempt_id)}
+                                className="rounded-lg border border-amber-500/60 px-3 py-1.5 text-xs font-semibold text-amber-900 hover:bg-amber-50 disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-gold-500"
+                              >
+                                {pauseBusy === r.attempt_id ? "Pausing…" : "⏸ Pause student"}
+                              </button>
+                            )
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
