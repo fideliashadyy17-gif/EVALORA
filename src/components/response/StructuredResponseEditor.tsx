@@ -13,12 +13,14 @@ import { emptyGraphSpec, graphSpecHasWork, normaliseGraphSpec, type GraphSpec } 
 import { emptyGeometrySpec, geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 import { emptyStatsSpec, normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "@/lib/statsSpec";
 import { emptyDataTableSpec, dataTableHasWork, normaliseDataTableSpec, type DataTableSpec } from "@/lib/dataTableSpec";
+import { VennEditor } from "@/components/venn/VennEditor";
+import { emptyVennSpec, normaliseVennSpec, vennSpecHasWork, type VennSpec } from "@/lib/vennSpec";
 import type { ResponseWorkspace } from "@/lib/responseTools";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table";
+type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table" | "venn";
 
 /**
  * The student composition environment for constructed responses.
@@ -70,6 +72,10 @@ export function StructuredResponseEditor({
     const base = saved ? normaliseStatsSpec(saved) : normaliseStatsSpec(workspace.statistics.starter, emptyStatsSpec());
     return workspace.statistics.chart === "any" ? base : { ...base, chart: workspace.statistics.chart };
   });
+  const [venn, setVenn] = useState<VennSpec>(() => {
+    const saved = initial?.venn;
+    return saved ? normaliseVennSpec(saved) : normaliseVennSpec(workspace.venn.starter, emptyVennSpec());
+  });
   const [dataTable, setDataTable] = useState<DataTableSpec>(() => {
     const saved = initial?.data_table;
     return saved ? normaliseDataTableSpec(saved) : normaliseDataTableSpec(workspace.dataTable.starter, emptyDataTableSpec());
@@ -78,6 +84,7 @@ export function StructuredResponseEditor({
   const graphOn = workspace.graph.enabled;
   const geometryOn = workspace.geometry.enabled;
   const statsOn = workspace.statistics.enabled;
+  const vennOn = workspace.venn.enabled;
   const tableOn = workspace.dataTable.enabled;
   const [tab, setTab] = useState<Tab>("written");
   const [dirty, setDirty] = useState(false);
@@ -87,7 +94,7 @@ export function StructuredResponseEditor({
   // A workspace without prose (rare, teacher-configured) opens on its first tool.
   useEffect(() => {
     if (!workspace.tools.includes("rich_text")) {
-      setTab(graphOn ? "graph" : geometryOn ? "geometry" : statsOn ? "statistics" : tableOn ? "data_table" : "written");
+      setTab(graphOn ? "graph" : geometryOn ? "geometry" : statsOn ? "statistics" : tableOn ? "data_table" : vennOn ? "venn" : "written");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -96,6 +103,7 @@ export function StructuredResponseEditor({
     const graphWork = graphSpecHasWork(graph) ? graph : null;
     const geometryWork = geometrySpecHasWork(geometry) ? geometry : null;
     const statsWork = statsSpecHasWork(statistics) ? statistics : null;
+  const vennWork = vennSpecHasWork(venn) ? venn : null;
     const tableWork = dataTableHasWork(dataTable) ? dataTable : null;
     return {
       version: 1,
@@ -107,8 +115,9 @@ export function StructuredResponseEditor({
       ...(geometryOn || geometryWork ? { geometry: geometryWork } : {}),
       ...(statsOn || statsWork ? { statistics: statsWork } : {}),
       ...(tableOn || tableWork ? { data_table: tableWork } : {}),
+      ...(vennOn || vennWork ? { venn: vennWork } : {}),
     };
-  }, [doc, graph, geometry, statistics, dataTable, graphOn, geometryOn, statsOn, tableOn]);
+  }, [doc, graph, geometry, statistics, dataTable, venn, graphOn, geometryOn, statsOn, tableOn, vennOn]);
 
   const markDirty = useCallback(() => {
     setDirty(true);
@@ -158,11 +167,13 @@ export function StructuredResponseEditor({
   const geometryPreview = geometryOn && geometrySpecHasWork(geometry) ? geometry : null;
   const statsPreview = statsOn && statsSpecHasWork(statistics) ? statistics : null;
   const tablePreview = tableOn && dataTableHasWork(dataTable) ? dataTable : null;
+  const vennPreview = vennOn && vennSpecHasWork(venn) ? venn : null;
   const missingRequired =
     (workspace.requirement === "graph" && !graphPreview) ||
     (workspace.requirement === "geometry" && !geometryPreview) ||
     (workspace.requirement === "statistics" && !statsPreview) ||
     (workspace.requirement === "data_table" && !tablePreview) ||
+    (workspace.requirement === "venn" && !vennPreview) ||
     (workspace.requirement === "text" && !docToPlainText(doc).trim());
 
   return (
@@ -191,6 +202,11 @@ export function StructuredResponseEditor({
         {tableOn && (
           <button type="button" role="tab" aria-selected={tab === "data_table"} className={cn("structured-tab", tab === "data_table" && "is-active")} onClick={() => setTab("data_table")}>
             ▦ Data table {tablePreview ? "✓" : ""}
+          </button>
+        )}
+        {vennOn && (
+          <button type="button" role="tab" aria-selected={tab === "venn"} className={cn("structured-tab", tab === "venn" && "is-active")} onClick={() => setTab("venn")}>
+            ◎ Venn diagram {vennPreview ? "✓" : ""}
           </button>
         )}
         <span className="ml-auto hidden text-[11px] text-ink-soft sm:inline">
@@ -310,6 +326,34 @@ export function StructuredResponseEditor({
         </div>
       )}
 
+      {tab === "venn" && vennOn && (
+        <div className="structured-pane">
+          <p className="structured-hint">
+            {workspace.venn.instructions || "Build the diagram the question asks for: name the sets, then write the value of each region."}
+          </p>
+          <VennEditor
+            value={venn}
+            onChange={(next) => { setVenn(next); markDirty(); }}
+            allowSetChange={workspace.venn.allowSetChange}
+            disabled={disabled}
+          />
+          {!disabled && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="structured-reset"
+                onClick={() => {
+                  setVenn(normaliseVennSpec(workspace.venn.starter, emptyVennSpec()));
+                  markDirty();
+                }}
+              >
+                Reset Venn diagram
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {tab === "data_table" && tableOn && (
         <div className="structured-pane">
           <p className="structured-hint">
@@ -363,11 +407,12 @@ function requirementLabel(requirement: ResponseWorkspace["requirement"]): string
     case "geometry": return "a geometric construction";
     case "statistics": return "a statistics chart";
     case "data_table": return "a completed data table";
+    case "venn": return "a Venn diagram";
     default: return "a response";
   }
 }
 
 export function isStructuredWorkspace(workspace: ResponseWorkspace): boolean {
   return workspace.tools.includes("rich_text") || workspace.graph.enabled || workspace.geometry.enabled ||
-    workspace.statistics.enabled || workspace.dataTable.enabled;
+    workspace.statistics.enabled || workspace.dataTable.enabled || workspace.venn.enabled;
 }

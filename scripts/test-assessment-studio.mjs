@@ -266,7 +266,7 @@ console.log("Data table specification");
 /* ─── Response workspace inference ───────────────────────────────── */
 console.log("Response workspace");
 {
-  ok("eight response tools are published", RESPONSE_TOOL_IDS.length === 8 && RESPONSE_TOOL_IDS.includes("graph") && RESPONSE_TOOL_IDS.includes("statistics") && RESPONSE_TOOL_IDS.includes("data_table"));
+  ok("nine response tools are published", RESPONSE_TOOL_IDS.length === 9 && RESPONSE_TOOL_IDS.includes("graph") && RESPONSE_TOOL_IDS.includes("statistics") && RESPONSE_TOOL_IDS.includes("data_table") && RESPONSE_TOOL_IDS.includes("venn"));
 
   const prose = responseWorkspaceFor({ type: "open_ended", prompt: "Explain what a sequence is." });
   ok("prose question gets rich text", prose.tools.includes("rich_text") && prose.tools.includes("math"));

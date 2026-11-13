@@ -5,7 +5,7 @@ import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
 import { Button, Input } from "./ui";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
 import type { PublicAssessPart } from "@/lib/assessParts";
@@ -122,6 +122,21 @@ export function QuestionRunner({
   const [partValues, setPartValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(savedParts).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
   const [openPartHints, setOpenPartHints] = useState<Record<string, number>>({});
+  const savedWorking = (initial && typeof initial === "object" && (initial as { working?: unknown }).working
+    && typeof (initial as { working?: unknown }).working === "object" && !Array.isArray((initial as { working?: unknown }).working))
+    ? ((initial as { working: Record<string, unknown> }).working) : {};
+  const [workingParts, setWorkingParts] = useState<Record<string, unknown>>(savedWorking);
+  const [openWorking, setOpenWorking] = useState<Record<string, boolean>>({});
+  // A part's *typed answer* is what is marked. Working is an optional, separately
+  // stored composition surface for questions that ask the candidate to show a
+  // method — it is preserved for the marker and never changes a mark.
+  const workingWorkspace = useMemo(
+    () => (t === "assess_parts" && question.response_workspace && question.response_workspace.tools.length
+      ? question.response_workspace
+      : null),
+    [t, question.response_workspace],
+  );
+  const hasWorkingWorkspace = Boolean(workingWorkspace);
 
   useEffect(() => {
     setSelected(selectedFromSaved());
@@ -134,6 +149,10 @@ export function QuestionRunner({
       (initial && typeof initial === "object" && (initial as { parts?: Record<string, unknown> }).parts) || {},
     ).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
     setOpenPartHints({});
+    setWorkingParts(
+      (initial && typeof initial === "object" && (initial as { working?: Record<string, unknown> }).working) || {},
+    );
+    setOpenWorking({});
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
@@ -422,6 +441,19 @@ export function QuestionRunner({
                       💡 Hint
                     </button>
                   </div>
+                  {hasWorkingWorkspace && !disabled ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        aria-expanded={Boolean(openWorking[part.id])}
+                        onClick={() => setOpenWorking((w) => ({ ...w, [part.id]: !w[part.id] }))}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-evergreen-900/20 bg-cream px-3 py-1.5 text-xs font-semibold text-evergreen-900 hover:bg-white"
+                      >
+                        ✎ {openWorking[part.id] ? "Hide working" : "Show your working"}
+                        {workingParts[part.id] ? " · saved" : ""}
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex items-center gap-2">
                     <Input
                       value={partValues[part.id] ?? ""}
@@ -434,6 +466,21 @@ export function QuestionRunner({
                     />
                     {part.unit ? <span className="shrink-0 text-sm font-medium text-ink-soft">{part.unit}</span> : null}
                   </div>
+                  {workingWorkspace && openWorking[part.id] ? (
+                    <div className="mt-3 rounded-xl border border-evergreen-900/15 bg-cream/60 p-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                        Working for part {part.label} — {workingWorkspace.guidance || "show each step so your reasoning can be credited"}
+                      </p>
+                      <StructuredResponseEditor
+                        workspace={workingWorkspace}
+                        initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
+                        disabled={disabled}
+                        autosave={autosave}
+                        submitLabel="Save working"
+                        emit={(payload) => emit({ parts: partValues, working: { ...workingParts, [part.id]: payload } })}
+                      />
+                    </div>
+                  ) : null}
                   {shownHints > 0 && (
                     <div className="mt-3 rounded-lg border border-gold-500/50 bg-gold-100/50 p-3 text-sm" role="region" aria-label={`Hint for part ${part.label}`}>
                       <p className="font-semibold text-evergreen-950">Hint {shownHints} of 2 — {shownHints === 1 ? "a nudge" : "the first step"}</p>
@@ -450,7 +497,7 @@ export function QuestionRunner({
               );
             })}
             <Button disabled={disabled || !(question.assess_parts ?? []).some((p) => (partValues[p.id] ?? "").trim())}
-              onClick={() => emit({ parts: partValues })}>
+              onClick={() => emit(hasWorkingWorkspace ? { parts: partValues, working: workingParts } : { parts: partValues })}>
               {submitLabel}
             </Button>
           </div>

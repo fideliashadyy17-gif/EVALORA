@@ -9,6 +9,7 @@ import { emptyGraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec } from "@/lib/geometrySpec";
 import { STATS_CHART_LABELS, STATS_CHART_TYPES, emptyStatsSpec, type StatsChartType } from "@/lib/statsSpec";
 import { emptyDataTableSpec, normaliseDataTableSpec } from "@/lib/dataTableSpec";
+import { emptyVennSpec, normaliseVennSpec } from "@/lib/vennSpec";
 import { docIsEmpty, docToLabel, docToPlainText, emptyDoc, textToDoc, type RichDoc } from "@/lib/content";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -132,6 +133,19 @@ export function QuestionForm({
   const [geometryXMax, setGeometryXMax] = useState(String(geometryDomain.xMax ?? 6));
   const [geometryYMin, setGeometryYMin] = useState(String(geometryDomain.yMin ?? -4));
   const [geometryYMax, setGeometryYMax] = useState(String(geometryDomain.yMax ?? 4));
+  const rawVenn = (cfg.response_venn ?? {}) as Record<string, unknown>;
+  const vennStarter = (rawVenn.starter ?? {}) as Record<string, unknown>;
+  const [vennTitle, setVennTitle] = useState(String(rawVenn.title ?? "Your Venn diagram"));
+  const [vennInstructions, setVennInstructions] = useState(
+    String(rawVenn.instructions ?? "Write each region's count inside the region."),
+  );
+  const [vennSets, setVennSets] = useState<"2" | "3">(Number(vennStarter.sets) === 3 ? "3" : "2");
+  const [vennLabels, setVennLabels] = useState(
+    Array.isArray(vennStarter.labels) ? (vennStarter.labels as unknown[]).map(String).slice(0, 3) : ["A", "B", "C"],
+  );
+  const [vennUniversalLabel, setVennUniversalLabel] = useState(String(vennStarter.universalLabel ?? "ξ"));
+  const [vennFixSets, setVennFixSets] = useState(rawVenn.allow_set_change === false);
+  const [nextTimeHint, setNextTimeHint] = useState(String(cfg.next_time_hint ?? ""));
   const rawStats = (cfg.response_stats ?? {}) as Record<string, unknown>;
   const rawStatsStarter = (rawStats.starter ?? {}) as { values?: unknown; chart?: unknown };
   const [statsTitle, setStatsTitle] = useState(String(rawStats.title ?? "Your statistics chart"));
@@ -293,6 +307,27 @@ export function QuestionForm({
           ),
         };
       }
+      if (toolMode === "custom" && responseTools.includes("venn")) {
+        const sets = vennSets === "3" ? 3 : 2;
+        const labels = vennLabels.slice(0, sets).map((label, i) => label.trim() || ["A", "B", "C"][i]);
+        config.response_venn = {
+          title: vennTitle.trim() || "Your Venn diagram",
+          instructions: vennInstructions.trim(),
+          allow_set_change: !vennFixSets,
+          starter: normaliseVennSpec(
+            { sets, labels, universalLabel: vennUniversalLabel.trim() || "ξ" },
+            emptyVennSpec({ sets, labels }),
+          ),
+        };
+      }
+    }
+
+    // The transferable takeaway shown to the candidate once results are
+    // published: what to do differently next time. Never shown mid-paper, and
+    // available on every type that can be marked, not just open answers.
+    if (nextTimeHint.trim()) config.next_time_hint = nextTimeHint.trim();
+    if (markingCriteria.trim() && config.marking_criteria === undefined) {
+      config.marking_criteria = markingCriteria.trim();
     }
 
     let finalOptions: QuestionFormOption[] = [];
@@ -530,6 +565,46 @@ export function QuestionForm({
               </div>
             )}
 
+            {toolMode === "custom" && responseTools.includes("venn") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Venn diagram title">
+                  <Input value={vennTitle} onChange={(e) => setVennTitle(e.target.value)} placeholder="Your Venn diagram" />
+                </Field>
+                <Field label="Diagram instructions">
+                  <Input value={vennInstructions} onChange={(e) => setVennInstructions(e.target.value)} placeholder="Write each region's count inside the region." />
+                </Field>
+                <Field label="Number of sets">
+                  <Select value={vennSets} onChange={(e) => setVennSets(e.target.value === "3" ? "3" : "2")}>
+                    <option value="2">Two sets</option>
+                    <option value="3">Three sets</option>
+                  </Select>
+                </Field>
+                <Field label="Universal set label">
+                  <Input value={vennUniversalLabel} onChange={(e) => setVennUniversalLabel(e.target.value)} placeholder="ξ" />
+                </Field>
+                {Array.from({ length: vennSets === "3" ? 3 : 2 }, (_, i) => (
+                  <Field key={i} label={`Set ${i + 1} name`} hint={i === 0 ? "E.g. Football, or A." : undefined}>
+                    <Input
+                      value={vennLabels[i] ?? ["A", "B", "C"][i]}
+                      onChange={(e) => {
+                        const next = [...vennLabels];
+                        next[i] = e.target.value;
+                        setVennLabels(next);
+                      }}
+                      placeholder={["A", "B", "C"][i]}
+                    />
+                  </Field>
+                ))}
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input type="checkbox" checked={vennFixSets} onChange={(e) => setVennFixSets(e.target.checked)} />
+                  Fix the number of sets (students cannot switch between two and three circles)
+                </label>
+                <p className="text-xs text-ink-soft sm:col-span-2">
+                  Regions are never filled in for the student: the editor opens empty so the diagram is the candidate&apos;s own work.
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="What must the response contain?" hint="Shown as guidance; it never changes marking.">
                 <Select value={responseRequirement} onChange={(e) => setResponseRequirement(e.target.value)}>
@@ -539,6 +614,7 @@ export function QuestionForm({
                   <option value="geometry">A geometric construction</option>
                   <option value="statistics">A statistics chart</option>
                   <option value="data_table">A completed data table</option>
+                  <option value="venn">A Venn diagram</option>
                 </Select>
               </Field>
               <Field label="Response guidance for students">
@@ -548,6 +624,10 @@ export function QuestionForm({
 
             <Field label="Marking criteria (for markers — never shown to candidates before marking)" hint="Working steps and mark allocation for structured mathematical answers.">
               <Textarea rows={3} value={markingCriteria} onChange={(e) => setMarkingCriteria(e.target.value)} placeholder="1 mark: correct substitution… 2 marks: valid method… 1 mark: final answer with units." />
+            </Field>
+
+            <Field label="Next-time hint (shown after results are published)" hint="The transferable takeaway, not the answer. Never shown during the paper.">
+              <Textarea rows={2} value={nextTimeHint} onChange={(e) => setNextTimeHint(e.target.value)} placeholder="When two quantities scale together, find the factor from the value you know…" />
             </Field>
           </div>
         )}
