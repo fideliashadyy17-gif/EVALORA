@@ -7,6 +7,7 @@ import { useProtectedSurface } from "@/lib/useAssessmentLockdown";
 import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
 import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
+import { questionFeedback, resultSummary } from "@/lib/examFeedback";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
 import { ExamSaveQueue, type ExamQueueState } from "@/lib/examSaveQueue";
@@ -46,7 +47,7 @@ interface ExamState {
       explanation: string | null;
       explanation_doc?: RichDoc | null;
     } | null;
-    reveal?: { correct_option_ids: string[]; summary: string[] } | null;
+    reveal?: { correct_option_ids: string[]; summary: string[]; marking_criteria?: string | null; next_time_hint?: string | null } | null;
   })[];
 }
 
@@ -720,47 +721,84 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   {(() => {
                     const usage = state.hint_usage ?? [];
                     const hintedQuestions = new Set(usage.map((u) => u.question_id)).size;
-                    const byTopic = new Map<string, { got: number; max: number }>();
-                    const byCriterion = new Map<string, { got: number; max: number }>();
-                    for (const q of questions) {
-                      if (!q.result) continue;
-                      const got = Number(q.result.points_awarded ?? 0);
-                      const t = byTopic.get(q.topic ?? "General") ?? { got: 0, max: 0 };
-                      t.got += got; t.max += q.points; byTopic.set(q.topic ?? "General", t);
-                      const cKey = q.criterion ? `Criterion ${q.criterion}` : "Criterion —";
-                      const c = byCriterion.get(cKey) ?? { got: 0, max: 0 };
-                      c.got += got; c.max += q.points; byCriterion.set(cKey, c);
-                    }
-                    const band = (got: number, max: number) => {
-                      const p = max ? (got / max) * 100 : 0;
-                      return p >= 70 ? "Strong" : p >= 40 ? "Developing" : "Needs work";
-                    };
-                    // Indicative MYP level band from the criterion percentage.
-                    const levelBand = (got: number, max: number) => {
-                      const p = max ? (got / max) * 100 : 0;
-                      return p >= 85 ? "7–8" : p >= 65 ? "5–6" : p >= 40 ? "3–4" : "1–2";
-                    };
-                    const rows = (m: Map<string, { got: number; max: number }>) => [...m.entries()].map(([k, v]) => (
-                      <li key={k} className="flex items-center justify-between gap-3 py-1 text-sm">
-                        <span className="font-medium capitalize">{k}</span>
-                        <span className="text-ink-soft">{v.got}/{v.max} · <strong className="text-evergreen-900">{band(v.got, v.max)}</strong></span>
-                      </li>
-                    ));
+                    const summary = resultSummary(
+                      questions.map((q) => ({
+                        type: q.type,
+                        topic: q.topic ?? null,
+                        criterion: q.criterion ?? null,
+                        points: q.points,
+                        result: q.result ? { is_correct: q.result.is_correct, points_awarded: q.result.points_awarded } : null,
+                      })),
+                      exam.pass_mark_percent,
+                    );
                     return (
-                      <div className="mx-auto mt-5 max-w-xl rounded-xl border border-evergreen-900/15 bg-white p-4 text-left" data-testid="feedback-summary">
-                        <p className="font-display text-base font-semibold text-evergreen-950">Your feedback summary</p>
-                        <p className="mt-1 text-sm text-ink-soft">Hints used: <strong className="text-evergreen-900">{usage.length}</strong> on {hintedQuestions} question{hintedQuestions === 1 ? "" : "s"} — using a hint never costs marks here; it shows where to revise.</p>
-                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By topic</p>
-                        <ul>{rows(byTopic)}</ul>
-                        <p className="mt-3 text-xs font-bold uppercase tracking-wide text-ink-soft">By MYP criterion (indicative level band)</p>
-                        <ul>
-                          {[...byCriterion.entries()].map(([k, v]) => (
-                            <li key={k} className="flex items-center justify-between gap-3 py-1 text-sm">
-                              <span className="font-medium">{k}</span>
-                              <span className="text-ink-soft">{v.got}/{v.max} · <strong className="text-evergreen-900">Level {levelBand(v.got, v.max)}</strong></span>
-                            </li>
-                          ))}
-                        </ul>
+                      <div className="mx-auto mt-5 max-w-2xl space-y-4 text-left" data-testid="feedback-summary">
+                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
+                          <p className="font-display text-base font-semibold text-evergreen-950">How this paper was marked</p>
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            <p className="text-sm">
+                              <span className="font-semibold text-evergreen-900">Objective questions</span>
+                              <span className="block text-ink-soft">
+                                {summary.objective.awarded} / {summary.objective.max} marks ({summary.objective.percent}%) · {summary.objective.count} question{summary.objective.count === 1 ? "" : "s"} auto-marked
+                              </span>
+                            </p>
+                            <p className="text-sm">
+                              <span className="font-semibold text-evergreen-900">Structured questions</span>
+                              <span className="block text-ink-soft">
+                                {summary.structured.awarded} / {summary.structured.max} marks ({summary.structured.percent}%) · {summary.structured.count} question{summary.structured.count === 1 ? "" : "s"}
+                              </span>
+                            </p>
+                          </div>
+                          {summary.pendingManual ? (
+                            <p role="status" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                              {summary.pendingCount} structured answer{summary.pendingCount === 1 ? " is" : "s are"} still awaiting your examiner&rsquo;s mark. Your percentage is provisional until that marking is complete.
+                            </p>
+                          ) : null}
+                        </div>
+
+                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
+                          <p className="font-display text-base font-semibold text-evergreen-950">Your result in context</p>
+                          <p className="mt-2 text-sm leading-relaxed text-evergreen-950" data-testid="personalised-message">{summary.message}</p>
+                          <p className="mt-2 text-xs text-ink-soft">
+                            Hints used: <strong className="text-evergreen-900">{usage.length}</strong> on {hintedQuestions} question{hintedQuestions === 1 ? "" : "s"} — a hint never costs marks; it shows you where to revise.
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
+                          <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by topic</p>
+                          <ul className="mt-1 divide-y divide-evergreen-900/10">
+                            {summary.topics.map((topic) => (
+                              <li key={topic.topic} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                                <span className="min-w-0 flex-1 truncate capitalize">{topic.topic}</span>
+                                <span className="shrink-0 text-ink-soft">
+                                  {topic.awarded}/{topic.max} · <strong className={topic.band === "Strong" ? "text-evergreen-800" : topic.band === "Developing" ? "text-gold-700" : "text-red-700"}>{topic.band}</strong>
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {summary.criteria.length ? (
+                          <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
+                            <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by MYP criterion (indicative level band)</p>
+                            <ul className="mt-1 divide-y divide-evergreen-900/10">
+                              {summary.criteria.map((criterion) => (
+                                <li key={criterion.criterion} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                                  <span className="min-w-0 flex-1">
+                                    <strong>Criterion {criterion.criterion}</strong>
+                                    <span className="block text-xs text-ink-soft">
+                                      {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[criterion.criterion] ?? ""}
+                                    </span>
+                                  </span>
+                                  <span className="shrink-0 text-right text-ink-soft">
+                                    {criterion.awarded}/{criterion.max} · <strong className="text-evergreen-900">Level {criterion.level}</strong>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                            <p className="mt-2 text-[11px] text-ink-soft">The level band is indicative only: it is derived from the marks on this paper, not from an eAssessment moderation.</p>
+                          </div>
+                        ) : null}
                       </div>
                     );
                   })()}
@@ -852,6 +890,37 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   {(current.result.explanation || current.result.explanation_doc) && (
                     <div className="mt-1"><RichContent doc={current.result.explanation_doc ?? null} text={current.result.explanation ?? ""} /></div>
                   )}
+                  {(() => {
+                    const feedback = questionFeedback({
+                      topic: current.topic ?? null,
+                      criterion: current.criterion ?? null,
+                      markingCriteria: current.reveal?.marking_criteria ?? null,
+                      nextTimeHint: current.reveal?.next_time_hint ?? null,
+                    });
+                    if (!feedback.any) return null;
+                    return (
+                      <dl className="mt-3 space-y-2 border-t border-evergreen-900/10 pt-3 text-sm" data-testid="question-feedback">
+                        {feedback.assessed ? (
+                          <div>
+                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">What this question assesses</dt>
+                            <dd className="capitalize">{feedback.assessed}</dd>
+                          </div>
+                        ) : null}
+                        {feedback.scheme ? (
+                          <div>
+                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Marking scheme</dt>
+                            <dd className="whitespace-pre-wrap leading-relaxed">{feedback.scheme}</dd>
+                          </div>
+                        ) : null}
+                        {feedback.improve ? (
+                          <div>
+                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">How to improve next time</dt>
+                            <dd className="leading-relaxed">{feedback.improve}</dd>
+                          </div>
+                        ) : null}
+                      </dl>
+                    );
+                  })()}
                   {/* The marking scheme is published for every question, so a blank one is revision material too. */}
                 </div>
               )}

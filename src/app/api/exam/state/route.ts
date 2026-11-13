@@ -1,7 +1,7 @@
 import { attemptRows, loadAttemptContext } from "@/lib/exam";
 import { submissionWindow } from "@/lib/examDeadline";
 import { applyDeadlineSubmission } from "@/lib/examSubmission";
-import { answerReveal, publicQuestion } from "@/lib/live";
+import { answerReveal, publicQuestion, releasedFeedback } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseIntegrityPolicy } from "@/lib/integrity";
 import { loadPublishedHints } from "@/lib/examHintsServer";
@@ -149,13 +149,17 @@ export async function GET(request: Request) {
       // candidate can revise from a complete marking scheme instead of only the
       // questions they happened to answer.
       const reveal = submitted && resultsPublished ? answerReveal(row) : null;
+      // The marking scheme and the "next time" line join the released reveal
+      // only here, inside the very same gate — never on a live paper. When the
+      // paper authored neither, the reveal is byte-for-byte what it was before.
+      const released = reveal ? releasedFeedback(row) : null;
       return {
         ...pub,
         // Candidate-safe projection: level + text only. Published hints remain
         // available on a submitted paper for revision, but the on-demand route
         // refuses new reads once the attempt is closed.
         hints: hintsByQuestion.get(row.questions.id) ?? [],
-        ...(reveal ? { reveal } : {}),
+        ...(reveal ? { reveal: released ? { ...reveal, ...released } : reveal } : {}),
         saved_answer: s?.answer ?? null,
         result: reveal
           ? buildExamResult({

@@ -32,6 +32,7 @@ import {
   normaliseDataTableSpec,
   type DataTableSpec,
 } from "./dataTableSpec";
+import { emptyVennSpec, normaliseVennSpec, vennSpecHasWork, type VennSpec } from "./vennSpec";
 
 export const RESPONSE_TOOLS = [
   { id: "rich_text", label: "Structured writing", hint: "Paragraphs, headings, lists, tables, step-by-step working." },
@@ -42,6 +43,7 @@ export const RESPONSE_TOOLS = [
   { id: "graph", label: "Graph workspace", hint: "Draw or plot a coordinate graph as structured, editable data." },
   { id: "geometry", label: "Geometry workspace", hint: "Construct points, lines, circles, polygons, angles and measurements." },
   { id: "statistics", label: "Statistics workspace", hint: "Enter data and draw a dot plot, bar chart, histogram, box plot or cumulative-frequency chart." },
+  { id: "venn", label: "Venn diagram workspace", hint: "Build a two- or three-set Venn diagram and fill each region." },
 ] as const;
 
 export type ResponseToolId = (typeof RESPONSE_TOOLS)[number]["id"];
@@ -78,6 +80,15 @@ export interface ResponseDataTableConfig {
   starter: DataTableSpec;
 }
 
+export interface ResponseVennConfig {
+  enabled: boolean;
+  title: string;
+  instructions: string;
+  starter: VennSpec;
+  /** A teacher may fix the number of sets so every candidate answers the same question. */
+  allowSetChange: boolean;
+}
+
 export interface ResponseWorkspace {
   /** Empty for question types that have their own native interface. */
   tools: ResponseToolId[];
@@ -85,8 +96,9 @@ export interface ResponseWorkspace {
   geometry: ResponseGeometryConfig;
   statistics: ResponseStatsConfig;
   dataTable: ResponseDataTableConfig;
+  venn: ResponseVennConfig;
   guidance: string;
-  requirement: "any" | "text" | "graph" | "geometry" | "statistics" | "data_table";
+  requirement: "any" | "text" | "graph" | "geometry" | "statistics" | "data_table" | "venn";
   /** Where the tool set came from — shown to the teacher, never to candidates. */
   source: "native" | "configured" | "inferred";
 }
@@ -96,6 +108,7 @@ const GEOMETRY_LANGUAGE = /\b(geometry|geometric|construct|construction|triangle
 const SCIENCE_LANGUAGE = /\b(science|physics|chemistry|biology|molecule|atom|reaction|solution|concentration|velocity|acceleration|force|energy|voltage|resistance|moles?|mass|density|pressure|temperature|units?)\b/i;
 const STATISTICS_LANGUAGE = /\b(statistics?|statistical|data set|dataset|frequency|frequenc(?:y|ies) table|histogram|dot plot|bar chart|box (?:and[- ]whisker )?plot|quartiles?|interquartile|iqr|median|mean|standard deviation|distribution|cumulative frequency|stem[- ]and[- ]leaf)\b/i;
 const DATA_TABLE_LANGUAGE = /\b(complete the (?:frequency |data )?table|copy and complete the table|fill in the table|table below|frequency table|data table)\b/i;
+const VENN_LANGUAGE = /\b(venn|universal set|intersection|union|complement|two[- ]set|three[- ]set|\bξ\b|\bn\(A\)|\bn\(B\)|\bn\(C\)|belong to (?:both|neither)|overlap)\b/i;
 
 function hasWord(text: string, pattern: RegExp): boolean {
   return pattern.test(text);
@@ -124,6 +137,7 @@ export function inferResponseTools(question: { prompt?: string | null; prompt_do
   if (hasWord(text, GEOMETRY_LANGUAGE)) tools.push("geometry");
   if (hasWord(text, SCIENCE_LANGUAGE)) tools.push("science");
   if (hasWord(text, STATISTICS_LANGUAGE)) tools.push("statistics");
+  if (hasWord(text, VENN_LANGUAGE)) tools.push("venn");
   return tools;
 }
 
@@ -142,9 +156,10 @@ export function responseWorkspaceFor(question: {
   const rawGeometry = asRecord(cfg.response_geometry);
   const rawStats = asRecord(cfg.response_stats);
   const rawTable = asRecord(cfg.response_data_table);
+  const rawVenn = asRecord(cfg.response_venn);
   const guidance = typeof cfg.response_guidance === "string" ? cfg.response_guidance.slice(0, 1000) : "";
   const requirementRaw = typeof cfg.response_requirement === "string" ? cfg.response_requirement : "any";
-  const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table"].includes(requirementRaw)
+  const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table", "venn"].includes(requirementRaw)
     ? requirementRaw
     : "any") as ResponseWorkspace["requirement"];
 
@@ -152,18 +167,27 @@ export function responseWorkspaceFor(question: {
   const geometryStarter = normaliseGeometrySpec(rawGeometry.starter ?? cfg.response_geometry_starter ?? null, emptyGeometrySpec());
   const statsStarter = normaliseStatsSpec(rawStats.starter ?? null, emptyStatsSpec());
   const tableStarter = normaliseDataTableSpec(rawTable.starter ?? null, emptyDataTableSpec());
+  const vennStarter = normaliseVennSpec(rawVenn.starter ?? cfg.response_venn_starter ?? null, emptyVennSpec());
   const rawChart = rawStats.chart;
   const statsChart: StatsChartType | "any" = rawChart === "any" || rawChart === undefined
     ? "any"
     : isStatsChartType(rawChart) ? rawChart : "any";
 
-  if (NATIVE_TYPES.has(question.type)) {
+  // A multi-part question marks a typed answer per part, so its native
+  // interface is never replaced. It may, however, opt into a *working*
+  // workspace that a candidate opens per part to show a method; that only
+  // happens when the teacher configured tools explicitly, so every existing
+  // paper keeps exactly the interface it has today.
+  const partsWorkingConfigured = question.type === "assess_parts" && uniqueTools(cfg.response_tools).length > 0;
+
+  if (NATIVE_TYPES.has(question.type) && !partsWorkingConfigured) {
     return {
       tools: [],
       graph: { enabled: false, title: "Graph", instructions: "", allowFunctions: true, starter: graphStarter },
       geometry: { enabled: false, title: "Geometry", instructions: "", starter: geometryStarter },
       statistics: { enabled: false, title: "Statistics", instructions: "", chart: "any", starter: statsStarter },
       dataTable: { enabled: false, title: "Data table", instructions: "", starter: tableStarter },
+      venn: { enabled: false, title: "Venn diagram", instructions: "", starter: vennStarter, allowSetChange: true },
       guidance,
       requirement: "any",
       source: "native",
@@ -172,6 +196,7 @@ export function responseWorkspaceFor(question: {
 
   const configured = uniqueTools(cfg.response_tools);
   const tools = configured.length ? configured : inferResponseTools(question);
+  const partsWorking = question.type === "assess_parts";
 
   return {
     tools,
@@ -201,8 +226,16 @@ export function responseWorkspaceFor(question: {
       instructions: typeof rawTable.instructions === "string" ? rawTable.instructions.slice(0, 400) : "",
       starter: tableStarter,
     },
+    venn: {
+      enabled: tools.includes("venn"),
+      title: typeof rawVenn.title === "string" && rawVenn.title.trim() ? rawVenn.title.slice(0, 80) : "Your Venn diagram",
+      instructions: typeof rawVenn.instructions === "string" ? rawVenn.instructions.slice(0, 400) : "",
+      starter: vennStarter,
+      allowSetChange: rawVenn.allow_set_change !== false,
+    },
     guidance,
-    requirement,
+    // A working workspace is never "required": the marks come from the parts.
+    requirement: partsWorking ? "any" : requirement,
     source: configured.length ? "configured" : "inferred",
   };
 }
@@ -221,6 +254,7 @@ export interface StructuredAnswer {
   geometry: GeometrySpec | null;
   statistics: StatsSpec | null;
   data_table: DataTableSpec | null;
+  venn?: VennSpec | null;
   saved_at?: string;
 }
 
@@ -235,6 +269,7 @@ export const ANSWER_LIMITS = {
   tableRows: 40,
   tableColumns: 10,
   tableCell: 200,
+  vennRegions: 8,
 } as const;
 
 export interface AnswerValidation {
@@ -285,6 +320,19 @@ export function validateAnswerPayload(type: string, raw: unknown): AnswerValidat
     // Keep the historical permissive behaviour for objective answers, but
     // never accept values of a type the scorer would treat as malformed.
     const answer = { ...raw };
+    if ("working" in answer) {
+      const working = answer.working;
+      if (!isRecord(working)) return { ok: false, answer: {}, error: "The working has an invalid format." };
+      const entries = Object.entries(working).slice(0, 12);
+      const cleanWorking: Record<string, unknown> = {};
+      for (const [partId, payload] of entries) {
+        if (!/^[A-Za-z0-9_-]{1,12}$/.test(partId)) continue;
+        const validated = validateAnswerPayload("open_ended", payload);
+        if (!validated.ok) return { ok: false, answer: {}, error: validated.error ?? "The working has an invalid format." };
+        cleanWorking[partId] = validated.answer;
+      }
+      answer.working = cleanWorking;
+    }
     if ("option_id" in answer && typeof answer.option_id !== "string") return { ok: false, answer: {}, error: "Invalid selection." };
     if ("option_ids" in answer && !(Array.isArray(answer.option_ids) && answer.option_ids.every((v) => typeof v === "string"))) {
       return { ok: false, answer: {}, error: "Invalid selection." };
@@ -349,6 +397,17 @@ export function validateAnswerPayload(type: string, raw: unknown): AnswerValidat
     clean.statistics = null;
   }
 
+  if (raw.venn !== undefined && raw.venn !== null) {
+    if (!isRecord(raw.venn)) return { ok: false, answer: {}, error: "The Venn diagram has an invalid format." };
+    const venn = normaliseVennSpec(raw.venn);
+    if (Object.keys(venn.regions).length > ANSWER_LIMITS.vennRegions) {
+      return { ok: false, answer: {}, error: "The Venn diagram has too many regions." };
+    }
+    clean.venn = venn;
+  } else if (raw.venn === null) {
+    clean.venn = null;
+  }
+
   if (raw.data_table !== undefined && raw.data_table !== null) {
     if (!isRecord(raw.data_table)) return { ok: false, answer: {}, error: "The data table has an invalid format." };
     if (tablePayloadTooLarge(raw.data_table)) {
@@ -401,6 +460,9 @@ export function answerHasWork(answer: Record<string, unknown> | null | undefined
   if (answer.data_table && isRecord(answer.data_table)) {
     if (dataTableHasWork(normaliseDataTableSpec(answer.data_table))) return true;
   }
+  if (answer.venn && isRecord(answer.venn)) {
+    if (vennSpecHasWork(normaliseVennSpec(answer.venn))) return true;
+  }
   return false;
 }
 
@@ -414,5 +476,6 @@ export function describeAnswerComponents(answer: Record<string, unknown> | null 
   if (isRecord(answer.geometry) && answerHasWork({ geometry: answer.geometry })) parts.push("geometry construction");
   if (isRecord(answer.statistics) && statsSpecHasWork(normaliseStatsSpec(answer.statistics))) parts.push("statistics chart");
   if (isRecord(answer.data_table) && dataTableHasWork(normaliseDataTableSpec(answer.data_table))) parts.push("data table");
+  if (isRecord(answer.venn) && vennSpecHasWork(normaliseVennSpec(answer.venn))) parts.push("Venn diagram");
   return parts.length ? parts : ["Empty response"];
 }

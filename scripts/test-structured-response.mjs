@@ -23,6 +23,9 @@ const emptyGraph = () => ({
 const emptyGeometry = () => ({ version: 1, title: "", points: [], lines: [], circles: [], polygons: [], angles: [], annotations: [] });
 const emptyStats = () => ({ version: 1, chart: "dot_plot", title: "", xLabel: "", yLabel: "Frequency", values: [], categories: [], binWidth: null, showSummary: false });
 const emptyTable = () => ({ version: 1, title: "", columns: ["Column 1", "Column 2"], rows: [["", ""], ["", ""]], rowHeaders: false });
+const emptyVenn = (overrides = {}) => ({
+  version: 1, sets: 2, labels: ["A", "B"], universalLabel: "ξ", regions: {}, title: "", instructions: "", showCounts: true, ...overrides,
+});
 const hasItems = (spec) => Boolean(spec && ["points", "segments", "annotations", "functions", "lines", "circles", "polygons", "angles"].some((key) => Array.isArray(spec[key]) && spec[key].length));
 const payloads = [];
 let lastGraphChange = null;
@@ -78,6 +81,22 @@ Module._load = function (request, parent) {
         }, "fill table"),
       };
     }
+    if (request === "@/components/venn/VennEditor") {
+      return {
+        VennEditor: ({ onChange, disabled }) => React.createElement("button", {
+          "data-testid": "venn",
+          disabled: Boolean(disabled),
+          onClick: () => onChange({ ...emptyVenn(), regions: { A: "12", AnB: "5", B: "8" } }),
+        }, "venn"),
+      };
+    }
+    if (request === "@/lib/vennSpec") return {
+      emptyVennSpec: emptyVenn,
+      normaliseVennSpec: (raw, fallback = emptyVenn()) => (raw && typeof raw === "object" ? { ...fallback, ...raw } : fallback),
+      vennSpecHasWork: (spec) => Boolean(spec && spec.regions && Object.values(spec.regions).some((value) => String(value).trim())),
+      regionKeysFor: (sets) => (sets === 3 ? ["A", "B", "C", "AnB", "AnC", "BnC", "AnBnC", "neither"] : ["A", "B", "AnB", "neither"]),
+      regionLabel: (spec, key) => key,
+    };
     if (request === "@/components/RichContent") return { RichContent: () => React.createElement("div", { "data-testid": "readonly-doc" }, "answer") };
     if (request === "@/components/graph/GraphView") return { GraphView: () => null };
     if (request === "@/components/geometry/GeometryView") return { GeometryView: () => null };
@@ -127,12 +146,15 @@ virtual._compile(source, file);
 Module._load = originalLoad;
 const { StructuredResponseEditor } = virtual.exports;
 
+const emptyVennWorkspace = () => ({ enabled: false, title: "Venn diagram", instructions: "", starter: emptyVenn(), allowSetChange: true });
+
 const workspace = (overrides = {}) => ({
   tools: ["rich_text", "math", "graph", "geometry"],
   graph: { enabled: true, title: "Your graph", instructions: "", allowFunctions: true, starter: emptyGraph() },
   geometry: { enabled: true, title: "Your construction", instructions: "", starter: emptyGeometry() },
   statistics: { enabled: false, title: "Your statistics chart", instructions: "", chart: "any", starter: emptyStats() },
   dataTable: { enabled: false, title: "Your data table", instructions: "", starter: emptyTable() },
+  venn: emptyVennWorkspace(),
   guidance: "",
   requirement: "any",
   source: "configured",
@@ -222,6 +244,32 @@ await test("statistics and data table tools save structured payloads", () => {
   assert.equal(emitted[0].statistics.chart, "histogram");
   assert.equal(emitted[0].statistics.values.length, 4);
   assert.equal(emitted[0].data_table.rows[1][0], "3");
+  act(() => tree.unmount());
+});
+
+await test("the Venn workspace saves a filled diagram as structured data", () => {
+  const { tree, emitted } = render({
+    workspace: workspace({
+      tools: ["rich_text", "math", "venn"],
+      venn: { enabled: true, title: "Sets", instructions: "Fill every region.", starter: emptyVenn({ sets: 3 }), allowSetChange: false },
+    }),
+  });
+  assert.ok(tab(tree, "Venn diagram"));
+  act(() => tab(tree, "Venn diagram").props.onClick());
+  act(() => byTestId(tree, "venn")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].venn.regions.A, "12");
+  assert.equal(emitted[0].venn.regions.AnB, "5");
+  act(() => tree.unmount());
+});
+
+await test("a Venn diagram is kept when the teacher disables the tool", () => {
+  const initial = { version: 1, venn: { ...emptyVenn(), regions: { A: "9" } } };
+  const { tree, emitted } = render({ initial });
+  act(() => byTestId(tree, "write")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted[0].venn.regions.A, "9");
   act(() => tree.unmount());
 });
 

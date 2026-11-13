@@ -112,6 +112,7 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
             geometry: { tool: "geometry", label: "a geometric construction" },
             statistics: { tool: "statistics", label: "a statistics chart" },
             data_table: { tool: "data_table", label: "a completed data table" },
+            venn: { tool: "venn", label: "a Venn diagram" },
             text: { tool: "rich_text", label: "a written answer" },
           };
           const required = requirementTool[requirement];

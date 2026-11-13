@@ -4,8 +4,12 @@ import {
   STATS_CHART_LABELS,
   STATS_CHART_TYPES,
   STATS_LIMITS,
+  groupedSeries,
+  groupSeriesIssues,
   normaliseStatsSpec,
   type StatsChartType,
+  type StatsDataMode,
+  type StatsGroup,
   type StatsSpec,
 } from "@/lib/statsSpec";
 import { useEffect, useId, useMemo, useState } from "react";
@@ -54,10 +58,12 @@ export function StatsEditor({
   const helpId = useId();
   const [rawValues, setRawValues] = useState(() => spec.values.join(", "));
   const [rawCategories, setRawCategories] = useState(() => spec.categories);
+  const [rawGroups, setRawGroups] = useState<StatsGroup[]>(() => spec.groups ?? []);
 
   useEffect(() => {
     setRawValues(spec.values.join(", "));
     setRawCategories(spec.categories);
+    setRawGroups(spec.groups ?? []);
     // Reload only on an explicit reset; typing must not be reformatted.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resetToken]);
@@ -77,6 +83,33 @@ export function StatsEditor({
 
   function setChart(chart: StatsChartType) {
     publish({ ...spec, chart });
+  }
+
+  const mode: StatsDataMode = spec.dataMode === "grouped" ? "grouped" : "raw";
+
+  function setMode(next: StatsDataMode) {
+    publish({ ...spec, dataMode: next });
+  }
+
+  function setGroup(index: number, patch: Partial<StatsGroup>) {
+    const next = rawGroups.map((group, position) => (position === index ? { ...group, ...patch } : group));
+    setRawGroups(next);
+    publish({ ...spec, dataMode: "grouped", groups: next });
+  }
+
+  function addGroup() {
+    const last = rawGroups[rawGroups.length - 1];
+    const width = last ? Math.max(1, last.to - last.from) : 10;
+    const from = last ? last.to : 0;
+    const next = [...rawGroups, { id: `grp-${Date.now().toString(36)}`, from, to: from + width, frequency: 0 }];
+    setRawGroups(next);
+    publish({ ...spec, dataMode: "grouped", groups: next });
+  }
+
+  function removeGroup(index: number) {
+    const next = rawGroups.filter((_, position) => position !== index);
+    setRawGroups(next);
+    publish({ ...spec, dataMode: "grouped", groups: next });
   }
 
   function setCategory(index: number, patch: Partial<{ label: string; value: number }>) {
@@ -124,6 +157,20 @@ export function StatsEditor({
         </label>
       </div>
 
+      <div className="stats-editor-head">
+        <label className="min-w-[13rem] flex-1">
+          <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-soft">How is the data given?</span>
+          <select
+            className={input}
+            value={mode}
+            onChange={(event) => setMode(event.target.value === "grouped" ? "grouped" : "raw")}
+          >
+            <option value="raw">List of values</option>
+            <option value="grouped">Grouped frequency table</option>
+          </select>
+        </label>
+      </div>
+
       {spec.chart === "bar_chart" ? (
         <div className="stats-editor-block">
           <p className="stats-editor-label">Categories and counts</p>
@@ -155,7 +202,7 @@ export function StatsEditor({
           <button type="button" className={`${control} mt-2`} onClick={addCategory}>+ Add category</button>
         </div>
       ) : (
-        <div className="stats-editor-block">
+        <div className={`stats-editor-block ${mode === "grouped" ? "hidden" : ""}`}>
           <label className="block">
             <span className="stats-editor-label">Data values</span>
             <textarea
@@ -215,6 +262,77 @@ export function StatsEditor({
           </label>
         )}
       </div>
+
+      {mode === "grouped" && spec.chart !== "bar_chart" ? (
+        <div className="stats-editor-block">
+          <p className="stats-editor-label">Class intervals and frequencies</p>
+          <div className="space-y-2">
+            {rawGroups.map((group, index) => (
+              <div key={group.id} className="flex flex-wrap items-end gap-2">
+                <label className="w-20">
+                  <span className="text-[10px] uppercase tracking-wide text-ink-soft">from</span>
+                  <input
+                    className={input}
+                    type="number"
+                    step="any"
+                    value={Number.isFinite(group.from) ? group.from : 0}
+                    aria-label={`Class ${index + 1} lower boundary`}
+                    onChange={(event) => setGroup(index, { from: Number(event.target.value) })}
+                  />
+                </label>
+                <span className="pb-2 text-sm text-ink-soft">≤ x &lt;</span>
+                <label className="w-20">
+                  <span className="text-[10px] uppercase tracking-wide text-ink-soft">to</span>
+                  <input
+                    className={input}
+                    type="number"
+                    step="any"
+                    value={Number.isFinite(group.to) ? group.to : 0}
+                    aria-label={`Class ${index + 1} upper boundary`}
+                    onChange={(event) => setGroup(index, { to: Number(event.target.value) })}
+                  />
+                </label>
+                <label className="w-20">
+                  <span className="text-[10px] uppercase tracking-wide text-ink-soft">f</span>
+                  <input
+                    className={input}
+                    type="number"
+                    min={0}
+                    step="any"
+                    value={Number.isFinite(group.frequency) ? group.frequency : 0}
+                    aria-label={`Class ${index + 1} frequency`}
+                    onChange={(event) => setGroup(index, { frequency: Math.max(0, Number(event.target.value) || 0) })}
+                  />
+                </label>
+                <button type="button" className="pb-2 text-sm text-red-700" onClick={() => removeGroup(index)} aria-label={`Remove class ${index + 1}`}>
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <button type="button" className={`${control} mt-2`} onClick={addGroup}>+ Add class</button>
+          {(() => {
+            const issues = groupSeriesIssues(rawGroups);
+            const series = groupedSeries(rawGroups);
+            return (
+              <>
+                {issues.length ? (
+                  <ul className="mt-2 list-disc pl-5 text-[11px] text-red-700">
+                    {issues.map((issue) => <li key={issue}>{issue}</li>)}
+                  </ul>
+                ) : null}
+                {series.rows.length ? (
+                  <p className="mt-2 text-[11px] text-ink-soft">
+                    Σf = {series.totalFrequency}
+                    {series.estimatedMean !== null ? ` · estimated mean = ${series.estimatedMean}` : ""}
+                    {series.unequalWidths ? " · class widths differ, so the histogram plots frequency density" : ""}
+                  </p>
+                ) : null}
+              </>
+            );
+          })()}
+        </div>
+      ) : null}
 
       <details className="stats-editor-preview" open>
         <summary className="cursor-pointer text-xs font-semibold text-evergreen-800">Chart preview</summary>
