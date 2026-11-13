@@ -18,11 +18,11 @@ Module._load = function(request, parent) {
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };
     if (request === '@/lib/responseTools') return { responseWorkspaceFor: () => ({ tools: ['rich_text', 'math'], graph: { enabled: false, title: 'Graph', instructions: '', allowFunctions: true, starter: null }, geometry: { enabled: false, title: 'Geometry', instructions: '', starter: null }, guidance: '', requirement: 'any', source: 'inferred' }) };
     if (request === '@/components/response/StructuredResponseEditor') {
-      const StructuredResponseEditor = ({ initial, emit, onDirtyChange, disabled, submitLabel }) => {
+      const StructuredResponseEditor = ({ initial, emit, onDirtyChange, onPayloadChange, disabled, submitLabel }) => {
         const [text, setText] = React.useState(typeof initial?.text === 'string' ? initial.text : '');
         const [dirty, setDirty] = React.useState(false);
         return React.createElement('div', { 'data-structured': true },
-          React.createElement('textarea', { value: text, disabled: Boolean(disabled), onChange: (event) => { setText(event.target.value); setDirty(true); onDirtyChange?.(true); } }),
+          React.createElement('textarea', { value: text, disabled: Boolean(disabled), onChange: (event) => { const payload={text:event.target.value}; setText(event.target.value); setDirty(true); onDirtyChange?.(true); onPayloadChange?.(payload); } }),
           React.createElement('button', { disabled: Boolean(disabled) || !dirty, onClick: () => { if (emit({ text }) !== false) { setDirty(false); onDirtyChange?.(false); } } }, submitLabel));
       };
       return { StructuredResponseEditor };
@@ -106,5 +106,23 @@ await test('valid previously saved answers are restored without a warning', asyn
     if(type==='multiple_select')assert.equal(saveButton(tree).props.disabled,false);
     await act(()=>tree.unmount());
   }
+});
+await test('typed assess-parts submit carries the newest per-part construction before its own save', async () => {
+  const answers=[];
+  const assessQuestion={
+    ...question('assess_parts'),
+    assess_parts:[{id:'method',label:'(a)',prompt:'Give the ratio.',kind:'text',points:2,hints:['Identify the quantities first.','Write the ratio in simplest form.']}],
+    response_workspace:{tools:['rich_text'],guidance:'Show your method.'},
+  };
+  let tree;
+  await act(() => { tree=TestRenderer.create(React.createElement(QuestionRunner,{question:assessQuestion,onAnswer:(answer)=>{answers.push(answer);return true;}})); });
+  await click(buttons(tree).find((button) => JSON.stringify(button.props.children).includes('Show your working')));
+  const typed=tree.root.findByProps({'aria-label':'Answer for part (a)'});
+  await act(() => typed.props.onChange({target:{value:'3:5'}}));
+  const working=tree.root.findByType('textarea');
+  await act(() => working.props.onChange({target:{value:'Scale both quantities by 2.'}}));
+  await click(buttons(tree).find((button) => button.props.children==='Submit answer'));
+  assert.deepEqual(answers,[{parts:{method:'3:5'},working:{method:{text:'Scale both quantities by 2.'}}}]);
+  await act(() => tree.unmount());
 });
 console.log(`\n${count} QuestionRunner interaction checks passed (React test renderer; no browser).`);

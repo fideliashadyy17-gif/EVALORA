@@ -27,6 +27,7 @@ export const STATS_CHART_TYPES = [
   "histogram",
   "box_plot",
   "cumulative_frequency",
+  "frequency_polygon",
 ] as const;
 
 export type StatsChartType = (typeof STATS_CHART_TYPES)[number];
@@ -36,8 +37,34 @@ export const STATS_CHART_LABELS: Record<StatsChartType, string> = {
   bar_chart: "Bar chart",
   histogram: "Histogram",
   box_plot: "Box plot",
-  cumulative_frequency: "Cumulative frequency",
+  cumulative_frequency: "Cumulative frequency curve",
+  frequency_polygon: "Frequency polygon",
 };
+
+/**
+ * How the observations were captured.
+ *
+ *   raw      — a list of individual values (the original behaviour);
+ *   grouped  — a grouped frequency table, possibly with unequal class widths.
+ *
+ * Grouped data is the only honest way to draw a histogram of a continuous
+ * variable whose classes have different widths, because the bar height is the
+ * frequency *density*, not the frequency. It is also what a cumulative
+ * frequency curve of a grouped distribution needs, and what an estimated mean
+ * from midpoints needs. Everything is stored, nothing is derived on the fly and
+ * then thrown away, so the marker sees exactly the table the candidate built.
+ */
+export const STATS_DATA_MODES = ["raw", "grouped"] as const;
+export type StatsDataMode = (typeof STATS_DATA_MODES)[number];
+
+export interface StatsGroup {
+  id: string;
+  /** Lower class boundary. */
+  from: number;
+  /** Upper class boundary. */
+  to: number;
+  frequency: number;
+}
 
 export interface StatsCategory {
   id: string;
@@ -59,11 +86,18 @@ export interface StatsSpec {
   binWidth: number | null;
   /** Show computed summary statistics beside the chart (off by default). */
   showSummary: boolean;
+  /** Candidate-entered five-number summary for a constructed box plot. */
+  fiveNumberSummary?: FiveNumberSummary | null;
+  /** raw (default) or grouped. Absent means raw, so old answers stay identical. */
+  dataMode?: StatsDataMode;
+  /** Grouped frequency table — the source of truth when dataMode is "grouped". */
+  groups?: StatsGroup[];
 }
 
 export const STATS_LIMITS = {
   values: 400,
   categories: 40,
+  groups: 40,
   label: 60,
   binWidth: 1_000_000,
   magnitude: 1_000_000_000,
@@ -81,6 +115,9 @@ export function emptyStatsSpec(overrides: Partial<StatsSpec> = {}): StatsSpec {
     categories: [],
     binWidth: null,
     showSummary: false,
+    fiveNumberSummary: null,
+    dataMode: "raw",
+    groups: [],
     ...overrides,
   };
 }
@@ -121,7 +158,14 @@ export function isStatsChartType(value: unknown): value is StatsChartType {
  * a shape the renderer can always draw.
  */
 export function normaliseStatsSpec(raw: unknown, fallback: StatsSpec = emptyStatsSpec()): StatsSpec {
-  if (!isRecord(raw)) return { ...fallback, values: [...fallback.values], categories: fallback.categories.map((c) => ({ ...c })) };
+  if (!isRecord(raw)) {
+    return {
+      ...fallback,
+      values: [...fallback.values],
+      categories: fallback.categories.map((c) => ({ ...c })),
+      groups: (fallback.groups ?? []).map((g) => ({ ...g })),
+    };
+  }
 
   const values = Array.isArray(raw.values)
     ? raw.values.map(finiteNumber).filter((value): value is number => value !== null).slice(0, STATS_LIMITS.values)
@@ -138,6 +182,24 @@ export function normaliseStatsSpec(raw: unknown, fallback: StatsSpec = emptyStat
       }).slice(0, STATS_LIMITS.categories)
     : fallback.categories;
 
+  // A class with a non-finite boundary or a negative frequency is not a class:
+  // it is dropped rather than "repaired" into a believable-looking row.
+  const groups = Array.isArray(raw.groups)
+    ? raw.groups.map((entry, index) => {
+        const row = isRecord(entry) ? entry : {};
+        const from = finiteNumber(row.from);
+        const to = finiteNumber(row.to);
+        const frequency = finiteNumber(row.frequency);
+        if (from === null || to === null || frequency === null || frequency < 0) return null;
+        return {
+          id: typeof row.id === "string" && row.id ? row.id.slice(0, 80) : `grp-${index + 1}`,
+          from: Math.min(from, to),
+          to: Math.max(from, to),
+          frequency,
+        };
+      }).filter((group): group is StatsGroup => group !== null && group.to > group.from).slice(0, STATS_LIMITS.groups)
+    : (fallback.groups ?? []);
+
   return {
     version: STATS_SPEC_VERSION,
     chart: isStatsChartType(raw.chart) ? raw.chart : fallback.chart,
@@ -148,7 +210,15 @@ export function normaliseStatsSpec(raw: unknown, fallback: StatsSpec = emptyStat
     categories,
     binWidth: positiveNumber(raw.binWidth) ?? fallback.binWidth,
     showSummary: typeof raw.showSummary === "boolean" ? raw.showSummary : fallback.showSummary,
+    fiveNumberSummary: normaliseFiveNumberSummary(raw.fiveNumberSummary) ?? null,
+    dataMode: raw.dataMode === "grouped" || raw.dataMode === "raw" ? raw.dataMode : (fallback.dataMode ?? "raw"),
+    groups,
   };
+}
+
+/** Grouped data is only meaningful when at least one class has a frequency. */
+export function statsIsGrouped(spec: StatsSpec | null | undefined): boolean {
+  return Boolean(spec && spec.dataMode === "grouped" && (spec.groups ?? []).length > 0);
 }
 
 /** Does the chart carry any observations a marker should look at? */
@@ -157,6 +227,7 @@ export function statsSpecHasWork(spec: StatsSpec | null | undefined): boolean {
   if (spec.chart === "bar_chart") {
     return spec.categories.some((category) => category.label.trim().length > 0 || category.value !== 0);
   }
+  if (statsIsGrouped(spec)) return (spec.groups ?? []).some((group) => group.frequency > 0);
   return spec.values.length > 0;
 }
 
@@ -166,6 +237,10 @@ export function statsSpecSummary(spec: StatsSpec): string {
     const count = spec.categories.filter((category) => category.label.trim() || category.value).length;
     return `${count} categor${count === 1 ? "y" : "ies"}`;
   }
+  if (statsIsGrouped(spec)) {
+    const count = (spec.groups ?? []).length;
+    return `${count} class${count === 1 ? "" : "es"} (grouped)`;
+  }
   return `${spec.values.length} value${spec.values.length === 1 ? "" : "s"}`;
 }
 
@@ -173,6 +248,9 @@ export function statsSpecIssues(spec: StatsSpec): string[] {
   const issues: string[] = [];
   if (spec.chart === "bar_chart") {
     if (!spec.categories.some((category) => category.label.trim())) issues.push("add at least one category label");
+  } else if (statsIsGrouped(spec)) {
+    if (!(spec.groups ?? []).some((group) => group.frequency > 0)) issues.push("enter a frequency for at least one class");
+    if (groupSeriesIssues(spec.groups ?? []).length) issues.push(...groupSeriesIssues(spec.groups ?? []));
   } else if (spec.values.length === 0) {
     issues.push("add at least one data value");
   }
@@ -180,6 +258,109 @@ export function statsSpecIssues(spec: StatsSpec): string[] {
     issues.push("the bin width must be greater than zero");
   }
   return issues;
+}
+
+/* ─── Grouped frequency series ───────────────────────────────────── */
+
+export interface GroupRow {
+  /** Class interval as written on the paper, e.g. "10 ≤ x < 20". */
+  label: string;
+  from: number;
+  to: number;
+  width: number;
+  midpoint: number;
+  frequency: number;
+  /** frequency ÷ class width — the height of a histogram bar. */
+  frequencyDensity: number;
+  cumulative: number;
+}
+
+export interface GroupedSummary {
+  rows: GroupRow[];
+  totalFrequency: number;
+  /** Σ(f × midpoint) — the numerator of the estimated mean. */
+  totalFrequencyTimesMidpoint: number;
+  /** Σ f x ÷ Σ f, or null when there is no data. */
+  estimatedMean: number | null;
+  /** True when at least two class widths differ (so density ≠ frequency). */
+  unequalWidths: boolean;
+  minBoundary: number;
+  maxBoundary: number;
+}
+
+/** Readable class label that never lies about which boundary is included. */
+export function classLabel(from: number, to: number): string {
+  return `${tidy(from)} ≤ x < ${tidy(to)}`;
+}
+
+/** Structural problems a candidate could plausibly create in a grouped table. */
+export function groupSeriesIssues(groups: StatsGroup[]): string[] {
+  const issues: string[] = [];
+  for (const group of groups) {
+    if (!(group.to > group.from)) issues.push(`a class cannot end before it starts (${group.from} to ${group.to})`);
+  }
+  const sorted = [...groups].sort((a, b) => a.from - b.from);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index].from < sorted[index - 1].to) {
+      issues.push(`classes overlap between ${sorted[index - 1].from} and ${sorted[index].to}`);
+      break;
+    }
+  }
+  return [...new Set(issues)];
+}
+
+/**
+ * Build the full grouped series: class width, midpoint, frequency density and
+ * running total. This is the single source used by the editor preview, the
+ * marker's view, the histogram and the cumulative curve, so the picture and the
+ * table can never disagree.
+ */
+export function groupedSeries(groups: StatsGroup[]): GroupedSummary {
+  const rows: GroupRow[] = [];
+  let cumulative = 0;
+  let total = 0;
+  let weighted = 0;
+  const widths = new Set<number>();
+  for (const group of [...groups].sort((a, b) => a.from - b.from)) {
+    const width = tidy(group.to - group.from);
+    if (!(width > 0)) continue;
+    const midpoint = tidy((group.from + group.to) / 2);
+    cumulative += group.frequency;
+    total += group.frequency;
+    weighted += group.frequency * midpoint;
+    widths.add(width);
+    rows.push({
+      label: classLabel(group.from, group.to),
+      from: group.from,
+      to: group.to,
+      width,
+      midpoint,
+      frequency: group.frequency,
+      frequencyDensity: tidy(group.frequency / width),
+      cumulative,
+    });
+  }
+  const boundaries = rows.map((row) => [row.from, row.to]).flat();
+  return {
+    rows,
+    totalFrequency: total,
+    totalFrequencyTimesMidpoint: tidy(weighted),
+    estimatedMean: total > 0 ? tidy(weighted / total) : null,
+    unequalWidths: widths.size > 1,
+    minBoundary: boundaries.length ? Math.min(...boundaries) : 0,
+    maxBoundary: boundaries.length ? Math.max(...boundaries) : 0,
+  };
+}
+
+/** Cumulative-frequency points plotted at the upper class boundary. */
+export function groupedCumulativePoints(groups: StatsGroup[], startAtZero = true): CumulativePoint[] {
+  const { rows } = groupedSeries(groups);
+  if (!rows.length) return [];
+  const points: CumulativePoint[] = startAtZero
+    ? [{ value: tidy(rows[0].from), count: 0, cumulative: 0 }]
+    : [];
+  for (const row of rows) points.push({ value: tidy(row.to), count: row.frequency, cumulative: row.cumulative });
+  return points;
 }
 
 /* ─── Summary statistics ─────────────────────────────────────────── */
@@ -199,6 +380,24 @@ export interface StatsSummary {
   /** Population standard deviation (divide by n), matching school notation. */
   standardDeviation: number;
   outliers: number[];
+}
+
+export interface FiveNumberSummary {
+  min: number;
+  q1: number;
+  median: number;
+  q3: number;
+  max: number;
+}
+
+/** Validate a student-entered five-number summary without computing it for them. */
+export function normaliseFiveNumberSummary(raw: unknown): FiveNumberSummary | null {
+  if (!isRecord(raw)) return null;
+  const values = [raw.min, raw.q1, raw.median, raw.q3, raw.max].map(finiteNumber);
+  if (values.some((value) => value === null)) return null;
+  const [min, q1, medianValue, q3, max] = values as number[];
+  if (!(min <= q1 && q1 <= medianValue && medianValue <= q3 && q3 <= max)) return null;
+  return { min, q1, median: medianValue, q3, max };
 }
 
 function median(sorted: number[]): number {

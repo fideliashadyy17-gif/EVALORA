@@ -5,11 +5,16 @@ import { RichContent } from "./RichContent";
 import type { RichDoc } from "@/lib/content";
 import { Button, Input } from "./ui";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { bankChips, moveItem, normaliseMatchMode, placeChip, removeChip, toPairs } from "@/lib/matchDnd";
 import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTools";
 import type { PublicAssessPart } from "@/lib/assessParts";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
+
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
+const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value)
+  && value.every((item) => item && typeof item === "object" && typeof item.left === "string" && typeof item.right === "string")
+  && new Set(value.map((item) => item.left)).size === value.length;
 
 export interface PublicQuestion {
   quiz_question_id: string;
@@ -88,8 +93,6 @@ export function QuestionRunner({
   };
   const optionMark = (id: string) => markings?.[id];
 
-  const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
-  const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value) && value.every((item) => item && typeof item === "object" && typeof item.left === "string" && typeof item.right === "string") && new Set(value.map((item) => item.left)).size === value.length;
   const selectedFromSaved = () => isStringArray(initial?.option_ids) ? initial.option_ids : typeof initial?.option_id === "string" ? [initial.option_id] : [];
   const orderFromSaved = () => isStringArray(initial?.order) ? initial.order : question.options.map((o) => o.label);
   const pairsFromSaved = () => Object.fromEntries((isPairs(initial?.pairs) ? initial.pairs : []).map((pair) => [pair.left, pair.right]));
@@ -122,18 +125,52 @@ export function QuestionRunner({
   const [partValues, setPartValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(savedParts).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
   const [openPartHints, setOpenPartHints] = useState<Record<string, number>>({});
+  const savedWorking = (initial && typeof initial === "object" && (initial as { working?: unknown }).working
+    && typeof (initial as { working?: unknown }).working === "object" && !Array.isArray((initial as { working?: unknown }).working))
+    ? ((initial as { working: Record<string, unknown> }).working) : {};
+  const [workingParts, setWorkingParts] = useState<Record<string, unknown>>(savedWorking);
+  const workingPartsRef = useRef<Record<string, unknown>>(savedWorking);
+  const [openWorking, setOpenWorking] = useState<Record<string, boolean>>({});
+  // A part's *typed answer* is what is marked. Working is an optional, separately
+  // stored composition surface for questions that ask the candidate to show a
+  // method — it is preserved for the marker and never changes a mark.
+  const workingWorkspace = useMemo(
+    () => (t === "assess_parts" && question.response_workspace && question.response_workspace.tools.length
+      ? question.response_workspace
+      : null),
+    [t, question.response_workspace],
+  );
+  const hasWorkingWorkspace = Boolean(workingWorkspace);
 
+  // Reset only when the candidate advances to a different question. Including
+  // `initial` in the effect dependencies would replace unsaved local
+  // construction with each server refresh/acknowledgement, defeating the
+  // durable draft and recovery flow. The refs deliberately provide the newest
+  // saved state when an identity change does occur.
+  const latestQuestionRef = useRef(question);
+  latestQuestionRef.current = question;
+  const latestInitialRef = useRef(initial);
+  latestInitialRef.current = initial;
   useEffect(() => {
-    setSelected(selectedFromSaved());
-    setText(typeof initial?.text === "string" ? initial.text : "");
-    setNum(typeof initial?.value === "string" || typeof initial?.value === "number" ? String(initial.value) : "");
-    setOrder(orderFromSaved());
-    setPairs(pairsFromSaved());
+    const saved = latestInitialRef.current;
+    const activeQuestion = latestQuestionRef.current;
+    setSelected(isStringArray(saved?.option_ids) ? saved.option_ids : typeof saved?.option_id === "string" ? [saved.option_id] : []);
+    setText(typeof saved?.text === "string" ? saved.text : "");
+    setNum(typeof saved?.value === "string" || typeof saved?.value === "number" ? String(saved.value) : "");
+    setOrder(isStringArray(saved?.order) ? saved.order : activeQuestion.options.map((option) => option.label));
+    setPairs(Object.fromEntries((isPairs(saved?.pairs) ? saved.pairs : []).map((pair) => [pair.left, pair.right])));
     setSelectedChip(null);
     setPartValues(Object.fromEntries(Object.entries(
-      (initial && typeof initial === "object" && (initial as { parts?: Record<string, unknown> }).parts) || {},
-    ).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
+      (saved && typeof saved === "object" && !Array.isArray(saved) && (saved as { parts?: Record<string, unknown> }).parts) || {},
+    ).map(([key, value]) => [key, typeof value === "string" || typeof value === "number" ? String(value) : ""])));
     setOpenPartHints({});
+    const restoredWorking = (saved && typeof saved === "object" && !Array.isArray(saved)
+      && (saved as { working?: unknown }).working && typeof (saved as { working?: unknown }).working === "object"
+      && !Array.isArray((saved as { working?: unknown }).working))
+      ? (saved as { working: Record<string, unknown> }).working : {};
+    setWorkingParts(restoredWorking);
+    workingPartsRef.current = restoredWorking;
+    setOpenWorking({});
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
@@ -422,6 +459,19 @@ export function QuestionRunner({
                       💡 Hint
                     </button>
                   </div>
+                  {hasWorkingWorkspace && !disabled ? (
+                    <div className="mt-2">
+                      <button
+                        type="button"
+                        aria-expanded={Boolean(openWorking[part.id])}
+                        onClick={() => setOpenWorking((w) => ({ ...w, [part.id]: !w[part.id] }))}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-evergreen-900/20 bg-cream px-3 py-1.5 text-xs font-semibold text-evergreen-900 hover:bg-white"
+                      >
+                        ✎ {openWorking[part.id] ? "Hide working" : "Show your working"}
+                        {workingParts[part.id] ? " · saved" : ""}
+                      </button>
+                    </div>
+                  ) : null}
                   <div className="mt-3 flex items-center gap-2">
                     <Input
                       value={partValues[part.id] ?? ""}
@@ -430,10 +480,39 @@ export function QuestionRunner({
                       placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2)" : "Type your answer…")}
                       aria-label={`Answer for part ${part.label}`}
                       onChange={(e) => { changed(); setPartValues((v) => ({ ...v, [part.id]: e.target.value })); }}
-                      onKeyDown={(e) => { if (e.key === "Enter") emit({ parts: partValues }); }}
+                      onKeyDown={(e) => { if (e.key === "Enter") emit(hasWorkingWorkspace ? { parts: partValues, working: workingPartsRef.current } : { parts: partValues }); }}
                     />
                     {part.unit ? <span className="shrink-0 text-sm font-medium text-ink-soft">{part.unit}</span> : null}
                   </div>
+                  {workingWorkspace && openWorking[part.id] ? (
+                    <div className="mt-3 rounded-xl border border-evergreen-900/15 bg-cream/60 p-3">
+                      <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+                        Working for part {part.label} — {workingWorkspace.guidance || "show each step so your reasoning can be credited"}
+                      </p>
+                      <StructuredResponseEditor
+                        workspace={workingWorkspace}
+                        initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
+                        disabled={disabled}
+                        autosave={autosave}
+                        submitLabel="Save working"
+                        emit={(payload) => {
+                          const nextWorking = { ...workingPartsRef.current, [part.id]: payload };
+                          workingPartsRef.current = nextWorking;
+                          setWorkingParts(nextWorking);
+                          return emit({ parts: partValues, working: nextWorking });
+                        }}
+                        onPayloadChange={(payload) => {
+                          // Captures the latest local construction even when the student
+                          // submits the typed parts before pressing “Save working”. Do not
+                          // create a new parent state object for an unchanged payload.
+                          if (JSON.stringify(workingPartsRef.current[part.id] ?? null) === JSON.stringify(payload)) return;
+                          const nextWorking = { ...workingPartsRef.current, [part.id]: payload };
+                          workingPartsRef.current = nextWorking;
+                          setWorkingParts(nextWorking);
+                        }}
+                      />
+                    </div>
+                  ) : null}
                   {shownHints > 0 && (
                     <div className="mt-3 rounded-lg border border-gold-500/50 bg-gold-100/50 p-3 text-sm" role="region" aria-label={`Hint for part ${part.label}`}>
                       <p className="font-semibold text-evergreen-950">Hint {shownHints} of 2 — {shownHints === 1 ? "a nudge" : "the first step"}</p>
@@ -450,7 +529,7 @@ export function QuestionRunner({
               );
             })}
             <Button disabled={disabled || !(question.assess_parts ?? []).some((p) => (partValues[p.id] ?? "").trim())}
-              onClick={() => emit({ parts: partValues })}>
+              onClick={() => emit(hasWorkingWorkspace ? { parts: partValues, working: workingPartsRef.current } : { parts: partValues })}>
               {submitLabel}
             </Button>
           </div>

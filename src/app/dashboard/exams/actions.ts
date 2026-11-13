@@ -444,7 +444,11 @@ export async function moderateAnswer(formData: FormData) {
   const attemptRel = answer.exam_attempts as unknown as { exam_id: string; status: string } | null;
   const question = answer.questions as unknown as { organization_id: string; points: number; type: string } | null;
   if (!attemptRel || attemptRel.exam_id !== exam.id) return fail("invalid");
-  if (!question || question.organization_id !== org.id || question.type !== "open_ended") return fail("invalid");
+  // Typed assess-parts questions are automatically partially scored, but an
+  // authorised moderator may still correct that score after reviewing the
+  // candidate's persisted per-part working. Objective responses remain
+  // immutable here: their scoring keys are the authoritative record.
+  if (!question || question.organization_id !== org.id || !["open_ended", "assess_parts"].includes(question.type)) return fail("invalid");
 
   let proposed: number | null = null;
   if (decision === "adjusted") {

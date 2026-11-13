@@ -23,6 +23,11 @@ const emptyGraph = () => ({
 const emptyGeometry = () => ({ version: 1, title: "", points: [], lines: [], circles: [], polygons: [], angles: [], annotations: [] });
 const emptyStats = () => ({ version: 1, chart: "dot_plot", title: "", xLabel: "", yLabel: "Frequency", values: [], categories: [], binWidth: null, showSummary: false });
 const emptyTable = () => ({ version: 1, title: "", columns: ["Column 1", "Column 2"], rows: [["", ""], ["", ""]], rowHeaders: false });
+const emptyVenn = (overrides = {}) => ({
+  version: 1, sets: 2, labels: ["A", "B"], universalLabel: "ξ", regions: {}, items: [], title: "", instructions: "", showCounts: true, ...overrides,
+});
+const emptyTree = (overrides = {}) => ({ version: 1, title: "", instructions: "", rootLabel: "Start", nodes: [{ id: "root", parentId: null, label: "", probability: "", outcome: "" }], ...overrides });
+const emptyStemLeaf = (overrides = {}) => ({ version: 1, title: "", stemLabel: "Stem", leafLabel: "Leaf", key: "Key: 4 | 7 means 47", rows: [{ id: "row-1", stem: "", leaves: "" }], ...overrides });
 const hasItems = (spec) => Boolean(spec && ["points", "segments", "annotations", "functions", "lines", "circles", "polygons", "angles"].some((key) => Array.isArray(spec[key]) && spec[key].length));
 const payloads = [];
 let lastGraphChange = null;
@@ -78,6 +83,40 @@ Module._load = function (request, parent) {
         }, "fill table"),
       };
     }
+    if (request === "@/components/venn/VennEditor") {
+      return {
+        VennEditor: ({ onChange, disabled }) => React.createElement("button", {
+          "data-testid": "venn",
+          disabled: Boolean(disabled),
+          onClick: () => onChange({ ...emptyVenn(), regions: { A: "12", AnB: "5", B: "8" } }),
+        }, "venn"),
+      };
+    }
+    if (request === "@/components/probability/ProbabilityTreeEditor") return {
+      ProbabilityTreeEditor: ({ onChange, disabled }) => React.createElement("button", { "data-testid": "tree", disabled: Boolean(disabled), onClick: () => onChange(emptyTree({ nodes: [...emptyTree().nodes, { id: "a", parentId: "root", label: "Red", probability: "1/2", outcome: "Red" }] })) }, "tree"),
+    };
+    if (request === "@/components/probability/ProbabilityTreeView") return { ProbabilityTreeView: () => null };
+    if (request === "@/lib/probabilityTreeSpec") return {
+      emptyProbabilityTreeSpec: emptyTree,
+      normaliseProbabilityTreeSpec: (raw, fallback = emptyTree()) => (raw && typeof raw === "object" ? { ...fallback, ...raw, nodes: Array.isArray(raw.nodes) ? raw.nodes : fallback.nodes } : fallback),
+      probabilityTreeHasWork: (spec) => Boolean(spec?.nodes?.some((node) => node.id !== "root" && (node.label || node.probability || node.outcome))),
+    };
+    if (request === "@/components/stem-leaf/StemLeafEditor") return {
+      StemLeafEditor: ({ onChange, disabled }) => React.createElement("button", { "data-testid": "stem-leaf", disabled: Boolean(disabled), onClick: () => onChange(emptyStemLeaf({ rows: [{ id: "row-1", stem: "4", leaves: "1 3 7" }] })) }, "stem leaf"),
+    };
+    if (request === "@/components/stem-leaf/StemLeafView") return { StemLeafView: () => null };
+    if (request === "@/lib/stemLeafSpec") return {
+      emptyStemLeafSpec: emptyStemLeaf,
+      normaliseStemLeafSpec: (raw, fallback = emptyStemLeaf()) => (raw && typeof raw === "object" ? { ...fallback, ...raw, rows: Array.isArray(raw.rows) ? raw.rows : fallback.rows } : fallback),
+      stemLeafHasWork: (spec) => Boolean(spec?.rows?.some((row) => String(row.stem ?? "").trim() || String(row.leaves ?? "").trim())),
+    };
+    if (request === "@/lib/vennSpec") return {
+      emptyVennSpec: emptyVenn,
+      normaliseVennSpec: (raw, fallback = emptyVenn()) => (raw && typeof raw === "object" ? { ...fallback, ...raw } : fallback),
+      vennSpecHasWork: (spec) => Boolean(spec && spec.regions && Object.values(spec.regions).some((value) => String(value).trim())),
+      regionKeysFor: (sets) => (sets === 3 ? ["A", "B", "C", "AnB", "AnC", "BnC", "AnBnC", "neither"] : ["A", "B", "AnB", "neither"]),
+      regionLabel: (spec, key) => key,
+    };
     if (request === "@/components/RichContent") return { RichContent: () => React.createElement("div", { "data-testid": "readonly-doc" }, "answer") };
     if (request === "@/components/graph/GraphView") return { GraphView: () => null };
     if (request === "@/components/geometry/GeometryView") return { GeometryView: () => null };
@@ -127,14 +166,22 @@ virtual._compile(source, file);
 Module._load = originalLoad;
 const { StructuredResponseEditor } = virtual.exports;
 
+const emptyVennWorkspace = () => ({ enabled: false, title: "Venn diagram", instructions: "", starter: emptyVenn(), allowSetChange: true });
+const emptyTreeWorkspace = () => ({ enabled: false, title: "Probability tree", instructions: "", starter: emptyTree(), allowStructure: true });
+const emptyStemLeafWorkspace = () => ({ enabled: false, title: "Stem-and-leaf diagram", instructions: "", starter: emptyStemLeaf() });
+
 const workspace = (overrides = {}) => ({
   tools: ["rich_text", "math", "graph", "geometry"],
   graph: { enabled: true, title: "Your graph", instructions: "", allowFunctions: true, starter: emptyGraph() },
   geometry: { enabled: true, title: "Your construction", instructions: "", starter: emptyGeometry() },
   statistics: { enabled: false, title: "Your statistics chart", instructions: "", chart: "any", starter: emptyStats() },
   dataTable: { enabled: false, title: "Your data table", instructions: "", starter: emptyTable() },
+  venn: emptyVennWorkspace(),
+  probabilityTree: emptyTreeWorkspace(),
+  stemLeaf: emptyStemLeafWorkspace(),
   guidance: "",
   requirement: "any",
+  defaultTool: null,
   source: "configured",
   ...overrides,
 });
@@ -222,6 +269,57 @@ await test("statistics and data table tools save structured payloads", () => {
   assert.equal(emitted[0].statistics.chart, "histogram");
   assert.equal(emitted[0].statistics.values.length, 4);
   assert.equal(emitted[0].data_table.rows[1][0], "3");
+  act(() => tree.unmount());
+});
+
+await test("the Venn workspace saves a filled diagram as structured data", () => {
+  const { tree, emitted } = render({
+    workspace: workspace({
+      tools: ["rich_text", "math", "venn"],
+      venn: { enabled: true, title: "Sets", instructions: "Fill every region.", starter: emptyVenn({ sets: 3 }), allowSetChange: false },
+    }),
+  });
+  assert.ok(tab(tree, "Venn diagram"));
+  act(() => tab(tree, "Venn diagram").props.onClick());
+  act(() => byTestId(tree, "venn")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted.length, 1);
+  assert.equal(emitted[0].venn.regions.A, "12");
+  assert.equal(emitted[0].venn.regions.AnB, "5");
+  act(() => tree.unmount());
+});
+
+await test("probability-tree branches save as structured data and restore", () => {
+  const configured = workspace({ tools: ["rich_text", "probability_tree"], probabilityTree: { enabled: true, title: "Tree", instructions: "", starter: emptyTree(), allowStructure: true } });
+  const { tree, emitted } = render({ workspace: configured });
+  act(() => tab(tree, "Probability tree").props.onClick());
+  act(() => byTestId(tree, "tree")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted[0].probability_tree.nodes[1].probability, "1/2");
+  act(() => tree.unmount());
+  const restored = render({ workspace: configured, initial: emitted[0], autosave: true });
+  act(() => tab(restored.tree, "Probability tree").props.onClick());
+  act(() => byTestId(restored.tree, "tree")[0].props.onClick());
+  act(() => restored.tree.unmount());
+  assert.equal(restored.emitted[0].probability_tree.nodes[1].label, "Red");
+});
+
+await test("stem-and-leaf rows save as structured data and satisfy required guidance", () => {
+  const { tree, emitted } = render({ workspace: workspace({ tools: ["rich_text", "stem_leaf"], stemLeaf: { enabled: true, title: "Leaves", instructions: "", starter: emptyStemLeaf() }, requirement: "stem_leaf" }) });
+  assert.equal(tree.root.findAll((node) => node.props?.role === "status").length, 1);
+  act(() => tab(tree, "Stem-and-leaf").props.onClick());
+  act(() => byTestId(tree, "stem-leaf")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted[0].stem_leaf.rows[0].leaves, "1 3 7");
+  act(() => tree.unmount());
+});
+
+await test("a Venn diagram is kept when the teacher disables the tool", () => {
+  const initial = { version: 1, venn: { ...emptyVenn(), regions: { A: "9" } } };
+  const { tree, emitted } = render({ initial });
+  act(() => byTestId(tree, "write")[0].props.onClick());
+  act(() => tab(tree, "Save answer").props.onClick());
+  assert.equal(emitted[0].venn.regions.A, "9");
   act(() => tree.unmount());
 });
 

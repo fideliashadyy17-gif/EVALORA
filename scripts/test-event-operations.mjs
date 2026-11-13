@@ -97,7 +97,7 @@ const play = read("src/app/play/[code]/PlayClient.tsx");
 check("participant UI collects qualification token", play.includes("qualificationToken") && play.includes("qualification_token"));
 
 const examLink = read("src/app/api/exam/link-access/route.ts");
-check("exam link validates code against server hash", examLink.includes("access_code_hash !== sha256"));
+check("exam link validates code against server hash", examLink.includes("access_code_hash === sha256(normalizeCode(access_code))"));
 check("exam link requires first and last name", examLink.includes("first_name") && examLink.includes("last_name") && examLink.includes("min(1)"));
 check("exam link validates eligible class", examLink.includes("eligibleClasses") && examLink.includes("organization_id"));
 check("exam link associates only verified student", examLink.includes("students") && examLink.includes("user_id") && !examLink.includes("full_name ="));

@@ -23,6 +23,11 @@ Module._load=function(request,parent) {
   if(request==='@/lib/examResults') return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>'',
     // the client only reads presentation helpers; keep them inert here
     parseIntegrityPolicy:undefined};
+  if(request==='@/lib/examFeedback') return {
+    questionFeedback:()=>({assessed:null,scheme:null,improve:null,any:false}),
+    resultSummary:(questions,pass)=>({awarded:0,max:0,percent:0,passPercent:pass,passed:false,
+      objective:{awarded:0,max:0,percent:0,count:0},structured:{awarded:0,max:0,percent:0,count:0},
+      topics:[],criteria:[],strongTopics:[],weakTopics:[],pendingManual:false,pendingCount:0,message:'summary'})};
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:(raw)=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
   if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};

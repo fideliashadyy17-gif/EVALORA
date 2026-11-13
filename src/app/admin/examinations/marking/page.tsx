@@ -1,6 +1,7 @@
 import { Badge, Button, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { RichContent } from "@/components/RichContent";
 import { AnswerResponseView } from "@/components/AnswerResponseView";
+import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -93,7 +94,7 @@ export default async function ExaminationMarkingPage({
     <>
       <PageTitle
         title="Marking & grading"
-        subtitle="Objective questions are graded by the server scoring engine at submission. This queue contains structured written/mathematical answers that require an authorized human marker."
+        subtitle="Objective questions and typed multi-part answers are scored by the server at submission. This queue is for open constructed responses requiring an authorized first marker; assess-parts working is reviewed and, if needed, adjusted through the audited examination moderation workspace."
       />
 
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />
@@ -153,7 +154,7 @@ export default async function ExaminationMarkingPage({
 
                     <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-ink-soft">Candidate response</h3>
                     <div className="mt-2">
-                      <AnswerResponseView answer={row.answer} showComponents />
+                      <AnswerResponseView answer={row.answer} showComponents assessParts={publicAssessParts(assessPartsFromConfig(q.config))} />
                     </div>
                   </div>
 

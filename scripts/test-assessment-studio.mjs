@@ -266,7 +266,7 @@ console.log("Data table specification");
 /* ─── Response workspace inference ───────────────────────────────── */
 console.log("Response workspace");
 {
-  ok("eight response tools are published", RESPONSE_TOOL_IDS.length === 8 && RESPONSE_TOOL_IDS.includes("graph") && RESPONSE_TOOL_IDS.includes("statistics") && RESPONSE_TOOL_IDS.includes("data_table"));
+  ok("eleven response tools are published", RESPONSE_TOOL_IDS.length === 11 && RESPONSE_TOOL_IDS.includes("graph") && RESPONSE_TOOL_IDS.includes("statistics") && RESPONSE_TOOL_IDS.includes("data_table") && RESPONSE_TOOL_IDS.includes("venn") && RESPONSE_TOOL_IDS.includes("probability_tree") && RESPONSE_TOOL_IDS.includes("stem_leaf"));
 
   const prose = responseWorkspaceFor({ type: "open_ended", prompt: "Explain what a sequence is." });
   ok("prose question gets rich text", prose.tools.includes("rich_text") && prose.tools.includes("math"));
@@ -387,9 +387,12 @@ console.log("Answer validation");
   ok("an empty statistics answer has no work", !answerHasWork({ statistics: emptyStatsSpec() }));
   ok("an empty data table has no work", !answerHasWork({ data_table: emptyDataTableSpec() }));
   ok("empty structured answer has no work", !answerHasWork({ version: 1, graph: emptyGraphSpec(), geometry: emptyGeometrySpec() }));
+  ok("typed assess-parts answers count as candidate work", answerHasWork({ parts: { a: "3/4" } }));
+  ok("per-part structured working counts as candidate work", answerHasWork({ working: { a: { data_table: dataTable } } }));
 
   ok("components describe a mixed response", describeAnswerComponents({ text: "x", graph }).includes("graph construction"));
   ok("components describe statistics and a table", describeAnswerComponents({ statistics, data_table: dataTable }).join(" · ").includes("statistics chart"));
+  ok("components describe typed parts and per-part working", describeAnswerComponents({ parts: { a: "3/4" }, working: { a: { data_table: dataTable } } }).join(" · ").includes("typed part answers"));
   ok("components describe an empty response", describeAnswerComponents({}).includes("Empty response"));
 }
 

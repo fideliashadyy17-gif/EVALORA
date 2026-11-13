@@ -9,6 +9,9 @@ import { emptyGraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec } from "@/lib/geometrySpec";
 import { STATS_CHART_LABELS, STATS_CHART_TYPES, emptyStatsSpec, type StatsChartType } from "@/lib/statsSpec";
 import { emptyDataTableSpec, normaliseDataTableSpec } from "@/lib/dataTableSpec";
+import { emptyVennSpec, normaliseVennSpec } from "@/lib/vennSpec";
+import { emptyProbabilityTreeSpec, normaliseProbabilityTreeSpec } from "@/lib/probabilityTreeSpec";
+import { emptyStemLeafSpec, normaliseStemLeafSpec } from "@/lib/stemLeafSpec";
 import { docIsEmpty, docToLabel, docToPlainText, emptyDoc, textToDoc, type RichDoc } from "@/lib/content";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -53,8 +56,67 @@ interface OptState {
   is_correct: boolean;
 }
 
+type AssessPartKind = "numeric" | "text" | "expression";
+
+/** Draft-friendly form state for a typed, auto-marked multi-part question. */
+interface AssessPartState {
+  id: string;
+  label: string;
+  prompt: string;
+  kind: AssessPartKind;
+  points: string;
+  unit: string;
+  placeholder: string;
+  numericAnswer: string;
+  tolerance: string;
+  accepted: string;
+  hintOne: string;
+  hintTwo: string;
+  strand: string;
+  keywordGroups: string;
+  minKeywordGroups: string;
+}
+
 const CHOICE_TYPES = ["single_choice", "multiple_select", "true_false", "poll"];
 const LABEL_TYPES = ["short_answer", "ordering"];
+const PART_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz";
+
+function partIdFor(index: number) {
+  return PART_ID_ALPHABET[index] ?? `part-${index + 1}`;
+}
+
+function initialAssessPart(raw: unknown, index: number): AssessPartState {
+  const part = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+  const kind: AssessPartKind = part.kind === "numeric" || part.kind === "expression" ? part.kind : "text";
+  const hints = Array.isArray(part.hints) ? part.hints : [];
+  const accepted = Array.isArray(part.accepted)
+    ? part.accepted.filter((item): item is string => typeof item === "string").join("\n")
+    : "";
+  const keywordGroups = Array.isArray(part.keywords)
+    ? part.keywords
+      .filter((group): group is unknown[] => Array.isArray(group))
+      .map((group) => group.filter((word): word is string => typeof word === "string").join(" | "))
+      .join("\n")
+    : "";
+  const id = typeof part.id === "string" && part.id.trim() ? part.id.trim() : partIdFor(index);
+  return {
+    id,
+    label: typeof part.label === "string" && part.label.trim() ? part.label : `(${id})`,
+    prompt: typeof part.prompt === "string" ? part.prompt : "",
+    kind,
+    points: part.points == null ? "1" : String(part.points),
+    unit: typeof part.unit === "string" ? part.unit : "",
+    placeholder: typeof part.placeholder === "string" ? part.placeholder : "",
+    numericAnswer: part.answer == null ? "" : String(part.answer),
+    tolerance: part.tolerance == null ? "0" : String(part.tolerance),
+    accepted,
+    hintOne: typeof hints[0] === "string" ? hints[0] : "",
+    hintTwo: typeof hints[1] === "string" ? hints[1] : "",
+    strand: typeof part.strand === "string" ? part.strand : "",
+    keywordGroups,
+    minKeywordGroups: part.minKeywordGroups == null ? "" : String(part.minKeywordGroups),
+  };
+}
 
 /**
  * One unified question authoring form used by the Question Bank (workspace),
@@ -110,6 +172,9 @@ export function QuestionForm({
   const [mediaUrl, setMediaUrl] = useState(String(cfg.media_url ?? ""));
   const [mediaType, setMediaType] = useState(String(cfg.media_type ?? "image"));
   const [markingCriteria, setMarkingCriteria] = useState(String(cfg.marking_criteria ?? ""));
+  const [assessParts, setAssessParts] = useState<AssessPartState[]>(() => (
+    Array.isArray(cfg.parts) ? cfg.parts.slice(0, 12).map(initialAssessPart) : []
+  ));
   const rawTools = cfg.response_tools;
   const [toolMode, setToolMode] = useState<"auto" | "custom">(Array.isArray(rawTools) && rawTools.length ? "custom" : "auto");
   const [responseTools, setResponseTools] = useState<string[]>(
@@ -132,6 +197,39 @@ export function QuestionForm({
   const [geometryXMax, setGeometryXMax] = useState(String(geometryDomain.xMax ?? 6));
   const [geometryYMin, setGeometryYMin] = useState(String(geometryDomain.yMin ?? -4));
   const [geometryYMax, setGeometryYMax] = useState(String(geometryDomain.yMax ?? 4));
+  const rawVenn = (cfg.response_venn ?? {}) as Record<string, unknown>;
+  const vennStarter = (rawVenn.starter ?? {}) as Record<string, unknown>;
+  const [vennTitle, setVennTitle] = useState(String(rawVenn.title ?? "Your Venn diagram"));
+  const [vennInstructions, setVennInstructions] = useState(
+    String(rawVenn.instructions ?? "Write each region's count inside the region."),
+  );
+  const [vennSets, setVennSets] = useState<"2" | "3">(Number(vennStarter.sets) === 3 ? "3" : "2");
+  const [vennLabels, setVennLabels] = useState(
+    Array.isArray(vennStarter.labels) ? (vennStarter.labels as unknown[]).map(String).slice(0, 3) : ["A", "B", "C"],
+  );
+  const [vennUniversalLabel, setVennUniversalLabel] = useState(String(vennStarter.universalLabel ?? "ξ"));
+  const [vennFixSets, setVennFixSets] = useState(rawVenn.allow_set_change === false);
+  const [vennItems, setVennItems] = useState(() => Array.isArray(vennStarter.items)
+    ? (vennStarter.items as unknown[]).flatMap((item) => item && typeof item === "object" && typeof (item as { label?: unknown }).label === "string"
+      ? [(item as { label: string }).label] : []).join("\n")
+    : "");
+  const rawProbabilityTree = (cfg.response_probability_tree ?? {}) as Record<string, unknown>;
+  const rawProbabilityTreeStarter = (rawProbabilityTree.starter ?? {}) as Record<string, unknown>;
+  const [probabilityTreeTitle, setProbabilityTreeTitle] = useState(String(rawProbabilityTree.title ?? "Your probability tree"));
+  const [probabilityTreeInstructions, setProbabilityTreeInstructions] = useState(String(rawProbabilityTree.instructions ?? ""));
+  const [probabilityTreeRootLabel, setProbabilityTreeRootLabel] = useState(String(rawProbabilityTreeStarter.rootLabel ?? "Start"));
+  const [probabilityTreeAllowStructure, setProbabilityTreeAllowStructure] = useState(rawProbabilityTree.allow_structure !== false);
+  const rawStemLeaf = (cfg.response_stem_leaf ?? {}) as Record<string, unknown>;
+  const rawStemLeafStarter = (rawStemLeaf.starter ?? {}) as Record<string, unknown>;
+  const [stemLeafTitle, setStemLeafTitle] = useState(String(rawStemLeaf.title ?? "Your stem-and-leaf diagram"));
+  const [stemLeafInstructions, setStemLeafInstructions] = useState(String(rawStemLeaf.instructions ?? ""));
+  const [stemLeafLayout, setStemLeafLayout] = useState<"standard" | "back_to_back">(rawStemLeafStarter.layout === "back_to_back" ? "back_to_back" : "standard");
+  const [stemLeafStemLabel, setStemLeafStemLabel] = useState(String(rawStemLeafStarter.stemLabel ?? "Stem"));
+  const [stemLeafLeafLabel, setStemLeafLeafLabel] = useState(String(rawStemLeafStarter.leafLabel ?? "Leaf"));
+  const [stemLeafLeftLeafLabel, setStemLeafLeftLeafLabel] = useState(String(rawStemLeafStarter.leftLeafLabel ?? "Left leaves"));
+  const [stemLeafRightLeafLabel, setStemLeafRightLeafLabel] = useState(String(rawStemLeafStarter.rightLeafLabel ?? "Right leaves"));
+  const [stemLeafKey, setStemLeafKey] = useState(String(rawStemLeafStarter.key ?? "Key: 4 | 7 means 47"));
+  const [nextTimeHint, setNextTimeHint] = useState(String(cfg.next_time_hint ?? ""));
   const rawStats = (cfg.response_stats ?? {}) as Record<string, unknown>;
   const rawStatsStarter = (rawStats.starter ?? {}) as { values?: unknown; chart?: unknown };
   const [statsTitle, setStatsTitle] = useState(String(rawStats.title ?? "Your statistics chart"));
@@ -192,6 +290,14 @@ export function QuestionForm({
     setOptions((prev) => prev.map((o, idx) => (idx === i ? { ...o, ...patch } : o)));
   }
 
+  function setAssessPart(index: number, patch: Partial<AssessPartState>) {
+    setAssessParts((previous) => previous.map((part, current) => current === index ? { ...part, ...patch } : part));
+  }
+
+  function addAssessPart() {
+    setAssessParts((previous) => [...previous, initialAssessPart({}, previous.length)]);
+  }
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -223,8 +329,49 @@ export function QuestionForm({
         return;
       }
     }
-    if (type === "open_ended") {
-      if (markingCriteria.trim()) config.marking_criteria = markingCriteria.trim();
+    if (type === "assess_parts") {
+      const usedIds = new Set<string>();
+      config.parts = assessParts.slice(0, 12).map((part, index) => {
+        const requestedId = part.id.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
+        let id = requestedId || partIdFor(index);
+        while (usedIds.has(id)) id = `${id}-${index + 1}`;
+        usedIds.add(id);
+        const parsedPoints = Number(part.points);
+        const parsedAnswer = Number(part.numericAnswer);
+        const parsedTolerance = Number(part.tolerance);
+        const accepted = part.accepted.split("\n").map((value) => value.trim()).filter(Boolean).slice(0, 24);
+        const keywordGroups = part.keywordGroups.split("\n")
+          .map((group) => group.split("|").map((word) => word.trim()).filter(Boolean).slice(0, 8))
+          .filter((group) => group.length)
+          .slice(0, 6);
+        const minKeywordGroups = Number(part.minKeywordGroups);
+        return {
+          id,
+          label: part.label.trim() || `(${id})`,
+          prompt: part.prompt.trim(),
+          kind: part.kind,
+          points: Number.isFinite(parsedPoints) ? parsedPoints : 0,
+          ...(part.unit.trim() ? { unit: part.unit.trim().slice(0, 24) } : {}),
+          ...(part.placeholder.trim() ? { placeholder: part.placeholder.trim().slice(0, 60) } : {}),
+          hints: [part.hintOne.trim(), part.hintTwo.trim()],
+          ...(part.strand.trim() ? { strand: part.strand.trim().slice(0, 16) } : {}),
+          ...(part.kind === "numeric"
+            ? {
+                ...(Number.isFinite(parsedAnswer) ? { answer: parsedAnswer } : {}),
+                ...(Number.isFinite(parsedTolerance) && parsedTolerance >= 0 ? { tolerance: parsedTolerance } : {}),
+              }
+            : { accepted }),
+          ...(keywordGroups.length ? {
+            keywords: keywordGroups,
+            minKeywordGroups: Number.isFinite(minKeywordGroups) && minKeywordGroups >= 1
+              ? Math.min(keywordGroups.length, Math.floor(minKeywordGroups))
+              : keywordGroups.length,
+          } : {}),
+        };
+      });
+    }
+    if (type === "open_ended" || type === "assess_parts") {
+      if (type === "open_ended" && markingCriteria.trim()) config.marking_criteria = markingCriteria.trim();
       // Automatic mode leaves the configuration absent, so the platform derives
       // tools from the question wording (graph language, geometry language…).
       if (toolMode === "custom") config.response_tools = responseTools;
@@ -293,6 +440,51 @@ export function QuestionForm({
           ),
         };
       }
+      if (toolMode === "custom" && responseTools.includes("probability_tree")) {
+        config.response_probability_tree = {
+          title: probabilityTreeTitle.trim() || "Your probability tree",
+          instructions: probabilityTreeInstructions.trim(),
+          allow_structure: probabilityTreeAllowStructure,
+          starter: normaliseProbabilityTreeSpec({ rootLabel: probabilityTreeRootLabel.trim() || "Start" }, emptyProbabilityTreeSpec()),
+        };
+      }
+      if (toolMode === "custom" && responseTools.includes("stem_leaf")) {
+        config.response_stem_leaf = {
+          title: stemLeafTitle.trim() || "Your stem-and-leaf diagram",
+          instructions: stemLeafInstructions.trim(),
+          starter: normaliseStemLeafSpec({
+            layout: stemLeafLayout,
+            stemLabel: stemLeafStemLabel.trim() || "Stem",
+            leafLabel: stemLeafLeafLabel.trim() || "Leaf",
+            leftLeafLabel: stemLeafLeftLeafLabel.trim() || "Left leaves",
+            rightLeafLabel: stemLeafRightLeafLabel.trim() || "Right leaves",
+            key: stemLeafKey.trim() || "Key: 4 | 7 means 47",
+          }, emptyStemLeafSpec({ layout: stemLeafLayout })),
+        };
+      }
+      if (toolMode === "custom" && responseTools.includes("venn")) {
+        const sets = vennSets === "3" ? 3 : 2;
+        const labels = vennLabels.slice(0, sets).map((label, i) => label.trim() || ["A", "B", "C"][i]);
+        const items = vennItems.split(/\n+/).map((label) => label.trim()).filter(Boolean).slice(0, 60)
+          .map((label, index) => ({ id: `given-${index + 1}`, label, region: "bank" }));
+        config.response_venn = {
+          title: vennTitle.trim() || "Your Venn diagram",
+          instructions: vennInstructions.trim(),
+          allow_set_change: !vennFixSets,
+          starter: normaliseVennSpec(
+            { sets, labels, universalLabel: vennUniversalLabel.trim() || "ξ", items },
+            emptyVennSpec({ sets, labels }),
+          ),
+        };
+      }
+    }
+
+    // The transferable takeaway shown to the candidate once results are
+    // published: what to do differently next time. Never shown mid-paper, and
+    // available on every type that can be marked, not just open answers.
+    if (nextTimeHint.trim()) config.next_time_hint = nextTimeHint.trim();
+    if (markingCriteria.trim() && config.marking_criteria === undefined) {
+      config.marking_criteria = markingCriteria.trim();
     }
 
     let finalOptions: QuestionFormOption[] = [];
@@ -348,6 +540,7 @@ export function QuestionForm({
   }
 
   const isChoice = CHOICE_TYPES.includes(type);
+  const supportsResponseWorkspace = type === "open_ended" || type === "assess_parts";
   const letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
   return (
@@ -405,16 +598,100 @@ export function QuestionForm({
           </div>
         )}
 
-        {type === "open_ended" && (
+        {type === "assess_parts" && (
+          <div className="space-y-4 rounded-xl border border-evergreen-900/15 bg-cream/50 p-4">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-evergreen-950">Typed, auto-marked parts</h3>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Each part is a real candidate input with its own marks, accepted answer and two progressive hints. Optional construction tools below save separate working for every part without changing typed-part marks.
+                </p>
+              </div>
+              <span className="rounded-full bg-evergreen-100 px-2.5 py-1 text-xs font-semibold text-evergreen-900">
+                {assessParts.reduce((total, part) => total + (Number(part.points) || 0), 0)} / {points} marks
+              </span>
+            </div>
+            {assessParts.length === 0 && (
+              <p className="rounded-lg border border-dashed border-evergreen-900/20 bg-white p-3 text-sm text-ink-soft">
+                Add a part to make this a genuine multi-part question. A published question needs at least one complete part and matching total marks.
+              </p>
+            )}
+            <div className="space-y-4">
+              {assessParts.map((part, index) => (
+                <div key={`${part.id}-${index}`} className="space-y-3 rounded-xl border border-evergreen-900/15 bg-white p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="font-semibold text-evergreen-950">Part {index + 1}</p>
+                    <button type="button" className="text-sm font-medium text-red-700 hover:underline" onClick={() => setAssessParts((previous) => previous.filter((_, current) => current !== index))}>Remove part</button>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <Field label="Stable ID" hint="Used to restore saved work.">
+                      <Input value={part.id} onChange={(e) => setAssessPart(index, { id: e.target.value })} placeholder={partIdFor(index)} />
+                    </Field>
+                    <Field label="Candidate label">
+                      <Input value={part.label} onChange={(e) => setAssessPart(index, { label: e.target.value })} placeholder={`(${partIdFor(index)})`} />
+                    </Field>
+                    <Field label="Answer type">
+                      <Select value={part.kind} onChange={(e) => setAssessPart(index, { kind: e.target.value === "numeric" || e.target.value === "expression" ? e.target.value : "text" })}>
+                        <option value="numeric">Number</option>
+                        <option value="expression">Expression / formula</option>
+                        <option value="text">Text / explanation</option>
+                      </Select>
+                    </Field>
+                    <Field label="Marks">
+                      <Input type="number" min="0" step="any" value={part.points} onChange={(e) => setAssessPart(index, { points: e.target.value })} />
+                    </Field>
+                  </div>
+                  <Field label="Prompt for this part">
+                    <Textarea rows={2} value={part.prompt} onChange={(e) => setAssessPart(index, { prompt: e.target.value })} placeholder="Calculate the estimated mean, showing your method." />
+                  </Field>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    <Field label="Unit (optional)"><Input value={part.unit} onChange={(e) => setAssessPart(index, { unit: e.target.value })} placeholder="km/h" /></Field>
+                    <Field label="Input placeholder (optional)"><Input value={part.placeholder} onChange={(e) => setAssessPart(index, { placeholder: e.target.value })} placeholder="Type a value…" /></Field>
+                    <Field label="MYP strand (optional)"><Input value={part.strand} onChange={(e) => setAssessPart(index, { strand: e.target.value })} placeholder="C(ii)" /></Field>
+                  </div>
+                  {part.kind === "numeric" ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="Correct numeric answer"><Input type="number" step="any" value={part.numericAnswer} onChange={(e) => setAssessPart(index, { numericAnswer: e.target.value })} placeholder="42" /></Field>
+                      <Field label="Tolerance (±)"><Input type="number" min="0" step="any" value={part.tolerance} onChange={(e) => setAssessPart(index, { tolerance: e.target.value })} /></Field>
+                    </div>
+                  ) : (
+                    <Field label="Accepted answer variants" hint="One exact accepted answer per line. Expressions are canonicalised before matching.">
+                      <Textarea rows={3} value={part.accepted} onChange={(e) => setAssessPart(index, { accepted: e.target.value })} placeholder={part.kind === "expression" ? "a_n = 3n + 2\n3n + 2" : "A clear mathematical explanation"} />
+                    </Field>
+                  )}
+                  {part.kind === "text" && (
+                    <div className="grid gap-3 sm:grid-cols-[1fr_180px]">
+                      <Field label="Keyword groups for partial text credit (optional)" hint="One group per line; separate acceptable phrases with | .">
+                        <Textarea rows={3} value={part.keywordGroups} onChange={(e) => setAssessPart(index, { keywordGroups: e.target.value })} placeholder={"mean | average\nspread | range"} />
+                      </Field>
+                      <Field label="Groups needed"><Input type="number" min="1" step="1" value={part.minKeywordGroups} onChange={(e) => setAssessPart(index, { minKeywordGroups: e.target.value })} placeholder="2" /></Field>
+                    </div>
+                  )}
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Field label="Hint 1 — nudge" hint="At least 8 characters; never give the answer."><Textarea rows={2} value={part.hintOne} onChange={(e) => setAssessPart(index, { hintOne: e.target.value })} placeholder="Identify the quantities that change together." /></Field>
+                    <Field label="Hint 2 — first step" hint="At least 8 characters; never give the answer."><Textarea rows={2} value={part.hintTwo} onChange={(e) => setAssessPart(index, { hintTwo: e.target.value })} placeholder="Start by writing the ratio in its simplest form." /></Field>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <Button type="button" variant="outline" disabled={assessParts.length >= 12} onClick={addAssessPart}>+ Add typed part</Button>
+          </div>
+        )}
+
+        {supportsResponseWorkspace && (
           <div className="space-y-4 rounded-xl border border-evergreen-900/15 bg-cream/50 p-4">
             <div>
-              <h3 className="text-sm font-semibold text-evergreen-950">Student composition environment</h3>
+              <h3 className="text-sm font-semibold text-evergreen-950">
+                {type === "assess_parts" ? "Optional saved working workspace" : "Student composition environment"}
+              </h3>
               <p className="mt-1 text-xs text-ink-soft">
-                Choose <strong>Automatic</strong> and the platform supplies the right tools from the question itself: prose and mathematics for a constructed response, plus a graph workspace for graph/plot/sketch questions, a geometry workspace for construction questions and the science palette for science questions. Existing questions need no editing.
+                {type === "assess_parts"
+                  ? <>Choose the construction tools a candidate may use to show working for each typed part. The working is saved, restored and visible to markers, while typed-part scoring remains deterministic.</>
+                  : <>Choose <strong>Automatic</strong> and the platform supplies the right tools from the question itself: prose and mathematics for a constructed response, plus a graph workspace for graph/plot/sketch questions, a geometry workspace for construction questions and the science palette for science questions. Existing questions need no editing.</>}
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
                 <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm ${toolMode === "auto" ? "border-evergreen-700 bg-evergreen-50" : "border-evergreen-900/20 bg-white"}`}>
-                  <input type="radio" name="tool_mode" checked={toolMode === "auto"} onChange={() => setToolMode("auto")} /> Automatic (recommended)
+                  <input type="radio" name="tool_mode" checked={toolMode === "auto"} onChange={() => setToolMode("auto")} /> {type === "assess_parts" ? "No separate working workspace" : "Automatic (recommended)"}
                 </label>
                 <label className={`flex min-h-10 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm ${toolMode === "custom" ? "border-evergreen-700 bg-evergreen-50" : "border-evergreen-900/20 bg-white"}`}>
                   <input type="radio" name="tool_mode" checked={toolMode === "custom"} onChange={() => setToolMode("custom")} /> Choose tools for this question
@@ -530,6 +807,72 @@ export function QuestionForm({
               </div>
             )}
 
+            {toolMode === "custom" && responseTools.includes("probability_tree") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Probability-tree title"><Input value={probabilityTreeTitle} onChange={(e) => setProbabilityTreeTitle(e.target.value)} placeholder="Your probability tree" /></Field>
+                <Field label="Tree instructions"><Input value={probabilityTreeInstructions} onChange={(e) => setProbabilityTreeInstructions(e.target.value)} placeholder="Label each branch and write its probability." /></Field>
+                <Field label="Starting-node label"><Input value={probabilityTreeRootLabel} onChange={(e) => setProbabilityTreeRootLabel(e.target.value)} placeholder="Start" /></Field>
+                <label className="flex items-center gap-2 text-sm sm:col-span-2"><input type="checkbox" checked={probabilityTreeAllowStructure} onChange={(e) => setProbabilityTreeAllowStructure(e.target.checked)} /> Let students add and remove branches</label>
+              </div>
+            )}
+
+            {toolMode === "custom" && responseTools.includes("stem_leaf") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Stem-and-leaf title"><Input value={stemLeafTitle} onChange={(e) => setStemLeafTitle(e.target.value)} placeholder="Your stem-and-leaf diagram" /></Field>
+                <Field label="Diagram instructions"><Input value={stemLeafInstructions} onChange={(e) => setStemLeafInstructions(e.target.value)} placeholder="Complete the ordered leaves and show a clear key." /></Field>
+                <Field label="Diagram layout"><Select value={stemLeafLayout} onChange={(e) => setStemLeafLayout(e.target.value === "back_to_back" ? "back_to_back" : "standard")}><option value="standard">Standard</option><option value="back_to_back">Back-to-back</option></Select></Field>
+                <Field label="Stem heading"><Input value={stemLeafStemLabel} onChange={(e) => setStemLeafStemLabel(e.target.value)} placeholder="Stem" /></Field>
+                {stemLeafLayout === "standard" ? <Field label="Leaf heading"><Input value={stemLeafLeafLabel} onChange={(e) => setStemLeafLeafLabel(e.target.value)} placeholder="Leaf" /></Field> : <>
+                  <Field label="Left-leaf heading"><Input value={stemLeafLeftLeafLabel} onChange={(e) => setStemLeafLeftLeafLabel(e.target.value)} placeholder="Class A leaves" /></Field>
+                  <Field label="Right-leaf heading"><Input value={stemLeafRightLeafLabel} onChange={(e) => setStemLeafRightLeafLabel(e.target.value)} placeholder="Class B leaves" /></Field>
+                </>}
+                <Field label="Starting key" hint="Students can edit it if needed."><Input value={stemLeafKey} onChange={(e) => setStemLeafKey(e.target.value)} placeholder="Key: 4 | 7 means 47" /></Field>
+              </div>
+            )}
+
+            {toolMode === "custom" && responseTools.includes("venn") && (
+              <div className="grid gap-3 rounded-lg border border-evergreen-900/15 bg-white p-3 sm:grid-cols-2">
+                <Field label="Venn diagram title">
+                  <Input value={vennTitle} onChange={(e) => setVennTitle(e.target.value)} placeholder="Your Venn diagram" />
+                </Field>
+                <Field label="Diagram instructions">
+                  <Input value={vennInstructions} onChange={(e) => setVennInstructions(e.target.value)} placeholder="Write each region's count inside the region." />
+                </Field>
+                <Field label="Number of sets">
+                  <Select value={vennSets} onChange={(e) => setVennSets(e.target.value === "3" ? "3" : "2")}>
+                    <option value="2">Two sets</option>
+                    <option value="3">Three sets</option>
+                  </Select>
+                </Field>
+                <Field label="Universal set label">
+                  <Input value={vennUniversalLabel} onChange={(e) => setVennUniversalLabel(e.target.value)} placeholder="ξ" />
+                </Field>
+                <Field label="Given elements to place (optional)" hint="One element per line. Students drag these into Venn regions.">
+                  <Textarea rows={3} value={vennItems} onChange={(e) => setVennItems(e.target.value)} placeholder={"e.g. 2\n3\n4"} />
+                </Field>
+                {Array.from({ length: vennSets === "3" ? 3 : 2 }, (_, i) => (
+                  <Field key={i} label={`Set ${i + 1} name`} hint={i === 0 ? "E.g. Football, or A." : undefined}>
+                    <Input
+                      value={vennLabels[i] ?? ["A", "B", "C"][i]}
+                      onChange={(e) => {
+                        const next = [...vennLabels];
+                        next[i] = e.target.value;
+                        setVennLabels(next);
+                      }}
+                      placeholder={["A", "B", "C"][i]}
+                    />
+                  </Field>
+                ))}
+                <label className="flex items-center gap-2 text-sm sm:col-span-2">
+                  <input type="checkbox" checked={vennFixSets} onChange={(e) => setVennFixSets(e.target.checked)} />
+                  Fix the number of sets (students cannot switch between two and three circles)
+                </label>
+                <p className="text-xs text-ink-soft sm:col-span-2">
+                  Regions are never filled in for the student: the editor opens empty so the diagram is the candidate&apos;s own work.
+                </p>
+              </div>
+            )}
+
             <div className="grid gap-3 sm:grid-cols-2">
               <Field label="What must the response contain?" hint="Shown as guidance; it never changes marking.">
                 <Select value={responseRequirement} onChange={(e) => setResponseRequirement(e.target.value)}>
@@ -539,6 +882,9 @@ export function QuestionForm({
                   <option value="geometry">A geometric construction</option>
                   <option value="statistics">A statistics chart</option>
                   <option value="data_table">A completed data table</option>
+                  <option value="venn">A Venn diagram</option>
+                  <option value="probability_tree">A probability tree</option>
+                  <option value="stem_leaf">A stem-and-leaf diagram</option>
                 </Select>
               </Field>
               <Field label="Response guidance for students">
@@ -546,8 +892,14 @@ export function QuestionForm({
               </Field>
             </div>
 
-            <Field label="Marking criteria (for markers — never shown to candidates before marking)" hint="Working steps and mark allocation for structured mathematical answers.">
-              <Textarea rows={3} value={markingCriteria} onChange={(e) => setMarkingCriteria(e.target.value)} placeholder="1 mark: correct substitution… 2 marks: valid method… 1 mark: final answer with units." />
+            {type === "open_ended" && (
+              <Field label="Marking criteria (for markers — never shown to candidates before marking)" hint="Working steps and mark allocation for structured mathematical answers.">
+                <Textarea rows={3} value={markingCriteria} onChange={(e) => setMarkingCriteria(e.target.value)} placeholder="1 mark: correct substitution… 2 marks: valid method… 1 mark: final answer with units." />
+              </Field>
+            )}
+
+            <Field label="Next-time hint (shown after results are published)" hint="The transferable takeaway, not the answer. Never shown during the paper.">
+              <Textarea rows={2} value={nextTimeHint} onChange={(e) => setNextTimeHint(e.target.value)} placeholder="When two quantities scale together, find the factor from the value you know…" />
             </Field>
           </div>
         )}
@@ -739,6 +1091,17 @@ export function QuestionForm({
           )}
           {LABEL_TYPES.includes(type) && type === "short_answer" && (
             <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">Type your answer…</div>
+          )}
+          {type === "assess_parts" && (
+            <div className="mt-3 space-y-2">
+              {assessParts.map((part, index) => (
+                <div key={`${part.id}-preview-${index}`} className="rounded-lg border border-evergreen-900/15 bg-white px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2"><span className="font-semibold text-evergreen-900">{part.label || `(${partIdFor(index)})`}</span><span className="text-xs text-ink-soft">{part.points || "0"} marks</span></div>
+                  {part.prompt && <p className="mt-1 text-xs text-ink-soft">{part.prompt}</p>}
+                  <div className="mt-2 rounded border border-dashed border-evergreen-900/20 px-2 py-1.5 text-xs text-ink-soft">{part.placeholder || "Type your answer…"}{part.unit ? ` ${part.unit}` : ""}</div>
+                </div>
+              ))}
+            </div>
           )}
           {(type === "open_ended") && (
             <div className="mt-3 rounded-lg border border-dashed border-evergreen-900/20 bg-white px-3 py-2 text-sm text-ink-soft">
