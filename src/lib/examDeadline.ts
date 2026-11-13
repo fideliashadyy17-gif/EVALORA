@@ -115,8 +115,8 @@ export function durationMs(minutes: unknown): number | null {
  * invigilator or the administration time-limits screen will notice) and never
  * submit a candidate who is still working.
  */
-export function attemptDeadlineInstant(exam: DeadlineExam, startedAt: string, extensionMinutes: unknown = 0): number {
-  const ext = extensionMs(extensionMinutes);
+export function attemptDeadlineInstant(exam: DeadlineExam, startedAt: string, extensionMinutes: unknown = 0, pauseMs: number = 0): number {
+  const ext = extensionMs(extensionMinutes) + sanitizePauseMs(pauseMs);
   const started = parseInstant(startedAt);
   const duration = durationMs(exam?.duration_minutes);
   const windowEnd = parseInstant(exam?.ends_at ?? null);
@@ -136,8 +136,8 @@ export function attemptDeadlineInstant(exam: DeadlineExam, startedAt: string, ex
  * `Date`; `Infinity` is represented by `new Date(8.64e15)`, the largest instant
  * a JavaScript `Date` can hold, which every caller treats as "no deadline yet".
  */
-export function attemptDeadline(exam: DeadlineExam, startedAt: string, extensionMinutes: unknown = 0): Date {
-  const instant = attemptDeadlineInstant(exam, startedAt, extensionMinutes);
+export function attemptDeadline(exam: DeadlineExam, startedAt: string, extensionMinutes: unknown = 0, pauseMs: number = 0): Date {
+  const instant = attemptDeadlineInstant(exam, startedAt, extensionMinutes, pauseMs);
   if (instant === Infinity) return new Date(8.64e15);
   return new Date(instant);
 }
@@ -161,6 +161,22 @@ export function remainingMs(deadline: number | Date, nowMs: number): number {
   const instant = deadline instanceof Date ? deadline.getTime() : deadline;
   if (!Number.isFinite(instant)) return Number.POSITIVE_INFINITY;
   return Math.max(0, instant + SUBMISSION_CLOCK_MARGIN_MS - nowMs);
+}
+
+/**
+ * An open manual pause, in milliseconds, for deadline math.
+ *
+ * While an organizer pause is open the countdown must freeze: the paused
+ * duration is added to the deadline exactly like an extension. When the pause
+ * resumes, the database RPC folds the same duration into `extension_minutes`,
+ * so the deadline never jumps backward or forward at the transition. Invalid
+ * values collapse to zero — a malformed pause can never move a deadline
+ * EARLIER, preserving the module's core guarantee.
+ */
+export function sanitizePauseMs(pauseMs: unknown): number {
+  const parsed = typeof pauseMs === "number" ? pauseMs : Number(pauseMs);
+  if (!Number.isFinite(parsed) || parsed <= 0) return 0;
+  return Math.floor(parsed);
 }
 
 /**
@@ -188,8 +204,9 @@ export function submissionWindow(
   attempt: DeadlineAttempt,
   nowMs: number,
   extensionMinutes: unknown = attempt?.extension_minutes,
+  pauseMs: number = 0,
 ): SubmissionWindow {
-  const ext = extensionMs(extensionMinutes);
+  const ext = extensionMs(extensionMinutes) + sanitizePauseMs(pauseMs);
   const started = parseInstant(attempt?.started_at ?? null);
   const duration = durationMs(exam?.duration_minutes);
   const windowEnd = parseInstant(exam?.ends_at ?? null);

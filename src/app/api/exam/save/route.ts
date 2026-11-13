@@ -1,4 +1,6 @@
+import { resumeConnectionPause } from "@/lib/connectionLost";
 import { attemptDeadline, attemptRows, gradeAttempt, loadAttemptContext } from "@/lib/exam";
+import { hasOrganizerPause, isManuallyPaused, manualPauseMs } from "@/lib/examPause";
 import { attemptAllowsQuizRow, parseTrack } from "@/lib/examTrack";
 import { createAdminClient } from "@/lib/supabase/server";
 import { validateAnswerPayload } from "@/lib/responseTools";
@@ -58,8 +60,32 @@ export async function POST(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
   const { attempt, exam } = ctx;
 
-  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0));
-  const now = new Date();
+  // An organizer pause blocks composition: the answer stays in the browser's
+  // save queue and syncs automatically when the pause is lifted. The pause
+  // also freezes the deadline (elapsed pause joins the extension), so a paused
+  // attempt can never expire mid-pause.
+  const nowMs = Date.now();
+  if (attempt.status === "in_progress" && isManuallyPaused(attempt)) {
+    if (hasOrganizerPause(attempt)) {
+      return NextResponse.json(
+        { error: "This assessment is paused by your organizer. Your answer is saved in this browser and will sync automatically when the assessment resumes.", paused: true },
+        { status: 409, headers: NO_STORE },
+      );
+    }
+    // Connection-only pause: this authenticated save proves the candidate is
+    // back. Clear it (crediting the outage) and accept the answer — a paused
+    // attempt is excluded from every timeout handler, and reconnection
+    // resumes it automatically (migration 0099).
+    const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+    if (resumed) {
+      attempt.pause_reasons = resumed.reasons;
+      attempt.paused_at = null;
+      if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+    }
+  }
+
+  const now = new Date(nowMs);
+  const deadline = attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt, nowMs));
   const pastDeadline = now > deadline;
 
   let isOutageRecovery = false;

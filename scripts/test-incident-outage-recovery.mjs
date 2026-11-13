@@ -218,6 +218,7 @@ const quizRows = [
 ];
 
 const examTrackMod = compile("src/lib/examTrack.ts", "scripts/__incident_track.cjs");
+const examPauseMod = compile("src/lib/examPause.ts", "scripts/__incident_pause.cjs");
 const examDeadlineMod = compile("src/lib/examDeadline.ts", "scripts/__incident_deadline.cjs");
 const examMod = compile("src/lib/exam.ts", "scripts/__incident_exam.cjs", {
   "./examDeadline": examDeadlineMod,
@@ -385,21 +386,32 @@ function createFakeExamDb({ status = "in_progress", pendingSaves = 2, rejectAuto
 }
 
 let activeDb = null;
+const connectionLostStub = {
+  isConnectionLost: () => false,
+  connectionLostAnchor: () => null,
+  pauseForConnectionLost: async () => null,
+  resumeConnectionPause: async () => null,
+};
 const submissionMod = compile("src/lib/examSubmission.ts", "scripts/__incident_submission.cjs", {
   "./exam": examMod,
   "./examDeadline": examDeadlineMod,
+  "./examPause": examPauseMod,
 });
 const saveRoute = compile("src/app/api/exam/save/route.ts", "scripts/__incident_save_route.cjs", {
   "next/server": { NextResponse: { json: (body, init) => ({ status: init?.status ?? 200, body }) } },
+  "@/lib/connectionLost": connectionLostStub,
   "@/lib/exam": examMod,
+  "@/lib/examPause": examPauseMod,
   "@/lib/examTrack": examTrackMod,
   "@/lib/responseTools": { validateAnswerPayload: (_type, ans) => ({ ok: true, answer: ans }) },
   "@/lib/supabase/server": { createAdminClient: () => activeDb },
 });
 const stateRoute = compile("src/app/api/exam/state/route.ts", "scripts/__incident_state_route.cjs", {
   "next/server": { NextResponse: { json: (body, init) => ({ status: init?.status ?? 200, body }) } },
+  "@/lib/connectionLost": connectionLostStub,
   "@/lib/exam": examMod,
   "@/lib/examDeadline": examDeadlineMod,
+  "@/lib/examPause": examPauseMod,
   "@/lib/examSubmission": submissionMod,
   "@/lib/live": {
     publicQuestion: (r) => ({ id: r.questions.id, quiz_question_id: r.id, type: r.questions.type, body: r.questions.body, options: [] }),

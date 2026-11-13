@@ -41,6 +41,7 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { attemptDeadlineInstant, deadlineReached, submissionWindow, type SubmissionWindow } from "./examDeadline";
+import { manualPauseMs } from "./examPause";
 import { attemptRows, gradeAttempt, type AttemptContext } from "./exam";
 
 /** Why an attempt is being closed. Two values only: the candidate, or the clock. */
@@ -90,6 +91,9 @@ interface CloseableAttempt {
   submitted_at?: string | null;
   score?: number | string | null;
   max_score?: number | string | null;
+  /** Manual organizer pause state (migration 0098). Legacy rows: never paused. */
+  pause_reasons?: string[] | null;
+  paused_at?: string | null;
 }
 
 /** Exam fields needed to decide and to grade. */
@@ -123,7 +127,10 @@ export async function applyDeadlineSubmission(
     markCandidate?: boolean;
   },
 ): Promise<SubmissionResult> {
-  const window = submissionWindow(exam, attempt, options.nowMs);
+  // Pause-aware: an open manual pause (organizer-wide or individual) freezes
+  // the countdown, so the closure decision must include the live paused time —
+  // a paused attempt can never be closed by the clock mid-pause.
+  const window = submissionWindow(exam, attempt, options.nowMs, attempt.extension_minutes, manualPauseMs(attempt, options.nowMs));
 
   // ── Already closed: report the stored outcome, write nothing. ────────────
   if (attempt.status !== "in_progress") {

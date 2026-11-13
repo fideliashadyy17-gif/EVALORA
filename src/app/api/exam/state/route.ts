@@ -1,5 +1,7 @@
+import { connectionLostAnchor, isConnectionLost, pauseForConnectionLost, resumeConnectionPause } from "@/lib/connectionLost";
 import { attemptRows, loadAttemptContext } from "@/lib/exam";
 import { submissionWindow } from "@/lib/examDeadline";
+import { hasConnectionPause, isManuallyPaused, manualPauseMs, pauseNoticeKind, parsePauseReasons } from "@/lib/examPause";
 import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion, releasedFeedback } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
@@ -38,7 +40,63 @@ export async function GET(request: Request) {
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const nowMs = Date.now();
-  const window = submissionWindow(exam, attempt, nowMs);
+  // An open organizer pause freezes the countdown: the paused duration joins
+  // the deadline exactly like an extension, and on resume the database folds
+  // it into extension_minutes with no discontinuity (src/lib/examPause.ts).
+  let pausedNow = isManuallyPaused(attempt);
+  let window = submissionWindow(exam, attempt, nowMs, attempt.extension_minutes, manualPauseMs(attempt, nowMs));
+
+  // ── Returning-candidate recovery (CONNECTION_LOST, migration 0099) ─────
+  // Reaching this route with a valid attempt token IS the server-confirmed
+  // proof the candidate is back. Two cases, one rule — their remaining time
+  // continues from the moment of disconnection and the paper is never closed
+  // on the strength of a silent device:
+  //   1. a connection pause is already open (a sweep noticed the outage):
+  //      clear it; the RPC folds the paused window into extension_minutes;
+  //   2. no pause is open but the window shows reached AND the presence
+  //      record proves the device was silent (the candidate was disconnected
+  //      across the deadline): pause anchored at the last confirmed heartbeat
+  //      and immediately resume — the credited outage reopens the window.
+  // An organizer pause is never touched here: reasons are independent and a
+  // reconnection can only ever clear 'connection'.
+  if (attempt.status === "in_progress" && (hasConnectionPause(attempt) || (window.reached && !pausedNow))) {
+    const { data: presenceRow } = await admin
+      .from("exam_presence")
+      .select("last_seen_at")
+      .eq("attempt_id", attempt.id)
+      .maybeSingle();
+    const lastSeen = (presenceRow as { last_seen_at?: string | null } | null)?.last_seen_at ?? null;
+    let recovered = false;
+    if (hasConnectionPause(attempt)) {
+      const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+      if (resumed) {
+        attempt.pause_reasons = resumed.reasons;
+        attempt.paused_at = null;
+        if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+        recovered = true;
+      }
+    } else if (isConnectionLost(attempt, lastSeen, nowMs)) {
+      const anchor = connectionLostAnchor(attempt, lastSeen, nowMs);
+      const paused = anchor ? await pauseForConnectionLost(admin, attempt, exam.organization_id, anchor.anchorIso) : null;
+      if (paused) {
+        attempt.pause_reasons = paused.reasons;
+        attempt.paused_at = paused.paused_at ?? anchor?.anchorIso ?? null;
+        const resumed = await resumeConnectionPause(admin, attempt, exam.organization_id);
+        if (resumed) {
+          attempt.pause_reasons = resumed.reasons;
+          attempt.paused_at = null;
+          if (resumed.extension_minutes !== null) attempt.extension_minutes = resumed.extension_minutes;
+          recovered = true;
+        }
+      }
+    }
+    if (recovered) {
+      const refreshed = await admin.from("exam_attempts").select("*").eq("id", attempt.id).maybeSingle();
+      if (refreshed.data) Object.assign(attempt, refreshed.data);
+      pausedNow = isManuallyPaused(attempt);
+      window = submissionWindow(exam, attempt, Date.now(), attempt.extension_minutes, manualPauseMs(attempt, Date.now()));
+    }
+  }
   // The client renders its countdown against this instant. It is display-only:
   // a wrong device clock or a stalled countdown cannot change the decision below.
   // A record that cannot produce a deadline reports the largest representable
@@ -54,16 +112,16 @@ export async function GET(request: Request) {
 
   // Automatic closure — only ever after the official deadline. The whole rule,
   // including grading the answers saved before that instant, lives in one place.
-  // If the candidate browser explicitly signals unconfirmed local pre-deadline saves
-  // that are actively being flushed (`X-Exam-Pending-Saves`), defer deadline closure
-  // on this read so queued answers flush before grading and closure lock the attempt.
+  // A manually paused attempt is NEVER auto-closed, and if the candidate browser
+  // explicitly signals unconfirmed local pre-deadline saves (`X-Exam-Pending-Saves`),
+  // defer deadline closure on this read so queued answers flush before grading locks the attempt.
   const rawPendingHeader = request.headers.get("x-exam-pending-saves");
   const clientPendingSaves = rawPendingHeader !== null && /^\d+$/.test(rawPendingHeader)
     ? Math.min(200, Number(rawPendingHeader))
     : 0;
   const deferDeadlineClose = attempt.status === "in_progress" && window.reached && clientPendingSaves > 0;
 
-  if (attempt.status === "in_progress" && window.reached && !deferDeadlineClose) {
+  if (attempt.status === "in_progress" && window.reached && !pausedNow && !deferDeadlineClose) {
     const closed = await applyDeadlineSubmission(admin, attempt, exam, { reason: "deadline", nowMs });
     if (closed.outcome === "closed" || closed.outcome === "already_closed") {
       attempt.status = closed.status;
@@ -135,6 +193,13 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      // Manual pause state (organizer). The connection pause is reported by
+      // the presence heartbeat instead; both freeze the countdown, but only
+      // this one blocks composition.
+      paused: pausedNow,
+      pause_reasons: parsePauseReasons(attempt.pause_reasons),
+      paused_at: pausedNow && typeof attempt.paused_at === "string" ? attempt.paused_at : null,
+      pause_notice: pauseNoticeKind(attempt),
       attempt_number: Number(attempt.attempt_number ?? 1),
       previous_attempt_id: (attempt.previous_attempt_id as string | null | undefined) ?? null,
       started_at: attempt.started_at,

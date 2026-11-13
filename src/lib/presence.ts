@@ -8,8 +8,7 @@
  * a dropped network reads as "unstable"/"offline" and never as "submitted".
  */
 
-import { AVATAR_KEYS, type AvatarKey } from "@/lib/avatars";
-import { normalizeAvatarKey } from "@/lib/avatars";
+import { AVATAR_KEYS, normalizeAvatarKey, type AvatarKey } from "./avatars.ts";
 
 /** A device is online if it spoke to the server in this window. */
 export const PRESENCE_ONLINE_MS = 45_000;
@@ -167,4 +166,94 @@ export function limitRoster(roster: PresenceRoster | null, limit: number): { vis
   if (!roster) return { visible: [], hidden: 0 };
   if (roster.entries.length <= limit) return { visible: roster.entries, hidden: 0 };
   return { visible: roster.entries.slice(0, limit), hidden: roster.entries.length - limit };
+}
+
+/* ─── Connection-pause credit rules (server-authoritative) ──────────────
+ *
+ * A confirmed internet outage must never cost a student assessment time.
+ * The server — never the browser — decides how much pause credit an outage
+ * window is worth, and the credit is applied through the attempt's existing
+ * `extension_minutes`, so every deadline consumer (state/save/submit, the
+ * sweep, monitoring) honors it without change and only THAT student's
+ * countdown moves.
+ *
+ * Honesty anchors:
+ *  · the outage window can only start at/after the last instant the server
+ *    actually heard from the device (a claimed `lost_at` earlier than that is
+ *    clamped — a manipulated device clock cannot invent extra pause time);
+ *  · the window always ends at the server's own clock (`now`);
+ *  · time the page spent hidden (tab switch, laptop lid — NOT an outage) is
+ *    subtracted from the claim;
+ *  · a grace allowance covers the normal heartbeat interval plus jitter, so
+ *    ordinary cadence gaps are never credited;
+ *  · per-event and per-attempt caps bound the total, and every decision is
+ *    written to `exam_connection_events` whose unique (attempt_id, lost_at)
+ *    index makes duplicate reconnection events credit-free.
+ */
+
+/**
+ * Jitter guard: windows shorter than this (heartbeat interval + slack) are
+ * ordinary cadence noise, not outages, and are never credited. Windows that
+ * pass the guard are credited IN FULL from the validated start — the student
+ * never loses assessment time to an interruption outside their control.
+ */
+export const MIN_CREDITABLE_OUTAGE_MS = PRESENCE_HEARTBEAT_MS + 15_000;
+/** One outage can credit at most this much (admin can grant more manually). */
+export const MAX_CREDIT_PER_EVENT_MS = 30 * 60_000;
+/** Total automatic pause credit per attempt. */
+export const MAX_CREDIT_PER_ATTEMPT_MS = 120 * 60_000;
+/** Pause credit is rounded UP to whole minutes — in the student's favour. */
+export const CREDIT_ROUNDING_MS = 60_000;
+
+export interface PauseCreditWindowInput {
+  /** Server clock at the reconnection request. */
+  nowMs: number;
+  /** Last instant the server heard from this device (presence row). */
+  lastContactMs: number | null;
+  /** Client-claimed outage start (browser clock; treated as a claim only). */
+  claimedLostMs: number | null;
+  /** Client-claimed time spent with the page hidden during the window. */
+  hiddenMs: number;
+  /** Credit already granted to this attempt (ms). */
+  creditedMs: number;
+}
+
+export type PauseCreditOutcome =
+  | { kind: "invalid" }
+  | { kind: "no_credit"; reason: string; lostMs: number; restoredMs: number; claimedMs: number }
+  | { kind: "credit"; lostMs: number; restoredMs: number; claimedMs: number; creditMs: number; capped: boolean };
+
+/**
+ * Pure decision for one reconnection claim. Deterministic and idempotent when
+ * called with the same server-side facts: the caller additionally guards with
+ * the unique (attempt_id, lost_at) ledger index.
+ */
+export function connectionPauseCredit(input: PauseCreditWindowInput): PauseCreditOutcome {
+  const { nowMs, lastContactMs, claimedLostMs, hiddenMs, creditedMs } = input;
+  if (claimedLostMs === null || !Number.isFinite(claimedLostMs)) return { kind: "invalid" };
+  if (Number.isFinite(hiddenMs) && hiddenMs < 0) return { kind: "invalid" };
+
+  const restoredMs = nowMs;
+  // Anchor: the outage can only begin after the last confirmed server contact.
+  const anchor = lastContactMs !== null && Number.isFinite(lastContactMs) ? lastContactMs : claimedLostMs;
+  const lostMs = Math.max(claimedLostMs, anchor);
+  const claimedMs = restoredMs - lostMs;
+  if (claimedMs < MIN_CREDITABLE_OUTAGE_MS)
+    return { kind: "no_credit", reason: "window_too_short", lostMs, restoredMs, claimedMs };
+
+  const hidden = Math.min(Math.max(Number.isFinite(hiddenMs) ? hiddenMs : 0, 0), claimedMs);
+  const uncapped = claimedMs - hidden;
+  const creditable = Math.min(uncapped, MAX_CREDIT_PER_EVENT_MS);
+  const headroom = Math.max(0, MAX_CREDIT_PER_ATTEMPT_MS - Math.max(0, creditedMs));
+  if (creditable <= 0 || headroom <= 0)
+    return { kind: "no_credit", reason: headroom <= 0 ? "attempt_cap_reached" : "hidden_time", lostMs, restoredMs, claimedMs };
+
+  const rawCredit = Math.min(creditable, headroom);
+  const creditMs = Math.min(Math.ceil(rawCredit / CREDIT_ROUNDING_MS) * CREDIT_ROUNDING_MS, headroom);
+  return { kind: "credit", lostMs, restoredMs, claimedMs, creditMs, capped: creditMs < uncapped };
+}
+
+/** Whole minutes to add to `extension_minutes` for a credited window. */
+export function creditExtensionMinutes(creditMs: number): number {
+  return Math.max(0, Math.round(creditMs / CREDIT_ROUNDING_MS));
 }

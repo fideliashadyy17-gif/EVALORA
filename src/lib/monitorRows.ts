@@ -22,6 +22,9 @@ export interface MonitorAttemptInput {
   status: string;
   started_at: string;
   submitted_at: string | null;
+  /** Pause state (migrations 0098/0099). Legacy rows: never paused. */
+  pause_reasons?: string[] | null;
+  paused_at?: string | null;
   track: ExamTrack | null;
   question_order: unknown;
   candidate_name: string;
@@ -48,6 +51,10 @@ export interface MonitorRow {
   started_at: string;
   submitted_at: string | null;
   deadline: string;
+  /** Pause reasons open on this attempt: organizer ('assessment'/'student') and/or automatic ('connection'). Empty = composing. */
+  pause_reasons: ("assessment" | "student" | "connection")[];
+  /** When the current manual pause window opened (null when not paused). */
+  paused_at: string | null;
   connection: ConnectionStatus;
   last_seen_at: string | null;
   /** 1-based question the candidate is on, as reported by their browser. Null when unknown. */
@@ -68,6 +75,8 @@ export interface MonitorRow {
 
 export interface MonitorSnapshot {
   server_now: string;
+  /** True while the organizer has paused the whole examination. */
+  exam_paused?: boolean;
   rows: MonitorRow[];
 }
 
@@ -82,6 +91,15 @@ export function paperForAttempt<T extends PaperRow>(rows: T[], order: unknown, t
     return stored.map((id) => byId.get(id)).filter((r): r is T => Boolean(r));
   }
   return track ? paperForTrack(rows, track) : rows;
+}
+
+function parseRowPauseReasons(value: unknown): ("assessment" | "student" | "connection")[] {
+  if (!Array.isArray(value)) return [];
+  const out: ("assessment" | "student" | "connection")[] = [];
+  if (value.includes("assessment")) out.push("assessment");
+  if (value.includes("student")) out.push("student");
+  if (value.includes("connection")) out.push("connection");
+  return out;
 }
 
 export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[], nowMs: number): MonitorRow {
@@ -99,6 +117,10 @@ export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[],
     started_at: attempt.started_at,
     submitted_at: attempt.submitted_at,
     deadline: attempt.deadline,
+    pause_reasons: parseRowPauseReasons(attempt.pause_reasons),
+    paused_at: attempt.status === "in_progress" && parseRowPauseReasons(attempt.pause_reasons).length
+      ? (typeof attempt.paused_at === "string" ? attempt.paused_at : null)
+      : null,
     connection: attempt.status === "in_progress" ? connectionStatus(presence?.last_seen_at ?? null, nowMs) : "not_connected",
     last_seen_at: presence?.last_seen_at ?? null,
     current_question: presence?.current_question ?? null,

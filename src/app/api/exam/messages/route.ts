@@ -1,4 +1,5 @@
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
+import { manualPauseMs } from "@/lib/examPause";
 import { MESSAGE_CAP_PER_ATTEMPT, MESSAGE_PAGE_SIZE, isUuid, normalizeMessageBody } from "@/lib/examMessaging";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -84,7 +85,9 @@ export async function POST(request: Request) {
   if (attempt.status !== "in_progress") {
     return NextResponse.json({ error: "This examination is closed, so messages can no longer be sent." }, { status: 409, headers: NO_STORE });
   }
-  if (new Date() > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0))) {
+  // Pause-aware: while an organizer pause is open the deadline carries the
+  // frozen time, so a paused student can still reach their invigilator.
+  if (new Date() > attemptDeadline(exam, attempt.started_at, Number(attempt.extension_minutes ?? 0), manualPauseMs(attempt as { pause_reasons?: string[] | null; paused_at?: string | null }, Date.now()))) {
     return NextResponse.json({ error: "Time has expired, so messages can no longer be sent." }, { status: 409, headers: NO_STORE });
   }
 

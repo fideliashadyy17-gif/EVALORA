@@ -270,7 +270,7 @@ export default async function RetakeRequestsPage({
                         <input type="checkbox" name="extend_exam_window" defaultChecked className="mt-0.5 h-4 w-4 accent-evergreen-700" />
                         <span>Extend the examination window to cover this access window (only ever lengthens it; other candidates&apos; papers are unaffected).</span>
                       </label>
-                      {exam?.status !== "open" && (
+                      {exam?.status !== "open" && exam?.status !== "paused" && (
                         <label className="flex items-start gap-2 text-xs text-ink">
                           <input type="checkbox" name="reopen_exam" className="mt-0.5 h-4 w-4 accent-evergreen-700" />
                           <span>Reopen the examination (status is “{exam?.status}”). Without this, the approved retake cannot start.</span>

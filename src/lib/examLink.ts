@@ -59,12 +59,80 @@ export const MIN_LINK_LIFETIME_MS = 5 * MINUTE_MS;
 export const MAX_LINK_LIFETIME_MS = 730 * 24 * HOUR_MS;
 
 /**
- * Authoritative lifecycle status. Precedence is deliberate:
+ * The ONE link-window rule, shared by the administrator display
+ * (`examLinkLifecycle`) and the admission gate
+ * (`examAccessAvailability` in `./exam-access`). Precedence is deliberate:
  *  1. a manual disable always wins (an operator closed the link);
  *  2. a future activation means Scheduled;
- *  3. a passed (or unreadable) expiration means Expired — an expired link is
- *     never reported as active merely because nobody disabled it;
+ *  3. a stored expiration that has passed (or cannot be read) means Expired —
+ *     an expired link is never reported as active merely because nobody
+ *     disabled it;
  *  4. otherwise Active.
+ *
+ * A MISSING expiration is not a valid stored state: the database trigger
+ * `trg_exam_link_expiry_default` (migration 0096) fills the platform-policy
+ * default on every write, and migration 0076/0096 backfilled existing rows.
+ * If a legacy row nevertheless arrives without one, BOTH layers treat the
+ * link as usable and flag it — display and enforcement can never disagree
+ * again (the 2026-11-12 incident was exactly that disagreement: newly
+ * created links displayed "Expired" while the gate admitted candidates).
+ * Missing data is a configuration defect to repair, never a reason to lock
+ * authorized students out.
+ */
+export interface ExamLinkWindowInput {
+  shared_link_enabled: boolean | null;
+  invite_expires_at: string | null;
+  invite_activates_at?: string | null;
+  invite_no_expiry?: boolean | null;
+}
+
+export type ExamLinkWindowState = "disabled" | "scheduled" | "expired" | "active";
+
+export interface ExamLinkWindow {
+  state: ExamLinkWindowState;
+  /** Parsed activation instant (ms) when stored and readable. */
+  activatesMs: number | null;
+  /** Parsed expiration instant (ms) when stored and readable. */
+  expiresMs: number | null;
+  /** True when an expiration is stored but unreadable (treated as expired). */
+  unreadableExpiry: boolean;
+  /** True when the link is usable only because no expiration is stored. */
+  missingExpiry: boolean;
+}
+
+export function examLinkWindow(link: ExamLinkWindowInput, now: Date = new Date()): ExamLinkWindow {
+  const nowMs = now.getTime();
+  const base = {
+    activatesMs: null as number | null,
+    expiresMs: null as number | null,
+    unreadableExpiry: false,
+    missingExpiry: false,
+  };
+
+  // Fail closed on a missing flag value: the column is NOT NULL in the
+  // database, so this only guards malformed in-memory inputs.
+  if (!link.shared_link_enabled) return { state: "disabled", ...base };
+
+  const activatesMs = link.invite_activates_at ? Date.parse(link.invite_activates_at) : null;
+  if (activatesMs !== null && Number.isFinite(activatesMs)) base.activatesMs = activatesMs;
+  if (activatesMs !== null && Number.isFinite(activatesMs) && activatesMs > nowMs)
+    return { state: "scheduled", ...base };
+
+  if (!link.invite_no_expiry) {
+    if (!link.invite_expires_at) return { state: "active", ...base, missingExpiry: true };
+    const expiresMs = Date.parse(link.invite_expires_at);
+    if (!Number.isFinite(expiresMs))
+      return { state: "expired", ...base, unreadableExpiry: true };
+    base.expiresMs = expiresMs;
+    if (expiresMs <= nowMs) return { state: "expired", ...base };
+  }
+
+  return { state: "active", ...base };
+}
+
+/**
+ * Authoritative lifecycle status for the administrator interfaces, computed
+ * from the same `examLinkWindow` rule the admission gate enforces.
  */
 export function examLinkLifecycle(
   exam: ExamLinkLifecycleExam,
@@ -72,9 +140,9 @@ export function examLinkLifecycle(
 ): ExamLinkLifecycle {
   const expiresAt = exam.invite_expires_at ?? null;
   const activatesAt = exam.invite_activates_at ?? null;
-  const nowMs = now.getTime();
+  const window = examLinkWindow(exam, now);
 
-  if (exam.shared_link_enabled === false)
+  if (window.state === "disabled")
     return {
       status: "disabled",
       label: "Disabled",
@@ -83,8 +151,7 @@ export function examLinkLifecycle(
       activatesAt,
     };
 
-  const activatesMs = activatesAt ? Date.parse(activatesAt) : null;
-  if (activatesMs !== null && Number.isFinite(activatesMs) && activatesMs > nowMs)
+  if (window.state === "scheduled")
     return {
       status: "scheduled",
       label: "Scheduled",
@@ -93,32 +160,25 @@ export function examLinkLifecycle(
       activatesAt,
     };
 
-  if (!exam.invite_no_expiry) {
-    const expiresMs = expiresAt ? Date.parse(expiresAt) : null;
-    if (expiresMs === null)
-      return {
-        status: "expired",
-        label: "Expired",
-        detail: "No expiration is stored for this link, so it is treated as expired. Set an expiration to reopen it.",
-        expiresAt,
-        activatesAt,
-      };
-    if (!Number.isFinite(expiresMs) || expiresMs <= nowMs)
-      return {
-        status: "expired",
-        label: "Expired",
-        detail: "The expiration time has passed. New attempts cannot start; submitted attempts and records are unchanged.",
-        expiresAt,
-        activatesAt,
-      };
-  }
+  if (window.state === "expired")
+    return {
+      status: "expired",
+      label: "Expired",
+      detail: window.unreadableExpiry
+        ? "The stored expiration could not be read, so the link is treated as expired. Set a new expiration to reopen it."
+        : "The expiration time has passed. New attempts cannot start; submitted attempts and records are unchanged.",
+      expiresAt,
+      activatesAt,
+    };
 
   return {
     status: "active",
     label: "Active",
     detail: exam.invite_no_expiry
       ? "Active with an explicit no-expiration exemption permitted by platform policy."
-      : "Active until the displayed expiration time.",
+      : window.missingExpiry
+        ? "Active — no explicit expiration is stored yet, so the platform-policy default applies. Set an explicit expiration on the link panel."
+        : "Active until the displayed expiration time.",
     expiresAt,
     activatesAt,
   };
