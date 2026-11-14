@@ -1,4 +1,4 @@
-import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
@@ -51,7 +51,11 @@ export default async function BillingPage({
 
   return (
     <>
-      <PageTitle title="Billing & Plan" subtitle="Your entitlement is enforced on the server. Paid plans activate only after manual payment verification." />
+      <PageTitle
+        eyebrow="Workspace Administration · Entitlements & Verification"
+        title="Billing & Plan"
+        subtitle="Your entitlement is enforced on the server. Paid plans activate only after manual payment verification."
+      />
       {sp.submitted && (
         <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
           Payment submitted and now <strong>pending verification</strong>. You&apos;ll be notified as soon as our team reviews it — paid features activate only after approval.
@@ -158,37 +162,26 @@ export default async function BillingPage({
       )}
 
       <Card className="mt-6 p-6">
-        <h2 className="font-display text-lg font-semibold text-evergreen-950">Payment history</h2>
+        <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Payment history</h2>
         {(payments ?? []).length === 0 ? (
           <p className="mt-2 text-sm text-ink-soft">No payment requests yet.</p>
         ) : (
-          <table className="mt-3 w-full text-sm">
-            <thead>
-              <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                <th className="py-2 pr-3 font-medium">Submitted</th>
-                <th className="py-2 pr-3 font-medium">Plan</th>
-                <th className="py-2 pr-3 font-medium">Amount</th>
-                <th className="py-2 pr-3 font-medium">Reference</th>
-                <th className="py-2 font-medium">Status</th>
+          <DataTable head={["Submitted", "Plan", "Amount", "Reference", "Status"]} label="Payment request history">
+            {(payments ?? []).map((p) => (
+              <tr key={p.id}>
+                <td className="text-ink-soft">{fmtDateTime(p.created_at)}</td>
+                <td>{(p.plans as { name: string } | null)?.name} ({p.billing_period})</td>
+                <td className="tabular-nums">{money(p.amount_cents, p.currency)}</td>
+                <td className="font-mono text-xs">{p.transaction_ref}</td>
+                <td>
+                  <Badge tone={STATUS_TONE[p.status] ?? "gray"}>{p.status}</Badge>
+                  {p.status === "rejected" && p.rejection_reason && (
+                    <span className="block text-xs text-red-700">{p.rejection_reason}</span>
+                  )}
+                </td>
               </tr>
-            </thead>
-            <tbody>
-              {(payments ?? []).map((p) => (
-                <tr key={p.id} className="border-b border-evergreen-900/5">
-                  <td className="py-2 pr-3 text-ink-soft">{fmtDateTime(p.created_at)}</td>
-                  <td className="py-2 pr-3">{(p.plans as { name: string } | null)?.name} ({p.billing_period})</td>
-                  <td className="py-2 pr-3">{money(p.amount_cents, p.currency)}</td>
-                  <td className="py-2 pr-3 font-mono text-xs">{p.transaction_ref}</td>
-                  <td className="py-2">
-                    <Badge tone={STATUS_TONE[p.status] ?? "gray"}>{p.status}</Badge>
-                    {p.status === "rejected" && p.rejection_reason && (
-                      <span className="block text-xs text-red-700">{p.rejection_reason}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+            ))}
+          </DataTable>
         )}
       </Card>
     </>

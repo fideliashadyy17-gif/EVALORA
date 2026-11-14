@@ -48,6 +48,7 @@ export default async function RolesPermissionsPage() {
   return (
     <>
       <PageTitle
+        eyebrow="Users & Identity · RBAC & RLS Policy Matrix"
         title="Roles and permissions"
         subtitle="EVALORA enforces access on the server and through Supabase Row Level Security. Menu visibility is never the security boundary. Change a person's role from their user record or the organization's Members tab."
         action={<ButtonLink href="/admin/users" variant="gold">Manage users</ButtonLink>}

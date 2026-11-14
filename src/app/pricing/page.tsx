@@ -1,5 +1,5 @@
 import { StaticPage } from "@/components/site/StaticPage";
-import { Badge, ButtonLink, Card } from "@/components/ui";
+import { Badge, ButtonLink, Card, DataTable } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
 import { money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
@@ -70,30 +70,20 @@ export default async function PricingPage() {
         ))}
       </div>
 
-      <Card className="mt-10 overflow-x-auto p-0">
-        <table className="w-full min-w-[640px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-5 py-3 font-semibold text-evergreen-950">Limit</th>
+      <div className="mt-10">
+        <DataTable head={["Limit", ...(plans ?? []).map((p) => p.name)]} label="Plan feature comparison">
+          {rows.map((r) => (
+            <tr key={r.key}>
+              <td className="text-ink-soft">{r.label}</td>
               {(plans ?? []).map((p) => (
-                <th key={p.id} className="px-5 py-3 font-semibold text-evergreen-950">{p.name}</th>
+                <td key={p.id} className="font-medium text-ink">
+                  {lim((p.limits as Record<string, number | boolean>)[r.key], r.suffix)}
+                </td>
               ))}
             </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.key} className="border-b border-evergreen-900/5 last:border-0">
-                <td className="px-5 py-3 text-ink-soft">{r.label}</td>
-                {(plans ?? []).map((p) => (
-                  <td key={p.id} className="px-5 py-3 font-medium text-ink">
-                    {lim((p.limits as Record<string, number | boolean>)[r.key], r.suffix)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+          ))}
+        </DataTable>
+      </div>
 
       <Card className="mt-8 border-evergreen-700/30 bg-evergreen-50 p-7">
         <h2 className="font-display text-xl font-semibold text-evergreen-950">How payment works</h2>

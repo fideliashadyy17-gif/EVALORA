@@ -71,9 +71,7 @@ await db.exec(`
 
 // ── A live attempt exists BEFORE the migration runs (requirement §9) ───────
 const STARTED = "2026-11-08T10:00:00Z";
-const PRE_DEADLINE = "2026-11-08T11:59:00Z"; // still composing
 const AT_DEADLINE = "2026-11-08T12:00:00.000Z";
-const AFTER_DEADLINE = "2026-11-08T12:05:00Z";
 
 await db.exec(`
   insert into public.exams (id, organization_id, duration_minutes, ends_at)

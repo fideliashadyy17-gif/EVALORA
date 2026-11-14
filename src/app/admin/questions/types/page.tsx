@@ -82,8 +82,10 @@ export default async function QuestionTypesPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Supported Item Formats"
         title="Question types"
         subtitle="Every supported type uses the same unified editor for prompts and worked solutions. Choice options also support their own equations and images."
+        action={<ButtonLink href="/admin/questions" variant="outline">Open Question Bank</ButtonLink>}
       />
 
       <form method="get" className="mb-6 flex flex-wrap items-end gap-3">

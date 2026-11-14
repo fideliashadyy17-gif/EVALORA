@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -38,10 +39,12 @@ interface StudentRow {
 export default async function StudentAccessPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; org?: string; status?: string; access?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; org?: string; status?: string; access?: string; page?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const back = "/admin/students/access";
 
@@ -87,10 +90,12 @@ export default async function StudentAccessPage({
 
   const linked = decorated.filter((d) => d.hasLogin).length;
   const ready = decorated.filter((d) => d.loginReady).length;
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <>
       <PageTitle
+        eyebrow="Learners & Rosters · Credential & Login Governance"
         title="Student access management"
         subtitle="Control roster status and linked student login accounts. Competition and examination code-based access remains separately controlled per event so one credential never opens unrelated assessments."
         action={<ButtonLink href="/admin/students/bulk" variant="gold">Register students</ButtonLink>}
@@ -139,13 +144,19 @@ export default async function StudentAccessPage({
           <option value="attention">Needs attention</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.org || sp.status || sp.access) && (
+          <Link href="/admin/students/access" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No students match this access view.</p>
       ) : (
-        <Table head={["Student", "Organization / class", "Roster status", "Login account", "Effective access", "Actions"]}>
-          {filtered.map(({ s, hasLogin, hasStudentMembership, accountActive, loginReady }) => {
+        <>
+          <Table head={["Student", "Organization / class", "Roster status", "Login account", "Effective access", "Actions"]}>
+            {paged.map(({ s, hasLogin, hasStudentMembership, accountActive, loginReady }) => {
             const activeEnrollment = s.student_enrollments.find((e) => e.status === "active");
             return (
               <tr key={s.id}>
@@ -209,7 +220,16 @@ export default async function StudentAccessPage({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            pathname="/admin/students/access"
+            query={{ q: sp.q, org: sp.org, status: sp.status, access: sp.access }}
+            label="students"
+          />
+        </>
       )}
     </>
   );

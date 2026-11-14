@@ -148,8 +148,11 @@ export default async function StudentWorkspace() {
           <span className="student-entry-icon"><FileCheck2 aria-hidden="true" className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Examination access</h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Enter your examination and candidate codes to access your paper.</p>
-            <Link href="/exam-access" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Enter codes <span aria-hidden="true">→</span></Link>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Enter your examination and personal candidate codes, or open an invitation link from your teacher.</p>
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+              <Link href="/exam-access" className="inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Enter codes <span aria-hidden="true">→</span></Link>
+              <Link href="/exam" className="inline-flex items-center gap-1 text-sm font-medium text-ink-soft underline-offset-4 hover:text-evergreen-800 hover:underline">Paste invitation link</Link>
+            </div>
           </div>
         </Card>
         <Card className="student-entry-card group flex items-start gap-4 p-5 sm:p-6">

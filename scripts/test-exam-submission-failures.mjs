@@ -11,7 +11,7 @@ const admin={from(table){if(table==='exam_attempts')return {select(){return {eq(
 // The routes no longer compute a deadline themselves: they read this module.
 const attemptDeadlineAt=()=>new Date(Date.now()+(scenario.expired?-60000:60000));
 const deadlineHelpers={
-  attemptDeadlineInstant:(exam,started,ext)=>attemptDeadlineAt().getTime(),
+  attemptDeadlineInstant:()=>attemptDeadlineAt().getTime(),
   attemptDeadline:attemptDeadlineAt,
   deadlineReached:(deadline,now)=>now>=(deadline instanceof Date?deadline.getTime():deadline),
   submissionWindow:()=>({deadlineMs:attemptDeadlineAt().getTime(),deadline:attemptDeadlineAt().toISOString(),reached:scenario.expired&&!scenario.withinMargin,remainingMs:scenario.expired?0:60000,boundBy:'duration',nowMs:Date.now()}),

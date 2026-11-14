@@ -1,9 +1,11 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { LocalTime } from "@/components/LocalTime";
 import { requireSuperAdmin } from "@/lib/auth";
 import { RETAKE_ACCESS_PRESETS } from "@/lib/examRetake";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../ui";
 import { approveRetakeAsAdmin, rejectRetakeAsAdmin } from "../retake-actions";
 
@@ -76,10 +78,12 @@ const tone = (status: string): "green" | "red" | "amber" | "gray" =>
 export default async function RetakeRequestsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; exam?: string; q?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ status?: string; exam?: string; q?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const statusFilter = sp.status && sp.status !== "all" ? sp.status : null;
 
@@ -138,6 +142,7 @@ export default async function RetakeRequestsPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Examinations · Retake Authorization & Audit Ledger"
         title="Retake requests"
         subtitle="A submitted attempt is locked. Only an approval recorded here authorizes a further attempt, and each approval creates a separate, fully preserved attempt."
         action={<ButtonLink href="/admin/examinations/links" variant="outline">Link expiration</ButtonLink>}
@@ -171,6 +176,11 @@ export default async function RetakeRequestsPage({
           <option value="all">Every status</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.status || sp.exam) && (
+          <Link href="/admin/examinations/retakes" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       <Section
@@ -306,8 +316,9 @@ export default async function RetakeRequestsPage({
             No decided requests yet.
           </p>
         ) : (
-          <Table head={["Student", "Examination", "Submitted attempt", "Requested", "Decision", "Decided by", "Access window", "Note"]}>
-            {decidedRows.map((row) => (
+          <>
+            <Table head={["Student", "Examination", "Submitted attempt", "Requested", "Decision", "Decided by", "Access window", "Note"]}>
+              {decidedRows.slice((page - 1) * pageSize, page * pageSize).map((row) => (
               <tr key={row.id}>
                 <td>
                   <span className="font-medium">{row.exam_candidates?.full_name ?? row.requester_name}</span>
@@ -346,7 +357,16 @@ export default async function RetakeRequestsPage({
                 <td className="max-w-[220px] text-xs">{row.decision_note || "—"}</td>
               </tr>
             ))}
-          </Table>
+            </Table>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={decidedRows.length}
+              pathname="/admin/examinations/retakes"
+              query={{ status: sp.status, exam: sp.exam, q: sp.q }}
+              label="decided retake requests"
+            />
+          </>
         )}
       </Section>
     </>

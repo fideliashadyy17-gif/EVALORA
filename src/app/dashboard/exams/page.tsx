@@ -1,9 +1,9 @@
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
-import { Video } from "lucide-react";
+import { CheckCircle2, Clock3, FileCheck2, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { pauseExam, setExamStatus } from "./actions";
@@ -29,15 +29,37 @@ export default async function ExamsPage({
     .order("created_at", { ascending: false });
   if (sp.q?.trim()) examQuery = examQuery.ilike("title", `%${sp.q.trim()}%`);
   if (sp.status) examQuery = examQuery.eq("status", sp.status);
-  const { data: exams, count: examTotal } = await examQuery.range((page - 1) * pageSize, page * pageSize - 1);
+  const [
+    { data: exams, count: examTotal },
+    { count: openCount },
+    { count: scheduledCount },
+    { count: closedCount },
+  ] = await Promise.all([
+    examQuery.range((page - 1) * pageSize, page * pageSize - 1),
+    supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["open", "paused"]),
+    supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["draft", "scheduled"]),
+    supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "closed"),
+  ]);
 
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Institutional Assessment Suite"
         title="Examinations"
         subtitle="Formal, server-timed examinations with candidate admission, autosave and optional video proctoring."
-        action={<ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/dashboard/rubrics" variant="outline">Grading rubrics</ButtonLink>
+            <ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>
+          </div>
+        }
       />
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Matching examinations" value={examTotal ?? 0} icon={<FileCheck2 className="h-5 w-5" />} />
+        <StatCard label="Open / paused" value={openCount ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Draft / scheduled" value={scheduledCount ?? 0} icon={<Clock3 className="h-5 w-5" />} />
+        <StatCard label="Closed" value={closedCount ?? 0} icon={<ShieldCheck className="h-5 w-5" />} />
+      </div>
       {sp.ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{sp.ok === "deleted" ? "Examination removed." : "Examination status updated."}</p>}
       {(sp.e === "delete" || sp.e === "status" || sp.e === "candidate" || sp.e === "incident") && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.e === "delete" ? "The examination could not be removed. Examinations with recorded attempts are protected from deletion." : "The requested change could not be confirmed. Check your workspace and permissions."}</p>}
       {sp.e === "limit" && (

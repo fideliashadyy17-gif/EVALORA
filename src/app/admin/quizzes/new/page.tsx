@@ -37,6 +37,7 @@ export default async function CreateQuizPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Quiz Builder Launchpad"
         title="Create quiz"
         subtitle="Quizzes belong to an organization so questions, permissions and results stay tenant-safe. Choose the owner, then use the shared Quiz Builder with the same mathematical content used everywhere else."
         action={selected ? <ButtonLink href={`/admin/questions/new?org=${selected.id}`} variant="outline">+ Create a question first</ButtonLink> : undefined}

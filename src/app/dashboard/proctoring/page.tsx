@@ -1,4 +1,5 @@
-import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { describeIncidentType } from "@/lib/integrity";
 import { activeOrg, can, MANAGER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import {
@@ -27,6 +28,7 @@ interface SP {
   to?: string;
   ok?: string;
   incident_error?: string;
+  page?: string;
 }
 
 const decisionTone = (d: string) =>
@@ -51,6 +53,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard");
 
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const supabase = await createClient();
 
   const [exams, candidates] = await Promise.all([
@@ -114,6 +118,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Integrity Review & Evidence Ledger"
         title="Proctoring review"
         subtitle="Every observation and every reviewer decision in this workspace, with who decided, what they decided and when. Observations are reports for human review — never automatic proof of misconduct."
         action={
@@ -235,95 +240,79 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
       )}
 
       <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Review history</h2>
-      <Card className="mb-8 overflow-x-auto p-0">
-        <table className="w-full min-w-[940px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">When</th>
-              <th className="px-4 py-3 font-semibold">Decision</th>
-              <th className="px-4 py-3 font-semibold">Examination / candidate</th>
-              <th className="px-4 py-3 font-semibold">Reviewer</th>
-              <th className="px-4 py-3 font-semibold">Source</th>
-              <th className="px-4 py-3 font-semibold">Note</th>
+      <div className="mb-8">
+        <DataTable head={["When", "Decision", "Examination / candidate", "Reviewer", "Source", "Note"]} label="Proctoring review history">
+          {history.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
+                No review records match these filters yet.
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {history.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
-                  No review records match these filters yet.
-                </td>
-              </tr>
-            )}
-            {history.map((h) => (
-              <tr key={h.id} className="border-b border-evergreen-900/10 align-top">
-                <td className="whitespace-nowrap px-4 py-2.5 text-ink-soft">{fmtDateTime(h.created_at)}</td>
-                <td className="px-4 py-2.5">
-                  <Badge tone={decisionTone(h.decision)}>{DECISION_LABEL[h.decision] ?? h.decision}</Badge>
-                  {h.previous_status && h.previous_status !== h.new_status && (
-                    <span className="ml-1 block text-[11px] text-ink-soft">{h.previous_status} → {h.new_status}</span>
-                  )}
-                </td>
-                <td className="px-4 py-2.5">
-                  <span className="block">{h.exams?.title ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? "Unassigned candidate"}</span>
-                </td>
-                <td className="px-4 py-2.5">
-                  <span className="block">{h.reviewer_email ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.reviewer_role ?? ""}</span>
-                </td>
-                <td className="px-4 py-2.5 text-xs text-ink-soft">{h.source}</td>
-                <td className="max-w-xs px-4 py-2.5 text-xs text-ink">{h.note ?? "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+          )}
+          {history.slice((page - 1) * pageSize, page * pageSize).map((h) => (
+            <tr key={h.id} className="align-top">
+              <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(h.created_at)}</td>
+              <td>
+                <Badge tone={decisionTone(h.decision)}>{DECISION_LABEL[h.decision] ?? h.decision}</Badge>
+                {h.previous_status && h.previous_status !== h.new_status && (
+                  <span className="ml-1 block text-[11px] text-ink-soft">{h.previous_status} → {h.new_status}</span>
+                )}
+              </td>
+              <td>
+                <span className="block">{h.exams?.title ?? "—"}</span>
+                <span className="block text-xs text-ink-soft">{h.exam_candidates?.full_name ?? "Unassigned candidate"}</span>
+              </td>
+              <td>
+                <span className="block">{h.reviewer_email ?? "—"}</span>
+                <span className="block text-xs text-ink-soft">{h.reviewer_role ?? ""}</span>
+              </td>
+              <td className="text-xs text-ink-soft">{h.source}</td>
+              <td className="max-w-xs text-xs text-ink">{h.note ?? "—"}</td>
+            </tr>
+          ))}
+        </DataTable>
+        <PageNavigation
+          page={page}
+          pageSize={pageSize}
+          total={history.length}
+          pathname="/dashboard/proctoring"
+          query={{ exam: sp.exam, candidate: sp.candidate, decision: sp.decision, source: sp.source, from: sp.from, to: sp.to }}
+          label="review records"
+        />
+      </div>
 
       <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Supervision rooms and evidence</h2>
-      <Card className="mb-8 overflow-x-auto p-0">
-        <table className="w-full min-w-[820px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">Room</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Opened</th>
-              <th className="px-4 py-3 font-semibold">Closed</th>
-              <th className="px-4 py-3 font-semibold">Latest evidence</th>
-              <th className="px-4 py-3 font-semibold">Open</th>
+      <div className="mb-8">
+        <DataTable head={["Room", "Status", "Opened", "Closed", "Latest evidence", "Open"]} label="Supervision rooms and evidence">
+          {(rooms ?? []).length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
+                No supervision room has been opened yet. A room is registered the first time a supervisor or candidate
+                obtains video access for a proctored examination.
+              </td>
             </tr>
-          </thead>
-          <tbody>
-            {(rooms ?? []).length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
-                  No supervision room has been opened yet. A room is registered the first time a supervisor or candidate
-                  obtains video access for a proctored examination.
+          )}
+          {(rooms ?? []).map((r) => {
+            const latest = (events ?? []).find((e) => e.room_id === r.id);
+            return (
+              <tr key={r.id}>
+                <td className="font-mono text-xs">{r.room_name}</td>
+                <td>
+                  <Badge tone={r.status === "active" ? "green" : "gray"}>{r.status}</Badge>
+                </td>
+                <td className="text-ink-soft">{fmtDateTime(r.started_at)}</td>
+                <td className="text-ink-soft">{r.ended_at ? fmtDateTime(r.ended_at) : "—"}</td>
+                <td className="text-xs text-ink-soft">
+                  {latest ? `${ROOM_EVENT_LABEL[latest.event] ?? latest.event} · ${fmtDateTime(latest.occurred_at)}` : "—"}
+                </td>
+                <td>
+                  <ButtonLink href={`/dashboard/exams/${r.exam_id}/proctor`} variant="outline">Supervise</ButtonLink>
                 </td>
               </tr>
-            )}
-            {(rooms ?? []).map((r) => {
-              const latest = (events ?? []).find((e) => e.room_id === r.id);
-              return (
-                <tr key={r.id} className="border-b border-evergreen-900/10">
-                  <td className="px-4 py-2.5 font-mono text-xs">{r.room_name}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={r.status === "active" ? "green" : "gray"}>{r.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-ink-soft">{fmtDateTime(r.started_at)}</td>
-                  <td className="px-4 py-2.5 text-ink-soft">{r.ended_at ? fmtDateTime(r.ended_at) : "—"}</td>
-                  <td className="px-4 py-2.5 text-xs text-ink-soft">
-                    {latest ? `${ROOM_EVENT_LABEL[latest.event] ?? latest.event} · ${fmtDateTime(latest.occurred_at)}` : "—"}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <ButtonLink href={`/dashboard/exams/${r.exam_id}/proctor`} variant="outline">Supervise</ButtonLink>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+            );
+          })}
+        </DataTable>
+      </div>
 
       <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Data retention</h2>
       <Card className="p-5">

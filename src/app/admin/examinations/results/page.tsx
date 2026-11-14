@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -44,10 +45,12 @@ interface AttemptRow {
 export default async function ExaminationResultsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ exam?: string; outcome?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ exam?: string; outcome?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   const { data: rawExams } = await admin
@@ -107,6 +110,7 @@ export default async function ExaminationResultsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Validation & Candidate Publication"
         title="Examination results"
         subtitle="Validate marks and control candidate result publication. Until published, scores and worked solutions remain hidden from the candidate result API."
         action={selected ? <div className="flex flex-wrap gap-2"><ExportButton filename={`exam-results-${selected.id}.csv`} csv={csv} label="Export results (CSV / Excel)" /><PrintButton /></div> : undefined}
@@ -132,6 +136,11 @@ export default async function ExaminationResultsPage({
               <option value="pending">Pending / in progress</option>
             </Select>
             <Button type="submit" variant="outline">View results</Button>
+            {sp.outcome && (
+              <Link href={`/admin/examinations/results?exam=${selected.id}`} className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+                Reset
+              </Link>
+            )}
           </form>
 
           <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -162,23 +171,34 @@ export default async function ExaminationResultsPage({
             {filtered.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No attempts match this outcome.</p>
             ) : (
-              <Table head={["Rank", "Candidate", "Attempt", "Score", "%", "Outcome", "Extension", "Submitted"]}>
-                {filtered.map((a, i) => {
-                  const pct = a.score != null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
-                  return (
-                    <tr key={a.id}>
-                      <td className="font-display font-bold">{pct === null ? "—" : i + 1}</td>
-                      <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exam_candidates?.candidate_ref || a.exam_candidates?.email || ""}</span></td>
-                      <td><StatusBadge status={a.status} /></td>
-                      <td className="tabular-nums">{a.score != null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
-                      <td className="tabular-nums">{pct === null ? "—" : `${round(pct)}%`}</td>
-                      <td>{pct === null ? <Badge tone="gray">Pending</Badge> : <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge>}</td>
-                      <td>{Number(a.extension_minutes) > 0 ? `+${a.extension_minutes} min` : "—"}</td>
-                      <td className="text-ink-soft">{a.submitted_at ? fmtDateTime(a.submitted_at) : `Started ${fmtDateTime(a.started_at)}`}</td>
-                    </tr>
-                  );
-                })}
-              </Table>
+              <>
+                <Table head={["Rank", "Candidate", "Attempt", "Score", "%", "Outcome", "Extension", "Submitted"]}>
+                  {filtered.slice((page - 1) * pageSize, page * pageSize).map((a, idx) => {
+                    const i = (page - 1) * pageSize + idx;
+                    const pct = a.score != null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
+                    return (
+                      <tr key={a.id}>
+                        <td className="font-display font-bold">{pct === null ? "—" : i + 1}</td>
+                        <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exam_candidates?.candidate_ref || a.exam_candidates?.email || ""}</span></td>
+                        <td><StatusBadge status={a.status} /></td>
+                        <td className="tabular-nums">{a.score != null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
+                        <td className="tabular-nums">{pct === null ? "—" : `${round(pct)}%`}</td>
+                        <td>{pct === null ? <Badge tone="gray">Pending</Badge> : <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge>}</td>
+                        <td>{Number(a.extension_minutes) > 0 ? `+${a.extension_minutes} min` : "—"}</td>
+                        <td className="text-ink-soft">{a.submitted_at ? fmtDateTime(a.submitted_at) : `Started ${fmtDateTime(a.started_at)}`}</td>
+                      </tr>
+                    );
+                  })}
+                </Table>
+                <PageNavigation
+                  page={page}
+                  pageSize={pageSize}
+                  total={filtered.length}
+                  pathname="/admin/examinations/results"
+                  query={{ exam: selected.id, outcome: sp.outcome }}
+                  label="candidate results"
+                />
+              </>
             )}
           </Section>
         </>

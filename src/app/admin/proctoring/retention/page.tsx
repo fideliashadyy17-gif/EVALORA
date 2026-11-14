@@ -4,6 +4,7 @@ import { describeRetention, getRetentionPolicy, isUuid, loadRetentionRuns } from
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
+import { Section, Table } from "../../ui";
 import { adminRunRetention, adminSaveRetention } from "./actions";
 
 export const metadata: Metadata = { title: "Proctoring retention" };
@@ -43,6 +44,7 @@ export default async function AdminRetentionPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Evidence Retention & Legal Hold"
         title="Proctoring retention policies"
         subtitle="How long each institution keeps proctoring evidence. EVALORA imposes no legal retention period: an organization retains everything until its administrators — or the platform owner — configure a period."
         action={<ButtonLink href="/admin/proctoring" variant="outline">Proctoring oversight</ButtonLink>}
@@ -144,35 +146,23 @@ export default async function AdminRetentionPage({
             </div>
           </Card>
 
-          <Card className="overflow-x-auto p-0">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-                  <th className="px-4 py-3 font-semibold">Run</th>
-                  <th className="px-4 py-3 font-semibold">Mode</th>
-                  <th className="px-4 py-3 font-semibold">Notes redacted</th>
-                  <th className="px-4 py-3 font-semibold">Reviews redacted</th>
-                  <th className="px-4 py-3 font-semibold">Events removed</th>
-                  <th className="px-4 py-3 font-semibold">Recordings expired</th>
+          <Section title="Retention execution log">
+            <Table head={["Run", "Mode", "Notes redacted", "Reviews redacted", "Events removed", "Recordings expired"]}>
+              {runs.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-soft">No retention run has been executed for this organization.</td></tr>
+              )}
+              {runs.map((r) => (
+                <tr key={r.id}>
+                  <td className="text-ink-soft">{fmtDateTime(r.created_at)}</td>
+                  <td><Badge tone={r.mode === "apply" ? "red" : r.mode === "held" ? "amber" : "gray"}>{r.mode}</Badge></td>
+                  <td className="tabular-nums">{r.observations_anonymized}</td>
+                  <td className="tabular-nums">{r.review_notes_redacted}</td>
+                  <td className="tabular-nums">{r.room_events_purged}</td>
+                  <td className="tabular-nums">{r.recordings_expired}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {runs.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-6 text-center text-ink-soft">No retention run has been executed for this organization.</td></tr>
-                )}
-                {runs.map((r) => (
-                  <tr key={r.id} className="border-b border-evergreen-900/10">
-                    <td className="px-4 py-2.5 text-ink-soft">{fmtDateTime(r.created_at)}</td>
-                    <td className="px-4 py-2.5"><Badge tone={r.mode === "apply" ? "red" : r.mode === "held" ? "amber" : "gray"}>{r.mode}</Badge></td>
-                    <td className="px-4 py-2.5">{r.observations_anonymized}</td>
-                    <td className="px-4 py-2.5">{r.review_notes_redacted}</td>
-                    <td className="px-4 py-2.5">{r.room_events_purged}</td>
-                    <td className="px-4 py-2.5">{r.recordings_expired}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+              ))}
+            </Table>
+          </Section>
         </>
       )}
     </>

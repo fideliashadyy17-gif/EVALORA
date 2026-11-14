@@ -93,6 +93,7 @@ export default async function DashboardPage() {
           <p className="mt-2 text-sm leading-relaxed text-ink-soft sm:text-base">{org.name} · Your workspace at a glance.</p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <ButtonLink href="/dashboard/questions/new" variant="outline">+ New question</ButtonLink>
           <ButtonLink href="/dashboard/quizzes/new" variant="gold">+ New quiz</ButtonLink>
           <ButtonLink href="/dashboard/exams/new" variant="outline">Schedule an exam</ButtonLink>
         </div>

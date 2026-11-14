@@ -31,6 +31,7 @@ export default async function CompetitionRegistrationPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Individual & Roster Enrollment"
         title="Participant registration"
         subtitle="Register participants individually, import a CSV roster (Excel can be saved as CSV), or enroll an entire class. Registrations are persisted against the selected competition."
         action={<ButtonLink href="/admin/competitions/new" variant="gold">+ Create competition</ButtonLink>}

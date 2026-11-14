@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -69,7 +69,12 @@ export default async function EditQuestionPage({
 
   return (
     <>
-      <PageTitle title="Edit question" subtitle="Changes affect linked papers and can affect existing attempts or grading. Use a copy when preserving past questions." />
+      <PageTitle
+        eyebrow="Assessment Authoring · Question Editor"
+        title="Edit question"
+        subtitle="Changes affect linked papers and can affect existing attempts or grading. Use a copy when preserving past questions."
+        action={<ButtonLink href="/dashboard/questions" variant="outline">Question Bank</ButtonLink>}
+      />
       <QuestionForm
         initial={initial}
         categories={categories ?? []}

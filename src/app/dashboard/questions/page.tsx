@@ -1,8 +1,9 @@
 import { RichContent } from "@/components/RichContent";
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { CheckCircle2, Clock3, FolderTree, Library } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createCategory, deleteQuestion, setQuestionStatus } from "./actions";
@@ -47,19 +48,31 @@ export default async function QuestionsPage({
     .order("grade_order")
     .order("name");
 
-  const { data: categories } = await supabase
-    .from("question_categories")
-    .select("*")
-    .eq("organization_id", org.id)
-    .order("name");
+  const [
+    { data: categories },
+    { count: publishedCount },
+    { count: reviewCount },
+  ] = await Promise.all([
+    supabase.from("question_categories").select("*").eq("organization_id", org.id).order("name"),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "published"),
+    supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["pending_review", "draft"]),
+  ]);
 
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Institutional Question Bank"
         title="Question Bank"
         subtitle="Reusable questions for quizzes and examinations. Imports wait here for review before they can be published."
         action={<ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink>}
       />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Matching questions" value={questionTotal ?? 0} icon={<Library className="h-5 w-5" />} />
+        <StatCard label="Published" value={publishedCount ?? 0} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Draft / pending review" value={reviewCount ?? 0} icon={<Clock3 className="h-5 w-5" />} />
+        <StatCard label="Categories" value={(categories ?? []).length} icon={<FolderTree className="h-5 w-5" />} />
+      </div>
 
       {sp.e === "not_ready" && (
         <p className="mb-5 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900 ring-1 ring-red-600/30">

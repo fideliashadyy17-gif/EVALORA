@@ -1,9 +1,10 @@
-import { Badge, Button, ButtonLink, Card, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, PageTitle, Select, StatCard } from "@/components/ui";
 import { RichContent } from "@/components/RichContent";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { docIsEmpty } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
+import { Award, BookOpenCheck, CheckCircle2, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
@@ -81,10 +82,18 @@ export default async function ExaminationQuestionsPage({
     const q = l.questions as { points?: number } | null;
     return sum + Number(l.points ?? q?.points ?? 0);
   }, 0);
+  const solutionsReadyCount = links.filter((l) => {
+    const q = l.questions as Record<string, unknown> | null;
+    if (!q) return false;
+    const explanationDoc = (q.explanation_doc as RichDoc | null) ?? null;
+    return Boolean(String(q.explanation ?? "").trim()) || Boolean(explanationDoc && !docIsEmpty(explanationDoc));
+  }).length;
+  const publishedQuestionCount = links.filter((l) => (l.questions as { status?: string } | null)?.status === "published").length;
 
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Attached Question Paper"
         title="Examination questions"
         subtitle="The examination paper is its attached published quiz. Prompts, independent options, correct answers and worked solutions use the one unified structured mathematical editor—not a separate weaker exam editor."
         action={selected ? <ButtonLink href={`/admin/questions/new?org=${selected.organization_id}`} variant="gold">+ Create question</ButtonLink> : undefined}
@@ -96,6 +105,13 @@ export default async function ExaminationQuestionsPage({
         </p>
       ) : (
         <>
+          <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <StatCard label="Questions in paper" value={links.length} icon={<FileCheck2 className="h-5 w-5" />} />
+            <StatCard label="Total marks" value={totalMarks} icon={<Award className="h-5 w-5" />} />
+            <StatCard label="Published questions" value={publishedQuestionCount} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <StatCard label="Worked solutions ready" value={solutionsReadyCount} icon={<BookOpenCheck className="h-5 w-5" />} />
+          </div>
+
           <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
             <label className="block min-w-[320px] flex-1">
               <span className="mb-1.5 block text-sm font-medium text-evergreen-900">Examination</span>

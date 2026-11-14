@@ -27,6 +27,7 @@ export default async function NewStudentPage({
   return (
     <>
       <PageTitle
+        eyebrow="Learners & Rosters · Individual Enrollment"
         title="Register a student"
         subtitle="The student joins the school roster immediately. Add an email to also enable a login account later."
         action={<ButtonLink href="/admin/students" variant="outline">← Schools & students</ButtonLink>}

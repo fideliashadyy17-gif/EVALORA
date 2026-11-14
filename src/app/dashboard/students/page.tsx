@@ -1,9 +1,10 @@
 import { StudentImportWizard } from "@/components/StudentImportWizard";
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
+import { BookOpen, FileUp, KeyRound, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { transferStudent } from "../academics/actions";
@@ -81,12 +82,14 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
 
   // Existing identities for import duplicate detection (this school only).
   const { data: allStudents } = await supabase.from("students")
-    .select("full_name, email, student_ref, date_of_birth").eq("organization_id", org.id).limit(20000);
+    .select("full_name, email, student_ref, date_of_birth, status, user_id").eq("organization_id", org.id).limit(20000);
   const existing = {
     refs: (allStudents ?? []).map((s) => s.student_ref?.trim().toLowerCase()).filter(Boolean) as string[],
     emails: (allStudents ?? []).map((s) => s.email?.trim().toLowerCase()).filter(Boolean) as string[],
     nameDob: (allStudents ?? []).map((s) => identityKey(s.full_name, s.date_of_birth)),
   };
+  const totalActiveStudents = (allStudents ?? []).filter((s) => s.status === "active").length;
+  const totalWithLogin = (allStudents ?? []).filter((s) => Boolean(s.user_id)).length;
 
   const { data: batches } = await supabase.from("import_batches")
     .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
@@ -95,12 +98,20 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   return (
     <>
       <PageTitle
+        eyebrow="People & Academics · Student Register"
         title="Students"
         subtitle="Register students into your school's classes, import registers from CSV, Excel, PDF or Word, and manage enrollments."
         action={<ButtonLink href="/dashboard/academics/classes" variant="outline">Manage classes</ButtonLink>}
       />
       {sp.ok && OK[sp.ok] && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{OK[sp.ok]}</p>}
       {sp.e && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{ERR[sp.e] ?? decodeURIComponent(sp.e)}</p>}
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Active students" value={totalActiveStudents} hint={`${(allStudents ?? []).length} total on roster`} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Active classes" value={activeClasses.length} icon={<BookOpen className="h-5 w-5" />} />
+        <StatCard label="Portal logins linked" value={totalWithLogin} icon={<KeyRound className="h-5 w-5" />} />
+        <StatCard label="Recent imports" value={(batches ?? []).length} icon={<FileUp className="h-5 w-5" />} />
+      </div>
 
       {(years ?? []).length === 0 ? (
         <Card className="mb-6 p-6">
@@ -160,45 +171,42 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
         {students.length === 0 ? (
           <EmptyState title={sp.q || sp.class || sp.status ? "No students match these filters" : "No students yet"} body={sp.q || sp.class || sp.status ? "Try another search or clear the filters. Student records are unchanged." : "Register your first student above, or import a class register."} />
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">{["Student", "Reference", "Class", "Status", "Portal login", "Actions"].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-              <tbody>
-                {students.map((s) => (
-                  <tr key={s.id} className="border-b border-evergreen-900/10 align-top">
-                    <td className="px-3 py-2"><strong className="text-evergreen-950">{s.full_name}</strong>{s.email ? <span className="block text-xs text-ink-soft">{s.email}</span> : null}</td>
-                    <td className="px-3 py-2">{s.student_ref ?? "—"}</td>
-                    <td className="px-3 py-2">{enrollmentByStudent.get(s.id) ? className.get(enrollmentByStudent.get(s.id)!) ?? "—" : "Not enrolled"}</td>
-                    <td className="px-3 py-2"><Badge tone={s.status === "active" ? "green" : "gray"}>{s.status}</Badge></td>
-                    <td className="px-3 py-2">{s.user_id ? "Linked" : "No login"}</td>
-                    <td className="px-3 py-2">
-                      {canEdit ? (
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          <form action={transferStudent} className="flex gap-1">
-                            <input type="hidden" name="back" value="/dashboard/students" /><input type="hidden" name="student_id" value={s.id} />
-                            <Select name="class_id" aria-label="Move to class" className="max-w-40">
-                              {activeClasses.filter((c) => c.id !== enrollmentByStudent.get(s.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </Select>
-                            <button className="text-evergreen-800 underline underline-offset-2" type="submit">Move</button>
-                          </form>
-                          <form action={setStudentStatus} className="flex gap-1">
-                            <input type="hidden" name="id" value={s.id} />
-                            <Select name="status" aria-label="Student status" defaultValue={s.status} className="max-w-32">
-                              {["active", "suspended", "graduated", "withdrawn"].map((st) => <option key={st} value={st}>{st}</option>)}
-                            </Select>
-                            <button className="text-evergreen-800 underline underline-offset-2" type="submit">Set</button>
-                          </form>
-                          <form action={createStudentLogin}>
-                            <input type="hidden" name="id" value={s.id} />
-                            <button className="text-evergreen-800 underline underline-offset-2" type="submit">{s.user_id ? "Reset login" : "Create login"}</button>
-                          </form>
-                        </div>
-                      ) : "—"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div className="mt-4">
+            <DataTable head={["Student", "Reference", "Class", "Status", "Portal login", "Actions"]} label="Students roster">
+              {students.map((s) => (
+                <tr key={s.id} className="align-top">
+                  <td><strong className="text-evergreen-950">{s.full_name}</strong>{s.email ? <span className="block text-xs text-ink-soft">{s.email}</span> : null}</td>
+                  <td>{s.student_ref ?? "—"}</td>
+                  <td>{enrollmentByStudent.get(s.id) ? className.get(enrollmentByStudent.get(s.id)!) ?? "—" : "Not enrolled"}</td>
+                  <td><Badge tone={s.status === "active" ? "green" : "gray"}>{s.status}</Badge></td>
+                  <td>{s.user_id ? <Badge tone="green">Linked</Badge> : <span className="text-ink-soft">No login</span>}</td>
+                  <td>
+                    {canEdit ? (
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <form action={transferStudent} className="flex gap-1">
+                          <input type="hidden" name="back" value="/dashboard/students" /><input type="hidden" name="student_id" value={s.id} />
+                          <Select name="class_id" aria-label="Move to class" className="max-w-40">
+                            {activeClasses.filter((c) => c.id !== enrollmentByStudent.get(s.id)).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </Select>
+                          <button className="text-evergreen-800 underline underline-offset-2" type="submit">Move</button>
+                        </form>
+                        <form action={setStudentStatus} className="flex gap-1">
+                          <input type="hidden" name="id" value={s.id} />
+                          <Select name="status" aria-label="Student status" defaultValue={s.status} className="max-w-32">
+                            {["active", "suspended", "graduated", "withdrawn"].map((st) => <option key={st} value={st}>{st}</option>)}
+                          </Select>
+                          <button className="text-evergreen-800 underline underline-offset-2" type="submit">Set</button>
+                        </form>
+                        <form action={createStudentLogin}>
+                          <input type="hidden" name="id" value={s.id} />
+                          <button className="text-evergreen-800 underline underline-offset-2" type="submit">{s.user_id ? "Reset login" : "Create login"}</button>
+                        </form>
+                      </div>
+                    ) : "—"}
+                  </td>
+                </tr>
+              ))}
+            </DataTable>
           </div>
         )}
       </Card>

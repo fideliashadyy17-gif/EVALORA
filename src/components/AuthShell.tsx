@@ -53,10 +53,10 @@ export function AuthShell({
 
 export function AuthError({ message }: { message?: string | null }) {
   if (!message) return null;
-  return <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{message}</p>;
+  return <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{message}</p>;
 }
 
 export function AuthNotice({ message }: { message?: string | null }) {
   if (!message) return null;
-  return <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{message}</p>;
+  return <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{message}</p>;
 }

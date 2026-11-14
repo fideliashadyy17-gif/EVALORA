@@ -3,11 +3,12 @@ import { AnswerResponseView } from "@/components/AnswerResponseView";
 import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
-import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
+import { CheckCircle2, ClipboardList, FileCheck2, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
@@ -174,6 +175,7 @@ export default async function ExamDetailPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Assessment Control & Marking Studio"
         title={exam.title}
         subtitle={`Paper: ${(exam.quizzes as { title: string } | null)?.title ?? "—"} · ${exam.duration_minutes} minutes · Pass mark ${String(settings.pass_mark_percent ?? 50)}%`}
         action={
@@ -188,6 +190,13 @@ export default async function ExamDetailPage({
           </div>
         }
       />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Registered candidates" value={(candidates ?? []).length} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Attempts started" value={(attempts ?? []).length} icon={<FileCheck2 className="h-5 w-5" />} />
+        <StatCard label="Awaiting marking" value={awaitingMarking.length} icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Marked written responses" value={gradedWritten.length} icon={<CheckCircle2 className="h-5 w-5" />} />
+      </div>
 
       {sp.incident_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Observation review recorded.</p>}
       {sp.incident_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The review could not be confirmed. The observation may have changed; reload before trying again.</p>}
@@ -309,25 +318,19 @@ export default async function ExamDetailPage({
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Candidates ({(candidates ?? []).length})</h2>
           <div className="mt-3 max-h-96 overflow-y-auto scroll-slim">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-2 font-medium">Candidate</th>
-                  <th className="py-2 pr-2 font-medium">Personal code</th>
-                  <th className="py-2 pr-2 font-medium">Status</th>
-                  <th className="py-2 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
+            {(candidates ?? []).length === 0 ? (
+              <p className="py-3 text-sm text-ink-soft">No candidates registered yet.</p>
+            ) : (
+              <DataTable head={["Candidate", "Personal code", "Status", "Actions"]} label="Examination candidates">
                 {(candidates ?? []).map((c) => (
-                  <tr key={c.id} className="border-b border-evergreen-900/5">
-                    <td className="py-2 pr-2">
+                  <tr key={c.id}>
+                    <td>
                       <span className="font-medium">{c.full_name}</span>
                       {c.candidate_ref && <span className="block text-xs text-ink-soft">{c.candidate_ref}{c.email ? ` · ${c.email}` : ""}</span>}
                     </td>
-                    <td className="py-2 pr-2 font-mono font-semibold text-evergreen-800">{c.access_code}</td>
-                    <td className="py-2 pr-2"><Badge tone={c.status === "submitted" ? "green" : c.status === "in_progress" ? "amber" : "gray"}>{c.status.replace(/_/g, " ")}</Badge></td>
-                    <td className="py-2">
+                    <td className="font-mono font-semibold text-evergreen-800">{c.access_code}</td>
+                    <td><Badge tone={c.status === "submitted" ? "green" : c.status === "in_progress" ? "amber" : "gray"}>{c.status.replace(/_/g, " ")}</Badge></td>
+                    <td>
                       {can(ctx, org.id, CREATOR_ROLES) && c.status === "registered" && <form action={removeCandidate}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="exam_id" value={id} />
@@ -336,9 +339,8 @@ export default async function ExamDetailPage({
                     </td>
                   </tr>
                 ))}
-              </tbody>
-            </table>
-            {(candidates ?? []).length === 0 && <p className="py-3 text-sm text-ink-soft">No candidates registered yet.</p>}
+              </DataTable>
+            )}
           </div>
 
           <form action={addCandidate} className="mt-4 grid gap-2 border-t border-evergreen-900/10 pt-4 sm:grid-cols-3">
@@ -362,29 +364,23 @@ export default async function ExamDetailPage({
         <div className="space-y-6">
           <Card className="p-6">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Attempts ({(attempts ?? []).length})</h2>
-            <table className="mt-3 w-full text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-2 font-medium">Candidate</th>
-                  <th className="py-2 pr-2 font-medium">Started</th>
-                  <th className="py-2 pr-2 font-medium">Status</th>
-                  <th className="py-2 pr-2 font-medium">Track</th>
-                  <th className="py-2 font-medium">Score</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(attempts ?? []).map((a) => (
-                  <tr key={a.id} className="border-b border-evergreen-900/5">
-                    <td className="py-2 pr-2 font-medium">{(a.exam_candidates as { full_name: string } | null)?.full_name}</td>
-                    <td className="py-2 pr-2 text-ink-soft">{fmtDateTime(a.started_at)}</td>
-                    <td className="py-2 pr-2"><Badge tone={a.status === "in_progress" ? "amber" : "green"}>{a.status.replace(/_/g, " ")}</Badge></td>
-                    <td className="py-2 pr-2 text-ink-soft">{a.track === "AB" ? "AB (max 44)" : a.track === "BC" ? "BC (max 50)" : "—"}</td>
-                    <td className="py-2 tabular-nums">{a.score !== null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {(attempts ?? []).length === 0 && <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>}
+            <div className="mt-3">
+              {(attempts ?? []).length === 0 ? (
+                <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>
+              ) : (
+                <DataTable head={["Candidate", "Started", "Status", "Track", "Score"]} label="Examination attempts">
+                  {(attempts ?? []).map((a) => (
+                    <tr key={a.id}>
+                      <td className="font-medium">{(a.exam_candidates as { full_name: string } | null)?.full_name}</td>
+                      <td className="text-ink-soft">{fmtDateTime(a.started_at)}</td>
+                      <td><Badge tone={a.status === "in_progress" ? "amber" : "green"}>{a.status.replace(/_/g, " ")}</Badge></td>
+                      <td className="text-ink-soft">{a.track === "AB" ? "AB (max 44)" : a.track === "BC" ? "BC (max 50)" : "—"}</td>
+                      <td className="tabular-nums">{a.score !== null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
+                    </tr>
+                  ))}
+                </DataTable>
+              )}
+            </div>
           </Card>
 
           <Card className="p-6">

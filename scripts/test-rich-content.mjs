@@ -187,7 +187,6 @@ ok(
 
 // The closing rules now live in one module (src/lib/examSubmission.ts) rather than
 // inline in the submit route, so these assertions read the module that owns them.
-const submitSource = readFileSync("src/app/api/exam/submit/route.ts", "utf8");
 const submissionSource = readFileSync("src/lib/examSubmission.ts", "utf8");
 ok("a late submission is recorded as auto_submitted", submissionSource.includes('const finalStatus = isDeadline ? "auto_submitted" : "submitted"'));
 ok(

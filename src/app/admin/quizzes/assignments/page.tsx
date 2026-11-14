@@ -54,6 +54,7 @@ export default async function QuizAssignmentsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Delivery Channels"
         title="Quiz assignments"
         subtitle="A quiz reaches learners in three controlled ways: a hosted quiz session, a live competition, or a proctored examination. This page brings every assignment channel together without duplicating data."
       />

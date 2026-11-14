@@ -96,7 +96,7 @@ export function ExamJoinClient({
   }
 
   return (
-    <div className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Logo />
@@ -127,7 +127,7 @@ export function ExamJoinClient({
           </p>
         )}
         <form onSubmit={submit} className="mt-5 space-y-4">
-          {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
+          {error && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="First name *"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="given-name" /></Field>
             <Field label="Last name *"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="family-name" /></Field>
@@ -167,6 +167,6 @@ export function ExamJoinClient({
     </Card>
     <p className="mt-5 text-center text-xs text-ink-soft">Your attempt is verified and timed by EVALORA&apos;s secure examination service.</p>
       </div>
-    </div>
+    </main>
   );
 }

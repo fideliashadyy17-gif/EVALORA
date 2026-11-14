@@ -1,4 +1,5 @@
-import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -17,10 +18,12 @@ const FORMAT_LABELS = Object.fromEntries(COMPETITION_FORMATS.map((f) => [f.value
 export default async function AdminCompetitions({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; sstatus?: string; ok?: string; e?: string; saved?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; sstatus?: string; page?: string; ok?: string; e?: string; saved?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let compQuery = admin
@@ -49,12 +52,21 @@ export default async function AdminCompetitions({
     admin.from("competition_registrations").select("id", head).neq("status", "removed").then((r) => r.count ?? 0),
   ]);
 
+  const pagedComps = (comps ?? []).slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Global Registry & Sessions"
         title="Competitions"
         subtitle="Create and run live competitions end-to-end: configuration, access codes, registrations, live control and published results."
-        action={<ButtonLink href="/admin/competitions/new" variant="gold">+ Create competition</ButtonLink>}
+        action={
+          <>
+            <ButtonLink href="/admin/competitions/events" variant="outline">Multi-phase events</ButtonLink>
+            <ButtonLink href="/admin/competitions/live" variant="outline">Live operations</ButtonLink>
+            <ButtonLink href="/admin/competitions/new" variant="gold">+ Create competition</ButtonLink>
+          </>
+        }
       />
       <Notice
         ok={sp.ok}
@@ -89,6 +101,11 @@ export default async function AdminCompetitions({
           ))}
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.org || sp.status) && (
+          <Link href="/admin/competitions" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {(comps ?? []).length === 0 ? (
@@ -100,8 +117,9 @@ export default async function AdminCompetitions({
           — pick a quiz, set the window, share a code.
         </p>
       ) : (
-        <Table head={["Competition", "Host organization", "Format", "Schedule", "Participants", "Status", "Actions"]}>
-          {(comps ?? []).map((c) => {
+        <>
+          <Table head={["Competition", "Host organization", "Format", "Schedule", "Participants", "Status", "Actions"]}>
+            {pagedComps.map((c) => {
             const regs = ((c.competition_registrations as { status: string }[]) ?? []).filter((r) => r.status !== "removed").length;
             return (
               <tr key={c.id}>
@@ -129,7 +147,16 @@ export default async function AdminCompetitions({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={(comps ?? []).length}
+            pathname="/admin/competitions"
+            query={{ q: sp.q, org: sp.org, status: sp.status, sstatus: sp.sstatus }}
+            label="competitions"
+          />
+        </>
       )}
 
       <Section
@@ -146,50 +173,35 @@ export default async function AdminCompetitions({
           </Select>
           <Button type="submit" variant="outline">Filter sessions</Button>
         </form>
-        <Card className="overflow-x-auto p-0">
-          <table className="w-full min-w-[860px] text-sm">
-            <thead>
-              <tr className="border-b border-evergreen-900/10 bg-cream text-left">
-                <th className="px-4 py-3 font-semibold">Session</th>
-                <th className="px-4 py-3 font-semibold">Organization</th>
-                <th className="px-4 py-3 font-semibold">Mode</th>
-                <th className="px-4 py-3 font-semibold">Participants</th>
-                <th className="px-4 py-3 font-semibold">Status</th>
-                <th className="px-4 py-3 font-semibold">Created</th>
-                <th className="px-4 py-3 font-semibold"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {(sessions ?? []).map((s) => (
-                <tr key={s.id} className="border-b border-evergreen-900/10">
-                  <td className="px-4 py-2.5">
-                    <span className="font-medium">{s.title || (s.quizzes as unknown as { title?: string } | null)?.title || "Live session"}</span>
-                    <span className="block font-mono text-xs text-ink-soft">code {s.join_code}</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-ink-soft">{(s.organizations as unknown as { name?: string } | null)?.name ?? "—"}</td>
-                  <td className="px-4 py-2.5 text-ink-soft">{s.mode === "synchronized" ? "Synchronized" : "Self-paced"}</td>
-                  <td className="px-4 py-2.5 tabular-nums">{(s.session_participants as unknown as { count: number }[] | null)?.[0]?.count ?? 0}</td>
-                  <td className="px-4 py-2.5"><Badge tone={s.status === "live" ? "green" : s.status === "lobby" ? "amber" : "gray"}>{s.status}</Badge></td>
-                  <td className="px-4 py-2.5 text-ink-soft">{fmtDateTime(s.created_at)}</td>
-                  <td className="px-4 py-2.5">
-                    {s.status !== "ended" && (
-                      <form action={adminEndSession} className="flex items-center gap-2">
-                        <input type="hidden" name="id" value={s.id} />
-                        <label className="flex items-center gap-1 text-xs text-ink-soft">
-                          <input type="checkbox" name="confirm" required className="h-4 w-4 accent-red-700" /> sure?
-                        </label>
-                        <button className="font-medium text-red-700 underline-offset-2 hover:underline">End</button>
-                      </form>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {(sessions ?? []).length === 0 && (
-                <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-soft">No sessions match this filter.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </Card>
+        <Table head={["Session", "Organization", "Mode", "Participants", "Status", "Created", "Emergency control"]}>
+          {(sessions ?? []).map((s) => (
+            <tr key={s.id}>
+              <td>
+                <span className="font-medium">{s.title || (s.quizzes as unknown as { title?: string } | null)?.title || "Live session"}</span>
+                <span className="block font-mono text-xs text-ink-soft">code {s.join_code}</span>
+              </td>
+              <td className="text-ink-soft">{(s.organizations as unknown as { name?: string } | null)?.name ?? "—"}</td>
+              <td className="text-ink-soft">{s.mode === "synchronized" ? "Synchronized" : "Self-paced"}</td>
+              <td className="tabular-nums">{(s.session_participants as unknown as { count: number }[] | null)?.[0]?.count ?? 0}</td>
+              <td><Badge tone={s.status === "live" ? "green" : s.status === "lobby" ? "amber" : "gray"}>{s.status}</Badge></td>
+              <td className="text-ink-soft">{fmtDateTime(s.created_at)}</td>
+              <td>
+                {s.status !== "ended" && (
+                  <form action={adminEndSession} className="flex items-center gap-2">
+                    <input type="hidden" name="id" value={s.id} />
+                    <label className="flex items-center gap-1 text-xs text-ink-soft">
+                      <input type="checkbox" name="confirm" required className="h-4 w-4 accent-red-700" /> sure?
+                    </label>
+                    <button className="font-medium text-red-700 underline-offset-2 hover:underline">End</button>
+                  </form>
+                )}
+              </td>
+            </tr>
+          ))}
+          {(sessions ?? []).length === 0 && (
+            <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-soft">No sessions match this filter.</td></tr>
+          )}
+        </Table>
       </Section>
     </>
   );

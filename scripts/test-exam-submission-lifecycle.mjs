@@ -157,7 +157,7 @@ function makeAdmin(db) {
         st.patch = row;
         return api;
       },
-      upsert(row, _opts) {
+      upsert(row) {
         st.op = "insert";
         st.patch = row;
         return api;

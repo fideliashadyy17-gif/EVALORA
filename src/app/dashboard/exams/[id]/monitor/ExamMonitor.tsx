@@ -323,17 +323,17 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
           {rows.length === 0 ? (
             <p className="px-6 py-10 text-center text-sm text-ink-soft">No candidate has started this examination yet.</p>
           ) : (
-            <table className="w-full min-w-[760px] text-left text-sm">
+            <table className="w-full min-w-[760px] text-left text-sm" aria-label="Live candidate status">
               <thead className="border-b border-evergreen-900/10 text-xs uppercase tracking-wide text-ink-soft">
                 <tr>
-                  <th className="px-3 py-2">Student</th>
-                  <th className="px-3 py-2">Connection</th>
-                  <th className="px-3 py-2">Question</th>
-                  <th className="px-3 py-2">Progress</th>
-                  <th className="px-3 py-2">Answers</th>
-                  <th className="px-3 py-2">Remaining</th>
-                  <th className="px-3 py-2">Status</th>
-                  <th className="px-3 py-2"><span className="sr-only">Message</span></th>
+                  <th scope="col" className="px-3 py-2">Student</th>
+                  <th scope="col" className="px-3 py-2">Connection</th>
+                  <th scope="col" className="px-3 py-2">Question</th>
+                  <th scope="col" className="px-3 py-2">Progress</th>
+                  <th scope="col" className="px-3 py-2">Answers</th>
+                  <th scope="col" className="px-3 py-2">Remaining</th>
+                  <th scope="col" className="px-3 py-2">Status</th>
+                  <th scope="col" className="px-3 py-2"><span className="sr-only">Message</span></th>
                 </tr>
               </thead>
               <tbody>

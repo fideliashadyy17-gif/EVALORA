@@ -44,9 +44,10 @@ export default async function PaymentDetailPage({
 
   return (
     <>
-      <p className="mb-3 text-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
         <Link href="/admin/payments" className="font-medium text-evergreen-700 underline-offset-2 hover:underline">← All payments</Link>
-      </p>
+        <Link href="/admin/revenue" className="text-xs font-medium text-evergreen-800 underline-offset-2 hover:underline">Recognized revenue report →</Link>
+      </div>
       <Notice
         ok={sp.ok}
         e={sp.e}

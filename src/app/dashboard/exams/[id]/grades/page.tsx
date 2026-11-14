@@ -1,4 +1,5 @@
-import { Badge, ButtonLink, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, ButtonLink, Card, DataTable, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { CHANGE_TYPE_LABEL, MODERATION_LABEL, loadGradeHistory, loadModerationHistory } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
@@ -18,8 +19,17 @@ const TONE: Record<string, "green" | "gold" | "amber" | "red" | "gray"> = {
   cleared: "red",
 };
 
-export default async function ExamGradesPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function ExamGradesPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ page?: string }>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -44,6 +54,7 @@ export default async function ExamGradesPage({ params }: { params: Promise<{ id:
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Immutable Grade Ledger"
         title="Grade history"
         subtitle={`${exam.title} · every change to a mark is appended, attributed and never rewritten.`}
         action={<ButtonLink href={`/dashboard/exams/${id}`} variant="outline">Back to examination</ButtonLink>}
@@ -80,41 +91,35 @@ export default async function ExamGradesPage({ params }: { params: Promise<{ id:
             />
           </div>
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[860px] text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-3 font-medium">When</th>
-                  <th className="py-2 pr-3 font-medium">Change</th>
-                  <th className="py-2 pr-3 font-medium">Question</th>
-                  <th className="py-2 pr-3 font-medium">Mark</th>
-                  <th className="py-2 pr-3 font-medium">Moderation</th>
-                  <th className="py-2 pr-3 font-medium">Actor</th>
-                  <th className="py-2 font-medium">Note</th>
+          <div className="mt-4">
+            <DataTable head={["When", "Change", "Question", "Mark", "Moderation", "Actor", "Note"]} label="Grade change log">
+              {history.slice((page - 1) * pageSize, page * pageSize).map((row) => (
+                <tr key={row.id} className="align-top">
+                  <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(row.created_at)}</td>
+                  <td><Badge tone={TONE[row.change_type] ?? "gray"}>{CHANGE_TYPE_LABEL[row.change_type] ?? row.change_type}</Badge></td>
+                  <td className="max-w-[240px] truncate text-ink-soft">
+                    {row.exam_answers?.questions?.prompt ?? "—"}
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums">
+                    {row.previous_points === null ? "—" : Number(row.previous_points)}
+                    {" → "}
+                    {row.new_points === null ? "—" : Number(row.new_points)}
+                  </td>
+                  <td className="whitespace-nowrap text-xs text-ink-soft">
+                    {row.new_moderation ? MODERATION_LABEL[row.new_moderation] ?? row.new_moderation : "—"}
+                  </td>
+                  <td className="text-xs text-ink-soft">{row.actor_email ?? "system"}</td>
+                  <td className="max-w-[220px] truncate text-xs text-ink-soft">{row.note ?? "—"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {history.map((row) => (
-                  <tr key={row.id} className="border-b border-evergreen-900/5 align-top">
-                    <td className="py-2 pr-3 whitespace-nowrap text-ink-soft">{fmtDateTime(row.created_at)}</td>
-                    <td className="py-2 pr-3"><Badge tone={TONE[row.change_type] ?? "gray"}>{CHANGE_TYPE_LABEL[row.change_type] ?? row.change_type}</Badge></td>
-                    <td className="py-2 pr-3 max-w-[240px] truncate text-ink-soft">
-                      {row.exam_answers?.questions?.prompt ?? "—"}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
-                      {row.previous_points === null ? "—" : Number(row.previous_points)}
-                      {" → "}
-                      {row.new_points === null ? "—" : Number(row.new_points)}
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap text-xs text-ink-soft">
-                      {row.new_moderation ? MODERATION_LABEL[row.new_moderation] ?? row.new_moderation : "—"}
-                    </td>
-                    <td className="py-2 pr-3 text-xs text-ink-soft">{row.actor_email ?? "system"}</td>
-                    <td className="py-2 max-w-[220px] truncate text-xs text-ink-soft">{row.note ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </DataTable>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={history.length}
+              pathname={`/dashboard/exams/${id}/grades`}
+              label="grade changes"
+            />
           </div>
         )}
       </Card>
@@ -127,36 +132,25 @@ export default async function ExamGradesPage({ params }: { params: Promise<{ id:
         {moderation.length === 0 ? (
           <p className="mt-3 text-sm text-ink-soft">No moderation decisions recorded on this examination.</p>
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-3 font-medium">When</th>
-                  <th className="py-2 pr-3 font-medium">Decision</th>
-                  <th className="py-2 pr-3 font-medium">Marks</th>
-                  <th className="py-2 pr-3 font-medium">Moderator</th>
-                  <th className="py-2 font-medium">Reason</th>
+          <div className="mt-4">
+            <DataTable head={["When", "Decision", "Marks", "Moderator", "Reason"]} label="Moderation decisions">
+              {moderation.map((row) => (
+                <tr key={row.id} className="align-top">
+                  <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(row.created_at)}</td>
+                  <td>
+                    <Badge tone={row.decision === "adjusted" ? "gold" : row.decision === "returned" ? "red" : "green"}>
+                      {MODERATION_LABEL[row.decision] ?? row.decision}
+                    </Badge>
+                  </td>
+                  <td className="whitespace-nowrap tabular-nums">
+                    {row.previous_marks === null ? "—" : Number(row.previous_marks)}
+                    {row.proposed_marks !== null ? ` → ${Number(row.proposed_marks)}` : ""}
+                  </td>
+                  <td className="text-xs text-ink-soft">{row.moderator_email ?? "—"}</td>
+                  <td className="max-w-[280px] text-xs text-ink-soft">{row.note ?? "—"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {moderation.map((row) => (
-                  <tr key={row.id} className="border-b border-evergreen-900/5 align-top">
-                    <td className="py-2 pr-3 whitespace-nowrap text-ink-soft">{fmtDateTime(row.created_at)}</td>
-                    <td className="py-2 pr-3">
-                      <Badge tone={row.decision === "adjusted" ? "gold" : row.decision === "returned" ? "red" : "green"}>
-                        {MODERATION_LABEL[row.decision] ?? row.decision}
-                      </Badge>
-                    </td>
-                    <td className="py-2 pr-3 whitespace-nowrap tabular-nums">
-                      {row.previous_marks === null ? "—" : Number(row.previous_marks)}
-                      {row.proposed_marks !== null ? ` → ${Number(row.proposed_marks)}` : ""}
-                    </td>
-                    <td className="py-2 pr-3 text-xs text-ink-soft">{row.moderator_email ?? "—"}</td>
-                    <td className="py-2 max-w-[280px] text-xs text-ink-soft">{row.note ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </DataTable>
           </div>
         )}
       </Card>

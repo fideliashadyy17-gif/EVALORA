@@ -74,6 +74,7 @@ export default async function ExaminationSchedulePage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Window Timetable & Lifecycle Status"
         title="Examination schedule"
         subtitle="Control examination windows and lifecycle status. The candidate API blocks entry before opening and after closing, independently of what any browser clock displays."
         action={<ButtonLink href="/admin/examinations/new" variant="gold">+ Schedule examination</ButtonLink>}
@@ -104,6 +105,11 @@ export default async function ExaminationSchedulePage({
           <option value="closed">Closed</option>
         </Select>
         <Button type="submit" variant="outline">Open / filter</Button>
+        {(sp.exam || sp.org || sp.status) && (
+          <Link href="/admin/examinations/schedule" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {selected && (

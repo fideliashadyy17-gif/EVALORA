@@ -46,9 +46,14 @@ export default async function UserDetailPage({
 
   return (
     <>
-      <p className="mb-3 text-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
         <Link href="/admin/users" className="font-medium text-evergreen-700 underline-offset-2 hover:underline">← All users</Link>
-      </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-evergreen-800">
+          <Link href="/admin/users/roles" className="underline-offset-2 hover:underline">Roles &amp; permissions</Link>
+          <span>·</span>
+          <Link href={`/admin/audit?q=${encodeURIComponent(user.email)}`} className="underline-offset-2 hover:underline">Security audit trail →</Link>
+        </div>
+      </div>
       <Flash />
       <Notice
         ok={sp.ok}

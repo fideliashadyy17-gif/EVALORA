@@ -34,9 +34,16 @@ export default async function AdminStudents({
   return (
     <>
       <PageTitle
+        eyebrow="Learners & Rosters · Institutional Directory"
         title="Schools & Students"
         subtitle="Run complete school environments: academic years, classes, rosters, imports and student accounts."
-        action={<ButtonLink href="/admin/students/new" variant="gold">+ Register student</ButtonLink>}
+        action={
+          <>
+            <ButtonLink href="/admin/students/bulk" variant="outline">Bulk CSV import</ButtonLink>
+            <ButtonLink href="/admin/students/access" variant="outline">Student access</ButtonLink>
+            <ButtonLink href="/admin/students/new" variant="gold">+ Register student</ButtonLink>
+          </>
+        }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">

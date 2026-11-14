@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
@@ -16,10 +17,12 @@ const FORMAT_LABELS = Object.fromEntries(COMPETITION_FORMATS.map((f) => [f.value
 export default async function CompetitionConfigurationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; org?: string; status?: string; readiness?: string }>;
+  searchParams: Promise<{ q?: string; org?: string; status?: string; readiness?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -62,9 +65,12 @@ export default async function CompetitionConfigurationPage({
     return true;
   });
 
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Readiness & Configuration Audit"
         title="Competition configuration"
         subtitle="Readiness across every competition: content, publication, scheduling, eligibility codes and participant instructions."
         action={<ButtonLink href="/admin/competitions/new" variant="gold">+ Create competition</ButtonLink>}
@@ -93,13 +99,19 @@ export default async function CompetitionConfigurationPage({
           <option value="attention">Needs attention</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.org || sp.status || sp.readiness) && (
+          <Link href="/admin/competitions/configuration" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No competitions match.</p>
       ) : (
-        <Table head={["Competition", "Format / audience", "Content", "Schedule & access", "Readiness checks", "Status", "Configure"]}>
-          {filtered.map(({ c, quiz, questions, codes, checks, ready }) => (
+        <>
+          <Table head={["Competition", "Format / audience", "Content", "Schedule & access", "Readiness checks", "Status", "Configure"]}>
+            {paged.map(({ c, quiz, questions, codes, checks, ready }) => (
             <tr key={c.id}>
               <td>
                 <Link href={`/admin/competitions/${c.id}`} className="font-semibold text-evergreen-950 hover:underline">{c.title}</Link>
@@ -129,7 +141,16 @@ export default async function CompetitionConfigurationPage({
               </td>
             </tr>
           ))}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            pathname="/admin/competitions/configuration"
+            query={{ q: sp.q, org: sp.org, status: sp.status, readiness: sp.readiness }}
+            label="competitions"
+          />
+        </>
       )}
     </>
   );

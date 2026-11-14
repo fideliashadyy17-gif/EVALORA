@@ -1,4 +1,5 @@
 import { AuthShell } from "@/components/AuthShell";
+import { SignOutButton } from "@/components/SignOutButton";
 import { Button, Field, Input, Select } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -93,10 +94,11 @@ export default async function OnboardingPage({
     <AuthShell
       title="Set up your organization"
       subtitle="Your school, university, center or practice gets its own private workspace — with a free Premium trial to start."
+      footer={<SignOutButton />}
     >
       <form action={createOrg} className="space-y-4">
         {sp.error && (
-          <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
             {sp.error === "slug_taken"
               ? "That school subdomain is already taken. Choose one of the alternatives below or type another."
               : sp.error === "slug_invalid"

@@ -30,6 +30,7 @@ export default async function StudentRegistrationPage({
   return (
     <>
       <PageTitle
+        eyebrow="Learners & Rosters · Bulk CSV & Roster Import"
         title="Individual & bulk student registration"
         subtitle="Register one student at a time or import a complete class roster. Students can be assigned to the current academic year and class during import."
         action={

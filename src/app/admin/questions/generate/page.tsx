@@ -40,6 +40,7 @@ export default async function GenerateQuestionsPage({ searchParams }: { searchPa
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Parameterized Curriculum Generator"
         title="Question Generation"
         subtitle="Generate original, class- and curriculum-specific mathematics questions from parameterized templates. Generated items require teacher review before high-stakes use."
         action={<ButtonLink href="/admin/questions" variant="outline">Open Question Bank</ButtonLink>}

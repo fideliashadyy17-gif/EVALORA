@@ -61,7 +61,7 @@ const MODULES: ModuleDefinition[] = [
   },
   {
     title: "Live Competitions",
-    next: "/dashboard/sessions",
+    next: "/dashboard/competitions",
     capability: "live_competitions",
     description: "Live sessions, event phases, pools, qualification and admission operations.",
     consoleHref: "/admin/competitions/live",
@@ -75,7 +75,7 @@ const MODULES: ModuleDefinition[] = [
   },
   {
     title: "Proctoring",
-    next: "/dashboard/exams",
+    next: "/dashboard/proctoring",
     capability: "proctoring",
     description: "Proctoring rooms, incidents and oversight for enabled examinations.",
     consoleHref: "/admin/proctoring",
@@ -129,8 +129,10 @@ export default async function OperationsWorkspacePage({
   return (
     <>
       <PageTitle
+        eyebrow="Operational Workspace · Audited Tenant Bridge"
         title="Full operational workspace access"
         subtitle="Enter any customer organization in audited Super Admin workspace mode. Backend permissions, RLS, plan logic and audit logging remain enforced server-side; this is not a visual-only bypass."
+        action={selected ? <Link href={`/admin/organizations/${selected.id}`} className="inline-flex min-h-10 items-center rounded-lg border border-evergreen-700/50 bg-white px-4 py-2 text-sm font-medium text-evergreen-800 hover:bg-evergreen-50">Organization dossier →</Link> : undefined}
       />
 
       {sp.entered && (

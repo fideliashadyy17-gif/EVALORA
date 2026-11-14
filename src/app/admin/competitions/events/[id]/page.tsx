@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Notice } from "../../../ui";
+import { Notice, Table } from "../../../ui";
 import { computeEligibility, decideQualification, setEventPhaseStatus, updateQualificationRule } from "../actions";
 
 export const metadata: Metadata = { title: "Competition Event" };
@@ -61,6 +61,7 @@ export default async function CompetitionEventPage({ params, searchParams }: { p
     <>
       <p className="mb-3 text-sm"><Link href="/admin/competitions/events" className="font-medium text-evergreen-700 underline-offset-2 hover:underline">← Competition Events</Link></p>
       <PageTitle
+        eyebrow="Live Competitions · Multi-Phase Event Workspace"
         title={ev.name}
         subtitle={`${(ev.organizations as { name?: string } | null)?.name ?? ""}${(ev.academic_years as { name?: string } | null)?.name ? ` · ${(ev.academic_years as { name?: string }).name}` : ""} · Event status: ${ev.status}. Rankings and qualification are always computed inside each class.`}
         action={
@@ -112,33 +113,30 @@ export default async function CompetitionEventPage({ params, searchParams }: { p
                 </form>
               )}
 
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">{["Class", "Questions", "Access", "Run / Monitor"].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-                  <tbody>
-                    {pcs.map((pc) => {
-                      const exam = pc.exam_id ? examById.get(String(pc.exam_id)) : null;
-                      const session = pc.session_id ? sessionById.get(String(pc.session_id)) : null;
-                      return (
-                        <tr key={String(pc.id)} className="border-b border-evergreen-900/10">
-                          <td className="px-3 py-2 font-medium">{(pc.classes as { name?: string } | null)?.name ?? "—"}</td>
-                          <td className="px-3 py-2">{String(pc.question_count)}</td>
-                          <td className="px-3 py-2">
-                            {exam ? <>Exam code <strong>{exam.access_code}</strong> · {exam.duration_minutes} min · {exam.status}</> : session ? <>Join code <strong>{session.join_code}</strong> · {session.status}/{session.phase ?? "waiting"}</> : "—"}
-                          </td>
-                          <td className="px-3 py-2">
-                            {exam && <a className="text-evergreen-800 underline" href="/admin/examinations/monitoring">Monitor examinations</a>}
-                            {session && (<span className="flex flex-wrap gap-x-3">
-                              <a className="text-evergreen-800 underline" href={`/dashboard/sessions/${session.id}/host`}>Host Control</a>
-                              <a className="text-evergreen-800 underline" href={`/play/${session.join_code}`}>Participant screen</a>
-                            </span>)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {pcs.length === 0 && <tr><td colSpan={4} className="px-3 py-4 text-ink-soft">No class pools attached yet.</td></tr>}
-                  </tbody>
-                </table>
+              <div className="mt-4">
+                <Table head={["Class", "Questions", "Access", "Run / Monitor"]}>
+                  {pcs.map((pc) => {
+                    const exam = pc.exam_id ? examById.get(String(pc.exam_id)) : null;
+                    const session = pc.session_id ? sessionById.get(String(pc.session_id)) : null;
+                    return (
+                      <tr key={String(pc.id)}>
+                        <td className="font-medium">{(pc.classes as { name?: string } | null)?.name ?? "—"}</td>
+                        <td>{String(pc.question_count)}</td>
+                        <td>
+                          {exam ? <>Exam code <strong>{exam.access_code}</strong> · {exam.duration_minutes} min · {exam.status}</> : session ? <>Join code <strong>{session.join_code}</strong> · {session.status}/{session.phase ?? "waiting"}</> : "—"}
+                        </td>
+                        <td>
+                          {exam && <Link className="text-evergreen-800 underline" href="/admin/examinations/monitoring">Monitor examinations</Link>}
+                          {session && (<span className="flex flex-wrap gap-x-3">
+                            <Link className="text-evergreen-800 underline" href={`/dashboard/sessions/${session.id}/host`}>Host Control</Link>
+                            <Link className="text-evergreen-800 underline" href={`/play/${session.join_code}`}>Participant screen</Link>
+                          </span>)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {pcs.length === 0 && <tr><td colSpan={4} className="px-3 py-4 text-ink-soft">No class pools attached yet.</td></tr>}
+                </Table>
               </div>
             </Card>
           );
@@ -164,37 +162,34 @@ export default async function CompetitionEventPage({ params, searchParams }: { p
             })}
           </div>
 
-          <div className="mt-5 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">{["Candidate", "Class", "Into", "Score", "Rank", "Status", "Decision"].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-              <tbody>
-                {(quals ?? []).map((q) => (
-                  <tr key={q.id} className="border-b border-evergreen-900/10">
-                    <td className="px-3 py-2 font-medium">{q.display_name}</td>
-                    <td className="px-3 py-2">{(q.classes as { name?: string } | null)?.name ?? "—"}</td>
-                    <td className="px-3 py-2">{phaseName.get(q.to_phase_id) ?? "—"}</td>
-                    <td className="px-3 py-2">{q.source_score ?? "—"}{q.source_max_score ? ` / ${q.source_max_score}` : ""}</td>
-                    <td className="px-3 py-2">{q.source_rank ?? "—"}</td>
-                    <td className="px-3 py-2"><Badge tone={tone(q.status)}>{q.status}</Badge></td>
-                    <td className="px-3 py-2">
-                      <form action={decideQualification} className="flex flex-wrap items-center gap-2">
-                        <input type="hidden" name="event_id" value={ev.id} />
-                        <input type="hidden" name="id" value={q.id} />
-                        <Select name="decision" defaultValue="approved" aria-label="Decision">
-                          <option value="approved">Approve</option>
-                          <option value="rejected">Reject</option>
-                          <option value="manual_approved">Manual approve</option>
-                          <option value="manual_rejected">Manual reject</option>
-                        </Select>
-                        <Input name="notes" placeholder="Reason (required unless approving)" className="w-44" />
-                        <Button type="submit" variant="outline">Record</Button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-                {(quals ?? []).length === 0 && <tr><td colSpan={7} className="px-3 py-4 text-ink-soft">No qualification records yet — complete a phase, then compute eligibility.</td></tr>}
-              </tbody>
-            </table>
+          <div className="mt-5">
+            <Table head={["Candidate", "Class", "Into", "Score", "Rank", "Status", "Decision"]}>
+              {(quals ?? []).map((q) => (
+                <tr key={q.id}>
+                  <td className="font-medium">{q.display_name}</td>
+                  <td>{(q.classes as { name?: string } | null)?.name ?? "—"}</td>
+                  <td>{phaseName.get(q.to_phase_id) ?? "—"}</td>
+                  <td>{q.source_score ?? "—"}{q.source_max_score ? ` / ${q.source_max_score}` : ""}</td>
+                  <td>{q.source_rank ?? "—"}</td>
+                  <td><Badge tone={tone(q.status)}>{q.status}</Badge></td>
+                  <td>
+                    <form action={decideQualification} className="flex flex-wrap items-center gap-2">
+                      <input type="hidden" name="event_id" value={ev.id} />
+                      <input type="hidden" name="id" value={q.id} />
+                      <Select name="decision" defaultValue="approved" aria-label="Decision">
+                        <option value="approved">Approve</option>
+                        <option value="rejected">Reject</option>
+                        <option value="manual_approved">Manual approve</option>
+                        <option value="manual_rejected">Manual reject</option>
+                      </Select>
+                      <Input name="notes" placeholder="Reason (required unless approving)" className="w-44" />
+                      <Button type="submit" variant="outline">Record</Button>
+                    </form>
+                  </td>
+                </tr>
+              ))}
+              {(quals ?? []).length === 0 && <tr><td colSpan={7} className="px-3 py-4 text-ink-soft">No qualification records yet — complete a phase, then compute eligibility.</td></tr>}
+            </Table>
           </div>
           <div className="mt-4 flex flex-wrap gap-3">
             <ButtonLink href="/admin/competitions/results" variant="outline">Rankings &amp; Results</ButtonLink>

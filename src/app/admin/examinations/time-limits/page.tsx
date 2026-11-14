@@ -81,6 +81,7 @@ export default async function ExaminationTimeLimitsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Server Deadlines & Accommodations"
         title="Duration & time limits"
         subtitle="The authoritative deadline is calculated on the server from attempt start + exam duration + authorized extension, capped by the (also extended) exam window. Browser countdowns are display-only."
         action={<ButtonLink href="/admin/examinations/schedule" variant="outline">Examination schedule</ButtonLink>}

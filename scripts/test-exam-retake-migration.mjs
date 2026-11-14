@@ -15,7 +15,6 @@ import { PGlite } from "@electric-sql/pglite";
 
 const db = new PGlite();
 let checks = 0;
-const check = (name, fn) => { fn(); checks += 1; console.log(`✓ ${name}`); };
 const query = (sql, params) => db.query(sql, params);
 const one = async (sql, params) => (await query(sql, params)).rows[0];
 

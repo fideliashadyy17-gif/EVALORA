@@ -22,6 +22,7 @@ export default async function NewUserPage({
   return (
     <>
       <PageTitle
+        eyebrow="Users & Identity · Account Provisioning"
         title="Create user / invite administrator"
         subtitle="Accounts are created through Supabase Auth. Invite mode emails a secure set-password link; password mode shows you a one-time temporary password."
         action={<ButtonLink href="/admin/users" variant="outline">← All users</ButtonLink>}

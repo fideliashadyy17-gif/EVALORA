@@ -93,6 +93,7 @@ export default async function ExaminationMarkingPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Constructed-Response Marking Queue"
         title="Marking & grading"
         subtitle="Objective questions and typed multi-part answers are scored by the server at submission. This queue is for open constructed responses requiring an authorized first marker; assess-parts working is reviewed and, if needed, adjusted through the audited examination moderation workspace."
       />
@@ -117,6 +118,11 @@ export default async function ExaminationMarkingPage({
           {(orgs ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
         </Select>
         <Button type="submit" variant="outline">Filter queue</Button>
+        {(sp.exam || sp.org) && (
+          <Link href="/admin/examinations/marking" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {queue.length === 0 ? (

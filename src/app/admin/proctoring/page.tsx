@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { describeIncidentType } from "@/lib/integrity";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -12,6 +13,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { adminReviewIncident } from "../actions";
+import { Section, Table } from "../ui";
 
 export const metadata: Metadata = { title: "Proctoring" };
 export const dynamic = "force-dynamic";
@@ -38,6 +40,7 @@ interface SP {
   from?: string;
   to?: string;
   saved?: string;
+  page?: string;
 }
 
 const isoDay = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
@@ -45,6 +48,8 @@ const isoDay = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 export default async function AdminProctoring({ searchParams }: { searchParams: Promise<SP> }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   const [orgs, exams, candidates] = await Promise.all([
@@ -99,6 +104,7 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Proctoring Oversight & Human Review"
         title="Proctoring oversight"
         subtitle="Platform-wide view of supervised examinations, observations, reviewer decisions and evidence retention. Observations are reports for human review — never automatic proof of misconduct."
         action={<ButtonLink href="/admin/proctoring/retention">Retention policies</ButtonLink>}
@@ -174,157 +180,125 @@ export default async function AdminProctoring({ searchParams }: { searchParams: 
         </Card>
       )}
 
-      <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Observations</h2>
-      <Card className="mb-8 overflow-x-auto p-0">
-        <table className="w-full min-w-[1000px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">Observation</th>
-              <th className="px-4 py-3 font-semibold">Examination / organization</th>
-              <th className="px-4 py-3 font-semibold">Candidate</th>
-              <th className="px-4 py-3 font-semibold">Severity</th>
-              <th className="px-4 py-3 font-semibold">Reported</th>
-              <th className="px-4 py-3 font-semibold">State</th>
-              <th className="px-4 py-3 font-semibold">Record a decision</th>
+      <Section title="Observations">
+        <Table head={["Observation", "Examination / organization", "Candidate", "Severity", "Reported", "State", "Record a decision"]}>
+          {(incidents.data ?? []).length === 0 && (
+            <tr>
+              <td colSpan={7} className="px-4 py-6 text-center text-ink-soft">No observations match these filters.</td>
             </tr>
-          </thead>
-          <tbody>
-            {(incidents.data ?? []).length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-6 text-center text-ink-soft">No observations match these filters.</td>
-              </tr>
-            )}
-            {(incidents.data ?? []).map((i) => {
-              const ex = i.exams as { title?: string; organizations?: { name?: string } | null } | null;
-              const cand = i.exam_candidates as { full_name?: string } | null;
-              const reporter = i.profiles as { email?: string } | null;
-              return (
-                <tr key={i.id} className="border-b border-evergreen-900/10 align-top">
-                  <td className="max-w-xs px-4 py-2.5">
-                    <span className="font-medium">{describeIncidentType(String(i.type))}</span>
-                    {i.note && (
-                      <span className="block text-xs text-ink-soft" title={i.note}>
-                        {i.retention_state === "anonymized" ? "[redacted by retention policy]" : i.note}
-                      </span>
-                    )}
-                    <span className="block text-[11px] text-ink-soft">by {reporter?.email ?? "unknown"}</span>
-                  </td>
-                  <td className="px-4 py-2.5 text-ink-soft">
-                    {ex?.title ?? "—"}
-                    {ex?.organizations?.name ? ` · ${ex.organizations.name}` : ""}
-                  </td>
-                  <td className="px-4 py-2.5 text-ink-soft">{cand?.full_name ?? "—"}</td>
-                  <td className="px-4 py-2.5"><Badge tone={sevTone(i.severity)}>{i.severity}</Badge></td>
-                  <td className="whitespace-nowrap px-4 py-2.5 text-ink-soft">{fmtDateTime(i.created_at)}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={stTone(i.status)}>{i.status}</Badge>
-                    {i.reviewed_at && <span className="mt-1 block text-[11px] text-ink-soft">reviewed {fmtDateTime(i.reviewed_at)}</span>}
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <form action={adminReviewIncident} className="flex flex-col gap-1.5">
-                      <input type="hidden" name="id" value={i.id} />
-                      <div className="flex items-center gap-1.5">
-                        <Select name="status" defaultValue={i.status} className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
-                          <option value="open">open</option>
-                          <option value="investigating">investigating</option>
-                          <option value="valid">confirm</option>
-                          <option value="invalid">dismiss</option>
-                        </Select>
-                        <Button type="submit" variant="outline">Save</Button>
-                      </div>
-                      <Input name="review_note" placeholder="Decision rationale (audited)" className="text-xs" maxLength={2000} />
-                    </form>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
-
-      <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Review history (immutable)</h2>
-      <Card className="mb-8 overflow-x-auto p-0">
-        <table className="w-full min-w-[940px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">When</th>
-              <th className="px-4 py-3 font-semibold">Decision</th>
-              <th className="px-4 py-3 font-semibold">Organization / examination</th>
-              <th className="px-4 py-3 font-semibold">Reviewer</th>
-              <th className="px-4 py-3 font-semibold">Source</th>
-              <th className="px-4 py-3 font-semibold">Note</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">No review records match these filters.</td>
-              </tr>
-            )}
-            {history.map((h) => (
-              <tr key={h.id} className="border-b border-evergreen-900/10 align-top">
-                <td className="whitespace-nowrap px-4 py-2.5 text-ink-soft">{fmtDateTime(h.created_at)}</td>
-                <td className="px-4 py-2.5">
-                  <Badge tone={decisionTone(h.decision)}>{DECISION_LABEL[h.decision] ?? h.decision}</Badge>
-                  {h.previous_status && h.previous_status !== h.new_status && (
-                    <span className="ml-1 block text-[11px] text-ink-soft">{h.previous_status} → {h.new_status}</span>
+          )}
+          {(incidents.data ?? []).slice((page - 1) * pageSize, page * pageSize).map((i) => {
+            const ex = i.exams as { title?: string; organizations?: { name?: string } | null } | null;
+            const cand = i.exam_candidates as { full_name?: string } | null;
+            const reporter = i.profiles as { email?: string } | null;
+            return (
+              <tr key={i.id} className="align-top">
+                <td className="max-w-xs">
+                  <span className="font-medium">{describeIncidentType(String(i.type))}</span>
+                  {i.note && (
+                    <span className="block text-xs text-ink-soft" title={i.note}>
+                      {i.retention_state === "anonymized" ? "[redacted by retention policy]" : i.note}
+                    </span>
                   )}
+                  <span className="block text-[11px] text-ink-soft">by {reporter?.email ?? "unknown"}</span>
                 </td>
-                <td className="px-4 py-2.5">
-                  <span className="block">{h.organizations?.name ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.exams?.title ?? "—"}</span>
+                <td className="text-ink-soft">
+                  {ex?.title ?? "—"}
+                  {ex?.organizations?.name ? ` · ${ex.organizations.name}` : ""}
                 </td>
-                <td className="px-4 py-2.5">
-                  <span className="block">{h.reviewer_email ?? "—"}</span>
-                  <span className="block text-xs text-ink-soft">{h.reviewer_role ?? ""}</span>
+                <td className="text-ink-soft">{cand?.full_name ?? "—"}</td>
+                <td><Badge tone={sevTone(i.severity)}>{i.severity}</Badge></td>
+                <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(i.created_at)}</td>
+                <td>
+                  <Badge tone={stTone(i.status)}>{i.status}</Badge>
+                  {i.reviewed_at && <span className="mt-1 block text-[11px] text-ink-soft">reviewed {fmtDateTime(i.reviewed_at)}</span>}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-ink-soft">{h.source}</td>
-                <td className="max-w-xs px-4 py-2.5 text-xs text-ink">{h.note ?? "—"}</td>
+                <td>
+                  <form action={adminReviewIncident} className="flex flex-col gap-1.5">
+                    <input type="hidden" name="id" value={i.id} />
+                    <div className="flex items-center gap-1.5">
+                      <Select name="status" defaultValue={i.status} className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
+                        <option value="open">open</option>
+                        <option value="investigating">investigating</option>
+                        <option value="valid">confirm</option>
+                        <option value="invalid">dismiss</option>
+                      </Select>
+                      <Button type="submit" variant="outline">Save</Button>
+                    </div>
+                    <Input name="review_note" placeholder="Decision rationale (audited)" className="text-xs" maxLength={2000} />
+                  </form>
+                </td>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </Card>
+            );
+          })}
+        </Table>
+        <PageNavigation
+          page={page}
+          pageSize={pageSize}
+          total={(incidents.data ?? []).length}
+          pathname="/admin/proctoring"
+          query={{ org: sp.org, exam: sp.exam, candidate: sp.candidate, decision: sp.decision, from: sp.from, to: sp.to }}
+          label="observations"
+        />
+      </Section>
 
-      <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Rooms and evidence events</h2>
-      <Card className="overflow-x-auto p-0">
-        <table className="w-full min-w-[880px] text-sm">
-          <thead>
-            <tr className="border-b border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">Room</th>
-              <th className="px-4 py-3 font-semibold">Examination</th>
-              <th className="px-4 py-3 font-semibold">Status</th>
-              <th className="px-4 py-3 font-semibold">Opened</th>
-              <th className="px-4 py-3 font-semibold">Closed</th>
-              <th className="px-4 py-3 font-semibold">Latest evidence</th>
+      <Section title="Review history (immutable)">
+        <Table head={["When", "Decision", "Organization / examination", "Reviewer", "Source", "Note"]}>
+          {history.length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">No review records match these filters.</td>
             </tr>
-          </thead>
-          <tbody>
-            {(rooms.data ?? []).length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
-                  No supervision room has been registered yet.
+          )}
+          {history.map((h) => (
+            <tr key={h.id} className="align-top">
+              <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(h.created_at)}</td>
+              <td>
+                <Badge tone={decisionTone(h.decision)}>{DECISION_LABEL[h.decision] ?? h.decision}</Badge>
+                {h.previous_status && h.previous_status !== h.new_status && (
+                  <span className="ml-1 block text-[11px] text-ink-soft">{h.previous_status} → {h.new_status}</span>
+                )}
+              </td>
+              <td>
+                <span className="block">{h.organizations?.name ?? "—"}</span>
+                <span className="block text-xs text-ink-soft">{h.exams?.title ?? "—"}</span>
+              </td>
+              <td>
+                <span className="block">{h.reviewer_email ?? "—"}</span>
+                <span className="block text-xs text-ink-soft">{h.reviewer_role ?? ""}</span>
+              </td>
+              <td className="text-xs text-ink-soft">{h.source}</td>
+              <td className="max-w-xs text-xs text-ink">{h.note ?? "—"}</td>
+            </tr>
+          ))}
+        </Table>
+      </Section>
+
+      <Section title="Rooms and evidence events">
+        <Table head={["Room", "Examination", "Status", "Opened", "Closed", "Latest evidence"]}>
+          {(rooms.data ?? []).length === 0 && (
+            <tr>
+              <td colSpan={6} className="px-4 py-6 text-center text-ink-soft">
+                No supervision room has been registered yet.
+              </td>
+            </tr>
+          )}
+          {(rooms.data ?? []).map((r) => {
+            const ex = r.exams as { title?: string } | null;
+            return (
+              <tr key={r.id}>
+                <td className="font-mono text-xs">{r.room_name}</td>
+                <td className="text-ink-soft">{ex?.title ?? "—"}</td>
+                <td><Badge tone={r.status === "active" ? "green" : "gray"}>{r.status}</Badge></td>
+                <td className="text-ink-soft">{fmtDateTime(r.started_at ?? r.created_at)}</td>
+                <td className="text-ink-soft">{r.ended_at ? fmtDateTime(r.ended_at) : "—"}</td>
+                <td className="text-xs text-ink-soft">
+                  {r.last_event_at ? fmtDateTime(r.last_event_at) : "—"}
                 </td>
               </tr>
-            )}
-            {(rooms.data ?? []).map((r) => {
-              const ex = r.exams as { title?: string } | null;
-              return (
-                <tr key={r.id} className="border-b border-evergreen-900/10">
-                  <td className="px-4 py-2.5 font-mono text-xs">{r.room_name}</td>
-                  <td className="px-4 py-2.5 text-ink-soft">{ex?.title ?? "—"}</td>
-                  <td className="px-4 py-2.5"><Badge tone={r.status === "active" ? "green" : "gray"}>{r.status}</Badge></td>
-                  <td className="px-4 py-2.5 text-ink-soft">{fmtDateTime(r.started_at ?? r.created_at)}</td>
-                  <td className="px-4 py-2.5 text-ink-soft">{r.ended_at ? fmtDateTime(r.ended_at) : "—"}</td>
-                  <td className="px-4 py-2.5 text-xs text-ink-soft">
-                    {r.last_event_at ? fmtDateTime(r.last_event_at) : "—"}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </Card>
+            );
+          })}
+        </Table>
+      </Section>
     </>
   );
 }

@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createClient } from "@/lib/supabase/server";
@@ -47,8 +47,15 @@ export default async function HostPage({ params }: { params: Promise<{ id: strin
   return (
     <>
       <PageTitle
+        eyebrow="Live Operations · Private Organizer Console"
         title={`Host control: ${competition?.title ?? session.title ?? quiz?.title ?? "Live session"}`}
         subtitle="Private organizer screen. The projected live page is also a full control centre — open it in this signed-in browser and the organizer toolbar appears at the bottom, so you can run the whole competition from the projector."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/dashboard/quizzes" variant="outline">Quiz Studio</ButtonLink>
+            <ButtonLink href={`/dashboard/reports/session/${session.id}`} variant="outline">Session report</ButtonLink>
+          </div>
+        }
       />
       <HostConsole
         session={session as never}

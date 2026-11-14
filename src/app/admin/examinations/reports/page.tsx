@@ -164,6 +164,7 @@ export default async function ExaminationReportsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Portfolio Analytics & Export"
         title="Examination reports & exports"
         subtitle="Portfolio-level completion, performance, integrity, marking backlog and publication reporting. Export is Excel-compatible CSV; Print creates a PDF-ready report."
         action={<div className="flex flex-wrap gap-2"><ExportButton filename="examination-report.csv" csv={csv} label="Export report (CSV / Excel)" /><PrintButton /></div>}
@@ -189,6 +190,11 @@ export default async function ExaminationReportsPage({
           <option value="closed">Closed</option>
         </Select>
         <Button type="submit" variant="outline">Filter report</Button>
+        {(sp.org || sp.status) && (
+          <Link href="/admin/examinations/reports" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       <Section title="Portfolio breakdown">

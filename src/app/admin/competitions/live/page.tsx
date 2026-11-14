@@ -129,6 +129,7 @@ export default async function LiveCompetitionMonitoringPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Real-Time Operations Room"
         title="Live competition monitoring"
         subtitle="Monitor live and upcoming competitions, participant connection/progress, answer volume and lifecycle controls from one operations room. Refresh the page for the latest server snapshot."
         action={<ButtonLink href="/admin/competitions/live" variant="gold">↻ Refresh snapshot</ButtonLink>}
@@ -152,6 +153,11 @@ export default async function LiveCompetitionMonitoringPage({
           <option value="ready">Published / scheduled</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.org || sp.view) && (
+          <Link href="/admin/competitions/live" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {comps.length === 0 ? (

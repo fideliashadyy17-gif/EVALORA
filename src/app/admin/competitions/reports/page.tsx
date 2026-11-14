@@ -149,6 +149,7 @@ export default async function CompetitionReportsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Portfolio Analytics & Export"
         title="Competition reports"
         subtitle="Cross-competition reporting for reach, participation, completion, accuracy and result publication. Export uses Excel-compatible CSV; Print produces a PDF-ready report."
         action={<div className="flex flex-wrap gap-2"><ExportButton filename="competition-report.csv" csv={csv} label="Export report (CSV / Excel)" /><PrintButton /></div>}

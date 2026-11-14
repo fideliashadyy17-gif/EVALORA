@@ -23,6 +23,7 @@ await page.route('**/api/exam/**',async route=>{const request=route.request();co
  // Candidate messenger (ExamMessenger): an empty thread and an accepted heartbeat.
  if(url.pathname==='/api/exam/messages'){return route.fulfill({status:200,json:{server_now:new Date().toISOString(),messages:[],unread_from_teacher:0}});}
  if(url.pathname==='/api/exam/presence'){return route.fulfill({status:200,json:{ok:true}});}
+ if(url.pathname==='/api/exam/retake'){return route.fulfill({status:200,json:{requests:[],usable_grant:null}});}
  throw Error('Unexpected request '+url.pathname);
 });
 try {

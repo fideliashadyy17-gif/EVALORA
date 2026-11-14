@@ -49,6 +49,8 @@ export async function createOrgCompetition(formData: FormData) {
   const statusRaw = String(formData.get("status") ?? "draft");
   const status = STATUSES.includes(statusRaw) && statusRaw !== "live" ? statusRaw : "draft";
   const maxParticipants = parseInt(String(formData.get("max_participants") ?? ""), 10);
+  const cappedParticipants =
+    Number.isFinite(maxParticipants) && maxParticipants >= 2 ? Math.min(maxParticipants, 10000) : null;
 
   const { data, error } = await admin
     .from("competitions")
@@ -59,6 +61,7 @@ export async function createOrgCompetition(formData: FormData) {
       description: text(formData, "description", 1000),
       format,
       status,
+      max_participants: cappedParticipants,
       created_by: ctx.user.id,
       scoring: { points_per_correct: 100, show_leaderboard: true },
       updated_at: new Date().toISOString(),

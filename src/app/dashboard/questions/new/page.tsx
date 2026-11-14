@@ -1,9 +1,9 @@
 import { QuestionForm, type QuestionSaveFn } from "@/components/QuestionForm";
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
-import { saveQuestion, uploadQuestionImage, type QuestionInput } from "../actions";
+import { saveQuestion, uploadQuestionImage } from "../actions";
 
 export const metadata: Metadata = { title: "New question" };
 
@@ -24,7 +24,12 @@ export default async function NewQuestionPage() {
 
   return (
     <>
-      <PageTitle title="New question" subtitle="Author once with the full mathematical editor — reuse in quizzes, live competitions and examinations." />
+      <PageTitle
+        eyebrow="Assessment Authoring · Mathematical Question Studio"
+        title="New question"
+        subtitle="Author once with the full mathematical editor — reuse in quizzes, live competitions and examinations."
+        action={<ButtonLink href="/dashboard/questions" variant="outline">Question Bank</ButtonLink>}
+      />
       <QuestionForm
         categories={categories ?? []}
         save={saveQuestion as unknown as QuestionSaveFn}

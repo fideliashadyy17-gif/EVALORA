@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, can, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -29,8 +29,15 @@ export default async function ProctorPage({ params }: { params: Promise<{ id: st
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · LiveKit Video Supervision"
         title={`Proctoring — ${exam.title}`}
         subtitle="Live supervision grid (12 feeds per page). You are invisible to candidates; only their media is consumed."
+        action={
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href={`/dashboard/exams/${id}/monitor`} variant="outline">Live monitor</ButtonLink>
+            <ButtonLink href={`/dashboard/exams/${id}`} variant="outline">← Examination</ButtonLink>
+          </div>
+        }
       />
       {proctoring ? (
         <ProctorRoom examId={id} candidates={candidates ?? []} />

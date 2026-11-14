@@ -1,10 +1,12 @@
-import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
+import { Activity, Database, HardDrive, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
+import { Section, Table } from "../ui";
 
-export const metadata: Metadata = { title: "Technical Monitoring" };
+export const metadata: Metadata = { title: "System Health" };
 export const dynamic = "force-dynamic";
 
 interface Stats {
@@ -26,68 +28,104 @@ export default async function AdminSystem() {
   const { data, error } = await supabase.rpc("admin_platform_stats");
   const stats = (error ? null : (data as unknown as Stats)) ?? null;
 
-  const integrations: { name: string; ok: boolean; note: string }[] = [
-    { name: "Supabase (database, auth, storage)", ok: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY), note: "Client configuration present" },
-    { name: "Supabase service role (server)", ok: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY), note: "Required for guest flows & admin operations" },
-    { name: "LiveKit Cloud (video proctoring)", ok: Boolean(process.env.NEXT_PUBLIC_LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET), note: "Tokens are minted server-side; the secret never reaches browsers" },
-    { name: "Public app URL", ok: Boolean(process.env.NEXT_PUBLIC_APP_URL), note: process.env.NEXT_PUBLIC_APP_URL ?? "Not set — invite/QR links fall back to relative paths" },
+  const integrations: { name: string; scope: string; ok: boolean; note: string }[] = [
+    {
+      name: "Supabase PostgREST, Auth & Storage",
+      scope: "Primary data plane",
+      ok: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY),
+      note: "Public endpoint and anon key configured",
+    },
+    {
+      name: "Supabase Service Role (Server-only)",
+      scope: "Privileged server operations",
+      ok: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      note: "Required for candidate token verification & Super Admin control plane",
+    },
+    {
+      name: "LiveKit Cloud Real-Time Video",
+      scope: "Online proctoring rooms",
+      ok: Boolean(process.env.NEXT_PUBLIC_LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET),
+      note: "Room tokens minted server-side; signing secret never leaves the server",
+    },
+    {
+      name: "Canonical Public App Origin",
+      scope: "Portal, invite & QR URLs",
+      ok: Boolean(process.env.NEXT_PUBLIC_APP_URL),
+      note: process.env.NEXT_PUBLIC_APP_URL ?? "Not set — invite/QR links fall back to relative paths",
+    },
   ];
+
+  const sortedTables = stats ? [...stats.tables].sort((a, b) => b.rows - a.rows) : [];
+  const totalRows = sortedTables.reduce((sum, t) => sum + t.rows, 0);
+  const maxRows = Math.max(1, sortedTables[0]?.rows ?? 1);
 
   return (
     <>
       <PageTitle
-        title="Technical monitoring"
-        subtitle="Live database and storage figures from PostgreSQL itself. For request-level errors and function logs, use the Vercel and Supabase dashboards (linked from docs/INFRASTRUCTURE.md)."
+        eyebrow="Platform Administration · Infrastructure & Telemetry"
+        title="System health & technical monitoring"
+        subtitle="Live PostgreSQL storage footprint, authentication volume, table row distribution and server-side integration readiness."
+        action={
+          <>
+            <ButtonLink href="/api/health" variant="outline">Health JSON</ButtonLink>
+            <ButtonLink href="/admin/modules" variant="outline">Feature switches</ButtonLink>
+          </>
+        }
       />
 
       {error || !stats ? (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
-          Platform statistics are unavailable right now ({error?.message ?? "no data"}). The statistics function may still be propagating.
-        </p>
+        <Card className="border-red-300 bg-red-50 p-5 text-sm text-red-900" role="alert">
+          <p className="font-semibold">Live database telemetry is temporarily unavailable</p>
+          <p className="mt-1">{error?.message ?? "No statistics payload returned."} Core application routes and examination services continue operating normally.</p>
+        </Card>
       ) : (
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="Database size" value={human(stats.database_bytes)} hint="Free plan allowance: 500 MB" />
-            <StatCard label="Auth accounts" value={stats.auth_users} />
-            <StatCard label="Stored files" value={stats.storage_objects} hint={`${human(stats.storage_bytes)} in storage (free plan: 1 GB)`} />
-            <StatCard label="Tables tracked" value={stats.tables.length} hint={`as of ${fmtDateTime(stats.generated_at)}`} />
+            <StatCard label="Database footprint" value={human(stats.database_bytes)} hint="PostgreSQL live relation size" icon={<Database className="h-5 w-5" />} />
+            <StatCard label="Auth identities" value={stats.auth_users.toLocaleString()} hint="Supabase Auth accounts" icon={<Users className="h-5 w-5" />} />
+            <StatCard label="Object storage" value={stats.storage_objects.toLocaleString()} hint={`${human(stats.storage_bytes)} stored media & assets`} icon={<HardDrive className="h-5 w-5" />} />
+            <StatCard label="Tracked tables" value={stats.tables.length} hint={`${totalRows.toLocaleString()} total rows · ${fmtDateTime(stats.generated_at)}`} icon={<Activity className="h-5 w-5" />} />
           </div>
 
-          <Card className="mt-6 overflow-x-auto p-0">
-            <h2 className="px-5 pt-5 font-display text-lg font-semibold text-evergreen-950">Rows per table (exact)</h2>
-            <table className="mt-3 w-full min-w-[480px] text-sm">
-              <thead>
-                <tr className="border-y border-evergreen-900/10 bg-evergreen-50 text-left">
-                  <th className="px-4 py-3 font-semibold">Table</th>
-                  <th className="px-4 py-3 font-semibold">Rows</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[...stats.tables].sort((a, b) => b.rows - a.rows).map((t) => (
-                  <tr key={t.table} className="border-b border-evergreen-900/10">
-                    <td className="px-4 py-2 font-mono text-xs">{t.table}</td>
-                    <td className="px-4 py-2 tabular-nums">{t.rows.toLocaleString()}</td>
+          <Section title="Environment & service integrations" hint="Verifies presence of server runtime configuration without exposing secret values.">
+            <div className="grid gap-4 md:grid-cols-2">
+              {integrations.map((i) => (
+                <Card key={i.name} className="flex items-start justify-between gap-4 p-5">
+                  <div className="min-w-0">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-ink-soft">{i.scope}</p>
+                    <h3 className="mt-1 font-display text-base font-semibold text-evergreen-950">{i.name}</h3>
+                    <p className="mt-1 break-all text-xs text-ink-soft">{i.note}</p>
+                  </div>
+                  <Badge tone={i.ok ? "green" : "red"} className="shrink-0">
+                    <ShieldCheck className="h-3.5 w-3.5" /> {i.ok ? "Configured" : "Missing"}
+                  </Badge>
+                </Card>
+              ))}
+            </div>
+          </Section>
+
+          <Section title="PostgreSQL table cardinality" hint="Exact live row counts sorted by volume to highlight storage and indexing hotspots.">
+            <Table head={["Relation / Table", "Exact rows", "Share of tracked rows", "Relative volume"]}>
+              {sortedTables.map((t) => {
+                const share = totalRows > 0 ? ((t.rows / totalRows) * 100).toFixed(1) : "0.0";
+                const barWidth = Math.max(2, Math.round((t.rows / maxRows) * 100));
+                return (
+                  <tr key={t.table}>
+                    <td className="font-mono text-xs font-semibold text-evergreen-950">{t.table}</td>
+                    <td className="font-semibold tabular-nums text-ink">{t.rows.toLocaleString()}</td>
+                    <td className="tabular-nums text-xs text-ink-soft">{share}%</td>
+                    <td className="w-56">
+                      <div className="h-2 overflow-hidden rounded-full bg-evergreen-900/10">
+                        <div className="h-full rounded-full bg-evergreen-600" style={{ width: `${barWidth}%` }} />
+                      </div>
+                    </td>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
+                );
+              })}
+            </Table>
+          </Section>
         </>
       )}
-
-      <Card className="mt-6 p-6">
-        <h2 className="font-display text-lg font-semibold text-evergreen-950">Integration status</h2>
-        <p className="mt-1 text-sm text-ink-soft">Presence of server configuration only — secret values are never displayed.</p>
-        <ul className="mt-3 divide-y divide-evergreen-900/10 text-sm">
-          {integrations.map((i) => (
-            <li key={i.name} className="flex flex-wrap items-center gap-2 py-2.5">
-              <Badge tone={i.ok ? "green" : "red"}>{i.ok ? "Configured" : "Missing"}</Badge>
-              <span className="font-medium">{i.name}</span>
-              <span className="text-ink-soft">— {i.note}</span>
-            </li>
-          ))}
-        </ul>
-      </Card>
     </>
   );
 }

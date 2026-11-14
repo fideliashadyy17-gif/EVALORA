@@ -1,5 +1,5 @@
 import { RichContent } from "@/components/RichContent";
-import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -54,9 +54,16 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
   return (
     <>
       <PageTitle
+        eyebrow="Analytics & Evidence · Live Session Report"
         title={session.title || (session.quizzes as { title: string } | null)?.title || "Session report"}
         subtitle={`Code ${session.join_code} · ${session.mode} · ${session.status}`}
-        action={<div className="flex gap-2 print:hidden"><ExportButton filename={`session-${session.join_code}.csv`} csv={csv} /><PrintButton /></div>}
+        action={
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <ButtonLink href="/dashboard/reports" variant="outline">← All reports</ButtonLink>
+            <ExportButton filename={`session-${session.join_code}.csv`} csv={csv} />
+            <PrintButton />
+          </div>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -69,18 +76,21 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
       <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Rankings</h2>
-          <table className="mt-3 w-full text-sm">
-            <thead><tr className="border-b border-evergreen-900/10 text-left text-ink-soft"><th className="py-2 pr-2 font-medium">#</th><th className="py-2 pr-2 font-medium">Participant</th><th className="py-2 font-medium">Score</th></tr></thead>
-            <tbody>
-              {parts.map((p, i) => (
-                <tr key={p.id} className="border-b border-evergreen-900/5">
-                  <td className="py-2 pr-2 font-bold text-ink-soft">{i + 1}</td>
-                  <td className="py-2 pr-2">{p.display_name}{p.participant_ref && <span className="block text-xs text-ink-soft">{p.participant_ref}</span>}</td>
-                  <td className="py-2 font-semibold tabular-nums">{Number(p.score)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="mt-3">
+            {parts.length === 0 ? (
+              <p className="py-3 text-sm text-ink-soft">No participants yet.</p>
+            ) : (
+              <DataTable head={["#", "Participant", "Score"]} label="Session rankings">
+                {parts.map((p, i) => (
+                  <tr key={p.id}>
+                    <td className="font-bold text-ink-soft">{i + 1}</td>
+                    <td>{p.display_name}{p.participant_ref && <span className="block text-xs text-ink-soft">{p.participant_ref}</span>}</td>
+                    <td className="font-semibold tabular-nums">{Number(p.score)}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            )}
+          </div>
         </Card>
 
         <Card className="p-6">

@@ -12,9 +12,8 @@
  *
  * Run: node scripts/test-hint-attention.mjs
  */
-import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { Module, createRequire } from "node:module";
+import { Module } from "node:module";
 import path from "node:path";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
@@ -53,7 +52,6 @@ function compile(source, filename, shims = {}) {
   return mod.exports;
 }
 
-const require = createRequire(import.meta.url);
 const attention = compile("src/lib/hintAttention.ts", "scripts/__virtual_hint_attention.cjs");
 
 console.log("\nRules");

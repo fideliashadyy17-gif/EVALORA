@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -15,10 +16,12 @@ export const dynamic = "force-dynamic";
 export default async function AdminPayments({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; source?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; source?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -39,6 +42,7 @@ export default async function AdminPayments({
   );
   const pending = withProof.filter((p) => p.status === "pending");
   const listed = sp.status ? withProof : withProof.filter((p) => p.status !== "pending");
+  const pagedListed = listed.slice((page - 1) * pageSize, page * pageSize);
 
   // Verified revenue = approved records ONLY. Never count pending money.
   const { data: approved } = await admin
@@ -70,6 +74,7 @@ export default async function AdminPayments({
   return (
     <>
       <PageTitle
+        eyebrow="Commerce & Entitlements · Payment Verification"
         title="Payments"
         subtitle="Verify portal submissions and record money received outside the platform. Only approved payments count as revenue or activate subscriptions."
         action={<ButtonLink href="/admin/payments/new" variant="gold">+ Add payment</ButtonLink>}
@@ -143,14 +148,20 @@ export default async function AdminPayments({
           <option value="adjustment">Adjustments</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.status || sp.source) && (
+          <Link href="/admin/payments" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
         <ExportButton filename="payments.csv" csv={csv} label="Export payments" />
       </form>
 
       {listed.length === 0 ? (
         <p className="text-sm text-ink-soft">No transactions match.</p>
       ) : (
-        <Table head={["Date", "Organization", "Amount", "Reference", "Source", "Status", "Actions"]}>
-          {listed.map((p) => (
+        <>
+          <Table head={["Date", "Organization", "Amount", "Reference", "Source", "Status", "Actions"]}>
+            {pagedListed.map((p) => (
             <tr key={p.id}>
               <td className="whitespace-nowrap text-xs text-ink-soft">{fmtDateTime(p.paid_at ?? p.created_at)}</td>
               <td>
@@ -172,7 +183,16 @@ export default async function AdminPayments({
               </td>
             </tr>
           ))}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={listed.length}
+            pathname="/admin/payments"
+            query={{ q: sp.q, status: sp.status, source: sp.source }}
+            label="transactions"
+          />
+        </>
       )}
     </>
   );

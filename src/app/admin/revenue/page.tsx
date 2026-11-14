@@ -1,15 +1,24 @@
 import { ExportButton, PrintButton } from "@/components/ExportTools";
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate, money, toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
+import { Section, Table } from "../ui";
 
 export const metadata: Metadata = { title: "Revenue & Reports" };
 export const dynamic = "force-dynamic";
 
-export default async function AdminRevenue() {
+export default async function AdminRevenue({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string }>;
+}) {
   await requireSuperAdmin();
+  const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   const [approved, counts, subs] = await Promise.all([
@@ -68,6 +77,7 @@ export default async function AdminRevenue() {
   return (
     <>
       <PageTitle
+        eyebrow="Commerce & Entitlements · Recognized Revenue"
         title="Revenue & commercial reports"
         subtitle="Real figures from approved manual payments only — pending submissions never count as revenue."
         action={<span className="flex gap-2"><ExportButton filename="evalora-approved-payments.csv" csv={csv} /><PrintButton /></span>}
@@ -130,34 +140,29 @@ export default async function AdminRevenue() {
         </Card>
       </div>
 
-      <Card className="mt-6 overflow-x-auto p-0">
-        <h2 className="px-5 pt-5 font-display text-lg font-semibold text-evergreen-950">Recent approved payments</h2>
-        <table className="mt-3 w-full min-w-[760px] text-sm">
-          <thead>
-            <tr className="border-y border-evergreen-900/10 bg-evergreen-50 text-left">
-              <th className="px-4 py-3 font-semibold">Date</th>
-              <th className="px-4 py-3 font-semibold">Organization</th>
-              <th className="px-4 py-3 font-semibold">Plan</th>
-              <th className="px-4 py-3 font-semibold">Amount</th>
-              <th className="px-4 py-3 font-semibold">Reference</th>
+      <Section title="Approved payment ledger" hint="Paginated recognized-revenue ledger across all organizations.">
+        <Table head={["Date", "Organization", "Plan", "Amount", "Reference"]}>
+          {rows.slice((page - 1) * pageSize, page * pageSize).map((r, i) => (
+            <tr key={i}>
+              <td className="text-ink-soft">{fmtDate(r.created_at)}</td>
+              <td className="font-medium text-evergreen-950">{(r.organizations as { name?: string } | null)?.name ?? "—"}</td>
+              <td>{(r.plans as { name?: string } | null)?.name ?? "—"} <span className="text-ink-soft">({r.billing_period})</span></td>
+              <td className="font-semibold tabular-nums">{money(r.amount_cents, r.currency)}</td>
+              <td className="font-mono text-xs">{r.transaction_ref}</td>
             </tr>
-          </thead>
-          <tbody>
-            {rows.slice(0, 25).map((r, i) => (
-              <tr key={i} className="border-b border-evergreen-900/10">
-                <td className="px-4 py-2.5 text-ink-soft">{fmtDate(r.created_at)}</td>
-                <td className="px-4 py-2.5 font-medium">{(r.organizations as { name?: string } | null)?.name ?? "—"}</td>
-                <td className="px-4 py-2.5">{(r.plans as { name?: string } | null)?.name ?? "—"} <span className="text-ink-soft">({r.billing_period})</span></td>
-                <td className="px-4 py-2.5 tabular-nums">{money(r.amount_cents, r.currency)}</td>
-                <td className="px-4 py-2.5 font-mono text-xs">{r.transaction_ref}</td>
-              </tr>
-            ))}
-            {rows.length === 0 && (
-              <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-soft">No approved payments yet.</td></tr>
-            )}
-          </tbody>
-        </table>
-      </Card>
+          ))}
+          {rows.length === 0 && (
+            <tr><td colSpan={5} className="px-4 py-8 text-center text-ink-soft">No approved payments yet.</td></tr>
+          )}
+        </Table>
+        <PageNavigation
+          page={page}
+          pageSize={pageSize}
+          total={rows.length}
+          pathname="/admin/revenue"
+          label="approved payments"
+        />
+      </Section>
     </>
   );
 }
