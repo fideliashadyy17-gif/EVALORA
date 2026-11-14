@@ -1,5 +1,5 @@
 import { RichContent } from "@/components/RichContent";
-import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -77,9 +77,16 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   return (
     <>
       <PageTitle
+        eyebrow="Analytics & Evidence · Examination Report"
         title={exam.title}
         subtitle={`Pass mark ${passMark}% · Results ${settings.results_published ? "published" : "not yet published"}`}
-        action={<div className="flex gap-2 print:hidden"><ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} /><PrintButton /></div>}
+        action={
+          <div className="flex flex-wrap gap-2 print:hidden">
+            <ButtonLink href={`/dashboard/exams/${id}`} variant="outline">← Examination</ButtonLink>
+            <ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} />
+            <PrintButton />
+          </div>
+        }
       />
 
       <div className="grid gap-4 sm:grid-cols-4">
@@ -93,35 +100,27 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Candidate results</h2>
           <div className="mt-3 max-h-[560px] overflow-y-auto scroll-slim">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-2 font-medium">Candidate</th>
-                  <th className="py-2 pr-2 font-medium">Score</th>
-                  <th className="py-2 pr-2 font-medium">%</th>
-                  <th className="py-2 pr-2 font-medium">Hints</th>
-                  <th className="py-2 font-medium">Result</th>
-                </tr>
-              </thead>
-              <tbody>
+            {list.length === 0 ? (
+              <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>
+            ) : (
+              <DataTable head={["Candidate", "Score", "%", "Hints", "Result"]} label="Candidate examination results">
                 {list.map((a) => {
                   const pct = a.score !== null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
                   return (
-                    <tr key={a.id} className="border-b border-evergreen-900/5">
-                      <td className="py-2 pr-2">
+                    <tr key={a.id}>
+                      <td>
                         <span className="font-medium">{(a.exam_candidates as { full_name: string } | null)?.full_name}</span>
                         <span className="block text-xs text-ink-soft">{a.status.replace(/_/g, " ")}{a.submitted_at ? ` · ${fmtDateTime(a.submitted_at)}` : ""}</span>
                       </td>
-                      <td className="py-2 pr-2 tabular-nums">{a.score !== null ? `${Number(a.score)}/${Number(a.max_score ?? 0)}` : "—"}</td>
-                      <td className="py-2 pr-2 tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
-                      <td className="py-2 pr-2 tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
-                      <td className="py-2">{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
+                      <td className="tabular-nums">{a.score !== null ? `${Number(a.score)}/${Number(a.max_score ?? 0)}` : "—"}</td>
+                      <td className="tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
+                      <td className="tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
+                      <td>{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
-            {list.length === 0 && <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>}
+              </DataTable>
+            )}
           </div>
         </Card>
 

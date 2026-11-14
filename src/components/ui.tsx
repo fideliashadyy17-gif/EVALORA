@@ -142,19 +142,64 @@ export function Badge({
 export function PageTitle({
   title,
   subtitle,
+  eyebrow,
+  meta,
   action,
 }: {
   title: string;
   subtitle?: ReactNode;
+  eyebrow?: ReactNode;
+  meta?: ReactNode;
   action?: ReactNode;
 }) {
   return (
-    <div className="evalora-page-title mb-6 flex flex-wrap items-end justify-between gap-3">
-      <div>
+    <div className="evalora-page-title mb-6 flex flex-wrap items-end justify-between gap-4">
+      <div className="min-w-0 max-w-3xl">
+        {eyebrow && (
+          <p className="mb-1.5 text-[11px] font-bold uppercase tracking-[0.16em] text-evergreen-700">
+            {eyebrow}
+          </p>
+        )}
         <h1 className="font-display text-2xl font-semibold text-evergreen-950 sm:text-3xl">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>}
+        {subtitle && <p className="mt-1 text-sm leading-relaxed text-ink-soft">{subtitle}</p>}
+        {meta && <div className="mt-2.5 flex flex-wrap items-center gap-2 text-xs text-ink-soft">{meta}</div>}
       </div>
-      {action}
+      {action && <div className="flex flex-wrap items-center gap-2">{action}</div>}
+    </div>
+  );
+}
+
+/** Accessible scrollable data-table shell usable across organization and platform consoles. */
+export function DataTable({
+  head,
+  label,
+  children,
+}: {
+  head: string[];
+  label?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      role="region"
+      aria-label={label ?? `Scrollable table: ${head.join(", ")}`}
+      tabIndex={0}
+      className="overflow-x-auto rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-evergreen-700"
+    >
+      <table className="w-full min-w-[640px] text-left text-sm">
+        <thead>
+          <tr className="border-b border-evergreen-900/15 bg-cream">
+            {head.map((h) => (
+              <th key={h} scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="[&_td]:px-4 [&_td]:py-3 [&_tr]:border-b [&_tr]:border-evergreen-900/10 [&_tr:last-child]:border-0">
+          {children}
+        </tbody>
+      </table>
     </div>
   );
 }

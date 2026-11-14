@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, Card, Field, Input } from "@/components/ui";
+import { Button, ButtonLink, Card, Field, Input } from "@/components/ui";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -96,6 +96,9 @@ export function RetakeAccessForm({
         <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy}>
           {busy ? "Opening your paper…" : "Start the retake"}
         </Button>
+        <div className="pt-1 text-center">
+          <ButtonLink href="/student" variant="ghost">← Back to my workspace</ButtonLink>
+        </div>
       </form>
     </Card>
   );

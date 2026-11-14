@@ -57,6 +57,7 @@ export default async function CreateExaminationPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Paper Assembly & Window Policy"
         title="Create examination"
         subtitle="Build a formal, timed examination directly in the Owner Control Center. The paper is a published quiz whose prompts, options and worked solutions already use the unified mathematical editor."
         action={<ButtonLink href="/admin/examinations" variant="outline">All examinations</ButtonLink>}

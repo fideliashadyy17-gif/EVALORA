@@ -1,9 +1,11 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { describeHintGeneration } from "@/lib/examHintsAi";
 import { HINT_LEVEL_LABELS, hintStatusLabel } from "@/lib/examHints";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { Notice, Section, Table } from "../../ui";
 import { createHintDraft, deleteHint, generateHintDrafts, setHintStatus, updateHintBody } from "../hint-actions";
 
@@ -63,10 +65,12 @@ const fmt = (value: string | null) => (value ? new Date(value).toLocaleString() 
 export default async function ExamHintsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ exam?: string; status?: string; q?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ exam?: string; status?: string; q?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const back = `/admin/examinations/hints${sp.exam ? `?exam=${encodeURIComponent(sp.exam)}` : ""}`;
   const availability = describeHintGeneration();
@@ -136,6 +140,7 @@ export default async function ExamHintsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Pedagogical Hints & Answer-Leak Guard"
         title="Examination hints"
         subtitle="A hint helps a student think, remember a method and take the next step — it never states the answer. Published hints appear inside the examination page on the current question, and are only ever sent as guidance text."
         action={<ButtonLink href="/admin/examinations" variant="outline">Examination dashboard</ButtonLink>}
@@ -168,6 +173,11 @@ export default async function ExamHintsPage({
           <option value="all">Every status</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.exam || sp.status) && (
+          <Link href="/admin/examinations/hints" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       <Section
@@ -245,8 +255,9 @@ export default async function ExamHintsPage({
             No hints match this view. Students simply see no hint control on questions without a published hint — the examination behaves exactly as before.
           </p>
         ) : (
-          <Table head={["Question", "Scope", "Level", "Hint", "Status", "Review", "Actions"]}>
-            {hints.map((hint) => (
+          <>
+            <Table head={["Question", "Scope", "Level", "Hint", "Status", "Review", "Actions"]}>
+              {hints.slice((page - 1) * pageSize, page * pageSize).map((hint) => (
               <tr key={hint.id} className="align-top">
                 <td className="max-w-[240px]">
                   <span className="block font-medium text-evergreen-950">{hint.questions?.prompt?.slice(0, 110) ?? "Question removed"}</span>
@@ -312,7 +323,16 @@ export default async function ExamHintsPage({
                 </td>
               </tr>
             ))}
-          </Table>
+            </Table>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={hints.length}
+              pathname="/admin/examinations/hints"
+              query={{ exam: sp.exam, status: sp.status, q: sp.q }}
+              label="hints"
+            />
+          </>
         )}
       </Section>
     </>

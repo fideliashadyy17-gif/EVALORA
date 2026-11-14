@@ -1,4 +1,4 @@
-import { Button, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +23,12 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
 
   return (
     <>
-      <PageTitle title="New examination" subtitle="A formal paper built from one of your published quizzes." />
+      <PageTitle
+        eyebrow="Examinations · Paper Scheduling & Integrity Policy"
+        title="New examination"
+        subtitle="A formal paper built from one of your published quizzes."
+        action={<ButtonLink href="/dashboard/exams" variant="outline">All examinations</ButtonLink>}
+      />
       {sp.e && <p role="alert" className="mb-4 max-w-3xl rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{{
         fields: "Check the title, published paper, duration and pass mark.",
         paper: "This paper is unavailable, empty, invalid or not in your organization. Review the published quiz before continuing.",

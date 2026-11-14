@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { parseExamAccessSettings } from "@/lib/exam-access";
@@ -6,6 +7,7 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { updateExamInvitation } from "../../actions/event-operations";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../ui";
 
@@ -25,10 +27,12 @@ interface Exam {
 export default async function ExamInvitationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string; exam?: string }>;
+  searchParams: Promise<{ ok?: string; e?: string; exam?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "evalora-six.vercel.app";
@@ -59,6 +63,7 @@ export default async function ExamInvitationsPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Examinations · Shareable Links & Identity Policy"
         title="Examination access: links, codes & candidate workflow"
         subtitle="Every examination has a persisted unique link and access code. Display both, copy the link, the code or the complete invitation, and configure availability, identity, class eligibility and attempt policy."
       />
@@ -170,9 +175,9 @@ export default async function ExamInvitationsPage({
 
           <Section title="All examination invitations" hint="Codes and links are shown to organizers only; candidates never receive private rosters or stored hashes.">
             <Table head={["Examination", "Organization", "Status", "Access code", "Persisted link", "Link status", "Expiry"]}>
-              {exams.map((e) => (
+              {exams.slice((page - 1) * pageSize, page * pageSize).map((e) => (
                 <tr key={e.id}>
-                  <td><a className="text-evergreen-700 underline" href={`/admin/examinations/invitations?exam=${e.id}`}>{e.title}</a></td>
+                  <td><Link className="text-evergreen-700 underline" href={`/admin/examinations/invitations?exam=${e.id}`}>{e.title}</Link></td>
                   <td>{e.organizations?.name ?? "—"}</td>
                   <td><StatusBadge status={e.status} /></td>
                   <td className="font-mono text-xs">{e.access_code}</td>
@@ -184,6 +189,14 @@ export default async function ExamInvitationsPage({
                 </tr>
               ))}
             </Table>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={exams.length}
+              pathname="/admin/examinations/invitations"
+              query={{ exam: sp.exam }}
+              label="invitations"
+            />
           </Section>
         </>
       )}

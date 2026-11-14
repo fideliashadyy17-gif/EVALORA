@@ -1,8 +1,9 @@
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, ButtonLink, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
+import { ShieldCheck, UserCheck, Users, UserX } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { setUserStatus } from "../actions";
@@ -31,14 +32,27 @@ export default async function AdminUsers({
   if (sp.role === "super_admin") query = query.eq("platform_role", "super_admin");
   if (sp.role === "user") query = query.eq("platform_role", "user");
   if (sp.status) query = query.eq("status", sp.status);
-  const { data: users, count: filteredTotal } = await query;
+  const head = { count: "exact" as const, head: true };
+  const [{ data: users, count: filteredTotal }, totalCount, adminCount, activeCount, suspendedCount] = await Promise.all([
+    query,
+    admin.from("profiles").select("id", head).then((r) => r.count ?? 0),
+    admin.from("profiles").select("id", head).eq("platform_role", "super_admin").then((r) => r.count ?? 0),
+    admin.from("profiles").select("id", head).eq("status", "active").then((r) => r.count ?? 0),
+    admin.from("profiles").select("id", head).eq("status", "suspended").then((r) => r.count ?? 0),
+  ]);
 
   return (
     <>
       <PageTitle
+        eyebrow="Users & Identity · Global Account Directory"
         title="Users"
         subtitle="Every platform account. Create users, manage memberships and roles, reset access and administer platform administrators."
-        action={<ButtonLink href="/admin/users/new" variant="gold">+ Create user</ButtonLink>}
+        action={
+          <>
+            <ButtonLink href="/admin/users/roles" variant="outline">Roles &amp; permissions</ButtonLink>
+            <ButtonLink href="/admin/users/new" variant="gold">+ Create user</ButtonLink>
+          </>
+        }
       />
       <Notice
         ok={sp.ok}
@@ -51,6 +65,13 @@ export default async function AdminUsers({
           primary_only: "Only the Primary Super Admin can manage administrator privileges.",
         }}
       />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Total accounts" value={totalCount} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Super Admins" value={adminCount} icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Active accounts" value={activeCount} icon={<UserCheck className="h-5 w-5" />} />
+        <StatCard label="Suspended" value={suspendedCount} icon={<UserX className="h-5 w-5" />} />
+      </div>
 
       <form method="get" className="mb-5 flex flex-wrap items-end gap-2">
         <div className="min-w-[220px] flex-1">
@@ -67,6 +88,11 @@ export default async function AdminUsers({
           <option value="suspended">Suspended</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.role || sp.status) && (
+          <Link href="/admin/users" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {(users ?? []).length === 0 ? (

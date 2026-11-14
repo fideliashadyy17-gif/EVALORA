@@ -155,7 +155,11 @@ export async function duplicateCompetition(formData: FormData) {
   const id = String(formData.get("id"));
   const { data: comp } = await admin.from("competitions").select("*").eq("id", id).maybeSingle();
   if (!comp) redirect("/admin/competitions");
-  const { created_at: _c, updated_at: _u, id: _i, session_id: _s, ...rest } = comp!;
+  const rest = { ...(comp as Record<string, unknown>) };
+  delete rest.created_at;
+  delete rest.updated_at;
+  delete rest.id;
+  delete rest.session_id;
   const { data, error } = await admin
     .from("competitions")
     .insert({

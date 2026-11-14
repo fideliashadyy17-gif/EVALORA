@@ -155,7 +155,7 @@ export default async function PrintableExam({
                   <p className="mt-2 text-sm">Duration: {exam.duration_minutes} minutes · Total: {packet.totalMarks} marks</p>
                   <div className="mt-6 grid gap-2 text-base sm:grid-cols-2">
                     <p>Candidate: <strong>{packet.candidate.full_name}</strong></p>
-                    <p>Reference: <strong>{packet.candidate.access_code ?? "—”"}</strong></p>
+                    <p>Reference: <strong>{packet.candidate.access_code ?? "—"}</strong></p>
                     <p>Date: ______________________</p>
                     <p>Marker: ____________________</p>
                   </div>

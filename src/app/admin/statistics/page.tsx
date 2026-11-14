@@ -131,6 +131,7 @@ export default async function PlatformStatisticsPage() {
   return (
     <>
       <PageTitle
+        eyebrow="Overview · Platform Analytics"
         title="Platform statistics"
         subtitle="Live operational breakdowns across institutions, learning content, assessments and verified commerce. The DEMO school is excluded."
         action={<ExportButton filename="evalora-platform-statistics.csv" csv={toCsv(exportRows)} label="Export statistics" />}

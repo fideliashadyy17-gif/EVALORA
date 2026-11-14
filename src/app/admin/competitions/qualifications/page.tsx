@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -24,10 +25,12 @@ interface Override {
 export default async function QualificationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string; event?: string; to?: string }>;
+  searchParams: Promise<{ ok?: string; e?: string; event?: string; to?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const { data: eventRows } = await admin.from("competition_events").select("id,name,organization_id").order("name").limit(100);
   const events = (eventRows ?? []) as { id: string; name: string; organization_id: string }[];
@@ -54,6 +57,7 @@ export default async function QualificationsPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Live Competitions · Phase Progression & Admission"
         title="Qualification & admission review"
         subtitle="Compute per-class ranks from existing examination / Live Competition results, approve qualified candidates, and record authorized manual overrides. Admission is re-verified server-side on every join, state and answer request."
       />
@@ -87,7 +91,7 @@ export default async function QualificationsPage({
         <Table head={["Class", "Candidate", "Source score", "Rank", "Status", "Approval", "Review / action"]}>
           {quals.length === 0 ? (
             <tr><td colSpan={7} className="py-8 text-center text-ink-soft">No qualification records yet for this target phase.</td></tr>
-          ) : quals.map((q) => (
+          ) : quals.slice((page - 1) * pageSize, page * pageSize).map((q) => (
             <tr key={q.id}>
               <td>{q.class_id ? classNames.get(q.class_id) ?? q.class_id.slice(0, 8) : "—"}</td>
               <td className="font-medium">{q.display_name ?? "Unnamed candidate"}{q.manual_override && <Badge tone="amber" className="ml-2">override</Badge>}</td>
@@ -118,6 +122,14 @@ export default async function QualificationsPage({
             </tr>
           ))}
         </Table>
+        <PageNavigation
+          page={page}
+          pageSize={pageSize}
+          total={quals.length}
+          pathname="/admin/competitions/qualifications"
+          query={{ event: sp.event, to: sp.to }}
+          label="qualification records"
+        />
       </Section>
 
       <Section title="Manual override audit" hint="Administrator, candidate, original/new status, reason, timestamp, event and phase.">

@@ -1,10 +1,12 @@
-import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
+import { MailPlus, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { inviteMember, removeMember, revokeInvitation, updateMemberRole } from "./actions";
 
 export const metadata: Metadata = { title: "Team & Roles" };
@@ -42,74 +44,74 @@ export default async function TeamPage({
   const ent = await getEntitlementFor(supabase, ctx, org.id);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
+  const pendingInvitations = (invitations ?? []).filter((i) => i.status === "pending");
+
   return (
     <>
       <PageTitle
+        eyebrow="Workspace Administration · Roles & Invitations"
         title="Team & Roles"
         subtitle={`Permissions are enforced on the server for every action — hiding a button is never the security model. Plan allows ${ent.limits.max_members === -1 ? "unlimited" : ent.limits.max_members} members.`}
+        action={isManager ? <Link href="/dashboard/accounts" className="text-sm font-semibold text-evergreen-700 underline-offset-2 hover:underline">Account credentials →</Link> : undefined}
       />
       {sp.invited && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Invitation created — copy its link below and share it with the invitee (valid 7 days).</p>}
       {sp.e === "limit" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">Your plan&apos;s member limit has been reached.</p>}
       {sp.e === "owner" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The organization owner cannot be modified or removed here.</p>}
 
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <StatCard label="Workspace members" value={(members ?? []).length} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Pending invitations" value={pendingInvitations.length} icon={<MailPlus className="h-5 w-5" />} />
+        <StatCard label="Plan seat limit" value={ent.limits.max_members === -1 ? "Unlimited" : ent.limits.max_members} icon={<ShieldCheck className="h-5 w-5" />} />
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
         <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Members ({(members ?? []).length})</h2>
-          <table className="mt-4 w-full text-sm">
-            <thead>
-              <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                <th className="py-2 pr-3 font-medium">Member</th>
-                <th className="py-2 pr-3 font-medium">Role</th>
-                <th className="py-2 pr-3 font-medium">Joined</th>
-                {isManager && <th className="py-2 font-medium"></th>}
-              </tr>
-            </thead>
-            <tbody>
-              {(members ?? []).map((m) => {
-                const p = profileById.get(m.user_id);
-                return (
-                  <tr key={m.id} className="border-b border-evergreen-900/5">
-                    <td className="py-2.5 pr-3">
-                      <span className="font-medium">{p?.full_name || p?.email || "Member"}</span>
-                      {p?.full_name && <span className="block text-xs text-ink-soft">{p.email}</span>}
-                    </td>
-                    <td className="py-2.5 pr-3">
-                      {isManager && m.role !== "owner" ? (
-                        <form action={updateMemberRole} className="flex gap-1">
+          <h2 className="mb-4 font-display text-lg font-semibold text-evergreen-950">Members ({(members ?? []).length})</h2>
+          <DataTable head={isManager ? ["Member", "Role", "Joined", "Actions"] : ["Member", "Role", "Joined"]} label="Workspace members">
+            {(members ?? []).map((m) => {
+              const p = profileById.get(m.user_id);
+              return (
+                <tr key={m.id}>
+                  <td>
+                    <span className="font-medium text-evergreen-950">{p?.full_name || p?.email || "Member"}</span>
+                    {p?.full_name && <span className="block text-xs text-ink-soft">{p.email}</span>}
+                  </td>
+                  <td>
+                    {isManager && m.role !== "owner" ? (
+                      <form action={updateMemberRole} className="flex items-center gap-1.5">
+                        <input type="hidden" name="id" value={m.id} />
+                        <Select name="role" defaultValue={m.role} aria-label="Member role" className="max-w-44 py-1.5 text-xs">
+                          {ORG_ROLES.filter((r) => r.value !== "owner").map((r) => (
+                            <option key={r.value} value={r.value}>{r.label}</option>
+                          ))}
+                        </Select>
+                        <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Save</button>
+                      </form>
+                    ) : (
+                      <Badge tone={m.role === "owner" ? "gold" : "green"}>{ORG_ROLES.find((r) => r.value === m.role)?.label ?? m.role}</Badge>
+                    )}
+                  </td>
+                  <td className="text-ink-soft">{fmtDate(m.created_at)}</td>
+                  {isManager && (
+                    <td>
+                      {m.role !== "owner" && (
+                        <form action={removeMember}>
                           <input type="hidden" name="id" value={m.id} />
-                          <select name="role" defaultValue={m.role} className="rounded-lg border border-evergreen-900/15 bg-white px-2 py-1.5 text-xs">
-                            {ORG_ROLES.filter((r) => r.value !== "owner").map((r) => (
-                              <option key={r.value} value={r.value}>{r.label}</option>
-                            ))}
-                          </select>
-                          <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Save</button>
+                          <button className="text-xs text-red-700 underline-offset-2 hover:underline">Remove</button>
                         </form>
-                      ) : (
-                        <Badge tone={m.role === "owner" ? "gold" : "green"}>{ORG_ROLES.find((r) => r.value === m.role)?.label ?? m.role}</Badge>
                       )}
                     </td>
-                    <td className="py-2.5 pr-3 text-ink-soft">{fmtDate(m.created_at)}</td>
-                    {isManager && (
-                      <td className="py-2.5">
-                        {m.role !== "owner" && (
-                          <form action={removeMember}>
-                            <input type="hidden" name="id" value={m.id} />
-                            <button className="text-xs text-red-700 underline-offset-2 hover:underline">Remove</button>
-                          </form>
-                        )}
-                      </td>
-                    )}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                  )}
+                </tr>
+              );
+            })}
+          </DataTable>
 
-          {(invitations ?? []).some((i) => i.status === "pending") && (
+          {pendingInvitations.length > 0 && (
             <div className="mt-6">
               <h3 className="font-semibold text-evergreen-950">Pending invitations</h3>
               <ul className="mt-2 space-y-2">
-                {(invitations ?? []).filter((i) => i.status === "pending").map((i) => (
+                {pendingInvitations.map((i) => (
                   <li key={i.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-cream px-3 py-2.5 text-sm">
                     <span className="font-medium">{i.email}</span>
                     <Badge tone="gold">{ORG_ROLES.find((r) => r.value === i.role)?.label ?? i.role}</Badge>

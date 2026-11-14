@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -23,10 +24,12 @@ interface Usage {
 export default async function CompetitionCodesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; comp?: string; state?: string }>;
+  searchParams: Promise<{ q?: string; comp?: string; state?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -70,9 +73,12 @@ export default async function CompetitionCodesPage({
     ]),
   ]);
 
+  const pagedCodes = decorated.slice((page - 1) * pageSize, page * pageSize);
+
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Eligibility & Session Credentials"
         title="Competition access codes"
         subtitle="Eligibility codes are stored per competition, can be restricted to an organization or class, capped by uses, expired, disabled, regenerated or revoked. The live-session join code is a separate short-lived credential."
         action={<ExportButton filename="competition-access-codes.csv" csv={csv} label="Export codes" />}
@@ -99,13 +105,19 @@ export default async function CompetitionCodesPage({
           <option value="exhausted">Use limit reached</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.comp || sp.state) && (
+          <Link href="/admin/competitions/codes" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {decorated.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No competition access codes match.</p>
       ) : (
-        <Table head={["Code", "Competition", "Eligibility restriction", "Usage", "Expiry", "State", "Actions"]}>
-          {decorated.map(({ c, usages, activeUses, state }) => {
+        <>
+          <Table head={["Code", "Competition", "Eligibility restriction", "Usage", "Expiry", "State", "Actions"]}>
+            {pagedCodes.map(({ c, usages, activeUses, state }) => {
             const comp = c.competitions as unknown as { id: string; title: string; status: string; organizations: { name: string } | null } | null;
             const restrictedOrg = (c.organizations as unknown as { name: string } | null)?.name;
             const restrictedClass = c.classes as unknown as { name: string; organizations: { name: string } | null } | null;
@@ -154,7 +166,16 @@ export default async function CompetitionCodesPage({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={decorated.length}
+            pathname="/admin/competitions/codes"
+            query={{ q: sp.q, comp: sp.comp, state: sp.state }}
+            label="access codes"
+          />
+        </>
       )}
 
       <Section title="Live-session join codes" hint="These admit participants into an already-open session and can be regenerated from the competition's Codes tab.">

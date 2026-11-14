@@ -1,4 +1,4 @@
-import { Badge, Button, Card, PageTitle, Select, StatCard } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -6,7 +6,7 @@ import Link from "next/link";
 import { setPhaseStatus } from "../../actions/event-operations";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../ui";
 
-export const metadata: Metadata = { title: "Oak event phases" };
+export const metadata: Metadata = { title: "Competition event phases" };
 export const dynamic = "force-dynamic";
 
 interface Phase { id: string; event_id: string; title: string; phase_key: string; phase_type: string; status: string; max_questions: number; qualification_rule: unknown; sort: number }
@@ -17,7 +17,7 @@ interface PoolRow { id: string; phase_id: string | null; class_id: string; statu
 export default async function EventPhasesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string }>;
+  searchParams: Promise<{ event?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -30,7 +30,7 @@ export default async function EventPhasesPage({
   const events = (eventRows ?? []) as unknown as {
     id: string; organization_id: string; name: string; status: string; settings: Record<string, unknown>; organizations: { name?: string } | null;
   }[];
-  const event = events[0] ?? null;
+  const event = (sp.event && events.find((e) => e.id === sp.event)) || events[0] || null;
   const eventIds = events.map((e) => e.id);
 
   const { data: phaseRows } = eventIds.length
@@ -66,10 +66,22 @@ export default async function EventPhasesPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Live Competitions · Multi-Phase Championship Control"
         title="Event phases & monitor"
         subtitle="One parent event, three linked phase records. Existing Examination and Live Competition modules remain the engines; pool, eligibility, access and audit state are shown together."
+        action={event ? <ButtonLink href={`/admin/competitions/events/${event.id}`} variant="gold">Open event progression →</ButtonLink> : undefined}
       />
       <Notice ok={sp.ok} e={sp.e} messages={{ phase_status: "Phase status updated.", scope: "The selected organization, parent event, phase or class relationship is invalid." }} />
+      {events.length > 1 && (
+        <form method="get" className="mb-5 flex flex-wrap items-end gap-2">
+          <Select name="event" defaultValue={event?.id ?? ""} className="min-w-[280px]" aria-label="Select competition event">
+            {events.map((e) => (
+              <option key={e.id} value={e.id}>{e.name} — {e.organizations?.name ?? "Organization"} ({e.status})</option>
+            ))}
+          </Select>
+          <Button type="submit" variant="outline">Open event</Button>
+        </form>
+      )}
       {!event ? (
         <Card className="p-8 text-center text-sm text-ink-soft">No parent competition event exists.</Card>
       ) : (
@@ -122,7 +134,7 @@ export default async function EventPhasesPage({
                         <td>{phase.phase_key === "elimination" ? "Exam link + code" : "Approved qualification token"}</td>
                         <td>
                           <div className="flex flex-wrap gap-2">
-                            {l.exam_id && <Link className="text-evergreen-700 underline" href={`/admin/examinations/${l.exam_id}`}>Exam</Link>}
+                            {l.exam_id && <Link className="text-evergreen-700 underline" href={`/admin/examinations?exam=${l.exam_id}`}>Exam</Link>}
                             {l.competition_id && <Link className="text-evergreen-700 underline" href={`/admin/competitions/${l.competition_id}`}>Live</Link>}
                             <Link className="text-evergreen-700 underline" href={`/admin/competitions/pools?phase=${phase.id}&class=${l.class_id}`}>Pools</Link>
                           </div>

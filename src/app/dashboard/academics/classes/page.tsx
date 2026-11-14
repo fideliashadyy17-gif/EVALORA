@@ -1,13 +1,16 @@
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { BookOpen, GraduationCap, Users } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { classLifecycle, saveClassForm, transferStudent, withdrawEnrollment } from "../actions";
 
 export const metadata: Metadata = { title: "Classes" };
 export const dynamic = "force-dynamic";
 
-interface SP { q?: string; year?: string; level?: string; status?: string; sort?: string; edit?: string; roster?: string; ok?: string; e?: string }
+interface SP { q?: string; year?: string; level?: string; status?: string; sort?: string; edit?: string; roster?: string; ok?: string; e?: string; page?: string }
 
 /** Academic Management → Classes: full class lifecycle for one school. */
 export default async function ClassesPage({ searchParams }: { searchParams: Promise<SP> }) {
@@ -67,10 +70,15 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
   }
 
   const backUrl = "/dashboard/academics/classes";
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
+  const totalEnrollments = (enrollments ?? []).length;
+  const unassignedCount = (classes ?? []).filter((c) => !c.teacher_id).length;
 
   return (
     <>
       <PageTitle
+        eyebrow="People & Academics · Class Cohorts & Rosters"
         title="Classes"
         subtitle="Create and manage your school's classes by academic year and education level, view rosters and move students between classes."
         action={<ButtonLink href="/dashboard/academics" variant="outline">Academic structure</ButtonLink>}
@@ -78,9 +86,15 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
       {sp.ok && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — classes updated.</p>}
       {sp.e && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{decodeURIComponent(sp.e)}</p>}
 
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <StatCard label="Classes shown" value={(classes ?? []).length} icon={<BookOpen className="h-5 w-5" />} />
+        <StatCard label="Active enrollments" value={totalEnrollments} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Unassigned teacher" value={unassignedCount} icon={<GraduationCap className="h-5 w-5" />} />
+      </div>
+
       {(years ?? []).length === 0 && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          No academic year exists yet. <a className="font-semibold underline" href="/dashboard/academics">Create your academic year and levels first</a> — classes and student registration are organized by year.
+          No academic year exists yet. <Link className="font-semibold underline" href="/dashboard/academics">Create your academic year and levels first</Link> — classes and student registration are organized by year.
         </p>
       )}
 
@@ -135,57 +149,67 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
           <Field label="Level"><Select name="level" defaultValue={sp.level ?? ""}><option value="">All levels</option>{(levels ?? []).map((l) => <option key={l.id} value={l.id}>{l.name}</option>)}</Select></Field>
           <Field label="Status"><Select name="status" defaultValue={status}><option value="active">Active</option><option value="archived">Archived</option><option value="all">All</option></Select></Field>
           <Field label="Sort"><Select name="sort" defaultValue={sp.sort ?? "name"}><option value="name">Name A–Z</option><option value="capacity">Capacity</option><option value="recent">Recently created</option></Select></Field>
-          <div className="sm:col-span-5"><Button type="submit" variant="outline">Apply filters</Button></div>
+          <div className="flex items-center gap-3 sm:col-span-5">
+            <Button type="submit" variant="outline">Apply filters</Button>
+            {(sp.q || sp.year || sp.level || sp.status || sp.sort) && (
+              <Link href={backUrl} className="inline-flex min-h-10 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">
+                Clear
+              </Link>
+            )}
+          </div>
         </form>
 
         {(classes ?? []).length === 0 ? (
           <EmptyState title="No classes found" body={canEdit ? "Create your first class above — students can then be registered and enrolled into it." : "No classes match these filters."} />
         ) : (
-          <div className="mt-4 overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">
-                {["Class", "Year", "Level", "Dept.", "Teacher", "Students / capacity", "Status", "Actions"].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}
-              </tr></thead>
-              <tbody>
-                {(classes ?? []).map((c) => {
-                  const n = enrolledCount.get(c.id) ?? 0;
-                  return (
-                    <tr key={c.id} className="border-b border-evergreen-900/10 align-top">
-                      <td className="px-3 py-2"><strong className="text-evergreen-950">{c.name}</strong>{c.code ? <span className="text-ink-soft"> · {c.code}</span> : null}</td>
-                      <td className="px-3 py-2">{c.academic_year_id ? yearName.get(c.academic_year_id) ?? "—" : "—"}</td>
-                      <td className="px-3 py-2">{c.level_id ? levelName.get(c.level_id) ?? "—" : "—"}</td>
-                      <td className="px-3 py-2">{c.department_id ? deptName.get(c.department_id) ?? "—" : "—"}</td>
-                      <td className="px-3 py-2">{c.teacher_id ? teacherName.get(c.teacher_id) ?? "—" : "—"}</td>
-                      <td className="px-3 py-2">{n} / {c.capacity}{n > c.capacity ? <span className="ml-1 text-amber-700">(over capacity)</span> : null}</td>
-                      <td className="px-3 py-2"><Badge tone={c.status === "active" ? "green" : "gray"}>{c.status}</Badge></td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-x-3 gap-y-1">
-                          <a className="text-evergreen-800 underline underline-offset-2" href={`${backUrl}?roster=${c.id}`}>Roster</a>
-                          {canEdit && <a className="text-evergreen-800 underline underline-offset-2" href={`${backUrl}?edit=${c.id}`}>Edit</a>}
-                          {canEdit && (
-                            <form action={classLifecycle} className="inline">
-                              <input type="hidden" name="back" value={backUrl} /><input type="hidden" name="id" value={c.id} />
-                              <input type="hidden" name="op" value={c.status === "active" ? "archive" : "restore"} />
-                              <button className="text-evergreen-800 underline underline-offset-2" type="submit">{c.status === "active" ? "Archive" : "Restore"}</button>
+          <div className="mt-4">
+            <DataTable head={["Class", "Year", "Level", "Dept.", "Teacher", "Students / capacity", "Status", "Actions"]} label="School classes">
+              {(classes ?? []).slice((page - 1) * pageSize, page * pageSize).map((c) => {
+                const n = enrolledCount.get(c.id) ?? 0;
+                return (
+                  <tr key={c.id} className="align-top">
+                    <td><strong className="text-evergreen-950">{c.name}</strong>{c.code ? <span className="text-ink-soft"> · {c.code}</span> : null}</td>
+                    <td>{c.academic_year_id ? yearName.get(c.academic_year_id) ?? "—" : "—"}</td>
+                    <td>{c.level_id ? levelName.get(c.level_id) ?? "—" : "—"}</td>
+                    <td>{c.department_id ? deptName.get(c.department_id) ?? "—" : "—"}</td>
+                    <td>{c.teacher_id ? teacherName.get(c.teacher_id) ?? "—" : "—"}</td>
+                    <td>{n} / {c.capacity}{n > c.capacity ? <span className="ml-1 text-amber-700">(over capacity)</span> : null}</td>
+                    <td><Badge tone={c.status === "active" ? "green" : "gray"}>{c.status}</Badge></td>
+                    <td>
+                      <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <Link className="text-evergreen-800 underline underline-offset-2" href={`${backUrl}?roster=${c.id}`}>Roster</Link>
+                        {canEdit && <Link className="text-evergreen-800 underline underline-offset-2" href={`${backUrl}?edit=${c.id}`}>Edit</Link>}
+                        {canEdit && (
+                          <form action={classLifecycle} className="inline">
+                            <input type="hidden" name="back" value={backUrl} /><input type="hidden" name="id" value={c.id} />
+                            <input type="hidden" name="op" value={c.status === "active" ? "archive" : "restore"} />
+                            <button className="text-evergreen-800 underline underline-offset-2" type="submit">{c.status === "active" ? "Archive" : "Restore"}</button>
+                          </form>
+                        )}
+                        {isManager && (
+                          <details>
+                            <summary className="cursor-pointer text-red-700 underline underline-offset-2">Delete</summary>
+                            <form action={classLifecycle} className="mt-2 space-y-2 rounded-lg bg-red-50 p-3">
+                              <input type="hidden" name="back" value={backUrl} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="op" value="delete" />
+                              <label className="flex items-start gap-2 text-xs text-red-900"><input type="checkbox" name="confirm" className="mt-0.5" /> Permanently delete this class (blocked if it has enrollment history — archive instead).</label>
+                              <Button type="submit" variant="danger">Delete class</Button>
                             </form>
-                          )}
-                          {isManager && (
-                            <details>
-                              <summary className="cursor-pointer text-red-700 underline underline-offset-2">Delete</summary>
-                              <form action={classLifecycle} className="mt-2 space-y-2 rounded-lg bg-red-50 p-3">
-                                <input type="hidden" name="back" value={backUrl} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="op" value="delete" />
-                                <label className="flex items-start gap-2 text-xs text-red-900"><input type="checkbox" name="confirm" className="mt-0.5" /> Permanently delete this class (blocked if it has enrollment history — archive instead).</label>
-                                <Button type="submit" variant="danger">Delete class</Button>
-                              </form>
-                            </details>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                          </details>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </DataTable>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={(classes ?? []).length}
+              pathname={backUrl}
+              query={{ q: sp.q, year: sp.year, level: sp.level, status: sp.status, sort: sp.sort }}
+              label="classes"
+            />
           </div>
         )}
       </Card>
@@ -199,40 +223,37 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
           {roster.length === 0 ? (
             <EmptyState title="No students enrolled" body="Register students and enroll them into this class, or import a class register from the Students page." />
           ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="min-w-full text-sm">
-                <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">{["Student", "Reference", "Email", "Transfer to", ""].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-                <tbody>
-                  {roster.map(({ enrollment_id, student }) => (
-                    <tr key={enrollment_id} className="border-b border-evergreen-900/10">
-                      <td className="px-3 py-2"><strong>{student.full_name}</strong></td>
-                      <td className="px-3 py-2">{student.student_ref ?? "—"}</td>
-                      <td className="px-3 py-2">{student.email ?? "—"}</td>
-                      <td className="px-3 py-2">
-                        {canEdit ? (
-                          <form action={transferStudent} className="flex gap-2">
-                            <input type="hidden" name="back" value={`${backUrl}?roster=${rosterClass.id}`} />
-                            <input type="hidden" name="student_id" value={student.id} />
-                            <Select name="class_id" aria-label="Destination class">
-                              {(classes ?? []).filter((c) => c.id !== rosterClass.id && c.status === "active").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </Select>
-                            <Button type="submit" variant="outline">Transfer</Button>
-                          </form>
-                        ) : "—"}
-                      </td>
-                      <td className="px-3 py-2">
-                        {canEdit && (
-                          <form action={withdrawEnrollment}>
-                            <input type="hidden" name="back" value={`${backUrl}?roster=${rosterClass.id}`} />
-                            <input type="hidden" name="enrollment_id" value={enrollment_id} />
-                            <button className="text-red-700 underline underline-offset-2" type="submit">Remove from class</button>
-                          </form>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-4">
+              <DataTable head={["Student", "Reference", "Email", "Transfer to", "Actions"]} label={`Roster for ${rosterClass.name}`}>
+                {roster.map(({ enrollment_id, student }) => (
+                  <tr key={enrollment_id}>
+                    <td><strong>{student.full_name}</strong></td>
+                    <td>{student.student_ref ?? "—"}</td>
+                    <td>{student.email ?? "—"}</td>
+                    <td>
+                      {canEdit ? (
+                        <form action={transferStudent} className="flex gap-2">
+                          <input type="hidden" name="back" value={`${backUrl}?roster=${rosterClass.id}`} />
+                          <input type="hidden" name="student_id" value={student.id} />
+                          <Select name="class_id" aria-label="Destination class">
+                            {(classes ?? []).filter((c) => c.id !== rosterClass.id && c.status === "active").map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </Select>
+                          <Button type="submit" variant="outline">Transfer</Button>
+                        </form>
+                      ) : "—"}
+                    </td>
+                    <td>
+                      {canEdit && (
+                        <form action={withdrawEnrollment}>
+                          <input type="hidden" name="back" value={`${backUrl}?roster=${rosterClass.id}`} />
+                          <input type="hidden" name="enrollment_id" value={enrollment_id} />
+                          <button className="text-red-700 underline underline-offset-2" type="submit">Remove from class</button>
+                        </form>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </DataTable>
             </div>
           )}
         </Card>

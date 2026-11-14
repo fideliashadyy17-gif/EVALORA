@@ -78,7 +78,7 @@ const PublicScreenClient = loadScreen();
  */
 function loadScreenPage(getSessionContext) {
   const originalLoad = Module._load;
-  Module._load = function (request, ...rest) {
+  Module._load = function (request) {
     if (request === "@/lib/auth") return { getSessionContext, CREATOR_ROLES: [], can: () => false };
     if (request === "./PublicScreenClient") return { PublicScreenClient: (props) => props };
     return originalLoad.apply(this, arguments);

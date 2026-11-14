@@ -357,7 +357,7 @@ check("every hint is published and fits the body constraint",
   hints.rows.filter((r) => r.status !== "published" || r.n !== r.valid)
     .map((r) => `L${r.level}:${r.status}`).join(", "));
 check("level 1 covers all 45 questions of each paper",
-  PARTS.every((p) => hints.rows.filter((r) => r.level === 1).reduce((a, r) => a + r.n, 0) === 135),
+  PARTS.every(() => hints.rows.filter((r) => r.level === 1).reduce((a, r) => a + r.n, 0) === 135),
   hints.rows.map((r) => `L${r.level}=${r.n}`).join(", "));
 
 // ── 6. The self-check really aborts an incomplete paper. ───────────────────

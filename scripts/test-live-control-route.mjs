@@ -11,11 +11,6 @@ import path from "node:path";
 import ts from "typescript";
 
 let checks = 0;
-const check = (name, fn) => {
-  fn();
-  checks += 1;
-  console.log(`  ✓ ${name}`);
-};
 const checkAsync = async (name, fn) => {
   await fn();
   checks += 1;

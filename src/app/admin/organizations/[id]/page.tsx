@@ -68,9 +68,18 @@ export default async function OrganizationDetailPage({
 
   return (
     <>
-      <p className="mb-3 text-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
         <Link href="/admin/organizations" className="font-medium text-evergreen-700 underline-offset-2 hover:underline">← All organizations</Link>
-      </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-evergreen-800">
+          <Link href={`/admin/classes?org=${id}`} className="underline-offset-2 hover:underline">Classes ({classCount})</Link>
+          <span>·</span>
+          <Link href={`/admin/questions?org=${id}`} className="underline-offset-2 hover:underline">Question bank</Link>
+          <span>·</span>
+          <Link href={`/admin/examinations?org=${id}`} className="underline-offset-2 hover:underline">Examinations ({examCount})</Link>
+          <span>·</span>
+          <Link href={`/admin/operations?org=${id}`} className="underline-offset-2 hover:underline">Operational bridge</Link>
+        </div>
+      </div>
 
       <Card className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

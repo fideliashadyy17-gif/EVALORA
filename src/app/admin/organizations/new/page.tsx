@@ -22,6 +22,7 @@ export default async function NewOrganizationPage({
   return (
     <>
       <PageTitle
+        eyebrow="Organizations & Tenants · Provisioning"
         title="Create organization"
         subtitle="The organization is operational immediately — no customer checkout, no payment wall. Assign an owner now or operate it yourself."
         action={<ButtonLink href="/admin/organizations" variant="outline">← All organizations</ButtonLink>}

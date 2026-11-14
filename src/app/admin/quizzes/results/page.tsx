@@ -80,6 +80,7 @@ export default async function QuizResultsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Session Leaderboards"
         title="Quiz results"
         subtitle="Session-level scores and participant leaderboards for hosted quizzes. Competition rankings and examination marks have their own controlled result centers."
       />

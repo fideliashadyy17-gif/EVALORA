@@ -64,6 +64,7 @@ export default async function CompetitionResultsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Official Rankings & Publication"
         title="Competition rankings & results"
         subtitle="Review individual and organization rankings, validate them, control publication, and export or print the official table."
       />

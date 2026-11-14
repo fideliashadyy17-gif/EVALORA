@@ -31,6 +31,7 @@ export default async function NewCompetitionPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Event Provisioning"
         title="Create competition"
         subtitle="Attach a quiz from the host organization, set the registration window, and you get a shareable access code instantly."
         action={<ButtonLink href="/admin/competitions" variant="outline">← All competitions</ButtonLink>}

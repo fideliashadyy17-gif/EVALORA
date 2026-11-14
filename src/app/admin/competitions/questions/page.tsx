@@ -69,6 +69,7 @@ export default async function CompetitionQuestionsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Question Set & Math Preview"
         title="Competition questions"
         subtitle="Competition content is the attached quiz. Every prompt, option and worked solution uses the same structured mathematical editor and renderer as the Question Bank and examinations."
         action={selected ? <ButtonLink href={`/admin/questions/new?org=${selected.organization_id}`} variant="gold">+ Create question</ButtonLink> : undefined}

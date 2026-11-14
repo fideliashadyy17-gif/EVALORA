@@ -1,4 +1,5 @@
 import { LocalTime } from "@/components/LocalTime";
+import { Logo } from "@/components/Logo";
 import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { ButtonLink, Card } from "@/components/ui";
 import { getSessionContext } from "@/lib/auth";
@@ -97,7 +98,15 @@ export default async function RetakePage({ params }: { params: Promise<{ request
   const institution = row.exams?.organizations?.name ?? null;
 
   const shell = (children: ReactNode) => (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col justify-center px-4 py-12">{children}</main>
+    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto flex w-full max-w-2xl flex-col justify-center">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <Logo href="/student" />
+          <span className="exam-entry-secure">Authorized retake</span>
+        </div>
+        {children}
+      </div>
+    </main>
   );
 
   if (row.status === "pending") {

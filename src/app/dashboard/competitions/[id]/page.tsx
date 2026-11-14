@@ -1,4 +1,5 @@
-import { Badge, Button, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
@@ -18,8 +19,17 @@ const FORMAT_LABELS = Object.fromEntries(COMPETITION_FORMATS.map((f) => [f.value
  * organization_id as well as id, so a guessed competition id from another
  * tenant resolves to nothing.
  */
-export default async function OrganizationCompetitionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function OrganizationCompetitionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ page?: string }>;
+}) {
   const { id } = await params;
+  const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -60,6 +70,7 @@ export default async function OrganizationCompetitionPage({ params }: { params: 
         </Link>
       </p>
       <PageTitle
+        eyebrow="Live Operations · Competition Workspace"
         title={comp.title}
         subtitle={`${FORMAT_LABELS[comp.format] ?? comp.format} · created ${fmtDateTime(comp.created_at)}${comp.quizzes ? ` · quiz ${(comp.quizzes as unknown as { title: string }).title}` : ""}`}
         action={<Badge tone={comp.status === "live" ? "green" : comp.status === "draft" ? "gray" : "amber"}>{comp.status}</Badge>}
@@ -136,29 +147,25 @@ export default async function OrganizationCompetitionPage({ params }: { params: 
             Nobody has registered yet. Share an admission code above — registrations appear here as participants join.
           </p>
         ) : (
-          <div className="mt-3 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-left text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-xs uppercase tracking-wide text-ink-soft">
-                  <th className="py-2 pr-3">Participant</th>
-                  <th className="py-2 pr-3">Reference</th>
-                  <th className="py-2 pr-3">Source</th>
-                  <th className="py-2 pr-3">Status</th>
-                  <th className="py-2">Registered</th>
+          <div className="mt-3">
+            <DataTable head={["Participant", "Reference", "Source", "Status", "Registered"]} label="Competition participants">
+              {(registrations ?? []).slice((page - 1) * pageSize, page * pageSize).map((r) => (
+                <tr key={r.id}>
+                  <td className="font-medium text-evergreen-950">{r.full_name ?? "—"}</td>
+                  <td className="font-mono text-xs text-ink-soft">{r.participant_ref ?? "—"}</td>
+                  <td className="text-xs capitalize text-ink-soft">{r.source ?? "—"}</td>
+                  <td className="text-xs capitalize">{r.status}</td>
+                  <td className="text-xs text-ink-soft">{fmtDateTime(r.created_at)}</td>
                 </tr>
-              </thead>
-              <tbody className="[&_td]:py-2 [&_td]:pr-3 [&_tr]:border-b [&_tr]:border-evergreen-900/10 [&_tr:last-child]:border-0">
-                {(registrations ?? []).map((r) => (
-                  <tr key={r.id}>
-                    <td className="font-medium text-evergreen-950">{r.full_name ?? "—"}</td>
-                    <td className="font-mono text-xs text-ink-soft">{r.participant_ref ?? "—"}</td>
-                    <td className="text-xs capitalize text-ink-soft">{r.source ?? "—"}</td>
-                    <td className="text-xs capitalize">{r.status}</td>
-                    <td className="text-xs text-ink-soft">{fmtDateTime(r.created_at)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </DataTable>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={(registrations ?? []).length}
+              pathname={`/dashboard/competitions/${comp.id}`}
+              label="participants"
+            />
           </div>
         )}
       </Card>

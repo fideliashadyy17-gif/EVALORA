@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -32,10 +33,12 @@ const TEMPLATE = toCsv([["full_name", "email", "candidate_ref"]]);
 export default async function CandidateRegistrationPage({
   searchParams,
 }: {
-  searchParams: Promise<{ exam?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ exam?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   const { data: exams } = await admin
@@ -67,6 +70,7 @@ export default async function CandidateRegistrationPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Enrollment & Roster Import"
         title="Candidate registration"
         subtitle="Register candidates individually, import a CSV roster, or enroll a whole class. Every candidate receives a unique personal code tied to this one examination."
         action={<div className="flex flex-wrap gap-2"><ExportButton filename="exam-candidate-import-template.csv" csv={TEMPLATE} label="Download template" /><ButtonLink href="/admin/examinations/candidates" variant="outline">All candidates</ButtonLink></div>}
@@ -159,18 +163,28 @@ export default async function CandidateRegistrationPage({
               {candidates.length === 0 ? (
                 <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No candidates registered for this examination yet.</p>
               ) : (
-                <Table head={["Candidate", "Personal code", "Reference", "Status", "Registered", "Manage"]}>
-                  {candidates.map((c) => (
-                    <tr key={String(c.id)}>
-                      <td><span className="font-medium">{String(c.full_name)}</span><span className="block text-xs text-ink-soft">{String(c.email ?? "No email")}</span></td>
-                      <td className="font-mono font-bold tracking-wider">{String(c.access_code)}</td>
-                      <td className="text-ink-soft">{String(c.candidate_ref ?? "—")}</td>
-                      <td><StatusBadge status={String(c.status)} /></td>
-                      <td className="text-ink-soft">{fmtDateTime(String(c.created_at))}</td>
-                      <td><Link href={`/admin/examinations/candidates?exam=${selected.id}`} className="font-medium text-evergreen-700 hover:underline">Candidate center →</Link></td>
-                    </tr>
-                  ))}
-                </Table>
+                <>
+                  <Table head={["Candidate", "Personal code", "Reference", "Status", "Registered", "Manage"]}>
+                    {candidates.slice((page - 1) * pageSize, page * pageSize).map((c) => (
+                      <tr key={String(c.id)}>
+                        <td><span className="font-medium">{String(c.full_name)}</span><span className="block text-xs text-ink-soft">{String(c.email ?? "No email")}</span></td>
+                        <td className="font-mono font-bold tracking-wider">{String(c.access_code)}</td>
+                        <td className="text-ink-soft">{String(c.candidate_ref ?? "—")}</td>
+                        <td><StatusBadge status={String(c.status)} /></td>
+                        <td className="text-ink-soft">{fmtDateTime(String(c.created_at))}</td>
+                        <td><Link href={`/admin/examinations/candidates?exam=${selected.id}`} className="font-medium text-evergreen-700 hover:underline">Candidate center →</Link></td>
+                      </tr>
+                    ))}
+                  </Table>
+                  <PageNavigation
+                    page={page}
+                    pageSize={pageSize}
+                    total={candidates.length}
+                    pathname="/admin/examinations/register"
+                    query={{ exam: selected.id }}
+                    label="registered candidates"
+                  />
+                </>
               )}
             </div>
           </section>

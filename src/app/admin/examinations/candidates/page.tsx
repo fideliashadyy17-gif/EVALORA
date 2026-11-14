@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -61,10 +62,12 @@ const MESSAGES: Record<string, string> = {
 export default async function ExaminationCandidatesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; exam?: string; org?: string; status?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; exam?: string; org?: string; status?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
   const back = "/admin/examinations/candidates";
 
@@ -102,6 +105,7 @@ export default async function ExaminationCandidatesPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Cross-Institution Candidate Register"
         title="Examination candidates"
         subtitle="The dedicated cross-examination candidate register. Each candidate is bound to one examination and receives a separate personal code in addition to the exam code."
         action={<div className="flex flex-wrap gap-2"><ExportButton filename="exam-candidates.csv" csv={csv} label="Export candidates" /><ButtonLink href="/admin/examinations/register" variant="gold">Register candidates</ButtonLink></div>}
@@ -134,13 +138,19 @@ export default async function ExaminationCandidatesPage({
           <option value="submitted">Submitted</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.exam || sp.org || sp.status) && (
+          <Link href="/admin/examinations/candidates" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {candidates.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No examination candidates match.</p>
       ) : (
-        <Table head={["Candidate", "Examination", "Personal code", "Attempt", "Extension", "Status", "Actions"]}>
-          {candidates.map((c) => {
+        <>
+          <Table head={["Candidate", "Examination", "Personal code", "Attempt", "Extension", "Status", "Actions"]}>
+            {candidates.slice((page - 1) * pageSize, page * pageSize).map((c) => {
             const attempt = latestAttempt(c.exam_attempts);
             return (
               <tr key={c.id}>
@@ -180,7 +190,16 @@ export default async function ExaminationCandidatesPage({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={candidates.length}
+            pathname="/admin/examinations/candidates"
+            query={{ q: sp.q, exam: sp.exam, org: sp.org, status: sp.status }}
+            label="candidates"
+          />
+        </>
       )}
     </>
   );

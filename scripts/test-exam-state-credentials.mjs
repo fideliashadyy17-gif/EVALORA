@@ -6,7 +6,7 @@ import path from 'node:path';
 import ts from 'typescript';
 const file=path.resolve('scripts/__virtual_exam_state.cjs');
 let observed=[];
-const attemptWindow=(exam,attempt)=>({deadlineMs:Date.now()+600000,deadline:new Date(Date.now()+600000).toISOString(),reached:false,remainingMs:600000,boundBy:'duration',nowMs:Date.now()});
+const attemptWindow=()=>({deadlineMs:Date.now()+600000,deadline:new Date(Date.now()+600000).toISOString(),reached:false,remainingMs:600000,boundBy:'duration',nowMs:Date.now()});
 const context={attempt:{id:'a',status:'in_progress',started_at:new Date().toISOString(),extension_minutes:0,flagged:[],score:null,max_score:null},exam:{id:'e',title:'Exam',settings:{}},candidate:{id:'c',full_name:'Candidate'}};
 const admin={from:()=>({select:()=>({eq:async()=>({data:[]})})})};
 const original=Module._load;

@@ -63,21 +63,21 @@ export default async function InvitePage({
   return (
     <AuthShell title="You've been invited" subtitle="Join the organization workspace on EVALORA.">
       {!inv || inv.status !== "pending" ? (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
           This invitation is no longer valid. Ask your administrator for a new one.
         </p>
       ) : sp.e === "email" ? (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
           This invitation was sent to <strong>{inv.email}</strong>. Sign in with that email address to accept it.
         </p>
       ) : sp.e === "limit" ? (
-        <p className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p role="alert" className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
           This workspace has reached the number of members included in its plan, so the invitation cannot be accepted
           yet. Ask an owner or administrator to upgrade the plan, then try this link again — it stays valid until it
           expires.
         </p>
       ) : sp.e === "failed" ? (
-        <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
           The invitation could not be accepted. Nothing was changed — please try again, and tell your administrator if
           it keeps happening.
         </p>

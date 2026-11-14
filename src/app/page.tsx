@@ -66,6 +66,7 @@ export default async function HomePage() {
   return (
     <div className="min-h-screen">
       <SiteHeader />
+      <main id="main-content">
 
       {/* Hero — high-contrast editorial type with a clear product journey. */}
       <section className="public-hero relative isolate overflow-hidden border-b border-evergreen-900/10 bg-paper">
@@ -281,6 +282,7 @@ export default async function HomePage() {
         </div>
       </section>
 
+      </main>
       <SiteFooter />
     </div>
   );

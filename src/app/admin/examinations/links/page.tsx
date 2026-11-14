@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { CopyInvitation } from "@/components/CopyInvitation";
 import { LocalTime } from "@/components/LocalTime";
@@ -12,6 +13,7 @@ import { loadExamLinkPolicy, loadLinkAttemptCounts } from "@/lib/examLinkServer"
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { Flash, Notice, Section } from "../../ui";
 import {
   disableExamLinkAsAdmin,
@@ -73,10 +75,12 @@ function statusTone(status: ExamLinkStatus): "green" | "amber" | "gray" | "red" 
 export default async function ExamLinksPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; link?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; link?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 15;
   const admin = createAdminClient();
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "evalora-six.vercel.app";
@@ -111,6 +115,7 @@ export default async function ExamLinksPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Examinations · Link Expiration & Lifecycle Governance"
         title="Examination link expiration & lifecycle"
         subtitle="Every examination link has an explicit expiration, a status and a full audit trail. Expiration only stops NEW starts — a candidate who has already begun keeps their timer, answers and deadline."
         action={<ButtonLink href="/admin/examinations/invitations" variant="outline">Share links & access codes</ButtonLink>}
@@ -136,6 +141,11 @@ export default async function ExamLinksPage({
           <option value="disabled">Disabled</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.link) && (
+          <Link href="/admin/examinations/links" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       <Section
@@ -147,8 +157,9 @@ export default async function ExamLinksPage({
             No examination links match this filter.
           </p>
         ) : (
-          <div className="space-y-4">
-            {filtered.map(({ exam, lifecycle }) => {
+          <>
+            <div className="space-y-4">
+              {filtered.slice((page - 1) * pageSize, page * pageSize).map(({ exam, lifecycle }) => {
               const linkPath = exam.access_link || `/exam/join/${exam.invite_token}`;
               const shareUrl = `${origin}${linkPath}`;
               const examCounts = counts.get(exam.id) ?? { started: 0, submitted: 0, inProgress: 0 };
@@ -293,7 +304,16 @@ export default async function ExamLinksPage({
                 </Card>
               );
             })}
-          </div>
+            </div>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={filtered.length}
+              pathname="/admin/examinations/links"
+              query={{ q: sp.q, link: sp.link }}
+              label="examination links"
+            />
+          </>
         )}
       </Section>
 

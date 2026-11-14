@@ -1,4 +1,4 @@
-import { Badge, Button, ButtonLink, Input, PageTitle, StatCard } from "@/components/ui";
+import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -68,6 +68,7 @@ export default async function OrganizationPlatformAccessPage({
   return (
     <>
       <PageTitle
+        eyebrow="Organizations & Tenants · Subdomains & Portal Routing"
         title="Organization platform access"
         subtitle="The permanent platform URL of every organization on EVALORA — open it, copy it, or change its identifier."
         action={<ButtonLink href="/admin/organizations" variant="outline">All organizations</ButtonLink>}
@@ -111,7 +112,19 @@ export default async function OrganizationPlatformAccessPage({
         <div className="min-w-[220px] flex-1">
           <Input name="q" placeholder="Search organizations by name…" defaultValue={sp.q ?? ""} aria-label="Search organizations" />
         </div>
+        <Select name="state" defaultValue={sp.state ?? ""} className="w-48" aria-label="Filter by URL state">
+          <option value="">All URL states</option>
+          <option value="active">Active URLs</option>
+          <option value="pending">Pending verification</option>
+          <option value="disabled">Portal disabled</option>
+          <option value="unavailable">Unavailable</option>
+        </Select>
         <Button type="submit" variant="outline">Search</Button>
+        {(sp.q || sp.state) && (
+          <Link href="/admin/organizations/access" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (

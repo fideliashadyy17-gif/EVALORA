@@ -56,6 +56,7 @@ export default async function QuestionCategoriesPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Taxonomy & Topics"
         title="Question categories"
         subtitle="Create, rename and remove organization-scoped categories used by the Question Bank."
         action={<ButtonLink href={`/admin/questions/new?org=${selected.id}`} variant="gold">+ Create question</ButtonLink>}

@@ -1,9 +1,11 @@
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { BookOpen, GraduationCap, School, Users } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { archiveClass, deleteClass } from "../actions/academics";
-import { Notice } from "../ui";
+import { Notice, Table } from "../ui";
 import { saveGlobalClass } from "./actions";
 
 export const metadata: Metadata = { title: "Class Management" };
@@ -83,21 +85,43 @@ export default async function AdminClassesPage({ searchParams }: { searchParams:
   const bandLabel = (b: string | null) =>
     b === "early_years_primary" ? "Early Years & Primary" : b === "myp_secondary" ? "Secondary — MYP" : b === "advanced_secondary" ? "Advanced Secondary" : b ? "Other" : "—";
 
+  const totalEnrolled = [...counts.values()].reduce((acc: number, n) => acc + (n ?? 0), 0);
+  const totalQuestions = [...qCounts.values()].reduce((acc: number, n) => acc + (n ?? 0), 0);
+  const totalSchoolsWithClasses = new Set((classes ?? []).map((c) => c.organization_id)).size;
+
   return (
     <>
-      <PageTitle title="Class Management" subtitle="Every class on the platform, grouped by school and academic year. Classes drive student enrollment, the class-based Question Bank, quizzes, examinations and live competitions." />
+      <PageTitle
+        eyebrow="Academic Structure · Cross-Tenant Class Registry"
+        title="Class Management"
+        subtitle="Every class on the platform, grouped by school and academic year. Classes drive student enrollment, the class-based Question Bank, quizzes, examinations and live competitions."
+      />
       <Notice ok={sp.ok} e={sp.e} messages={{
         saved: "Class saved.", class_saved: "Class saved.", class_deleted: "Class deleted.", class_archived: "Class has enrollment history and was archived instead of deleted.", class_updated: "Class updated.",
         name: "Class name is required.", organization: "Choose a school first.", reference: "That year/level/department does not belong to the selected school.",
         duplicate: "A class with that name already exists for that academic year.", code: "That class code is already used in this year.", failed: "The class could not be saved.", associations_failed: "Class details were saved, but subjects and curriculum links were not changed. Reload and retry.",
       }} />
 
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Classes shown" value={(classes ?? []).length} icon={<GraduationCap className="h-5 w-5" />} />
+        <StatCard label="Schools represented" value={totalSchoolsWithClasses} icon={<School className="h-5 w-5" />} />
+        <StatCard label="Active enrollments" value={totalEnrolled} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Class-linked questions" value={totalQuestions} icon={<BookOpen className="h-5 w-5" />} />
+      </div>
+
       <Card className="mb-6 p-5">
         <form method="get" className="grid gap-3 sm:grid-cols-4">
           <Field label="School"><Select name="org" defaultValue={orgId}><option value="">All organizations</option>{(orgs ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</Select></Field>
           <Field label="Search"><Input name="q" defaultValue={sp.q ?? ""} placeholder="Class name or code" /></Field>
           <Field label="Status"><Select name="status" defaultValue={status}><option value="active">Active</option><option value="archived">Archived</option><option value="all">All</option></Select></Field>
-          <div className="flex items-end"><Button type="submit" variant="outline">Apply</Button></div>
+          <div className="flex items-end gap-2">
+            <Button type="submit" variant="outline">Apply</Button>
+            {(orgId || sp.q || sp.status) && (
+              <Link href="/admin/classes" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+                Reset
+              </Link>
+            )}
+          </div>
         </form>
       </Card>
 
@@ -163,41 +187,37 @@ export default async function AdminClassesPage({ searchParams }: { searchParams:
         </Card>
       )}
 
-      <Card className="p-6">
-        {(classes ?? []).length === 0 ? (
-          <EmptyState title="No classes found" body={orgId ? "Create this school's first class above. Registration and imports will enroll into it." : "Select a school to create its first class, or adjust the filters."} />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead><tr className="border-b border-evergreen-900/15 text-left text-xs uppercase text-ink-soft">{["Class", "School", "Year", "Band", "Students", "Questions", "Status", "Actions"].map((h) => <th key={h} className="px-3 py-2 font-semibold">{h}</th>)}</tr></thead>
-              <tbody>
-                {(classes ?? []).map((c) => (
-                  <tr key={c.id} className="border-b border-evergreen-900/10">
-                    <td className="px-3 py-2"><strong>{c.name}</strong>{c.code ? <span className="text-ink-soft"> · {c.code}</span> : null}</td>
-                    <td className="px-3 py-2">{orgName.get(c.organization_id) ?? "—"}</td>
-                    <td className="px-3 py-2">{c.academic_year_id ? yearName.get(c.academic_year_id) ?? "—" : "—"}</td>
-                    <td className="px-3 py-2">{bandLabel(c.level_band)}</td>
-                    <td className="px-3 py-2">{counts.get(c.id) ?? "—"} / {c.capacity}</td>
-                    <td className="px-3 py-2">{qCounts.get(c.id) ?? "—"}</td>
-                    <td className="px-3 py-2"><Badge tone={c.status === "active" ? "green" : "gray"}>{c.status}</Badge></td>
-                    <td className="px-3 py-2">
-                      <div className="flex flex-wrap gap-x-3">
-                        <a className="text-evergreen-800 underline" href={`/admin/classes?org=${c.organization_id}&edit=${c.id}`}>Edit</a>
-                        <a className="text-evergreen-800 underline" href={`/admin/questions?org=${c.organization_id}&class=${c.id}`}>Questions</a>
-                        <a className="text-evergreen-800 underline" href={`/admin/questions/generate?org=${c.organization_id}&class=${c.id}`}>Generate</a>
-                        <a className="text-evergreen-800 underline" href={`/admin/students?org=${c.organization_id}&sclass=${c.id}`}>Students</a>
-                        <a className="text-evergreen-800 underline" href={`/admin/organizations/${c.organization_id}?tab=academics`}>School hub</a>
-                        <form action={archiveClass} className="inline"><input type="hidden" name="organization_id" value={c.organization_id} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="op" value={c.status === "active" ? "archive" : "restore"} /><input type="hidden" name="back" value={backUrl} /><button className="text-evergreen-800 underline" type="submit">{c.status === "active" ? "Archive" : "Restore"}</button></form>
-                        <form action={deleteClass} className="inline"><input type="hidden" name="organization_id" value={c.organization_id} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="back" value={backUrl} /><button className="text-red-700 underline" type="submit">Delete</button></form>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </Card>
+      {(classes ?? []).length === 0 ? (
+        <EmptyState title="No classes found" body={orgId ? "Create this school's first class above. Registration and imports will enroll into it." : "Select a school to create its first class, or adjust the filters."} />
+      ) : (
+        <Table head={["Class", "School", "Year", "Band", "Students", "Questions", "Status", "Actions"]}>
+          {(classes ?? []).map((c) => (
+            <tr key={c.id}>
+              <td>
+                <strong className="text-evergreen-950">{c.name}</strong>
+                {c.code ? <span className="text-ink-soft"> · {c.code}</span> : null}
+              </td>
+              <td>{orgName.get(c.organization_id) ?? "—"}</td>
+              <td>{c.academic_year_id ? yearName.get(c.academic_year_id) ?? "—" : "—"}</td>
+              <td className="text-xs text-ink-soft">{bandLabel(c.level_band)}</td>
+              <td className="tabular-nums">{counts.get(c.id) ?? "—"} / {c.capacity}</td>
+              <td className="tabular-nums">{qCounts.get(c.id) ?? "—"}</td>
+              <td><Badge tone={c.status === "active" ? "green" : "gray"}>{c.status}</Badge></td>
+              <td>
+                <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium">
+                  <Link className="text-evergreen-800 underline" href={`/admin/classes?org=${c.organization_id}&edit=${c.id}`}>Edit</Link>
+                  <Link className="text-evergreen-800 underline" href={`/admin/questions?org=${c.organization_id}&class=${c.id}`}>Questions</Link>
+                  <Link className="text-evergreen-800 underline" href={`/admin/questions/generate?org=${c.organization_id}&class=${c.id}`}>Generate</Link>
+                  <Link className="text-evergreen-800 underline" href={`/admin/students?org=${c.organization_id}&sclass=${c.id}`}>Students</Link>
+                  <Link className="text-evergreen-800 underline" href={`/admin/organizations/${c.organization_id}?tab=academics`}>School hub</Link>
+                  <form action={archiveClass} className="inline"><input type="hidden" name="organization_id" value={c.organization_id} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="op" value={c.status === "active" ? "archive" : "restore"} /><input type="hidden" name="back" value={backUrl} /><button className="text-evergreen-800 underline" type="submit">{c.status === "active" ? "Archive" : "Restore"}</button></form>
+                  <form action={deleteClass} className="inline"><input type="hidden" name="organization_id" value={c.organization_id} /><input type="hidden" name="id" value={c.id} /><input type="hidden" name="back" value={backUrl} /><button className="text-red-700 underline" type="submit">Delete</button></form>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </>
   );
 }

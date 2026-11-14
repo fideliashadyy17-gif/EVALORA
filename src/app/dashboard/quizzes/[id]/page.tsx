@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -43,7 +43,12 @@ export default async function EditQuizPage({
 
   return (
     <>
-      <PageTitle title="Edit quiz" subtitle={quiz.title} />
+      <PageTitle
+        eyebrow="Assessment Authoring · Quiz Editor"
+        title="Edit quiz"
+        subtitle={quiz.title}
+        action={<ButtonLink href="/dashboard/quizzes" variant="outline">All quizzes</ButtonLink>}
+      />
       {sp.e === "noquestions" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Add at least one question before starting a live session.

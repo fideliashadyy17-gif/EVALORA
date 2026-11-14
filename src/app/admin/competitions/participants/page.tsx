@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -15,10 +16,12 @@ export const dynamic = "force-dynamic";
 export default async function CompetitionParticipantsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; comp?: string; org?: string; status?: string; source?: string }>;
+  searchParams: Promise<{ q?: string; comp?: string; org?: string; status?: string; source?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -39,6 +42,7 @@ export default async function CompetitionParticipantsPage({
   ]);
 
   const rows = regs ?? [];
+  const pagedRows = rows.slice((page - 1) * pageSize, page * pageSize);
   const csv = toCsv([
     ["Participant", "Reference", "Competition", "Organization", "Class", "Access code", "Source", "Registration status", "Live score", "Registered"],
     ...rows.map((r) => [
@@ -56,6 +60,7 @@ export default async function CompetitionParticipantsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Live Competitions · Participant Roster"
         title="Competition participants"
         subtitle="Every persisted registration across competitions, including school/class eligibility, the access code used, registration source and live-session linkage."
         action={
@@ -97,13 +102,19 @@ export default async function CompetitionParticipantsPage({
           <option value="self">Self-registration</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.comp || sp.org || sp.status || sp.source) && (
+          <Link href="/admin/competitions/participants" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {rows.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No competition registrations match.</p>
       ) : (
-        <Table head={["Participant", "Competition", "School / class", "Access", "Source", "Live session", "Status", "Actions"]}>
-          {rows.map((r) => {
+        <>
+          <Table head={["Participant", "Competition", "School / class", "Access", "Source", "Live session", "Status", "Actions"]}>
+            {pagedRows.map((r) => {
             const comp = r.competitions as unknown as { id: string; title: string; status: string } | null;
             const code = r.competition_access_codes as unknown as { code: string; label: string | null } | null;
             const live = r.session_participants as unknown as { score: number; status: string } | null;
@@ -132,7 +143,16 @@ export default async function CompetitionParticipantsPage({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={rows.length}
+            pathname="/admin/competitions/participants"
+            query={{ q: sp.q, comp: sp.comp, org: sp.org, status: sp.status, source: sp.source }}
+            label="participants"
+          />
+        </>
       )}
     </>
   );

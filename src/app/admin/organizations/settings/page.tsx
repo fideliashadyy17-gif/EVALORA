@@ -32,6 +32,7 @@ export default async function OrganizationSettingsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Organizations & Tenants · Configuration Matrix"
         title="Organization settings"
         subtitle="A platform-wide directory of each organization's ownership, operating scale and configuration entry points. Detailed settings remain safely scoped inside each organization."
         action={<ButtonLink href="/admin/organizations/new" variant="gold">+ Create organization</ButtonLink>}
@@ -50,6 +51,11 @@ export default async function OrganizationSettingsPage({
           <option value="archived">Archived</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.type || sp.status) && (
+          <Link href="/admin/organizations/settings" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {(orgs ?? []).length === 0 ? (

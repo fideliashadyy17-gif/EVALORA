@@ -35,7 +35,11 @@ export default async function DemoAdminPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageTitle title="DEMO School & Source Migration" subtitle="The permanent protected demonstration organization, plus the external question-migration ledger." />
+      <PageTitle
+        eyebrow="Platform Administration · Protected Sandbox & Migration"
+        title="DEMO School & Source Migration"
+        subtitle="The permanent protected demonstration organization, plus the external question-migration ledger."
+      />
       <Flash />
       <Notice ok={sp.ok} e={sp.e} messages={{
         reset: "DEMO sample activity reset: fresh lobby ready, labelled sample results rebuilt.", login: "One-time DEMO password generated — see the message above.",

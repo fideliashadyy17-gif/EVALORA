@@ -3,7 +3,6 @@
 // The specifications are compiled with strict TypeScript and the real React
 // components are rendered with React Test Renderer (no browser): every chart
 // type must produce an SVG from data, and an empty workspace must not crash.
-import assert from "node:assert/strict";
 import { execSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { createRequire, Module } from "node:module";

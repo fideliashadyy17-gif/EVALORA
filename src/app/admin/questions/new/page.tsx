@@ -57,8 +57,10 @@ export default async function AdminNewQuestionPage({
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Mathematical Question Studio"
         title="Create question"
         subtitle="Author once in the professional mathematical editor, then reuse the same question in quizzes, live competitions and examinations."
+        action={<ButtonLink href="/admin/questions" variant="outline">← Question Bank</ButtonLink>}
       />
 
       <form method="get" className="mb-6 flex max-w-2xl flex-wrap items-end gap-3">

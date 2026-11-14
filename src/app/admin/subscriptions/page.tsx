@@ -1,7 +1,9 @@
-import { Button, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Button, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
+import { Award, CheckCircle2, Clock, Sliders } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminCancelSubscription } from "../actions";
@@ -14,10 +16,12 @@ export const dynamic = "force-dynamic";
 export default async function AdminSubscriptions({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; source?: string; ok?: string; e?: string; saved?: string }>;
+  searchParams: Promise<{ status?: string; source?: string; q?: string; page?: string; ok?: string; e?: string; saved?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -33,9 +37,23 @@ export default async function AdminSubscriptions({
     admin.from("plans").select("id, name").eq("is_active", true).order("sort"),
   ]);
 
+  const q = (sp.q ?? "").trim().toLowerCase();
+  const filteredSubs = (subs ?? []).filter((s) => {
+    if (!q) return true;
+    const orgName = ((s.organizations as unknown as { name?: string } | null)?.name ?? "").toLowerCase();
+    const planName = ((s.plans as unknown as { name?: string } | null)?.name ?? "").toLowerCase();
+    return orgName.includes(q) || planName.includes(q);
+  });
+  const pagedSubs = filteredSubs.slice((page - 1) * pageSize, page * pageSize);
+  const activeCount = filteredSubs.filter((s) => s.status === "active").length;
+  const trialingCount = filteredSubs.filter((s) => s.status === "trialing").length;
+  const grantCount = filteredSubs.filter((s) => ["admin_grant", "complimentary"].includes(String(s.source))).length;
+  const customCount = filteredSubs.filter((s) => Boolean(s.limits_override)).length;
+
   return (
     <>
       <PageTitle
+        eyebrow="Commerce & Entitlements · Subscriptions"
         title="Subscriptions"
         subtitle="Assign plans, grant complimentary Premium and override limits — without any customer checkout. Grants are labelled as grants, never as payments."
       />
@@ -57,6 +75,13 @@ export default async function AdminSubscriptions({
         }}
       />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Active subscriptions" value={activeCount} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Active trials" value={trialingCount} icon={<Clock className="h-5 w-5" />} />
+        <StatCard label="Complimentary & grants" value={grantCount} icon={<Award className="h-5 w-5" />} />
+        <StatCard label="Custom limit overrides" value={customCount} icon={<Sliders className="h-5 w-5" />} />
+      </div>
 
       <Card className="mb-8 p-6" >
         <h2 id="assign" className="font-display text-lg font-semibold text-evergreen-950">Assign a subscription</h2>
@@ -98,7 +123,10 @@ export default async function AdminSubscriptions({
         </form>
       </Card>
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
+      <form method="get" className="mb-4 flex flex-wrap items-end gap-2">
+        <div className="min-w-[200px] flex-1">
+          <Input name="q" defaultValue={sp.q ?? ""} placeholder="Search organization or plan…" aria-label="Search subscriptions" />
+        </div>
         <Select name="status" defaultValue={sp.status ?? ""} className="w-48" aria-label="Filter by status">
           <option value="">All statuses</option>
           {["trialing", "active", "past_due", "suspended", "expired", "cancelled"].map((s) => (
@@ -113,14 +141,20 @@ export default async function AdminSubscriptions({
           <option value="trial">Trials</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
-        <span className="ml-auto self-center text-sm text-ink-soft">{subs?.length ?? 0} shown</span>
+        {(sp.q || sp.status || sp.source) && (
+          <Link href="/admin/subscriptions" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
+        <span className="ml-auto self-center text-sm text-ink-soft">{filteredSubs.length} matching</span>
       </form>
 
-      {(subs ?? []).length === 0 ? (
+      {filteredSubs.length === 0 ? (
         <p className="text-sm text-ink-soft">No subscriptions match. Assign one above — it takes effect immediately.</p>
       ) : (
-        <Table head={["Organization", "Plan", "Status", "Source", "Period", "Controls"]}>
-          {(subs ?? []).map((s) => {
+        <>
+          <Table head={["Organization", "Plan", "Status", "Source", "Period", "Controls"]}>
+            {pagedSubs.map((s) => {
             const org = s.organizations as unknown as { id: string; name: string } | null;
             return (
               <tr key={s.id}>
@@ -188,7 +222,16 @@ export default async function AdminSubscriptions({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filteredSubs.length}
+            pathname="/admin/subscriptions"
+            query={{ q: sp.q, status: sp.status, source: sp.source }}
+            label="subscriptions"
+          />
+        </>
       )}
     </>
   );

@@ -78,6 +78,7 @@ export default async function RubricDetailPage({
   return (
     <>
       <PageTitle
+        eyebrow="Marking & Moderation · Rubric Designer"
         title={rubric.title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
@@ -115,15 +116,15 @@ export default async function RubricDetailPage({
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
           <div className="space-y-6">
-            <Card>
-              <h2 className="text-lg font-semibold text-evergreen-900">Criteria</h2>
-              <p className="mt-1 text-sm text-slate-600">
+            <Card className="p-6">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Criteria</h2>
+              <p className="mt-1 text-sm text-ink-soft">
                 The rubric total is the sum of these maxima — bands can never add up to something different from the mark
                 they produce.
               </p>
 
               {bands.length === 0 ? (
-                <p className="mt-4 rounded-lg border border-dashed border-evergreen-900/30 px-4 py-6 text-sm text-slate-500">
+                <p className="mt-4 rounded-lg border border-dashed border-evergreen-900/30 px-4 py-6 text-sm text-ink-soft">
                   No criteria yet. Add the first band below.
                 </p>
               ) : (
@@ -134,7 +135,7 @@ export default async function RubricDetailPage({
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="rubric_id" value={rubric.id} />
                         <div className="flex flex-wrap items-start gap-3">
-                          <span className="mt-2 w-6 shrink-0 text-sm font-semibold text-slate-400">{index + 1}</span>
+                          <span className="mt-2 w-6 shrink-0 text-sm font-semibold text-ink-soft">{index + 1}</span>
                           <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-[5rem_1fr_7rem]">
                             <Field label="Code">
                               <Input name="code" defaultValue={c.code ?? ""} maxLength={12} placeholder="A1" />
@@ -189,20 +190,20 @@ export default async function RubricDetailPage({
               </form>
             </Card>
 
-            <Card>
-              <h2 className="text-lg font-semibold text-evergreen-900">Attached examinations</h2>
-              <p className="mt-1 text-sm text-slate-600">
+            <Card className="p-6">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Attached examinations</h2>
+              <p className="mt-1 text-sm text-ink-soft">
                 An examination-wide rubric applies to every open-ended answer unless a question has its own rubrics.
               </p>
               {(links ?? []).length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">Not attached to any examination yet.</p>
+                <p className="mt-3 text-sm text-ink-soft">Not attached to any examination yet.</p>
               ) : (
                 <ul className="mt-3 space-y-2">
                   {((links ?? []) as unknown as LinkRow[]).map((link) => (
                     <li key={link.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-evergreen-900/15 bg-white px-3 py-2">
                       <div className="min-w-0 text-sm">
-                        <span className="font-medium text-evergreen-900">{link.exams?.title ?? "Examination"}</span>
-                        <span className="ml-2 text-xs text-slate-500">
+                        <span className="font-medium text-evergreen-950">{link.exams?.title ?? "Examination"}</span>
+                        <span className="ml-2 text-xs text-ink-soft">
                           {link.question_id ? `question only: ${link.questions?.prompt?.slice(0, 70) ?? "question"}` : "examination-wide"}
                         </span>
                       </div>
@@ -235,8 +236,8 @@ export default async function RubricDetailPage({
             </Card>
           </div>
 
-          <Card>
-            <h2 className="text-lg font-semibold text-evergreen-900">Rubric details</h2>
+          <Card className="h-fit p-6">
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">Rubric details</h2>
             <form action={updateRubric} className="mt-3 space-y-3">
               <input type="hidden" name="id" value={rubric.id} />
               <Field label="Title">
@@ -259,16 +260,16 @@ export default async function RubricDetailPage({
             </form>
             <dl className="mt-5 space-y-2 border-t border-evergreen-900/10 pt-4 text-sm">
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-600">Derived total</dt>
-                <dd className="font-semibold text-evergreen-900">{derived}</dd>
+                <dt className="text-ink-soft">Derived total</dt>
+                <dd className="font-semibold text-evergreen-950">{derived}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-600">Criteria</dt>
-                <dd className="font-semibold text-evergreen-900">{bands.length}</dd>
+                <dt className="text-ink-soft">Criteria</dt>
+                <dd className="font-semibold text-evergreen-950">{bands.length}</dd>
               </div>
               <div className="flex justify-between gap-3">
-                <dt className="text-slate-600">Created</dt>
-                <dd className="text-slate-700">{fmtDateTime(rubric.created_at)}</dd>
+                <dt className="text-ink-soft">Created</dt>
+                <dd className="text-ink">{fmtDateTime(rubric.created_at)}</dd>
               </div>
             </dl>
           </Card>

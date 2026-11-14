@@ -51,6 +51,7 @@ export default async function InstitutionPlatformPage() {
   return (
     <>
       <PageTitle
+        eyebrow="Workspace Administration · Official Tenant Address"
         title="My institution's platform"
         subtitle={`The official address of ${org.name} on EVALORA — share it with students, teachers and parents.`}
         action={<ButtonLink href="/dashboard/settings" variant="outline">Organization settings</ButtonLink>}

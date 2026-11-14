@@ -94,9 +94,16 @@ export default async function CompetitionDetailPage({
 
   return (
     <>
-      <p className="mb-3 text-sm">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm">
         <Link href="/admin/competitions" className="font-medium text-evergreen-700 underline-offset-2 hover:underline">← All competitions</Link>
-      </p>
+        <div className="flex flex-wrap items-center gap-3 text-xs font-medium text-evergreen-800">
+          <Link href={`/admin/competitions/questions?comp=${id}`} className="underline-offset-2 hover:underline">Question preview</Link>
+          <span>·</span>
+          <Link href="/admin/competitions/live" className="underline-offset-2 hover:underline">Live operations room</Link>
+          <span>·</span>
+          <Link href={`/admin/competitions/results?comp=${id}`} className="underline-offset-2 hover:underline">Rankings center →</Link>
+        </div>
+      </div>
 
       <Card className="p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">

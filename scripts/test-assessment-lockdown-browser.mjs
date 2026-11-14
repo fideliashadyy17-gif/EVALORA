@@ -179,6 +179,7 @@ await context.route("**/api/**", async (route) => {
     return route.fulfill({ status: 200, json: { server_now: new Date().toISOString(), messages: [], unread_from_teacher: 0 } });
   }
   if (path === "/api/exam/presence") return route.fulfill({ status: 200, json: { ok: true } });
+  if (path === "/api/exam/retake") return route.fulfill({ status: 200, json: { requests: [], usable_grant: null } });
   if (path === "/api/live/state") return route.fulfill({ status: 200, json: liveQuizState() });
   if (path === "/api/live/answer") return route.fulfill({ status: 200, json: { ok: true } });
   if (path === "/api/live/screen") return route.fulfill({ status: 200, json: publicScreenState() });
@@ -276,10 +277,9 @@ try {
   ok((await pressCancelled("Shift+Insert", "Insert")) === true, "Shift+Insert is cancelled");
   ok((await pressCancelled("Control+Shift+V", "v")) === true, "Ctrl+Shift+V (paste as plain text) is cancelled");
   ok((await answerBox().inputValue()) === "mine", "pasted text never reaches the answer");
-  const pasteInput = await page.evaluate(() => {
-    const field = document.querySelector("input[placeholder='Type your answer…']");
-    return field.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", bubbles: true, cancelable: true }));
-  });
+  const pasteInput = await answerBox().evaluate((field) =>
+    field.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", bubbles: true, cancelable: true })),
+  );
   ok(pasteInput === false, "a paste through the Edit menu or drop path (beforeinput) is cancelled too");
   ok((await copyCountCheck()) === true, "Ctrl+Insert is cancelled");
 

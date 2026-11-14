@@ -33,14 +33,14 @@ export default async function ContactPage({
     >
       <Card className="p-7">
         {sp.sent ? (
-          <div className="rounded-xl bg-evergreen-50 p-5 text-evergreen-900">
+          <div role="status" className="rounded-xl bg-evergreen-50 p-5 text-evergreen-900">
             <p className="font-semibold">Message received.</p>
             <p className="mt-1 text-sm">Our team will reply to your email address. Thank you for reaching out.</p>
           </div>
         ) : (
           <form action={sendMessage} className="grid gap-4 sm:grid-cols-2">
             {sp.error && (
-              <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 sm:col-span-2">
+              <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800 sm:col-span-2">
                 Please provide a valid email, a subject and a message.
               </p>
             )}

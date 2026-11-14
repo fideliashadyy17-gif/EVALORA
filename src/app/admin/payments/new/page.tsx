@@ -27,9 +27,15 @@ export default async function NewPaymentPage({
   return (
     <>
       <PageTitle
+        eyebrow="Commerce & Entitlements · Manual Intake"
         title="Add a payment"
         subtitle="Record money received outside the portal — bank transfer, mobile money, cash or deposit. Approving a plan payment activates the subscription."
-        action={<ButtonLink href="/admin/payments" variant="outline">← All payments</ButtonLink>}
+        action={
+          <>
+            <ButtonLink href="/admin/settings" variant="outline">Configure payment methods</ButtonLink>
+            <ButtonLink href="/admin/payments" variant="outline">← All payments</ButtonLink>
+          </>
+        }
       />
       <Notice
         e={sp.e}

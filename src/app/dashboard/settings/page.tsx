@@ -1,4 +1,4 @@
-import { Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { ssoProviderStatus } from "@/lib/sso";
@@ -60,7 +60,12 @@ export default async function SettingsPage({
 
   return (
     <>
-      <PageTitle title="Settings" subtitle="Your profile and your organization's configuration." />
+      <PageTitle
+        eyebrow="Workspace Administration · Profile, Identity & SSO"
+        title="Settings"
+        subtitle="Your profile and your organization's configuration."
+        action={isManager ? <ButtonLink href="/dashboard/settings/proctoring" variant="outline">Proctoring retention →</ButtonLink> : undefined}
+      />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Saved.</p>}
       {sp.e === "password" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Password must be at least 8 characters.</p>}
 

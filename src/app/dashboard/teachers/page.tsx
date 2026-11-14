@@ -1,9 +1,10 @@
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { isStaffRole } from "@/lib/navAccess";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
+import { BookOpen, CheckCircle2, GraduationCap, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -90,6 +91,7 @@ export default async function TeachersPage({
   return (
     <>
       <PageTitle
+        eyebrow="People & Academics · Teaching Faculty"
         title="Teachers"
         subtitle={`${teacherTotal ?? 0} matching teaching accounts · ${active} active in this institution · ${classes?.length ?? 0} classes`}
         action={
@@ -100,6 +102,13 @@ export default async function TeachersPage({
           ) : null
         }
       />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Teaching accounts" value={teacherTotal ?? 0} icon={<GraduationCap className="h-5 w-5" />} />
+        <StatCard label="Active teachers" value={active} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Total classes" value={classes?.length ?? 0} icon={<BookOpen className="h-5 w-5" />} />
+        <StatCard label="Unassigned classes" value={unassignedClasses} icon={<TriangleAlert className="h-5 w-5" />} />
+      </div>
 
       {sp.ok === "account_created" && (
         <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
@@ -150,33 +159,23 @@ export default async function TeachersPage({
               No teacher accounts yet. {isManager ? "Add the first teacher with the form on the right." : "An owner or administrator can add teachers."}
             </p>
           ) : (
-            <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[680px] text-sm">
-              <thead>
-                <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
-                  <th className="py-2 pr-3 font-medium">Teacher</th>
-                  <th className="py-2 pr-3 font-medium">Status</th>
-                  <th className="py-2 pr-3 font-medium">Classes</th>
-                  <th className="py-2 pr-3 font-medium">Examinations</th>
-                  <th className="py-2 pr-3 font-medium">Added</th>
-                </tr>
-              </thead>
-              <tbody>
+            <div className="mt-4">
+              <DataTable head={["Teacher", "Status", "Classes", "Examinations", "Added"]} label="Teaching staff">
                 {(members ?? []).map((member) => {
                   const profile = profileById.get(member.user_id);
                   const teacherClasses = classesByTeacher.get(member.user_id) ?? [];
                   const teacherExams = examsByTeacher.get(member.user_id) ?? { total: 0, published: 0 };
                   const suspended = member.status === "suspended" || member.status === "inactive";
                   return (
-                    <tr key={member.id} className="border-b border-evergreen-900/5 align-top">
-                      <td className="py-3 pr-3">
+                    <tr key={member.id} className="align-top">
+                      <td>
                         <p className="font-medium text-evergreen-950">{profile?.full_name ?? "Unnamed teacher"}</p>
                         <p className="text-xs text-ink-soft">{profile?.email ?? "no email on file"}</p>
                       </td>
-                      <td className="py-3 pr-3">
+                      <td>
                         <Badge tone={suspended ? "red" : "gold"}>{suspended ? "suspended" : "active"}</Badge>
                       </td>
-                      <td className="py-3 pr-3 text-ink-soft">
+                      <td className="text-ink-soft">
                         {teacherClasses.length === 0 ? (
                           <span className="text-xs">none assigned</span>
                         ) : (
@@ -186,16 +185,15 @@ export default async function TeachersPage({
                           </>
                         )}
                       </td>
-                      <td className="py-3 pr-3 text-ink-soft">
+                      <td className="text-ink-soft">
                         <span className="font-medium text-evergreen-900">{teacherExams.total}</span>
                         {teacherExams.total > 0 && <span className="block text-xs">{teacherExams.published} published</span>}
                       </td>
-                      <td className="py-3 pr-3 text-xs text-ink-soft">{fmtDate(member.created_at)}</td>
+                      <td className="text-xs text-ink-soft">{fmtDate(member.created_at)}</td>
                     </tr>
                   );
                 })}
-              </tbody>
-            </table>
+              </DataTable>
             </div>
           )}
           <PageNavigation page={page} pageSize={pageSize} total={teacherTotal ?? 0} pathname="/dashboard/teachers" query={{ status: sp.status }} label="teachers" />

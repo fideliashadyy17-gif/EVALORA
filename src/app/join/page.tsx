@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input } from "@/components/ui";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 
@@ -37,21 +38,43 @@ function JoinForm() {
 
 export default function JoinPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 py-10">
-      <Logo className="mb-6" />
-      <Card className="w-full max-w-md p-7 sm:p-8">
-        <h1 className="font-display text-2xl font-semibold text-evergreen-950">Join a live quiz</h1>
-        <p className="mt-1 text-sm text-ink-soft">No account needed — just your session code and a display name.</p>
-        <div className="mt-6">
-          <Suspense>
-            <JoinForm />
-          </Suspense>
+    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-xl">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <Logo />
+          <span className="exam-entry-secure">Live participant entry</span>
         </div>
-      </Card>
-      <p className="mt-6 max-w-md text-center text-sm text-ink-soft">
-        Sitting a formal examination instead?{" "}
-        <a href="/exam-access" className="font-semibold text-evergreen-700 underline underline-offset-2">Enter your examination here</a>.
-      </p>
-    </div>
+        <Card className="exam-entry-card overflow-hidden">
+          <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
+            <p className="exam-entry-kicker">Live activity check-in</p>
+            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">Join a live quiz</h1>
+            <p className="mt-2 max-w-lg text-sm leading-6 text-emerald-50/80">
+              No account needed — enter your organizer&apos;s session code, pick an avatar and display name, and answer on your device.
+            </p>
+          </div>
+          <div className="p-6 sm:p-9">
+            <div className="exam-entry-assurance mb-5 grid gap-3 sm:grid-cols-3">
+              <div><span>01</span><p>No account required</p></div>
+              <div><span>02</span><p>Server-timed rounds</p></div>
+              <div><span>03</span><p>Reconnect anytime</p></div>
+            </div>
+            <Suspense>
+              <JoinForm />
+            </Suspense>
+            <p className="mt-5 border-t border-evergreen-900/10 pt-4 text-xs text-ink-soft">
+              Sitting a formal examination instead?{" "}
+              <Link href="/exam-access" className="font-semibold text-evergreen-800 underline underline-offset-2">
+                Enter candidate codes
+              </Link>{" "}
+              or{" "}
+              <Link href="/exam" className="font-semibold text-evergreen-800 underline underline-offset-2">
+                open an invitation link
+              </Link>
+              .
+            </p>
+          </div>
+        </Card>
+      </div>
+    </main>
   );
 }

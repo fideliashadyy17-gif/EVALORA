@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -13,10 +14,12 @@ export const dynamic = "force-dynamic";
 export default async function OrganizationAdministratorsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; org?: string; role?: string; status?: string }>;
+  searchParams: Promise<{ q?: string; org?: string; role?: string; status?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -44,10 +47,12 @@ export default async function OrganizationAdministratorsPage({
 
   const owners = filtered.filter((m) => m.role === "owner").length;
   const admins = filtered.filter((m) => m.role === "admin").length;
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <>
       <PageTitle
+        eyebrow="Organizations & Tenants · Leadership Governance"
         title="Organization administrators"
         subtitle="Every organization owner and administrator across EVALORA. Open a user to change memberships, or an organization to manage its leadership."
         action={<ButtonLink href="/admin/users/new" variant="gold">+ Create user</ButtonLink>}
@@ -78,13 +83,19 @@ export default async function OrganizationAdministratorsPage({
           <option value="suspended">Suspended</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.org || sp.role || sp.status) && (
+          <Link href="/admin/organizations/admins" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No organization administrators match.</p>
       ) : (
-        <Table head={["Administrator", "Organization", "Role", "Membership", "Account", "Joined", "Actions"]}>
-          {filtered.map((m) => {
+        <>
+          <Table head={["Administrator", "Organization", "Role", "Membership", "Account", "Joined", "Actions"]}>
+            {paged.map((m) => {
             const p = m.profiles as unknown as { id: string; email: string; full_name: string | null; status: string; platform_role: string; is_primary?: boolean } | null;
             const o = m.organizations as unknown as { id: string; name: string; type: string } | null;
             return (
@@ -113,7 +124,16 @@ export default async function OrganizationAdministratorsPage({
               </tr>
             );
           })}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            pathname="/admin/organizations/admins"
+            query={{ q: sp.q, org: sp.org, role: sp.role, status: sp.status }}
+            label="administrators"
+          />
+        </>
       )}
     </>
   );

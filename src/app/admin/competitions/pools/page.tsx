@@ -136,6 +136,7 @@ export default async function QuestionPoolsPage({
     <>
       <Flash />
       <PageTitle
+        eyebrow="Live Competitions · Parameterized Pool Assembly"
         title="Generic question-pool assembly"
         subtitle="Filter approved questions by organization, parent event, phase, class, subject, curriculum, topic, difficulty and type; review, select, generate, replace, shuffle and preview before publishing."
         action={<ButtonLink href={`/admin/questions/new?org=${orgId}&class=${classId}`} variant="gold">+ Generate question</ButtonLink>}

@@ -1,9 +1,11 @@
-import { Badge, Button, ButtonLink, PageTitle, Select } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, PageTitle, Select, StatCard } from "@/components/ui";
 import { RichContent } from "@/components/RichContent";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { docIsEmpty } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
+import { AlertTriangle, BookOpen, CheckCircle2, FileWarning } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Table } from "../../ui";
@@ -53,10 +55,12 @@ function answerReadiness(q: Record<string, unknown>, options: OptionRow[]) {
 export default async function AnswersSolutionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; issue?: string; status?: string }>;
+  searchParams: Promise<{ org?: string; issue?: string; status?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -88,13 +92,26 @@ export default async function AnswersSolutionsPage({
     return true;
   });
 
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const missingKeyCount = rows.filter((r) => !r.answer.ok).length;
+  const missingSolCount = rows.filter((r) => !r.hasExplanation).length;
+  const readyCount = rows.filter((r) => r.answer.ok && r.hasExplanation).length;
+
   return (
     <>
       <PageTitle
+        eyebrow="Assessment Authoring · Answer Key & Solution Audit"
         title="Answers and solutions"
         subtitle="Audit answer keys, accepted alternatives, marking criteria and worked solutions before questions are used in quizzes, competitions or examinations."
         action={<ButtonLink href="/admin/questions/new" variant="gold">+ Create question</ButtonLink>}
       />
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Questions audited" value={rows.length} icon={<BookOpen className="h-5 w-5" />} />
+        <StatCard label="Answer + solution ready" value={readyCount} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Answer key issues" value={missingKeyCount} icon={<AlertTriangle className="h-5 w-5" />} />
+        <StatCard label="Missing worked solution" value={missingSolCount} icon={<FileWarning className="h-5 w-5" />} />
+      </div>
 
       <form method="get" className="mb-6 flex flex-wrap items-end gap-3">
         <Select name="org" defaultValue={sp.org ?? ""} className="min-w-[240px]" aria-label="Organization">
@@ -116,6 +133,11 @@ export default async function AnswersSolutionsPage({
           <option value="ready">Answer + solution ready</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.org || sp.status || sp.issue) && (
+          <Link href="/admin/questions/solutions" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (
@@ -123,8 +145,9 @@ export default async function AnswersSolutionsPage({
           No questions match this readiness filter.
         </p>
       ) : (
-        <Table head={["Question", "Organization / category", "Answer key", "Worked solution", "Marks", "Action"]}>
-          {filtered.map(({ q, answer, hasExplanation }) => (
+        <>
+          <Table head={["Question", "Organization / category", "Answer key", "Worked solution", "Marks", "Action"]}>
+            {paged.map(({ q, answer, hasExplanation }) => (
             <tr key={q.id}>
               <td className="max-w-sm">
                 <div className="line-clamp-3 font-medium">
@@ -148,7 +171,16 @@ export default async function AnswersSolutionsPage({
               </td>
             </tr>
           ))}
-        </Table>
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            pathname="/admin/questions/solutions"
+            query={{ org: sp.org, status: sp.status, issue: sp.issue }}
+            label="questions"
+          />
+        </>
       )}
     </>
   );

@@ -128,6 +128,7 @@ export default async function ExaminationMonitoringPage({
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Live Supervision & Pause Control"
         title="Examination monitoring"
         subtitle="Live candidate progress, server deadlines, saved-answer volume and human-reviewed proctoring incidents. Incidents are observations for review, never automatic proof of misconduct."
       />
@@ -160,6 +161,9 @@ export default async function ExaminationMonitoringPage({
           <option value="invalid">Invalid</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.exam || sp.severity || sp.incident) && (
+          <Link href="/admin/examinations/monitoring" className="pb-2 font-medium text-evergreen-700 underline-offset-2 hover:underline">Reset</Link>
+        )}
         <Link href={back} className="pb-2 font-medium text-evergreen-700 underline-offset-2 hover:underline">↻ Refresh</Link>
       </form>
 

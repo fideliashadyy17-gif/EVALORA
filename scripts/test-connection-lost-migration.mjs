@@ -158,7 +158,7 @@ try {
     assert.ok(rowF.paused_at.getTime() <= Date.now() + 1500, "a future anchor collapses to now (no negative windows)");
     await rpc("exam_attempt_set_pause($1::uuid, $2, $3, $4::timestamptz)", [A, "connection", false, null]);
 
-    const ancient = await rpc("exam_attempt_set_pause($1::uuid, $2, $3, $4::timestamptz)", [A, "connection", true, "2020-01-01T00:00:00Z"]);
+    await rpc("exam_attempt_set_pause($1::uuid, $2, $3, $4::timestamptz)", [A, "connection", true, "2020-01-01T00:00:00Z"]);
     const rowA = await one("select paused_at, started_at from public.exam_attempts where id=$1", [A]);
     assert.equal(rowA.paused_at.getTime(), rowA.started_at.getTime(), "an anchor before the start collapses to started_at (no invented time)");
     await rpc("exam_attempt_set_pause($1::uuid, $2, $3, $4::timestamptz)", [A, "connection", false, null]);

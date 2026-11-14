@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input } from "@/components/ui";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -33,7 +34,7 @@ export default function ExamAccessPage() {
   }
 
   return (
-    <div className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto w-full max-w-xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Logo />
@@ -54,7 +55,11 @@ export default function ExamAccessPage() {
               <div><span>03</span><p>Resume after reconnect</p></div>
             </div>
             <p className="mb-5 text-sm leading-6 text-ink-soft">
-              Received a shareable examination link? Open that link instead; it may use a different candidate check-in process.
+              Received a shareable examination link or single invitation code?{" "}
+              <Link href="/exam" className="font-semibold text-evergreen-800 underline underline-offset-2">
+                Open invitation entry
+              </Link>{" "}
+              instead.
             </p>
             <form onSubmit={submit} className="space-y-4">
               {error && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
@@ -84,6 +89,6 @@ export default function ExamAccessPage() {
         </Card>
         <p className="mt-5 text-center text-xs text-ink-soft">Your attempt is verified and timed by EVALORA&apos;s secure examination service.</p>
       </div>
-    </div>
+    </main>
   );
 }

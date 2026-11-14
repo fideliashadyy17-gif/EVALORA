@@ -1,8 +1,9 @@
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
 import { loadRubrics } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
+import { CheckCircle2, ClipboardList, ListChecks } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createRubric } from "./actions";
@@ -38,8 +39,10 @@ export default async function RubricsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Marking & Moderation · Criterion Rubrics"
         title="Grading rubrics"
         subtitle="Mark open-ended answers criterion by criterion. Totals are derived from the criteria, so a rubric can never drift out of step with its own bands."
+        action={<ButtonLink href="/dashboard/exams" variant="outline">Examinations</ButtonLink>}
       />
       {sp.ok && (
         <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
@@ -53,6 +56,12 @@ export default async function RubricsPage({
             : "The request could not be completed. Check your workspace and permissions."}
         </p>
       )}
+
+      <div className="mb-6 grid gap-4 sm:grid-cols-3">
+        <StatCard label="Total rubrics" value={rubrics.length} icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Published rubrics" value={rubrics.filter((r) => r.status === "published").length} icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Criteria bands" value={(criteria ?? []).length} icon={<ListChecks className="h-5 w-5" />} />
+      </div>
 
       {!canMark ? (
         <EmptyState
@@ -70,19 +79,19 @@ export default async function RubricsPage({
             ) : (
               <div className="space-y-3">
                 {rubrics.map((rubric) => (
-                  <Card key={rubric.id} className="flex flex-wrap items-center justify-between gap-3">
+                  <Card key={rubric.id} className="flex flex-wrap items-center justify-between gap-3 p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <Link href={`/dashboard/rubrics/${rubric.id}`} className="font-semibold text-evergreen-900 underline-offset-4 hover:underline">
+                        <Link href={`/dashboard/rubrics/${rubric.id}`} className="font-semibold text-evergreen-950 underline-offset-4 hover:underline">
                           {rubric.title}
                         </Link>
                         <Badge tone={STATUS_TONE[rubric.status] ?? "gray"}>{rubric.status}</Badge>
                       </div>
-                      <p className="mt-1 text-sm text-slate-600">
+                      <p className="mt-1 text-sm text-ink-soft">
                         {Number(rubric.total_marks)} marks across {counts.get(rubric.id) ?? 0} criteria
                         {rubric.framework ? ` · ${rubric.framework}` : ""}
                       </p>
-                      <p className="text-xs text-slate-400">Updated {fmtDateTime(rubric.updated_at)}</p>
+                      <p className="text-xs text-ink-soft">Updated {fmtDateTime(rubric.updated_at)}</p>
                     </div>
                     <ButtonLink href={`/dashboard/rubrics/${rubric.id}`} variant="outline">
                       Open
@@ -93,8 +102,8 @@ export default async function RubricsPage({
             )}
           </div>
 
-          <Card>
-            <h2 className="text-lg font-semibold text-evergreen-900">New rubric</h2>
+          <Card className="h-fit p-6">
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">New rubric</h2>
             <form action={createRubric} className="mt-3 space-y-3">
               <Field label="Title">
                 <Input name="title" required maxLength={200} placeholder="Essay — argument and evidence" />

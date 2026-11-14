@@ -27,7 +27,6 @@ const MIGRATIONS = [
   "0068_grade1_options.sql",
 ];
 
-const ORG = "0a400000-0000-4000-8000-000000000001";
 const SUBJECTS = ["mathematics", "science", "language-arts", "social-science"];
 const OBJECTIVE = ["single_choice", "true_false", "short_answer"];
 

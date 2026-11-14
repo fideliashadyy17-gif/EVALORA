@@ -1,8 +1,9 @@
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Card, EmptyState, PageTitle } from "@/components/ui";
+import { Badge, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
+import { FileCheck2, Radio } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -28,9 +29,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageTitle
+        eyebrow="Analytics & Evidence · Institutional Reports"
         title="Reports & Analytics"
         subtitle="Performance across live sessions and examinations. Every report exports to CSV (Excel-ready) and prints cleanly to PDF."
       />
+      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+        <StatCard label="Live quiz sessions" value={sessionResult.count ?? 0} icon={<Radio className="h-5 w-5" />} />
+        <StatCard label="Examinations" value={examResult.count ?? 0} icon={<FileCheck2 className="h-5 w-5" />} />
+      </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="min-w-0 p-5 sm:p-6">
           <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold text-evergreen-950">Live quiz sessions</h2><span className="text-xs text-ink-soft">{sessionResult.count ?? 0} total</span></div>

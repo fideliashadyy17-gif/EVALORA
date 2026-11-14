@@ -1,4 +1,5 @@
-import { Badge, Button, Card, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { ASSIGNABLE_STAFF_ROLES, MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
 import { ORG_ROLES } from "@/lib/brand";
@@ -26,12 +27,14 @@ const ROLE_LABEL = Object.fromEntries(ORG_ROLES.map((r) => [r.value, r.label]));
 export default async function AccountsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string; detail?: string }>;
+  searchParams: Promise<{ ok?: string; e?: string; detail?: string; page?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard?e=forbidden");
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
 
   const supabase = await createClient();
   const admin = createAdminClient();
@@ -63,6 +66,7 @@ export default async function AccountsPage({
   return (
     <>
       <PageTitle
+        eyebrow="Workspace Administration · Account Credentials & Access"
         title="Accounts & permissions"
         subtitle={`Create and control the accounts that belong to ${org.name}. Passwords are stored only by Supabase Auth — administrators set an initial password once and can reset it later.`}
         action={
@@ -128,74 +132,63 @@ export default async function AccountsPage({
           Role determines what a person can do inside {org.name}. Suspending a member blocks their access immediately
           without deleting their work.
         </p>
-        <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[720px] text-left text-sm">
-            <thead>
-              <tr className="border-b border-evergreen-900/10 text-xs uppercase tracking-wide text-ink-soft">
-                <th className="py-2 pr-3">Member</th>
-                <th className="py-2 pr-3">Role</th>
-                <th className="py-2 pr-3">Access</th>
-                <th className="py-2 pr-3">Since</th>
-                <th className="py-2">Account</th>
-              </tr>
-            </thead>
-            <tbody className="[&_td]:py-3 [&_td]:pr-3 [&_tr]:border-b [&_tr]:border-evergreen-900/10 [&_tr:last-child]:border-0">
-              {(members ?? []).map((m) => {
-                const profile = profileById.get(m.user_id);
-                const isSuperAdmin = profile?.platform_role === "super_admin";
-                const protectedRow = m.role === "owner" || isSuperAdmin || m.user_id === ctx.user.id;
-                return (
-                  <tr key={m.id}>
-                    <td>
-                      <span className="font-medium text-evergreen-950">{profile?.full_name || profile?.email || "Member"}</span>
-                      <span className="block text-xs text-ink-soft">{profile?.email}</span>
-                    </td>
-                    <td>
-                      <Badge tone={m.role === "owner" ? "gold" : m.role === "admin" ? "green" : "gray"}>
-                        {ROLE_LABEL[m.role] ?? m.role}
-                      </Badge>
-                      {isSuperAdmin && <span className="mt-1 block text-[11px] font-semibold text-gold-800">EVALORA platform admin</span>}
-                    </td>
-                    <td>
-                      <Badge tone={m.status === "active" ? "green" : "red"}>{m.status}</Badge>
-                    </td>
-                    <td className="text-xs text-ink-soft">{fmtDate(m.created_at)}</td>
-                    <td>
-                      {protectedRow ? (
-                        <span className="text-xs text-ink-soft">
-                          {m.role === "owner" ? "Owner account" : isSuperAdmin ? "Platform-level account" : "Your account"}
-                        </span>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <form action={resetMemberPassword}>
-                            <input type="hidden" name="member_id" value={m.id} />
-                            <button className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
-                              Reset password
-                            </button>
-                          </form>
-                          <form action={setMemberStatus}>
-                            <input type="hidden" name="member_id" value={m.id} />
-                            <input type="hidden" name="status" value={m.status === "active" ? "suspended" : "active"} />
-                            <button
-                              className={`font-medium underline-offset-2 hover:underline ${m.status === "active" ? "text-red-700" : "text-evergreen-700"}`}
-                            >
-                              {m.status === "active" ? "Suspend" : "Reactivate"}
-                            </button>
-                          </form>
-                          <Link
-                            href="/dashboard/team"
-                            className="font-medium text-evergreen-700 underline-offset-2 hover:underline"
+        <div className="mt-4">
+          <DataTable head={["Member", "Role", "Access", "Since", "Account"]} label="Staff, teachers and members">
+            {(members ?? []).map((m) => {
+              const profile = profileById.get(m.user_id);
+              const isSuperAdmin = profile?.platform_role === "super_admin";
+              const protectedRow = m.role === "owner" || isSuperAdmin || m.user_id === ctx.user.id;
+              return (
+                <tr key={m.id}>
+                  <td>
+                    <span className="font-medium text-evergreen-950">{profile?.full_name || profile?.email || "Member"}</span>
+                    <span className="block text-xs text-ink-soft">{profile?.email}</span>
+                  </td>
+                  <td>
+                    <Badge tone={m.role === "owner" ? "gold" : m.role === "admin" ? "green" : "gray"}>
+                      {ROLE_LABEL[m.role] ?? m.role}
+                    </Badge>
+                    {isSuperAdmin && <span className="mt-1 block text-[11px] font-semibold text-gold-800">EVALORA platform admin</span>}
+                  </td>
+                  <td>
+                    <Badge tone={m.status === "active" ? "green" : "red"}>{m.status}</Badge>
+                  </td>
+                  <td className="text-xs text-ink-soft">{fmtDate(m.created_at)}</td>
+                  <td>
+                    {protectedRow ? (
+                      <span className="text-xs text-ink-soft">
+                        {m.role === "owner" ? "Owner account" : isSuperAdmin ? "Platform-level account" : "Your account"}
+                      </span>
+                    ) : (
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                        <form action={resetMemberPassword}>
+                          <input type="hidden" name="member_id" value={m.id} />
+                          <button className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                            Reset password
+                          </button>
+                        </form>
+                        <form action={setMemberStatus}>
+                          <input type="hidden" name="member_id" value={m.id} />
+                          <input type="hidden" name="status" value={m.status === "active" ? "suspended" : "active"} />
+                          <button
+                            className={`font-medium underline-offset-2 hover:underline ${m.status === "active" ? "text-red-700" : "text-evergreen-700"}`}
                           >
-                            Change role
-                          </Link>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                            {m.status === "active" ? "Suspend" : "Reactivate"}
+                          </button>
+                        </form>
+                        <Link
+                          href="/dashboard/team"
+                          className="font-medium text-evergreen-700 underline-offset-2 hover:underline"
+                        >
+                          Change role
+                        </Link>
+                      </div>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </DataTable>
         </div>
       </Card>
 
@@ -261,37 +254,35 @@ export default async function AccountsPage({
             .
           </p>
         ) : (
-          <div className="mt-4 max-h-96 overflow-y-auto rounded-xl border border-evergreen-900/10">
-            <table className="w-full text-left text-sm">
-              <thead className="sticky top-0 bg-cream">
-                <tr className="text-xs uppercase tracking-wide text-ink-soft">
-                  <th className="px-3 py-2">Student</th>
-                  <th className="px-3 py-2">Login</th>
-                  <th className="px-3 py-2">Action</th>
+          <div className="mt-4">
+            <DataTable head={["Student", "Login", "Action"]} label="Student portal accounts">
+              {roster.slice((page - 1) * pageSize, page * pageSize).map((s) => (
+                <tr key={s.id}>
+                  <td>
+                    <span className="font-medium text-evergreen-950">{s.full_name}</span>
+                    <span className="block text-xs text-ink-soft">{s.email ?? "no email on file"}</span>
+                  </td>
+                  <td>
+                    <Badge tone={s.user_id ? "green" : "gray"}>{s.user_id ? "active login" : "no login"}</Badge>
+                  </td>
+                  <td>
+                    <form action={createStudentLogin}>
+                      <input type="hidden" name="id" value={s.id} />
+                      <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline disabled:opacity-50" disabled={!s.email}>
+                        {s.user_id ? "Reset password" : "Create login"}
+                      </button>
+                    </form>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="[&_td]:px-3 [&_td]:py-2 [&_tr]:border-t [&_tr]:border-evergreen-900/10">
-                {roster.map((s) => (
-                  <tr key={s.id}>
-                    <td>
-                      <span className="font-medium text-evergreen-950">{s.full_name}</span>
-                      <span className="block text-xs text-ink-soft">{s.email ?? "no email on file"}</span>
-                    </td>
-                    <td>
-                      <Badge tone={s.user_id ? "green" : "gray"}>{s.user_id ? "active login" : "no login"}</Badge>
-                    </td>
-                    <td>
-                      <form action={createStudentLogin}>
-                        <input type="hidden" name="id" value={s.id} />
-                        <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline disabled:opacity-50" disabled={!s.email}>
-                          {s.user_id ? "Reset password" : "Create login"}
-                        </button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </DataTable>
+            <PageNavigation
+              page={page}
+              pageSize={pageSize}
+              total={roster.length}
+              pathname="/dashboard/accounts"
+              label="student accounts"
+            />
           </div>
         )}
       </Card>

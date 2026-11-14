@@ -50,6 +50,7 @@ export default async function AdminOrganizations({
   return (
     <>
       <PageTitle
+        eyebrow="Organizations & Tenants · Directory"
         title="Organizations"
         subtitle="Create and operate schools, universities and examination centers — no payment required on the path."
         action={
@@ -84,6 +85,11 @@ export default async function AdminOrganizations({
           <option value="archived">Archived</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.type || sp.status) && (
+          <Link href="/admin/organizations" className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {(orgs ?? []).length === 0 ? (

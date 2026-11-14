@@ -84,6 +84,7 @@ export default async function AdminEditQuestionPage({
         </Link>
       </p>
       <PageTitle
+        eyebrow="Assessment Authoring · Mathematical Question Studio"
         title="Edit question"
         subtitle={`Organization: ${org?.name ?? "—"}. Changes affect linked papers and may alter existing attempts or grading. Duplicate as draft to preserve the original.`}
         action={

@@ -1,8 +1,9 @@
-import { Button, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { savePlan } from "../actions";
+import { Table } from "../ui";
 
 export const metadata: Metadata = { title: "Plans & Limits" };
 export const dynamic = "force-dynamic";
@@ -27,11 +28,45 @@ const LIMIT_HINT = `{
 export default async function AdminPlans() {
   await requireSuperAdmin();
   const admin = createAdminClient();
-  const { data: plans } = await admin.from("plans").select("*").order("sort");
+  const [{ data: plans }, { data: subs }] = await Promise.all([
+    admin.from("plans").select("*").order("sort"),
+    admin.from("subscriptions").select("plan_id, status").in("status", ["active", "trialing"]),
+  ]);
+  const subCounts = new Map<string, number>();
+  for (const s of subs ?? []) subCounts.set(s.plan_id, (subCounts.get(s.plan_id) ?? 0) + 1);
 
   return (
     <>
-      <PageTitle title="Plans & Limits" subtitle="Limits are JSON — use -1 for unlimited. Changes apply immediately to every organization's entitlement checks (all server-side)." />
+      <PageTitle
+        eyebrow="Commerce & Entitlements · Plan Catalog"
+        title="Plans & Limits"
+        subtitle="Limits are JSON — use -1 for unlimited. Changes apply immediately to every organization's entitlement checks (all server-side)."
+        action={<ButtonLink href="/admin/subscriptions" variant="outline">Manage subscriptions</ButtonLink>}
+      />
+
+      {(plans ?? []).length > 0 && (
+        <div className="mb-6">
+          <Table head={["Plan", "Slug", "Monthly / Yearly", "Trial", "Active tenants", "Proctoring", "Reports", "Visibility"]}>
+            {(plans ?? []).map((p) => {
+              const lim = (p.limits as Record<string, unknown> | null) ?? {};
+              return (
+                <tr key={p.id}>
+                  <td className="font-semibold text-evergreen-950">{p.name}</td>
+                  <td className="font-mono text-xs text-ink-soft">{p.slug}</td>
+                  <td className="tabular-nums text-xs">
+                    {(p.price_monthly_cents / 100).toFixed(2)} / {(p.price_yearly_cents / 100).toFixed(2)} {p.currency}
+                  </td>
+                  <td className="text-xs text-ink-soft">{p.trial_days} days</td>
+                  <td className="font-semibold tabular-nums">{subCounts.get(p.id) ?? 0}</td>
+                  <td><Badge tone={lim.proctoring ? "green" : "gray"}>{lim.proctoring ? "Included" : "Off"}</Badge></td>
+                  <td><Badge tone={lim.advanced_reports ? "green" : "gray"}>{lim.advanced_reports ? "Included" : "Basic"}</Badge></td>
+                  <td><Badge tone={p.is_active ? "gold" : "gray"}>{p.is_active ? "Public" : "Hidden"}</Badge></td>
+                </tr>
+              );
+            })}
+          </Table>
+        </div>
+      )}
       <div className="space-y-6">
         {(plans ?? []).map((p) => (
           <Card key={p.id} className="p-6">

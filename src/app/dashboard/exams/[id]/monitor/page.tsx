@@ -1,4 +1,4 @@
-import { PageTitle } from "@/components/ui";
+import { ButtonLink, PageTitle } from "@/components/ui";
 import { can, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { loadMonitorSnapshot } from "@/lib/examMonitoring";
 import { createClient } from "@/lib/supabase/server";
@@ -21,8 +21,10 @@ export default async function ExamMonitorPage({ params }: { params: Promise<{ id
   return (
     <>
       <PageTitle
+        eyebrow="Examinations · Real-Time Candidate Supervision"
         title={`Live monitor — ${loaded.exam.title}`}
         subtitle="Progress, connection and private messages for each candidate. Updates automatically. Messages never change answers, marks, timers or deadlines."
+        action={<ButtonLink href={`/dashboard/exams/${id}`} variant="outline">← Examination</ButtonLink>}
       />
       <ExamMonitor examId={id} initial={loaded.snapshot} />
     </>

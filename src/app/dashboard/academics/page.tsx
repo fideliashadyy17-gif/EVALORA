@@ -1,7 +1,9 @@
-import { Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
+import { Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { BookOpen, Calendar, Layers, Users } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { deleteAcademicYear, deleteStructureItem, saveAcademicYear, saveStructureItem } from "./actions";
 
 export const metadata: Metadata = { title: "Academic Structure" };
@@ -82,6 +84,7 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
   return (
     <>
       <PageTitle
+        eyebrow="People & Academics · Institutional Hierarchy"
         title="Academic Structure"
         subtitle="Your school's academic years, education levels, departments and subjects. Naming follows your own education system — nothing is hardcoded."
         action={<ButtonLink href="/dashboard/academics/classes" variant="gold">Manage classes →</ButtonLink>}
@@ -90,10 +93,11 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
       {sp.e && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{ERR[sp.e] ?? sp.e}</p>}
       {!isManager && <p className="mb-4 rounded-lg bg-cream px-4 py-3 text-sm text-ink">You can view the academic structure. Ask a school administrator to make changes.</p>}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        <Card className="p-4"><p className="text-xs font-semibold uppercase text-ink-soft">Active classes</p><p className="mt-1 font-display text-2xl font-semibold text-evergreen-950">{classCount ?? 0}</p></Card>
-        <Card className="p-4"><p className="text-xs font-semibold uppercase text-ink-soft">Active students</p><p className="mt-1 font-display text-2xl font-semibold text-evergreen-950">{studentCount ?? 0}</p></Card>
-        <Card className="p-4"><p className="text-xs font-semibold uppercase text-ink-soft">Current year</p><p className="mt-1 font-display text-2xl font-semibold text-evergreen-950">{(years ?? []).find((y) => y.is_current)?.name ?? "—"}</p></Card>
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Active classes" value={classCount ?? 0} icon={<BookOpen className="h-5 w-5" />} />
+        <StatCard label="Active students" value={studentCount ?? 0} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Current year" value={(years ?? []).find((y) => y.is_current)?.name ?? "—"} icon={<Calendar className="h-5 w-5" />} />
+        <StatCard label="Subjects configured" value={(subjects ?? []).length} hint={`${(levels ?? []).length} level(s) · ${(departments ?? []).length} stream(s)`} icon={<Layers className="h-5 w-5" />} />
       </div>
 
       <Card className="p-6">
@@ -108,7 +112,7 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
                   <span className="text-ink-soft"> {y.starts_on ? `· ${y.starts_on}` : ""}{y.ends_on ? ` → ${y.ends_on}` : ""}</span></span>
                 {isManager && (
                   <span className="flex gap-3">
-                    <a className="text-evergreen-800 underline underline-offset-2" href={`/dashboard/academics?editYear=${y.id}`}>Edit</a>
+                    <Link className="text-evergreen-800 underline underline-offset-2" href={`/dashboard/academics?editYear=${y.id}`}>Edit</Link>
                     <form action={deleteAcademicYear}><input type="hidden" name="id" value={y.id} /><button className="text-red-700 underline underline-offset-2" type="submit">Delete</button></form>
                   </span>
                 )}

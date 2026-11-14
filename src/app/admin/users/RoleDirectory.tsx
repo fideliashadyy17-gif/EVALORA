@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { OrgRole } from "@/lib/brand";
@@ -9,15 +10,19 @@ import Link from "next/link";
 import { StatusBadge, Table } from "../ui";
 
 interface Props {
+  eyebrow?: string;
   title: string;
   subtitle: string;
+  pathname: string;
   roles: OrgRole[];
   organizationTypes?: string[];
-  searchParams: { q?: string; org?: string; status?: string; role?: string };
+  searchParams: { q?: string; org?: string; status?: string; role?: string; page?: string };
 }
 
-export async function RoleDirectory({ title, subtitle, roles, organizationTypes, searchParams: sp }: Props) {
+export async function RoleDirectory({ eyebrow, title, subtitle, pathname, roles, organizationTypes, searchParams: sp }: Props) {
   await requireSuperAdmin();
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
@@ -44,6 +49,7 @@ export async function RoleDirectory({ title, subtitle, roles, organizationTypes,
     return [p?.email, p?.full_name, o?.name, m.role].some((v) => String(v ?? "").toLowerCase().includes(q));
   });
 
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
   const distinctUsers = new Set(filtered.map((m) => m.user_id)).size;
   const distinctOrgs = new Set(filtered.map((m) => m.organization_id)).size;
   const active = filtered.filter((m) => m.status === "active").length;
@@ -52,6 +58,7 @@ export async function RoleDirectory({ title, subtitle, roles, organizationTypes,
   return (
     <>
       <PageTitle
+        eyebrow={eyebrow ?? "Users & Identity · Scoped Role Directory"}
         title={title}
         subtitle={subtitle}
         action={<ButtonLink href="/admin/users/new" variant="gold">+ Create user</ButtonLink>}
@@ -86,6 +93,11 @@ export async function RoleDirectory({ title, subtitle, roles, organizationTypes,
           <option value="suspended">Suspended</option>
         </Select>
         <Button type="submit" variant="outline">Filter</Button>
+        {(sp.q || sp.org || sp.role || sp.status) && (
+          <Link href={pathname} className="inline-flex min-h-10 items-center px-2.5 text-sm font-medium text-evergreen-800 underline underline-offset-2">
+            Reset
+          </Link>
+        )}
       </form>
 
       {filtered.length === 0 ? (
@@ -93,36 +105,46 @@ export async function RoleDirectory({ title, subtitle, roles, organizationTypes,
           No people match this role view yet. Create a user, then assign the relevant organization role.
         </p>
       ) : (
-        <Table head={["Person", "Organization", "Role", "Membership", "Account", "Account created", "Membership since", "Actions"]}>
-          {filtered.map((m) => {
-            const p = m.profiles as unknown as { id: string; email: string; full_name: string | null; status: string; platform_role: string; is_primary?: boolean; created_at: string | null } | null;
-            const o = m.organizations as unknown as { id: string; name: string; type: string; status: string } | null;
-            return (
-              <tr key={m.id}>
-                <td>
-                  {p ? <Link href={`/admin/users/${p.id}`} className="font-medium text-evergreen-950 hover:underline">{p.full_name || p.email}</Link> : "Unknown user"}
-                  <span className="block text-xs text-ink-soft">{p?.email ?? "—"}</span>
-                  {p?.platform_role === "super_admin" && <Badge tone="gold">{p.is_primary ? "Primary Super Admin" : "Super Admin"}</Badge>}
-                </td>
-                <td>
-                  {o ? <Link href={`/admin/organizations/${o.id}`} className="font-medium text-evergreen-800 hover:underline">{o.name}</Link> : "—"}
-                  <span className="block text-xs capitalize text-ink-soft">{o?.type.replace(/_/g, " ")}</span>
-                </td>
-                <td><Badge tone={m.role === "owner" ? "gold" : "green"}>{roleLabel(m.role)}</Badge></td>
-                <td><StatusBadge status={m.status} /></td>
-                <td>{p ? <StatusBadge status={p.status} /> : "—"}</td>
-                <td className="text-ink-soft">{p?.created_at ? fmtDate(p.created_at) : "—"}</td>
-                <td className="text-ink-soft">{fmtDate(m.created_at)}</td>
-                <td>
-                  <div className="flex flex-wrap gap-x-3 gap-y-1">
-                    {p && <Link href={`/admin/users/${p.id}`} className="font-medium text-evergreen-700 hover:underline">Manage user</Link>}
-                    {o && <Link href={`/admin/organizations/${o.id}?tab=members`} className="font-medium text-evergreen-700 hover:underline">Members</Link>}
-                  </div>
-                </td>
-              </tr>
-            );
-          })}
-        </Table>
+        <>
+          <Table head={["Person", "Organization", "Role", "Membership", "Account", "Account created", "Membership since", "Actions"]}>
+            {paged.map((m) => {
+              const p = m.profiles as unknown as { id: string; email: string; full_name: string | null; status: string; platform_role: string; is_primary?: boolean; created_at: string | null } | null;
+              const o = m.organizations as unknown as { id: string; name: string; type: string; status: string } | null;
+              return (
+                <tr key={m.id}>
+                  <td>
+                    {p ? <Link href={`/admin/users/${p.id}`} className="font-medium text-evergreen-950 hover:underline">{p.full_name || p.email}</Link> : "Unknown user"}
+                    <span className="block text-xs text-ink-soft">{p?.email ?? "—"}</span>
+                    {p?.platform_role === "super_admin" && <Badge tone="gold">{p.is_primary ? "Primary Super Admin" : "Super Admin"}</Badge>}
+                  </td>
+                  <td>
+                    {o ? <Link href={`/admin/organizations/${o.id}`} className="font-medium text-evergreen-800 hover:underline">{o.name}</Link> : "—"}
+                    <span className="block text-xs capitalize text-ink-soft">{o?.type.replace(/_/g, " ")}</span>
+                  </td>
+                  <td><Badge tone={m.role === "owner" ? "gold" : "green"}>{roleLabel(m.role)}</Badge></td>
+                  <td><StatusBadge status={m.status} /></td>
+                  <td>{p ? <StatusBadge status={p.status} /> : "—"}</td>
+                  <td className="text-ink-soft">{p?.created_at ? fmtDate(p.created_at) : "—"}</td>
+                  <td className="text-ink-soft">{fmtDate(m.created_at)}</td>
+                  <td>
+                    <div className="flex flex-wrap gap-x-3 gap-y-1">
+                      {p && <Link href={`/admin/users/${p.id}`} className="font-medium text-evergreen-700 hover:underline">Manage user</Link>}
+                      {o && <Link href={`/admin/organizations/${o.id}?tab=members`} className="font-medium text-evergreen-700 hover:underline">Members</Link>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </Table>
+          <PageNavigation
+            page={page}
+            pageSize={pageSize}
+            total={filtered.length}
+            pathname={pathname}
+            query={{ q: sp.q, org: sp.org, role: sp.role, status: sp.status }}
+            label="memberships"
+          />
+        </>
       )}
     </>
   );
