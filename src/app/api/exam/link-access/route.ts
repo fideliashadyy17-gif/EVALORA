@@ -1,4 +1,5 @@
 import { attemptDeadline } from "@/lib/exam";
+import { canonicalIdentityFingerprint } from "@/lib/examSaveQueue";
 import { manualPauseMs } from "@/lib/examPause";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import {
@@ -25,6 +26,7 @@ const Body = z.object({
   class_id: z.string().uuid().optional(),
   guest_key: z.string().min(16).max(120),
   identity: z.record(z.string(), z.unknown()).optional(),
+  ignore_auth_session: z.boolean().optional(),
   consent: z.literal(true),
 });
 
@@ -34,6 +36,24 @@ function sha256(value: string) {
 
 function normalizeCode(value: string) {
   return value.trim().toUpperCase();
+}
+
+function normalizePersonToken(value: unknown): string {
+  return String(value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function matchesPersonName(
+  row: { first_name?: unknown; last_name?: unknown; full_name?: unknown },
+  firstName: string,
+  lastName: string,
+): boolean {
+  const f = normalizePersonToken(firstName);
+  const l = normalizePersonToken(lastName);
+  const rowFirst = normalizePersonToken(row.first_name);
+  const rowLast = normalizePersonToken(row.last_name);
+  if (rowFirst && rowLast) return rowFirst === f && rowLast === l;
+  const full = normalizePersonToken(row.full_name);
+  return Boolean(full) && full === `${f} ${l}`.trim();
 }
 
 /**
@@ -48,7 +68,7 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
-  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity } = parsed.data;
+  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity, ignore_auth_session } = parsed.data;
   const admin = createAdminClient();
   const supabase = await createClient();
 
@@ -62,6 +82,21 @@ export async function POST(request: Request) {
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const access = parseExamAccessSettings(examSettings);
+  const identityResult = sanitizeIdentityData(access.identityFields, identity);
+  if (!identityResult.ok)
+    return NextResponse.json({ error: identityResult.error }, { status: 400 });
+  const identityData = identityResult.data;
+
+  const rawGuestKeyHash = sha256(guest_key);
+  const identityFingerprint = canonicalIdentityFingerprint(identityData);
+  const guestKeyHash = identityFingerprint
+    ? sha256(`${guest_key}::id:${identityFingerprint}`)
+    : rawGuestKeyHash;
+  const candidateKeyHashes =
+    guestKeyHash === rawGuestKeyHash
+      ? [rawGuestKeyHash]
+      : [guestKeyHash, rawGuestKeyHash];
+
   const availability = examAccessAvailability({
     status: exam.status,
     starts_at: exam.starts_at,
@@ -87,20 +122,32 @@ export async function POST(request: Request) {
   // refused until the organizer resumes.
   const examPaused = exam.status === "paused" && availability.reason === "exam_paused";
   if (!availability.ok && !examPaused) {
-    const { data: existingByKey } = await admin
-      .from("exam_candidates")
-      .select("*")
-      .eq("exam_id", exam.id)
-      .eq("guest_key_hash", sha256(guest_key))
-      .maybeSingle();
-    const sameName = Boolean(
-      existingByKey &&
-      String(existingByKey.first_name ?? "").trim().toLowerCase() === first_name.toLowerCase() &&
-      String(existingByKey.last_name ?? "").trim().toLowerCase() === last_name.toLowerCase(),
-    );
-    if (!existingByKey || !sameName)
+    // Shared-browser safe: multiple sequential students can share a browser
+    // guest_key_hash, so select all rows for this browser and match the exact
+    // person (never `.maybeSingle()`, which fails once 2+ students used the
+    // same browser).
+    const { data: existingRows } =
+      candidateKeyHashes.length === 1
+        ? await admin
+            .from("exam_candidates")
+            .select("*")
+            .eq("exam_id", exam.id)
+            .eq("guest_key_hash", rawGuestKeyHash)
+        : await admin
+            .from("exam_candidates")
+            .select("*")
+            .eq("exam_id", exam.id)
+            .in("guest_key_hash", candidateKeyHashes);
+    const existingByPerson = ((existingRows ?? []) as Record<string, unknown>[]).find(
+      (row) =>
+        matchesPersonName(row, first_name, last_name) &&
+        (!class_id || !row.class_id || String(row.class_id) === class_id) &&
+        (Object.keys((row.identity_data ?? {}) as Record<string, unknown>).length === 0 ||
+          identityDataEqual((row.identity_data ?? {}) as Record<string, unknown>, identityData)),
+    ) ?? null;
+    if (!existingByPerson)
       return NextResponse.json({ error: availability.error }, { status: 403 });
-    retakeGrant = await findUsableGrant(admin, exam.id, existingByKey.id);
+    retakeGrant = await findUsableGrant(admin, exam.id, String(existingByPerson.id));
     if (!retakeGrant)
       return NextResponse.json(
         {
@@ -122,24 +169,42 @@ export async function POST(request: Request) {
   // Exact hash match first (the historical behaviour); otherwise fall back to
   // a canonical comparison against the stored code so that plausible
   // transcriptions — dropped hyphens, internal spaces, smart dashes, O/0 or
-  // I/1 confusion from a touch keyboard — are still accepted. The stored code
-  // is never changed; only the comparison is forgiving.
-  const codeAccepted =
+  // I/1 confusion from a touch keyboard — are still accepted. If an organizer
+  // issued personal candidate access codes on the roster (`source !== "shared_link"`),
+  // a student entering their own personal candidate code + matching name on
+  // this invitation link is also admitted cleanly.
+  const examCodeAccepted =
     exam.access_code_hash === sha256(normalizeCode(access_code)) ||
     accessCodeMatches(access_code, exam.access_code as string | null);
-  if (!codeAccepted)
-    return NextResponse.json(
-      {
-        error:
-          "That access code does not match this examination. Copy-paste the code exactly as your teacher gave it, or reopen the invitation link — it fills the code in for you.",
-      },
-      { status: 403 },
-    );
-
-  const identityResult = sanitizeIdentityData(access.identityFields, identity);
-  if (!identityResult.ok)
-    return NextResponse.json({ error: identityResult.error }, { status: 400 });
-  const identityData = identityResult.data;
+  let matchedRosterCandidate: Record<string, unknown> | null = null;
+  if (!examCodeAccepted) {
+    const { data: rosterRows } = await admin
+      .from("exam_candidates")
+      .select("*")
+      .eq("exam_id", exam.id);
+    const codeHit = ((rosterRows ?? []) as Record<string, unknown>[]).find(
+      (row) => row.source !== "shared_link" && accessCodeMatches(access_code, (row.access_code as string | null) ?? null),
+    ) ?? null;
+    if (!codeHit) {
+      return NextResponse.json(
+        {
+          error:
+            "That access code does not match this examination. Copy-paste the code exactly as your teacher gave it, or reopen the invitation link — it fills the code in for you.",
+        },
+        { status: 403 },
+      );
+    }
+    if (!matchesPersonName(codeHit, first_name, last_name)) {
+      return NextResponse.json(
+        {
+          error:
+            "That personal candidate code belongs to a different student record. Check your first name, last name, and personal access code.",
+        },
+        { status: 403 },
+      );
+    }
+    matchedRosterCandidate = codeHit;
+  }
 
   // Eligible classes are restricted to this exam's own class, direct
   // phase-class links, unassigned links for the same stage only, and any
@@ -191,20 +256,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "That class does not belong to this examination." }, { status: 403 });
 
   // Reliable identity: only an authenticated user with a student record in
-  // this organization may be linked to the student roster. Names are never
-  // used to merge two candidates or student records.
+  // this organization may be linked to the student roster. On a shared device
+  // (`accessMode === "shared_link"`), a lingering browser cookie from a
+  // previous student must NEVER bind `student_id` to a different student or
+  // reject the next student's class selection.
   let studentId: string | null = null;
   let verifiedClassId: string | null = null;
   const { data: auth } = await supabase.auth.getUser();
-  if (auth.user) {
+  if (auth.user && !ignore_auth_session) {
     const { data: student } = await admin
       .from("students")
-      .select("id")
+      .select("id,full_name")
       .eq("user_id", auth.user.id)
       .eq("organization_id", exam.organization_id)
       .maybeSingle();
     if (student) {
-      studentId = student.id as string;
       const { data: enrollment } = await admin
         .from("student_enrollments")
         .select("class_id")
@@ -212,95 +278,127 @@ export async function POST(request: Request) {
         .eq("status", "active")
         .maybeSingle();
       verifiedClassId = (enrollment?.class_id as string | null) ?? null;
-      if (verifiedClassId && verifiedClassId !== selectedClassId)
-        return NextResponse.json({ error: "Your verified class is not eligible for this examination." }, { status: 403 });
+
+      if (access.accessMode === "registered_students_only") {
+        studentId = student.id as string;
+        if (verifiedClassId && verifiedClassId !== selectedClassId)
+          return NextResponse.json({ error: "Your verified class is not eligible for this examination." }, { status: 403 });
+      } else if (
+        matchesPersonName({ full_name: student.full_name }, first_name, last_name) &&
+        (!verifiedClassId || verifiedClassId === selectedClassId)
+      ) {
+        studentId = student.id as string;
+      }
     }
   }
 
   // Registered-student-only examinations keep the institutional restriction:
   // a valid link and code alone are not sufficient authorization.
-  if (access.accessMode === "registered_students_only" && (!auth.user || !studentId || verifiedClassId !== selectedClassId))
+  if (access.accessMode === "registered_students_only" && (!auth.user || ignore_auth_session || !studentId || verifiedClassId !== selectedClassId))
     return NextResponse.json(
       { error: "This examination requires a verified student account in an eligible class. Sign in with your institutional account." },
       { status: 401 },
     );
 
-  const guestKeyHash = sha256(guest_key);
   // One candidate PER PERSON PER BROWSER — never one per browser. A shared
   // device (lab, tablet cart, family phone) must admit every distinct
   // authorized student, while the same student on the same browser always
-  // resumes their own record. The database unique index
-  // uq_exam_candidate_shared_identity (migration 0096) enforces exactly this
-  // shape, so the lookup must select the person's own row instead of assuming
-  // the browser holds only one candidate (the pre-0096 code returned 409 for
-  // the second student on a shared browser — the production "code works for
-  // some students but not others" symptom).
+  // resumes their own record (`uq_exam_candidate_shared_identity`). When custom
+  // organizer identification fields (`identity_fields`, e.g. student ID /
+  // matricule / email) are present, `guestKeyHash` incorporates their canonical
+  // fingerprint so even two students with the exact same full name in the same
+  // class on the same browser get distinct candidate rows without browser conflict errors.
   const samePerson = (row: Record<string, unknown>) =>
-    String(row.first_name ?? "").trim().toLowerCase() === first_name.trim().toLowerCase() &&
-    String(row.last_name ?? "").trim().toLowerCase() === last_name.trim().toLowerCase() &&
+    normalizePersonToken(row.first_name) === normalizePersonToken(first_name) &&
+    normalizePersonToken(row.last_name) === normalizePersonToken(last_name) &&
     String(row.class_id ?? "") === selectedClassId;
-  const { data: browserCandidates } = await admin
-    .from("exam_candidates")
-    .select("*")
-    .eq("exam_id", exam.id)
-    .eq("guest_key_hash", guestKeyHash);
-  const existingCandidate = (browserCandidates ?? []).find(samePerson) ?? null;
 
-  let candidate = existingCandidate;
-  if (candidate) {
-    const storedIdentity = (candidate.identity_data ?? {}) as Record<string, unknown>;
-    if (!identityDataEqual(storedIdentity, identityData)) {
-      if (Object.keys(storedIdentity).length === 0) {
+  let candidateRow: Record<string, unknown> | null = matchedRosterCandidate;
+  if (candidateRow) {
+    if (candidateRow.class_id && String(candidateRow.class_id) !== selectedClassId) {
+      return NextResponse.json(
+        { error: "Selected class does not match your registered candidate record for this examination." },
+        { status: 403 },
+      );
+    }
+  } else {
+    const { data: browserCandidates } =
+      candidateKeyHashes.length === 1
+        ? await admin
+            .from("exam_candidates")
+            .select("*")
+            .eq("exam_id", exam.id)
+            .eq("guest_key_hash", rawGuestKeyHash)
+        : await admin
+            .from("exam_candidates")
+            .select("*")
+            .eq("exam_id", exam.id)
+            .in("guest_key_hash", candidateKeyHashes);
+
+    const candidateList = (browserCandidates ?? []) as Record<string, unknown>[];
+    const exactMatch =
+      candidateList.find(
+        (row) => samePerson(row) && identityDataEqual((row.identity_data ?? {}) as Record<string, unknown>, identityData),
+      ) ??
+      candidateList.find(
+        (row) =>
+          samePerson(row) &&
+          Object.keys((row.identity_data ?? {}) as Record<string, unknown>).length === 0,
+      ) ??
+      null;
+
+    candidateRow = exactMatch;
+    if (candidateRow) {
+      const storedIdentity = (candidateRow.identity_data ?? {}) as Record<string, unknown>;
+      if (!identityDataEqual(storedIdentity, identityData) && Object.keys(storedIdentity).length === 0) {
         const { data: updated } = await admin
           .from("exam_candidates")
           .update({ identity_data: identityData })
-          .eq("id", candidate.id)
+          .eq("id", candidateRow.id)
           .select("*")
           .single();
-        if (updated) candidate = updated;
+        if (updated) candidateRow = updated;
+      }
+    } else {
+      const { data, error } = await admin
+        .from("exam_candidates")
+        .insert({
+          exam_id: exam.id,
+          full_name: `${first_name} ${last_name}`.trim(),
+          first_name,
+          last_name,
+          class_id: selectedClassId,
+          student_id: studentId,
+          access_code: genCode(10),
+          status: "registered",
+          guest_key_hash: guestKeyHash,
+          invite_token,
+          source: "shared_link",
+          identity_data: identityData,
+        })
+        .select("*")
+        .single();
+      if (error || !data) {
+        const { data: raced } = await admin
+          .from("exam_candidates")
+          .select("*")
+          .eq("exam_id", exam.id)
+          .eq("guest_key_hash", guestKeyHash);
+        const winner = ((raced ?? []) as Record<string, unknown>[]).find(samePerson) ?? null;
+        if (!winner) return NextResponse.json({ error: "Could not create your candidate record." }, { status: 500 });
+        candidateRow = winner;
       } else {
-        return NextResponse.json({ error: "This browser already has an attempt under different identity details. Ask the organizer for help." }, { status: 409 });
+        candidateRow = data;
       }
     }
-  } else {
-    const { data, error } = await admin
-      .from("exam_candidates")
-      .insert({
-        exam_id: exam.id,
-        full_name: `${first_name} ${last_name}`.trim(),
-        first_name,
-        last_name,
-        class_id: selectedClassId,
-        student_id: studentId,
-        access_code: genCode(10),
-        status: "registered",
-        guest_key_hash: guestKeyHash,
-        invite_token,
-        source: "shared_link",
-        identity_data: identityData,
-      })
-      .select("*")
-      .single();
-    if (error || !data) {
-      // The insert can only collide with the per-person-per-browser unique
-      // index when the SAME person's record was created between the lookup
-      // and the insert (a double-tap or two simultaneous tabs). Re-read and
-      // resume the winning row so the operation is idempotent under
-      // concurrency instead of failing the student with an infrastructure
-      // error. Any other failure is reported as what it is — never as an
-      // invalid code.
-      const { data: raced } = await admin
-        .from("exam_candidates")
-        .select("*")
-        .eq("exam_id", exam.id)
-        .eq("guest_key_hash", guestKeyHash);
-      const winner = (raced ?? []).find(samePerson) ?? null;
-      if (!winner) return NextResponse.json({ error: "Could not create your candidate record." }, { status: 500 });
-      candidate = winner;
-    } else {
-      candidate = data;
-    }
   }
+
+  if (!candidateRow) {
+    return NextResponse.json({ error: "Could not resolve your candidate record." }, { status: 500 });
+  }
+  const candidate = candidateRow as { id: string; [key: string]: unknown };
+  const resolvedCandidate = candidate;
+  const entryHref = `/exam/join/${invite_token}`;
 
   // One candidate can now legitimately own several attempts (each authorized
   // retake is a NEW row). Resume the active one, otherwise evaluate the latest.
@@ -308,7 +406,7 @@ export async function POST(request: Request) {
     .from("exam_attempts")
     .select("*")
     .eq("exam_id", exam.id)
-    .eq("candidate_id", candidate.id)
+    .eq("candidate_id", resolvedCandidate.id)
     .order("attempt_number", { ascending: false });
   const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
   const activeAttempt = rowsForCandidate.find((row) => row.status === "in_progress") ?? null;
@@ -325,7 +423,7 @@ export async function POST(request: Request) {
   if (!attempt && latestAttempt) {
     // A submitted paper is locked. Only an explicit approval may create another
     // attempt; `read_only_reentry` merely lets the student view the result.
-    const grant = await findUsableGrant(admin, exam.id, candidate.id);
+    const grant = retakeGrant ?? (await findUsableGrant(admin, exam.id, candidate.id));
     if (!grant) {
       if (attemptPolicy === "read_only_reentry") {
         const deadline = attemptDeadline(
@@ -337,10 +435,11 @@ export async function POST(request: Request) {
           attempt_id: latestAttempt.id,
           access_token: latestAttempt.access_token,
           exam_id: exam.id,
+          entry_href: entryHref,
           title: exam.title,
-          candidate_name: candidate.full_name,
-          first_name: candidate.first_name ?? first_name,
-          last_name: candidate.last_name ?? last_name,
+          candidate_name: resolvedCandidate.full_name,
+          first_name: resolvedCandidate.first_name ?? first_name,
+          last_name: resolvedCandidate.last_name ?? last_name,
           class_id: selectedClassId,
           status: latestAttempt.status,
           attempt_number: Number(latestAttempt.attempt_number ?? 1),
@@ -363,7 +462,7 @@ export async function POST(request: Request) {
       );
     const started = await startRetakeAttempt(admin, {
       exam,
-      candidate: candidate as unknown as RetakeCandidateRow,
+      candidate: resolvedCandidate as unknown as RetakeCandidateRow,
       grant,
     });
     if (!started.ok) return NextResponse.json({ error: started.error }, { status: 409 });
@@ -371,10 +470,11 @@ export async function POST(request: Request) {
       attempt_id: started.attempt.id,
       access_token: started.attempt.access_token,
       exam_id: exam.id,
+      entry_href: entryHref,
       title: exam.title,
-      candidate_name: candidate.full_name,
-      first_name: candidate.first_name ?? first_name,
-      last_name: candidate.last_name ?? last_name,
+      candidate_name: resolvedCandidate.full_name,
+      first_name: resolvedCandidate.first_name ?? first_name,
+      last_name: resolvedCandidate.last_name ?? last_name,
       class_id: selectedClassId,
       status: started.attempt.status,
       attempt_number: started.attemptNumber,
@@ -400,12 +500,12 @@ export async function POST(request: Request) {
     const track = decision.track;
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const rows = track ? paperForTrack(rows0, track) : rows0;
-    const ordered = settings.randomize_questions ? seededShuffle(rows, `${exam.id}:${candidate.id}`) : rows;
+    const ordered = settings.randomize_questions ? seededShuffle(rows, `${exam.id}:${resolvedCandidate.id}`) : rows;
     const { data, error } = await admin
       .from("exam_attempts")
       .insert({
         exam_id: exam.id,
-        candidate_id: candidate.id,
+        candidate_id: resolvedCandidate.id,
         question_order: ordered.map((r) => r.id),
         // Only sent for track-selection examinations, so examinations without it
         // never reference the exam_attempts.track column.
@@ -414,7 +514,7 @@ export async function POST(request: Request) {
         last_name,
         class_id: selectedClassId,
         student_id: studentId,
-        guest_key_hash: guestKeyHash,
+        guest_key_hash: matchedRosterCandidate ? null : guestKeyHash,
         invite_token,
         identity_data: identityData,
       })
@@ -429,7 +529,7 @@ export async function POST(request: Request) {
         .from("exam_attempts")
         .select("*")
         .eq("exam_id", exam.id)
-        .eq("candidate_id", candidate.id)
+        .eq("candidate_id", resolvedCandidate.id)
         .order("attempt_number", { ascending: false });
       const racedActive = (racedRows ?? []).find((row) => row.status === "in_progress") ?? null;
       if (!racedActive) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
@@ -437,7 +537,7 @@ export async function POST(request: Request) {
     } else {
       attempt = data;
     }
-    await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
+    await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", resolvedCandidate.id);
   }
 
   const finalAttempt = attempt;
@@ -454,10 +554,11 @@ export async function POST(request: Request) {
     attempt_id: finalAttempt.id,
     access_token: finalAttempt.access_token,
     exam_id: exam.id,
+    entry_href: entryHref,
     title: exam.title,
-    candidate_name: candidate.full_name,
-    first_name: candidate.first_name ?? first_name,
-    last_name: candidate.last_name ?? last_name,
+    candidate_name: resolvedCandidate.full_name,
+    first_name: resolvedCandidate.first_name ?? first_name,
+    last_name: resolvedCandidate.last_name ?? last_name,
     class_id: selectedClassId,
     status: finalAttempt.status,
     attempt_number: Number(finalAttempt.attempt_number ?? 1),

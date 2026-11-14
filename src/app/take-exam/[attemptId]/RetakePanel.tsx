@@ -2,6 +2,7 @@
 
 import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { Badge, Button, Card, Textarea } from "@/components/ui";
+import { saveCandidateAttemptSession } from "@/lib/examCandidateSession";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
@@ -108,12 +109,17 @@ export function RetakePanel({
       }
       if (action === "start") {
         const started = data as { attempt_id: string; access_token: string; exam_id: string };
-        try {
-          localStorage.setItem(
-            `evalora-attempt-${started.attempt_id}`,
-            JSON.stringify({ token: started.access_token, exam_id: started.exam_id }),
-          );
-        } catch {
+        const saved = saveCandidateAttemptSession(
+          typeof window !== "undefined" ? window.localStorage : null,
+          typeof window !== "undefined" ? window.sessionStorage : null,
+          {
+            attempt_id: started.attempt_id,
+            token: started.access_token,
+            exam_id: started.exam_id,
+            status: "in_progress",
+          },
+        );
+        if (!saved) {
           setError("Your browser blocked session storage, so the authorized attempt cannot be opened here.");
           return;
         }

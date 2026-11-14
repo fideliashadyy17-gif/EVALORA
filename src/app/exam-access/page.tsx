@@ -2,34 +2,63 @@
 
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input } from "@/components/ui";
+import {
+  readActiveCandidatePointer,
+  saveCandidateAttemptSession,
+  type ActiveCandidatePointer,
+} from "@/lib/examCandidateSession";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export default function ExamAccessPage() {
   const router = useRouter();
   const [examCode, setExamCode] = useState("");
   const [candidateCode, setCandidateCode] = useState("");
   const [consent, setConsent] = useState(false);
+  const [activePointer, setActivePointer] = useState<ActiveCandidatePointer | null>(null);
+  const [dismissedActivePointer, setDismissedActivePointer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const local = typeof window !== "undefined" ? window.localStorage : null;
+    setActivePointer(readActiveCandidatePointer(local, { entryHref: "/exam-access" }));
+  }, []);
 
   async function submit(e: React.FormEvent | null) {
     e?.preventDefault();
     setBusy(true);
     setError(null);
-    const res = await fetch("/api/exam/access", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exam_code: examCode.trim(), candidate_code: candidateCode.trim() }),
-    });
+    let res: Response;
+    try {
+      res = await fetch("/api/exam/access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ exam_code: examCode.trim(), candidate_code: candidateCode.trim() }),
+      });
+    } catch {
+      setBusy(false);
+      return setError("Connection interrupted while verifying access. Check your connection and try again.");
+    }
     const data = await res.json().catch(() => null);
     setBusy(false);
     if (!res.ok) return setError(data?.error ?? "Access denied.");
-    localStorage.setItem(
-      `evalora-attempt-${data.attempt_id}`,
-      JSON.stringify({ token: data.access_token, exam_id: data.exam_id }),
+    const saved = saveCandidateAttemptSession(
+      typeof window !== "undefined" ? window.localStorage : null,
+      typeof window !== "undefined" ? window.sessionStorage : null,
+      {
+        attempt_id: data.attempt_id,
+        token: data.access_token,
+        exam_id: data.exam_id,
+        entry_href: "/exam-access",
+        candidate_name: typeof data.candidate_name === "string" ? data.candidate_name : null,
+        status: typeof data.status === "string" ? data.status : "in_progress",
+      },
     );
+    if (!saved) {
+      return setError("Your browser blocked session storage. Enable it and try again.");
+    }
     router.push(`/take-exam/${data.attempt_id}`);
   }
 
@@ -45,7 +74,7 @@ export default function ExamAccessPage() {
             <p className="exam-entry-kicker">Candidate check-in</p>
             <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">Enter your examination</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-emerald-50/80">
-              Use the examination code and personal candidate code issued by your institution. Have both ready before you continue.
+              Use the examination code and personal candidate code issued by your institution. Shared classroom browsers are supported.
             </p>
           </div>
           <div className="p-6 sm:p-9">
@@ -54,6 +83,39 @@ export default function ExamAccessPage() {
               <div><span>02</span><p>Answers autosaved</p></div>
               <div><span>03</span><p>Resume after reconnect</p></div>
             </div>
+            {activePointer && !dismissedActivePointer && (
+              <div
+                role="region"
+                aria-label="Unfinished examination recovery"
+                data-testid="active-attempt-recovery-banner"
+                className="mb-5 rounded-xl border border-amber-400/50 bg-amber-50 px-4 py-3.5 text-sm text-amber-950"
+              >
+                <p className="font-semibold">
+                  An unfinished examination{activePointer.candidate_name ? ` for ${activePointer.candidate_name}` : ""} is still in progress on this browser.
+                </p>
+                <p className="mt-1 text-xs leading-5 text-amber-900/90">
+                  If that paper is yours, resume where you left off. If you are a different student, enter your own personal candidate code below.
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="primary"
+                    className="text-xs"
+                    onClick={() => router.push(`/take-exam/${activePointer.attempt_id}`)}
+                  >
+                    Resume{activePointer.candidate_name ? ` ${activePointer.candidate_name}'s` : " saved"} attempt
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="text-xs"
+                    onClick={() => setDismissedActivePointer(true)}
+                  >
+                    I am a different student
+                  </Button>
+                </div>
+              </div>
+            )}
             <p className="mb-5 text-sm leading-6 text-ink-soft">
               Received a shareable examination link or single invitation code?{" "}
               <Link href="/exam" className="font-semibold text-evergreen-800 underline underline-offset-2">

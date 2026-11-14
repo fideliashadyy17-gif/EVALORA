@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, ButtonLink, Card, Field, Input } from "@/components/ui";
+import { saveCandidateAttemptSession } from "@/lib/examCandidateSession";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -49,10 +50,22 @@ export function RetakeAccessForm({
       }
       // Same hand-off the code-based access page uses: the attempt token stays
       // in this browser, never in the URL.
-      window.localStorage.setItem(
-        `evalora-attempt-${data.attempt_id}`,
-        JSON.stringify({ token: data.access_token, exam_id: data.exam_id }),
+      const saved = saveCandidateAttemptSession(
+        typeof window !== "undefined" ? window.localStorage : null,
+        typeof window !== "undefined" ? window.sessionStorage : null,
+        {
+          attempt_id: data.attempt_id,
+          token: data.access_token,
+          exam_id: data.exam_id,
+          entry_href: "/exam",
+          candidate_name: `${firstName.trim()} ${lastName.trim()}`.trim() || null,
+          status: "in_progress",
+        },
       );
+      if (!saved) {
+        setBusy(false);
+        return setError("Your browser blocked session storage. Enable it and try again.");
+      }
       router.push(`/take-exam/${data.attempt_id}`);
     } catch {
       setBusy(false);

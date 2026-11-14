@@ -14,6 +14,9 @@ import {
   ExamSaveQueue,
   createDurableExamQueueStorage,
   createQueueIdempotencyKey,
+  finalizeSubmittedAttemptSession,
+  readCandidateAttemptSession,
+  readClosedAttemptMarker,
   type ExamQueueState,
 } from "@/lib/examSaveQueue";
 import { Badge, Button, Card } from "@/components/ui";
@@ -32,7 +35,7 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
+  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -176,6 +179,8 @@ function resultTone(result: { is_correct: boolean | null; answered?: boolean }):
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [token, setToken] = useState<string | null>(null);
+  const [sessionClosedHref, setSessionClosedHref] = useState<string | null>(null);
+  const entryHrefRef = useRef<string>("/exam-access");
   // Participant rail: presence only. It is fetched on its own slow cadence and
   // can never touch an answer, a deadline or the save queue.
   const [presence, setPresence] = useState<PresenceRoster | null>(null);
@@ -278,9 +283,22 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(`evalora-attempt-${attemptId}`);
-      if (raw) setToken(JSON.parse(raw).token);
-      else setError("We couldn't verify this session. Please go through the examination entry page again.");
+      const local = typeof localStorage !== "undefined" ? localStorage : null;
+      const session = typeof sessionStorage !== "undefined" ? sessionStorage : null;
+      const stored = readCandidateAttemptSession(local, attemptId);
+      if (stored) {
+        if (stored.entry_href) entryHrefRef.current = stored.entry_href;
+        setSessionClosedHref(null);
+        setToken(stored.token);
+        return;
+      }
+      const closed = readClosedAttemptMarker(session, attemptId);
+      if (closed) {
+        entryHrefRef.current = closed.entry_href;
+        setSessionClosedHref(closed.entry_href);
+        return;
+      }
+      setError("We couldn't verify this session. Please go through the examination entry page again.");
     } catch {
       setError("We couldn't verify this session.");
     }
@@ -437,8 +455,23 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
     setError(null);
     hasLoadedStateRef.current = true;
+    if (data.exam.entry_href) entryHrefRef.current = data.exam.entry_href;
     activeRef.current = data.attempt.status === "in_progress";
     const pending = queue.snapshot();
+    if (!activeRef.current) {
+      // Verified server closure (`submitted` / `auto_submitted` / `marked`):
+      // purge ONLY this completed candidate's active browser token & recovery
+      // pointers while keeping React state alive for viewing confirmation/results.
+      entryHrefRef.current = finalizeSubmittedAttemptSession(
+        typeof localStorage !== "undefined" ? localStorage : null,
+        typeof sessionStorage !== "undefined" ? sessionStorage : null,
+        attemptId,
+        {
+          entryHref: data.exam.entry_href ?? entryHrefRef.current,
+          preservePendingQueue: pending.length > 0,
+        },
+      );
+    }
     if (activeRef.current && pending.length) {
       const byQuestion = new Map(pending.map((entry) => [entry.questionId, entry]));
       data.questions = data.questions.map((question) => {
@@ -815,6 +848,19 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       }
       submitIdempotencyRef.current = null;
       setConfirmSubmit(false);
+      // Backend confirmed final submission: immediately close the candidate's
+      // active browser session so the next student on this device gets a clean
+      // entry screen even if this tab is closed or navigated away without
+      // clicking "Finish & return to examination entry".
+      entryHrefRef.current = finalizeSubmittedAttemptSession(
+        typeof localStorage !== "undefined" ? localStorage : null,
+        typeof sessionStorage !== "undefined" ? sessionStorage : null,
+        attemptId,
+        {
+          entryHref: state?.exam.entry_href ?? entryHrefRef.current,
+          preservePendingQueue: false,
+        },
+      );
       const reloaded = await load();
       if (!reloaded) {
         setState((prev) =>
@@ -837,6 +883,57 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
   }
 
+  function finishCandidateSession() {
+    const targetHref = finalizeSubmittedAttemptSession(
+      typeof localStorage !== "undefined" ? localStorage : null,
+      typeof sessionStorage !== "undefined" ? sessionStorage : null,
+      attemptId,
+      {
+        entryHref: state?.exam.entry_href ?? entryHrefRef.current,
+        preservePendingQueue: queueState.pending > 0,
+      },
+    );
+    if (token && typeof fetch === "function") {
+      try {
+        void fetch("/api/exam/presence", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attempt_id: attemptId, token, action: "leave" }),
+          keepalive: true,
+        }).catch(() => {});
+      } catch {
+        // Best-effort offline notification only.
+      }
+    }
+    setToken(null);
+    setState(null);
+    setSessionClosedHref(targetHref);
+    if (typeof window !== "undefined" && window.location && typeof window.location.replace === "function") {
+      window.location.replace(targetHref);
+    }
+  }
+
+  if (sessionClosedHref && !state) {
+    return (
+      <Centered>
+        <p className="exam-entry-kicker">Session closed</p>
+        <h1 className="mt-1 font-display text-2xl font-semibold text-evergreen-950">Examination session ended</h1>
+        <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+          This candidate&apos;s paper has been submitted and its browser session is closed. Another student can now sign in safely on this browser.
+        </p>
+        <div className="mt-5">
+          <a
+            href={sessionClosedHref}
+            data-testid="closed-session-entry-link"
+            className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-evergreen-700 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-evergreen-800"
+          >
+            Return to examination entry
+          </a>
+        </div>
+      </Centered>
+    );
+  }
+
   if (error) {
     return (
       <Centered>
@@ -852,7 +949,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             <Button onClick={() => { setError(null); void load(); }}>Retry connection</Button>
           </div>
         ) : null}
-        <a href="/exam-access" className="mt-4 inline-block font-semibold text-evergreen-700 underline underline-offset-2">Go to examination entry</a>
+        <a href={entryHrefRef.current || "/exam-access"} className="mt-4 inline-block font-semibold text-evergreen-700 underline underline-offset-2">Go to examination entry</a>
       </Centered>
     );
   }
@@ -950,6 +1047,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </>
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
+          {submitted && (
+            <Button
+              variant="outline"
+              className="text-xs"
+              data-testid="header-finish-session"
+              onClick={finishCandidateSession}
+            >
+              Finish &amp; exit for next student
+            </Button>
+          )}
           <PresenceRail
             roster={presence}
             variant="exam"
@@ -1032,7 +1139,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             {queueState.error && <p role="alert" className="mt-2 text-xs text-red-700">{queueState.error}</p>}
             {!queueState.durable && <p role="alert" className="mt-2 text-xs text-red-700">Local recovery is unavailable. Do not refresh or close this tab while answers are waiting.</p>}
             {queueState.pending > 0 && !queueState.syncing && !submitted && <Button variant="outline" className="mt-2 w-full text-xs" onClick={() => void queueRef.current?.flush()}>Retry saving</Button>}
-            <p className="mt-2 text-xs text-ink-soft">Written, mathematical and graphical answers save automatically; <strong>Save answer</strong> confirms immediately. Flags are sent when an answer is saved. Waiting answers are stored in this tab for refresh recovery; closing the tab can remove them. Use a private device.</p>
+            <p className="mt-2 text-xs text-ink-soft">Written, mathematical and graphical answers save automatically; <strong>Save answer</strong> confirms immediately. Flags are sent when an answer is saved. Waiting answers are preserved on this browser for refresh recovery until you submit your paper.</p>
           </Card>
           {exam.instructions && (
             <Card className="p-4">
@@ -1199,8 +1306,21 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   </div>
                 </div>
               ) : (
-                <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " You can close this page." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
+                <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " Your active browser session is closed so the next student can sign in safely." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
               )}
+              <div className="mx-auto mt-5 flex max-w-xl flex-col items-center gap-2 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 print:hidden">
+                <p className="text-xs leading-5 text-ink-soft">
+                  Sharing this computer or tablet with classmates? Select below to return to a clean examination entry screen for the next student.
+                </p>
+                <Button
+                  variant="gold"
+                  className="w-full sm:w-auto"
+                  data-testid="finish-candidate-session"
+                  onClick={finishCandidateSession}
+                >
+                  Finish &amp; return to examination entry
+                </Button>
+              </div>
               <RetakePanel attemptId={attemptId} token={token} submitted={submitted} />
             </Card>
           ) : null}
