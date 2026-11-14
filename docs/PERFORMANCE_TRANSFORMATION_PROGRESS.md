@@ -99,3 +99,12 @@ This section supersedes older blockers above; it is not a claim that every origi
 11. **Measured payload:** latest Next build first-load estimates: examination 548kB vs original 699kB (~22% lower); play 353kB vs original 507kB (~30% lower). Required tool chunks still download on demand. No authenticated production TTFB/LCP/INP/CLS or warm-navigation timing claim is made.
 12. **Deployment:** release is intended for explicit Vercel production deployment from the exact pushed SHA. Deployment identity and post-deploy smoke verification will be recorded separately after readiness is confirmed. Local mocked build variables are not committed and are not passed to Vercel; Vercel uses existing production settings.
 13. **Remaining scope:** comprehensive module-specific redesign/controls for classes, academics, teachers, team, accounts, proctoring, platform and billing; authenticated real-tenant device/performance coverage; live-player clock isolation; full rendered accessibility audit; dependency vulnerability triage (previous npm audit 43 moderate/1 high). Shared shell/styles benefit existing modules but do not establish completion of these criteria. Rollback is an application redeploy, never a data reset.
+
+### Production confirmation
+
+- Application release SHA: `e40bcace81d2f021f3beacb5098c678924c8d113`, pushed on `arena/7e81e163-evalora`.
+- Explicit production deployment: `dpl_22AYnqNmRVjN8orbVKksUgsmFnh5`; Vercel reports **READY / PROMOTED**, assigned `evalora-six.vercel.app`, region `cdg1`, with no alias error.
+- Immutable deployment: https://evalora-hup9jj0hv-starboyboy2017-cells-projects.vercel.app .
+- After promotion, fresh release-tagged requests rendered `/login` and `/exam-access`; unauthenticated `/dashboard/students` correctly redirected to login. No live examination was started or modified for verification.
+- Final full `--all` rerun after registering the response-tool smoke: **131 suites passed, 0 failed, 0 skipped**. The runner counts 1,670 individual checks; the additional response-tool smoke's seven browser assertions pass but its output does not match that counter's pattern. Browser checks remain isolated/mock-backed, not authenticated production tests.
+- This documentation-only follow-up records the deployed application SHA; it does not change application behavior. Remaining scope in item 13 above is still outstanding.
