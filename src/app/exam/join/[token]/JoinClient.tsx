@@ -96,12 +96,19 @@ export function ExamJoinClient({
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 py-10">
-      <Logo className="mb-6" />
-      <Card className="w-full max-w-xl p-7 sm:p-8">
-        <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Shared examination invitation</p>
-        <h1 className="mt-1 font-display text-2xl font-semibold text-evergreen-950">{title}</h1>
-        {description && <p className="mt-2 text-sm text-ink-soft">{description}</p>}
+    <div className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-2xl">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <Logo />
+          <span className="exam-entry-secure">Secure examination access</span>
+        </div>
+        <Card className="exam-entry-card overflow-hidden">
+          <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
+            <p className="exam-entry-kicker">Shared examination invitation</p>
+            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
+            {description && <p className="mt-2 text-sm leading-6 text-emerald-50/80">{description}</p>}
+          </div>
+          <div className="p-6 sm:p-9">
         {instructions && <div className="mt-3 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{instructions}</div>}
         <p className="mt-3 text-sm text-ink-soft">
           {accessMode === "shared_link"
@@ -145,8 +152,8 @@ export function ExamJoinClient({
               {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </Select>
           </Field>
-          <label className="flex items-start gap-2 text-sm text-ink">
-            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 h-5 w-5 accent-evergreen-700" required />
+          <label className="flex items-start gap-3 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 text-sm leading-6 text-ink">
+            <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-evergreen-700" required />
             <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
           </label>
           <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || requiresAccount}>
@@ -156,7 +163,10 @@ export function ExamJoinClient({
             Returning after a disconnection? Use the same link, code, name, identification fields and class on this browser to resume your saved answers.
           </p>
         </form>
-      </Card>
+      </div>
+    </Card>
+    <p className="mt-5 text-center text-xs text-ink-soft">Your attempt is verified and timed by EVALORA&apos;s secure examination service.</p>
+      </div>
     </div>
   );
 }

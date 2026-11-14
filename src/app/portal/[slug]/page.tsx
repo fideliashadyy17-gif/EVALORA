@@ -55,8 +55,8 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
   const isSuperAdmin = ctx?.profile.platform_role === "super_admin";
 
   return (
-    <div className="min-h-screen bg-cream">
-      <header className="mx-auto flex max-w-5xl items-center justify-between px-4 py-5">
+    <div className="tenant-portal min-h-screen bg-cream">
+      <header className="tenant-portal-header mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Logo href={null} />
         <div className="flex items-center gap-3">
           <span className="hidden text-xs font-medium text-ink-soft sm:inline">{tenantPortalLabel(org.slug)}</span>
@@ -69,9 +69,9 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
         </div>
       </header>
 
-      <main className="mx-auto max-w-5xl px-4 pb-16">
-        <Card className="overflow-hidden">
-          <div className="bg-evergreen-900 px-6 py-8 text-white sm:px-10">
+      <main className="tenant-portal-main mx-auto max-w-6xl px-4 pb-16 sm:px-6">
+        <Card className="tenant-portal-card overflow-hidden">
+          <div className="tenant-portal-hero bg-evergreen-900 px-6 py-8 text-white sm:px-10 sm:py-10">
             <div className="flex flex-wrap items-center gap-4">
               {org.logo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -110,7 +110,7 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
               <>
                 <h2 className="font-display text-lg font-semibold text-evergreen-950">How would you like to continue?</h2>
                 <div className="mt-5 grid gap-4 sm:grid-cols-3">
-                  <div className="rounded-xl border border-evergreen-900/15 p-4">
+                  <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
                     <p className="font-semibold text-evergreen-950">Staff &amp; students</p>
                     <p className="mt-1 text-sm text-ink-soft">Sign in to the {org.name} workspace: classes, quizzes, examinations and reports.</p>
                     {isMember || isSuperAdmin ? (
@@ -128,12 +128,12 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
                       Staff and students sign in with their {org.name} account.
                     </p>
                   </div>
-                  <div className="rounded-xl border border-evergreen-900/15 p-4">
+                  <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
                     <p className="font-semibold text-evergreen-950">Live competition</p>
                     <p className="mt-1 text-sm text-ink-soft">Joining a live competition or class quiz? Enter your join code.</p>
                     <ButtonLink href="/join" variant="outline" className="mt-3">Enter join code</ButtonLink>
                   </div>
-                  <div className="rounded-xl border border-evergreen-900/15 p-4">
+                  <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
                     <p className="font-semibold text-evergreen-950">Examination candidates</p>
                     <p className="mt-1 text-sm text-ink-soft">Formal examination today? Use the personal access code given by your school.</p>
                     <ButtonLink href="/exam-access" variant="outline" className="mt-3">Enter access code</ButtonLink>
