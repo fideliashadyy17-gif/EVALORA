@@ -118,7 +118,7 @@ export function Card({
   id?: string;
 }) {
   return (
-    <div id={id} className={cn("rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
+    <div id={id} className={cn("evalora-card rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
       {children}
     </div>
   );
@@ -157,7 +157,7 @@ export function PageTitle({
   action?: ReactNode;
 }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
+    <div className="evalora-page-title mb-6 flex flex-wrap items-end justify-between gap-3">
       <div>
         <h1 className="font-display text-2xl font-semibold text-evergreen-950 sm:text-3xl">{title}</h1>
         {subtitle && <p className="mt-1 text-sm text-ink-soft">{subtitle}</p>}
@@ -197,7 +197,7 @@ export function StatCard({
   icon?: ReactNode;
 }) {
   return (
-    <Card className="p-5">
+    <Card className="evalora-stat-card p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-xs font-medium uppercase tracking-wide text-ink-soft">{label}</p>

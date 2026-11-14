@@ -298,7 +298,6 @@ export function AdminShell({
       <Link
         key={`${groupTitle}-${n.label}-${n.href}`}
         href={n.href}
-        prefetch={false}
         title={iconOnly ? n.label : undefined}
         onClick={() => setMobileOpen(false)}
         className={cn(
@@ -343,11 +342,12 @@ export function AdminShell({
   );
 
   return (
-    <div className={cn("min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[292px_1fr]")}>
+    <div className={cn("admin-console min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[292px_1fr]")}>
+      <a href="#main-content" className="skip-link">Skip to main content</a>
       {/* ─── Sidebar (desktop) ─── */}
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-4 lg:flex">
+      <aside className="admin-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-4 lg:flex" aria-label="Super Admin navigation">
         <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
-          {!collapsed && <Logo href="/admin" />}
+          {!collapsed && <div className="admin-brand"><Logo href="/admin" /></div>}
           <button
             onClick={toggleCollapsed}
             className="rounded-lg p-2 text-evergreen-900 hover:bg-evergreen-50"
@@ -366,7 +366,6 @@ export function AdminShell({
           {!collapsed && <p className="truncate px-1 text-xs text-ink-soft">{email}</p>}
           <Link
             href="/dashboard"
-            prefetch={false}
             title={collapsed ? "My workspace" : undefined}
             className={cn(
               "mt-2 flex items-center gap-3 rounded-lg border border-evergreen-900/25 px-3 py-2.5 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50",
@@ -381,18 +380,24 @@ export function AdminShell({
 
       <div className="min-w-0">
         {/* ─── Top navigation ─── */}
-        <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper/95 backdrop-blur">
+        <header className="admin-header sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper/95 backdrop-blur">
           <div className="flex h-[64px] items-center gap-2 px-4 sm:gap-3 sm:px-6">
             <button
               onClick={() => setMobileOpen((v) => !v)}
               className="rounded-lg p-2 text-evergreen-900 lg:hidden"
-              aria-label="Toggle menu"
+              aria-label="Toggle Super Admin navigation"
+              aria-expanded={mobileOpen}
+              aria-controls="admin-mobile-navigation"
             >
               {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
             <span className="lg:hidden">
               <Logo href="/admin" />
             </span>
+            <div className="hidden min-w-[170px] lg:block">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-evergreen-700">EVALORA · CONTROL PLANE</p>
+              <p className="text-xs font-medium text-ink-soft">Global platform operations</p>
+            </div>
 
             {/* Global search */}
             <form
@@ -441,7 +446,6 @@ export function AdminShell({
                     <Link
                       key={a.href}
                       href={a.href}
-                      prefetch={false}
                       onClick={() => quick.setOpen(false)}
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50"
                     >
@@ -514,12 +518,12 @@ export function AdminShell({
 
         {/* Mobile nav */}
         {mobileOpen && (
-          <div className="max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
+          <div id="admin-mobile-navigation" className="max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
             {renderNav(false)}
           </div>
         )}
 
-        <main className="mx-auto w-full max-w-7xl px-4 py-7 sm:px-6 lg:py-9">{children}</main>
+        <main id="main-content" className="admin-content mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-9 lg:py-9">{children}</main>
       </div>
     </div>
   );

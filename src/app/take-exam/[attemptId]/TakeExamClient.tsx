@@ -105,6 +105,56 @@ function CandidateVideoStatus({ onRetry, mediaError }: { onRetry: () => void; me
   </div>;
 }
 
+function ExamCountdown({
+  deadline,
+  serverOffsetMs,
+  paused,
+}: {
+  deadline: string;
+  serverOffsetMs: number;
+  paused: boolean;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  const frozenSeconds = useRef<number | null>(null);
+  const previousPaused = useRef(false);
+  const deadlineMs = new Date(deadline).getTime();
+  const liveSeconds = Math.max(0, (deadlineMs - (now + serverOffsetMs)) / 1000);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (paused && !previousPaused.current) {
+      frozenSeconds.current = Math.max(0, (deadlineMs - (Date.now() + serverOffsetMs)) / 1000);
+    } else if (!paused && previousPaused.current) {
+      frozenSeconds.current = null;
+    }
+    previousPaused.current = paused;
+  }, [deadlineMs, paused, serverOffsetMs]);
+
+  const seconds = paused && frozenSeconds.current !== null ? frozenSeconds.current : liveSeconds;
+  const urgent = seconds <= 300;
+
+  return (
+    <div
+      role="timer"
+      aria-label={`${paused ? "Time paused" : "Time remaining"}: ${mmss(Math.ceil(seconds))}`}
+      aria-live="off"
+      className={`min-w-[116px] rounded-xl px-4 py-2 text-center ${urgent ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}
+    >
+      <p className={`text-[10px] uppercase tracking-wider ${urgent ? "text-white" : "text-ink-soft"}`}>
+        {paused ? "Time paused" : "Time remaining"}
+      </p>
+      <p className="font-display text-2xl font-bold tabular-nums leading-none">
+        {Number.isFinite(seconds) ? mmss(Math.ceil(seconds)) : "—"}
+      </p>
+    </div>
+  );
+}
+
+
 /** Glyph, colour and label for one question in the post-submission navigator. */
 function resultMark(result: { is_correct: boolean | null; answered?: boolean }) {
   if (result.answered === false) return { glyph: "–", tone: "bg-ink/50", label: "not answered, 0 marks" };
@@ -192,7 +242,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const attemptStatus = state?.attempt.status ?? "in_progress";
   const attemptActive = attemptStatus === "in_progress";
   const activePolicy = useMemo(() => parseIntegrityPolicy(state?.exam.integrity), [state?.exam.integrity]);
-  const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -595,14 +644,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
   }, [attemptActive, attemptId, token]);
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
-
   // Throttled presence update when question position or save/queue count changes,
   // replacing the duplicate loop previously run inside ExamMessenger.
-  const frozenRemaining = useRef<number | null>(null);
   useEffect(() => {
     if (!token || !attemptActive || !hasLoadedStateRef.current) return;
     const elapsed = Date.now() - lastPresenceSentAtRef.current;
@@ -627,10 +670,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     return () => clearTimeout(timer);
   }, [attemptActive, attemptId, token, index, savedIds.size, queueState.pending]);
 
-  // When the displayed countdown reaches zero, ask the server to check the
-  // official deadline (after flushing any pending saves inside `load()`).
-  // Uses exponential backoff (3s -> 6s -> 12s -> 24s -> 60s) and an in-flight
-  // guard so simultaneous deadline expiries during an outage never flood `/api/exam/state`.
+  // At the authoritative server deadline, ask the server to check expiry.
+  // This uses one deadline timeout (then bounded exponential retry), rather
+  // than waking and reconciling the complete examination tree twice a second.
   const nextDeadlineCheckAt = useRef(0);
   const deadlineCheckFailures = useRef(0);
   const deadlineCheckBusy = useRef(false);
@@ -640,25 +682,42 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       nextDeadlineCheckAt.current = 0;
       return;
     }
-    const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
-    if (!Number.isFinite(remaining) || remaining > 0) return;
-    if (deadlineCheckBusy.current || now < nextDeadlineCheckAt.current) return;
-    deadlineCheckBusy.current = true;
-    void load()
-      .then((ok) => {
+
+    const remainingMs = new Date(state.attempt.deadline).getTime() - (Date.now() + offset.current);
+    if (!Number.isFinite(remainingMs)) return;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const checkServerDeadline = async () => {
+      if (stopped) return;
+      if (deadlineCheckBusy.current) {
+        timer = setTimeout(checkServerDeadline, 1_000);
+        return;
+      }
+      deadlineCheckBusy.current = true;
+      try {
+        const ok = await load().catch(() => false);
         if (ok) {
           deadlineCheckFailures.current = 0;
           nextDeadlineCheckAt.current = Date.now() + 5_000;
         } else {
           deadlineCheckFailures.current += 1;
-          const backoff = Math.min(60_000, 3_000 * 2 ** Math.min(deadlineCheckFailures.current - 1, 4));
-          nextDeadlineCheckAt.current = Date.now() + backoff;
+          const retryMs = Math.min(60_000, 3_000 * 2 ** Math.min(deadlineCheckFailures.current - 1, 4));
+          nextDeadlineCheckAt.current = Date.now() + retryMs;
         }
-      })
-      .finally(() => {
+      } finally {
         deadlineCheckBusy.current = false;
-      });
-  }, [now, state, load]);
+        if (!stopped) timer = setTimeout(checkServerDeadline, Math.max(0, nextDeadlineCheckAt.current - Date.now()));
+      }
+    };
+
+    const waitMs = remainingMs > 0 ? remainingMs : Math.max(0, nextDeadlineCheckAt.current - Date.now());
+    timer = setTimeout(checkServerDeadline, waitMs);
+    return () => {
+      stopped = true;
+      clearTimeout(timer);
+    };
+  }, [state, load]);
   useEffect(() => {
     const retry = () => { if (activeRef.current) void queueRef.current?.flush(); };
     const warn = (event: BeforeUnloadEvent) => {
@@ -801,14 +860,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const { exam, attempt, questions } = state;
   const submitted = attempt.status !== "in_progress";
-  const liveRemaining = Math.max(0, (new Date(attempt.deadline).getTime() - (now + offset.current)) / 1000);
-  // During a confirmed local outage the countdown FREEZES at the value it had
-  // when the connection was lost — the server independently validates the
-  // pause and credits it, and the resynced deadline takes over on return.
-  const countdownFrozen = connState === "lost" || manualPause.paused;
-  const remaining = countdownFrozen && frozenRemaining.current !== null ? frozenRemaining.current : liveRemaining;
-  if (countdownFrozen && frozenRemaining.current === null) frozenRemaining.current = liveRemaining;
-  if (!countdownFrozen) frozenRemaining.current = null;
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
   const currentKeyLine = answerKeyLine(current?.reveal?.summary);
@@ -819,7 +870,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const pct = attempt.score !== null && attempt.max_score ? (attempt.score / attempt.max_score) * 100 : null;
 
   const examBody = (
-    <div className="min-h-screen bg-cream">
+    <div className="exam-workspace min-h-screen bg-cream">
+      <a href="#exam-main" className="skip-link">Skip to examination questions</a>
       {manualPause.paused && !submitted && (
         <div role="status" aria-live="polite" className="border-b border-sky-300 bg-sky-100 px-4 py-3 text-center text-sm font-semibold text-sky-950 print:hidden">
           {manualPause.notice === "student"
@@ -845,7 +897,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           )}
         </div>
       )}
-      <header className="sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
+      <header className="exam-header sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
@@ -858,10 +910,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </p>
           </div>
           {!submitted && (
-            <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
-              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>{countdownFrozen ? "Time paused" : "Time remaining"}</p>
-              <p className="font-display text-2xl font-bold tabular-nums leading-none">{Number.isFinite(remaining) ? mmss(Math.ceil(remaining)) : "—"}</p>
-            </div>
+            <ExamCountdown
+              deadline={attempt.deadline}
+              serverOffsetMs={offset.current}
+              paused={connState === "lost" || manualPause.paused}
+            />
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
           <PresenceRail
@@ -874,7 +927,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </div>
       </header>
 
-      <main className={cn("mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]", corrigeAll && "block")}>
+      <main id="exam-main" className={cn("mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]", corrigeAll && "block")}>
         <aside className={cn("space-y-4 lg:sticky lg:top-24 lg:h-fit print:hidden", corrigeAll && "hidden")}>
           {exam.proctoring && !submitted && (
             <Card className="space-y-2 p-3">
