@@ -231,6 +231,7 @@ export function AdminShell({
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [moduleQuery, setModuleQuery] = useState("");
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
     () => Object.fromEntries(GROUPS.map((g) => [g.title, true])),
   );
@@ -317,29 +318,41 @@ export function AdminShell({
     );
   };
 
-  const renderNav = (iconOnly: boolean) => (
-    <nav className="flex flex-col gap-4" aria-label="Super Admin modules">
-      {GROUPS.map((g) => {
-        const open = iconOnly || openGroups[g.title] !== false;
-        return (
-          <div key={g.title}>
-            {!iconOnly && (
-              <button
-                type="button"
-                onClick={() => setOpenGroups((current) => ({ ...current, [g.title]: !open }))}
-                aria-expanded={open}
-                className="mb-1.5 flex w-full items-center justify-between rounded-md px-3 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900"
-              >
-                <span>{g.title}</span>
-                <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
-              </button>
-            )}
-            {open && <div className="flex flex-col gap-1">{g.items.map((n) => navLink(n, iconOnly, g.title))}</div>}
-          </div>
-        );
-      })}
-    </nav>
-  );
+  const renderNav = (iconOnly: boolean) => {
+    const term = moduleQuery.trim().toLowerCase();
+    const groups = GROUPS.map((g) => ({
+      ...g,
+      items: term
+        ? g.items.filter((item) => `${item.label} ${g.title} ${item.href}`.toLowerCase().includes(term))
+        : g.items,
+    })).filter((g) => g.items.length > 0);
+
+    return (
+      <nav className="flex flex-col gap-4" aria-label="Super Admin modules">
+        {groups.length === 0 ? (
+          <p className="rounded-lg px-3 py-3 text-sm text-ink-soft" role="status">No modules match “{moduleQuery}”.</p>
+        ) : groups.map((g) => {
+          const open = Boolean(term) || iconOnly || openGroups[g.title] !== false;
+          return (
+            <div key={g.title}>
+              {!iconOnly && (
+                <button
+                  type="button"
+                  onClick={() => setOpenGroups((current) => ({ ...current, [g.title]: !open }))}
+                  aria-expanded={open}
+                  className="mb-1.5 flex w-full items-center justify-between rounded-md px-3 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900"
+                >
+                  <span>{g.title}</span>
+                  <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
+                </button>
+              )}
+              {open && <div className="flex flex-col gap-1">{g.items.map((n) => navLink(n, iconOnly, g.title))}</div>}
+            </div>
+          );
+        })}
+      </nav>
+    );
+  };
 
   return (
     <div className={cn("admin-console min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[292px_1fr]")}>
@@ -357,11 +370,23 @@ export function AdminShell({
           </button>
         </div>
         {!collapsed && (
-          <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-evergreen-950">
-            <ShieldCheck className="h-3.5 w-3.5" /> {isPrimary ? "Primary Super Admin" : "Super Admin"}
-          </p>
+          <>
+            <p className="mt-3 inline-flex w-fit items-center gap-1.5 rounded-full bg-gold-500 px-3 py-1 text-xs font-bold uppercase tracking-wide text-evergreen-950">
+              <ShieldCheck className="h-3.5 w-3.5" /> {isPrimary ? "Primary Super Admin" : "Super Admin"}
+            </p>
+            <label className="mt-4 block">
+              <span className="sr-only">Filter Super Admin modules</span>
+              <input
+                type="search"
+                value={moduleQuery}
+                onChange={(event) => setModuleQuery(event.target.value)}
+                placeholder="Find a module…"
+                className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
+              />
+            </label>
+          </>
         )}
-        <div className="mt-5 flex-1 overflow-y-auto scroll-slim pr-1">{renderNav(collapsed)}</div>
+        <div className="mt-3 flex-1 overflow-y-auto scroll-slim pr-1">{renderNav(collapsed)}</div>
         <div className="mt-4 border-t border-evergreen-900/10 pt-4">
           {!collapsed && <p className="truncate px-1 text-xs text-ink-soft">{email}</p>}
           <Link
@@ -519,6 +544,16 @@ export function AdminShell({
         {/* Mobile nav */}
         {mobileOpen && (
           <div id="admin-mobile-navigation" className="max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
+            <label className="mb-4 block">
+              <span className="sr-only">Filter Super Admin modules</span>
+              <input
+                type="search"
+                value={moduleQuery}
+                onChange={(event) => setModuleQuery(event.target.value)}
+                placeholder="Find a module…"
+                className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
+              />
+            </label>
             {renderNav(false)}
           </div>
         )}

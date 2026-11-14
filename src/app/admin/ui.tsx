@@ -72,12 +72,17 @@ export function Section({ title, hint, children }: { title: string; hint?: strin
 /** Professional data-table shell used across the console. */
 export function Table({ head, children }: { head: string[]; children: ReactNode }) {
   return (
-    <div className="overflow-x-auto rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]">
+    <div
+      role="region"
+      aria-label={`Scrollable table: ${head.join(", ")}`}
+      tabIndex={0}
+      className="overflow-x-auto rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-evergreen-700"
+    >
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
           <tr className="border-b border-evergreen-900/15 bg-cream">
             {head.map((h) => (
-              <th key={h} className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">{h}</th>
+              <th key={h} scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">{h}</th>
             ))}
           </tr>
         </thead>
