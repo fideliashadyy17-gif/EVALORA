@@ -1092,3 +1092,108 @@ html.assessment-protected img {
   .student-entry-card { transition: none; }
   .student-entry-card:hover { transform: none; }
 }
+
+/* ── Public access surfaces ───────────────────────────────────────── */
+.auth-experience {
+  background:
+    radial-gradient(ellipse at 8% 16%, rgb(222 233 218 / 0.72), transparent 34rem),
+    radial-gradient(ellipse at 92% 90%, rgb(232 222 176 / 0.24), transparent 30rem),
+    #f4f6f2;
+}
+.auth-story {
+  position: relative;
+  min-height: 34rem;
+  padding: clamp(2rem, 5vw, 4rem);
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 0.14);
+  border-radius: 2rem;
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(205 174 80 / 0.23), transparent 24rem),
+    radial-gradient(ellipse at 0% 100%, rgb(17 101 63 / 0.6), transparent 32rem),
+    linear-gradient(145deg, #0c3123, #052318 76%);
+  box-shadow: 0 32px 80px -48px rgb(4 35 21 / 0.8);
+}
+.auth-story::after {
+  position: absolute;
+  right: -7rem;
+  bottom: -11rem;
+  width: 30rem;
+  aspect-ratio: 1;
+  border: 1px solid rgb(245 236 200 / 0.16);
+  border-radius: 50%;
+  box-shadow: 0 0 0 2rem rgb(245 236 200 / 0.035), 0 0 0 4rem rgb(245 236 200 / 0.025);
+  content: "";
+  pointer-events: none;
+}
+.auth-kicker {
+  color: #a7c8ae;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.auth-story-note { border: 1px solid rgb(255 255 255 / 0.14); background: rgb(255 255 255 / 0.07); }
+.auth-card { border-color: rgb(6 53 31 / 0.12); box-shadow: 0 24px 64px -44px rgb(4 35 21 / 0.45); }
+
+.exam-entry {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(222 233 218 / 0.75), transparent 34rem),
+    #f3f5f1;
+}
+.exam-entry-secure {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  color: #52665a;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.exam-entry-secure::before {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: #2f8a58;
+  box-shadow: 0 0 0 3px rgb(47 138 88 / 0.12);
+  content: "";
+}
+.exam-entry-card { border-color: rgb(6 53 31 / 0.12); box-shadow: 0 24px 70px -48px rgb(4 35 21 / 0.45); }
+.exam-entry-heading {
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(213 179 78 / 0.2), transparent 24rem),
+    linear-gradient(135deg, #0c3827, #06351f 68%, #0b4b31);
+}
+.exam-entry-kicker { color: #e6d590; font-size: 0.68rem; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; }
+.exam-entry-assurance > div { min-height: 5.25rem; border: 1px solid rgb(6 53 31 / 0.1); border-radius: 0.9rem; background: #f7f9f5; padding: 0.75rem; }
+.exam-entry-assurance span { color: #8a742e; font-size: 0.65rem; font-weight: 800; letter-spacing: 0.12em; }
+.exam-entry-assurance p { margin-top: 0.35rem; color: #143d29; font-size: 0.75rem; font-weight: 700; line-height: 1.35; }
+
+.tenant-portal { background: radial-gradient(ellipse at 50% 0%, rgb(222 233 218 / 0.72), transparent 38rem), #f3f5f1; }
+.tenant-portal-header { min-height: 5.25rem; }
+.tenant-portal-card { border-color: rgb(6 53 31 / 0.12); box-shadow: 0 28px 75px -48px rgb(4 35 21 / 0.42); }
+.tenant-portal-hero {
+  background:
+    radial-gradient(ellipse at 100% 0%, rgb(213 179 78 / 0.2), transparent 28rem),
+    linear-gradient(125deg, #0c3827, #06351f 72%, #0b4b31);
+}
+.tenant-portal-option {
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+.tenant-portal-option:hover {
+  transform: translateY(-2px);
+  border-color: rgb(10 92 54 / 0.32);
+  box-shadow: 0 14px 28px -20px rgb(4 35 21 / 0.35);
+}
+@media (max-width: 640px) {
+  .exam-entry-secure { font-size: 0.62rem; }
+  .tenant-portal-option:hover { transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tenant-portal-option { transition: none; }
+}
+.live-activity {
+  background:
+    radial-gradient(ellipse at 50% 0%, rgb(222 233 218 / 0.72), transparent 38rem),
+    #f3f5f1;
+}
+.live-activity-card { border-color: rgb(6 53 31 / 0.13); box-shadow: 0 24px 70px -48px rgb(4 35 21 / 0.46); }

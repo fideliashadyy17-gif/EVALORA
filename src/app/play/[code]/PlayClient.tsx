@@ -789,9 +789,9 @@ function NextRoundCard({ joinCode }: { joinCode: string }) {
 
 function Shell({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="flex min-h-screen flex-col items-center bg-cream px-3 py-6 sm:px-4 sm:py-8">
+    <div className="live-activity flex min-h-screen flex-col items-center px-3 py-6 sm:px-4 sm:py-8">
       <Logo className="mb-5" />
-      <Card className={`w-full ${wide ? "max-w-3xl" : "max-w-md"} p-5 sm:p-8`}>{children}</Card>
+      <Card className={`live-activity-card w-full ${wide ? "max-w-3xl" : "max-w-md"} p-5 sm:p-8`}>{children}</Card>
       <p className="mt-5 text-center text-xs text-ink-soft">Fair play guaranteed — timing &amp; scoring run on the server.</p>
     </div>
   );
