@@ -1,3 +1,6 @@
+import { FormButton } from "@/components/FormButton";
+import { CollectionToolbar, type CollectionParams } from "@/components/dashboard/CollectionToolbar";
+import { pageNumber } from "@/lib/pagination";
 import { Badge, ButtonLink, Card, EmptyState, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -9,16 +12,23 @@ import { deleteQuiz, duplicateQuiz, setQuizStatus, startSession } from "./action
 export const metadata: Metadata = { title: "Quiz Studio" };
 export const dynamic = "force-dynamic";
 
-export default async function QuizzesPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+export default async function QuizzesPage({ searchParams }: { searchParams: Promise<CollectionParams & { e?: string }> }) {
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
-  const { data: quizzes } = await supabase
-    .from("quizzes")
-    .select("*, quiz_questions(id), quiz_sessions(id)")
-    .eq("organization_id", org.id)
-    .order("updated_at", { ascending: false });
+  const page = pageNumber(sp.page);
+  const pageSize = 18;
+  const statuses = ["draft", "published", "archived"];
+  let query = supabase.from("quizzes")
+    .select("*, quiz_questions(count), quiz_sessions(count)", { count: "exact" })
+    .eq("organization_id", org.id);
+  const search = sp.q?.trim().slice(0, 160).replace(/[%_\\]/g, " ").trim();
+  if (search) query = query.ilike("title", `%${search}%`);
+  if (sp.status && statuses.includes(sp.status)) query = query.eq("status", sp.status);
+  if (sp.sort === "title") query = query.order("title");
+  else query = query.order("updated_at", { ascending: sp.sort === "oldest" });
+  const { data: quizzes, count, error } = await query.order("id").range((page - 1) * pageSize, page * pageSize - 1);
 
   return (
     <>
@@ -32,17 +42,18 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
           The Live Quizzes module is temporarily disabled platform-wide by the administrator. Existing sessions are unaffected.
         </p>
       )}
-      {(quizzes ?? []).length === 0 ? (
+      <CollectionToolbar path="/dashboard/quizzes" params={{ q: sp.q, status: sp.status, sort: sp.sort }} statuses={statuses} page={page} pageSize={pageSize} total={count ?? 0} noun="quizzes" failed={Boolean(error)} />
+      {error ? null : (quizzes ?? []).length === 0 ? (
         <EmptyState
-          title="No quizzes yet"
+          title={sp.q || sp.status || page > 1 ? "No quizzes on this page" : "No quizzes yet"}
           body="Create a quiz, attach published questions from your bank, and start your first live session in minutes."
           action={<ButtonLink href="/dashboard/quizzes/new">Create your first quiz</ButtonLink>}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {(quizzes ?? []).map((q) => {
-            const nQ = (q.quiz_questions as unknown[])?.length ?? 0;
-            const nS = (q.quiz_sessions as unknown[])?.length ?? 0;
+            const nQ = (q.quiz_questions as { count: number }[])?.[0]?.count ?? 0;
+            const nS = (q.quiz_sessions as { count: number }[])?.[0]?.count ?? 0;
             return (
               <Card key={q.id} className="flex flex-col p-5">
                 <div className="flex items-center gap-2">
@@ -57,24 +68,24 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
                   {q.status === "published" && nQ > 0 && (
                     <form action={startSession} className="flex gap-2">
                       <input type="hidden" name="quiz_id" value={q.id} />
-                      <select name="mode" className="flex-1 rounded-lg border border-evergreen-900/15 bg-white px-2 py-2 text-sm">
+                      <select aria-label="Live session pacing" name="mode" className="flex-1 rounded-lg border border-evergreen-900/15 bg-white px-2 py-2 text-sm">
                         <option value="synchronized">Synchronized (host-paced)</option>
                         <option value="self_paced">Self-paced</option>
                       </select>
-                      <button className="rounded-lg bg-evergreen-700 px-4 py-2 text-sm font-medium text-white hover:bg-evergreen-800">
+                      <FormButton type="submit" className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-evergreen-700 px-4 py-2 text-sm font-medium text-white hover:bg-evergreen-800">
                         ▶ Go live
-                      </button>
+                      </FormButton>
                     </form>
                   )}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <Link href={`/dashboard/quizzes/${q.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Edit &amp; preview</Link>
-                    <form action={duplicateQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-ink-soft underline-offset-2 hover:underline">Duplicate</button></form>
+                    <Link href={`/dashboard/quizzes/${q.id}`} className="inline-flex min-h-11 items-center font-semibold text-evergreen-700 underline-offset-2 hover:underline">Edit &amp; preview</Link>
+                    <form action={duplicateQuiz}><input type="hidden" name="id" value={q.id} /><FormButton type="submit" className="inline-flex min-h-11 items-center gap-2 text-ink-soft underline-offset-2 hover:underline">Duplicate</FormButton></form>
                     {q.status !== "published" ? (
-                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="published" /><button className="text-gold-700 underline-offset-2 hover:underline">Publish</button></form>
+                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="published" /><FormButton type="submit" className="inline-flex min-h-11 items-center gap-2 text-gold-700 underline-offset-2 hover:underline">Publish</FormButton></form>
                     ) : (
-                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="draft" /><button className="text-ink-soft underline-offset-2 hover:underline">Unpublish</button></form>
+                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="draft" /><FormButton type="submit" className="inline-flex min-h-11 items-center gap-2 text-ink-soft underline-offset-2 hover:underline">Unpublish</FormButton></form>
                     )}
-                    <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-red-700 underline-offset-2 hover:underline">Delete</button></form>
+                    <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><FormButton type="submit" className="inline-flex min-h-11 items-center gap-2 text-red-700 underline-offset-2 hover:underline">Delete</FormButton></form>
                   </div>
                 </div>
               </Card>

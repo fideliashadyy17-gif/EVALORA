@@ -1,5 +1,6 @@
 "use client";
 
+import { ExamCountdown } from "@/components/exam/ExamCountdown";
 import { Logo } from "@/components/Logo";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
@@ -17,7 +18,7 @@ import {
   type ExamQueueState,
 } from "@/lib/examSaveQueue";
 import { Badge, Button, Card } from "@/components/ui";
-import { cn, mmss } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
@@ -192,7 +193,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const attemptStatus = state?.attempt.status ?? "in_progress";
   const attemptActive = attemptStatus === "in_progress";
   const activePolicy = useMemo(() => parseIntegrityPolicy(state?.exam.integrity), [state?.exam.integrity]);
-  const [now, setNow] = useState(Date.now());
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -595,14 +595,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
   }, [attemptActive, attemptId, token]);
-  useEffect(() => {
-    const t = setInterval(() => setNow(Date.now()), 500);
-    return () => clearInterval(t);
-  }, []);
 
   // Throttled presence update when question position or save/queue count changes,
   // replacing the duplicate loop previously run inside ExamMessenger.
-  const frozenRemaining = useRef<number | null>(null);
   useEffect(() => {
     if (!token || !attemptActive || !hasLoadedStateRef.current) return;
     const elapsed = Date.now() - lastPresenceSentAtRef.current;
@@ -640,25 +635,32 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       nextDeadlineCheckAt.current = 0;
       return;
     }
-    const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
-    if (!Number.isFinite(remaining) || remaining > 0) return;
-    if (deadlineCheckBusy.current || now < nextDeadlineCheckAt.current) return;
-    deadlineCheckBusy.current = true;
-    void load()
-      .then((ok) => {
-        if (ok) {
-          deadlineCheckFailures.current = 0;
-          nextDeadlineCheckAt.current = Date.now() + 5_000;
-        } else {
-          deadlineCheckFailures.current += 1;
-          const backoff = Math.min(60_000, 3_000 * 2 ** Math.min(deadlineCheckFailures.current - 1, 4));
-          nextDeadlineCheckAt.current = Date.now() + backoff;
-        }
-      })
-      .finally(() => {
-        deadlineCheckBusy.current = false;
-      });
-  }, [now, state, load]);
+    const checkDeadline = () => {
+      const now = Date.now();
+      const remaining = new Date(state.attempt.deadline).getTime() - (now + offset.current);
+      if (!Number.isFinite(remaining) || remaining > 0) return;
+      if (deadlineCheckBusy.current || now < nextDeadlineCheckAt.current) return;
+      deadlineCheckBusy.current = true;
+      void load()
+        .then((ok) => {
+          if (ok) {
+            deadlineCheckFailures.current = 0;
+            nextDeadlineCheckAt.current = Date.now() + 5_000;
+          } else {
+            deadlineCheckFailures.current += 1;
+            const backoff = Math.min(60_000, 3_000 * 2 ** Math.min(deadlineCheckFailures.current - 1, 4));
+            nextDeadlineCheckAt.current = Date.now() + backoff;
+          }
+        })
+        .finally(() => {
+          deadlineCheckBusy.current = false;
+        });
+    };
+    // Poll the authoritative state without rerendering the entire answer tree.
+    checkDeadline();
+    const timer = setInterval(checkDeadline, 500);
+    return () => clearInterval(timer);
+  }, [state, load]);
   useEffect(() => {
     const retry = () => { if (activeRef.current) void queueRef.current?.flush(); };
     const warn = (event: BeforeUnloadEvent) => {
@@ -801,14 +803,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const { exam, attempt, questions } = state;
   const submitted = attempt.status !== "in_progress";
-  const liveRemaining = Math.max(0, (new Date(attempt.deadline).getTime() - (now + offset.current)) / 1000);
-  // During a confirmed local outage the countdown FREEZES at the value it had
-  // when the connection was lost — the server independently validates the
-  // pause and credits it, and the resynced deadline takes over on return.
   const countdownFrozen = connState === "lost" || manualPause.paused;
-  const remaining = countdownFrozen && frozenRemaining.current !== null ? frozenRemaining.current : liveRemaining;
-  if (countdownFrozen && frozenRemaining.current === null) frozenRemaining.current = liveRemaining;
-  if (!countdownFrozen) frozenRemaining.current = null;
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
   const currentKeyLine = answerKeyLine(current?.reveal?.summary);
@@ -858,10 +853,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </p>
           </div>
           {!submitted && (
-            <div className={`rounded-xl px-4 py-2 text-center ${remaining <= 300 ? "bg-red-700 text-white" : "border border-evergreen-900/15 bg-evergreen-50 text-evergreen-950"}`}>
-              <p className={`text-[10px] uppercase tracking-wider ${remaining <= 300 ? "text-white" : "text-ink-soft"}`}>{countdownFrozen ? "Time paused" : "Time remaining"}</p>
-              <p className="font-display text-2xl font-bold tabular-nums leading-none">{Number.isFinite(remaining) ? mmss(Math.ceil(remaining)) : "—"}</p>
-            </div>
+            <ExamCountdown deadline={attempt.deadline} serverOffsetMs={offset.current} paused={countdownFrozen} />
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
           <PresenceRail

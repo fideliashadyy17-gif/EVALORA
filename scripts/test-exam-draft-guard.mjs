@@ -17,6 +17,7 @@ function StubRunner(props) {return React.createElement('div', {'data-runner': pr
 Module._load=function(request,parent) {
  if(parent?.filename===file) {
   if(request==='@/components/QuestionRunner') return {QuestionRunner:StubRunner};
+  if(request==='@/components/exam/ExamCountdown') return {ExamCountdown:()=>null};
   if(request==='@/components/Logo') return {Logo:()=>null};
   if(request==='@/components/RichContent') return {RichContent:()=>null};
   if(request==='@/components/ExamCorrige') return {ExamCorrige:()=>null};

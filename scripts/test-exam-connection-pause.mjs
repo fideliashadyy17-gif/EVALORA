@@ -612,8 +612,11 @@ seedPresence(pam.id, 20_000);
   check("the student UI shows the required connection banners and freezes the countdown", () => {
     assert.ok(client.includes("CONNECTION LOST — Your assessment time has been paused"));
     assert.ok(client.includes("CONNECTION RESTORED —"));
-    assert.ok(client.includes("Time paused"));
-    assert.ok(client.includes("frozenRemaining"));
+    const countdown = readFileSync("src/components/exam/ExamCountdown.tsx", "utf8");
+    assert.ok(client.includes("<ExamCountdown"));
+    assert.ok(client.includes('connState === "lost" || manualPause.paused'));
+    assert.ok(countdown.includes("Time paused"));
+    assert.ok(countdown.includes("frozenRemaining"));
     assert.ok(client.includes('heartbeat("restored")'));
     assert.ok(client.includes("navigator.onLine === false"));
   });

@@ -11,6 +11,7 @@ function compile(source,dest){const f=path.resolve(dest),m=new Module(f);m.filen
 const queue=compile('src/lib/examSaveQueue.ts','scripts/__vid_queue.cjs');const file=path.resolve('scripts/__vid_exam.cjs');let connection='connecting',camera=false,microphone=false, screen=false,roomProps;
 const original=Module._load;Module._load=function(req,parent){if(parent?.filename===file){
  if(req==='@/components/QuestionRunner')return {QuestionRunner:props=>{const [draft,setDraft]=React.useState('');return React.createElement('input',{'data-draft':true,value:draft,onChange:e=>{setDraft(e.target.value);props.onDirtyChange(true);}});}};
+ if(req==='@/components/exam/ExamCountdown')return {ExamCountdown:()=>null};
  if(req==='@/components/Logo'||req==='@/components/RichContent')return {Logo:()=>null,RichContent:()=>null};
  if(req==='@/components/ExamCorrige')return {ExamCorrige:()=>null};
  if(req==='@/lib/examResults')return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>''};

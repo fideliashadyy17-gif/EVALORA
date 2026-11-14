@@ -61,3 +61,22 @@ Revert the application/configuration commit and redeploy to restore previous UI/
 - Full existing suite passed again: 119 suites / 1,580 checks, seven skipped. Added a separately passing 13-check roster pagination regression suite afterward (mocked server page/DB). Typecheck passed. Lint: zero errors, 34 warnings. Token contrast checker passed again.
 - Attempted the Chromium exam smoke suite with temporary npm-only browser dependencies (no package/lockfile edits). Chromium could not launch because the environment lacks `libnspr4.so`; browser test is **blocked**, not passed. The isolated mock preview was stopped.
 - GitHub reports the prior checkpoint's Vercel status as successful. This does not establish production promotion or authenticated production verification. Broader dashboard redesign, timer render isolation, browser coverage and measured end-user timings remain outstanding.
+
+## Continuation: assessment collections and isolated examination clock
+
+### Implemented
+
+- Examination and quiz indexes now use a shared URL-backed collection toolbar: title search, validated status filtering, most-recent/oldest/title sorting, filter-preserving previous/next links, filtered exact totals, explicit error feedback, and 18-record server pages with stable ID ordering.
+- Quiz cards request embedded question/session counts rather than downloading every related ID. Examination cards request candidate counts and a filtered submitted-attempt count instead of downloading all candidate/attempt IDs and statuses. These reads retain organization filters and session RLS; no policies or actions changed.
+- Existing examination open/close/resume actions and quiz publish/duplicate/delete/live-session actions remain. Their submit controls now show real pending action state and have 44px minimum touch targets. Session pacing selection now has an accessible name.
+- Extracted `ExamCountdown` into a small client leaf. Its 500ms presentation clock no longer updates state in the large examination client. Server deadline polling still runs every 500ms with the existing in-flight guard, pending-save-aware `load()`, and exponential retry backoff; it no longer causes periodic parent renders.
+- Countdown pause/resume keeps the local frozen display and resynchronizes against server deadline/clock offset on resume. The display cannot submit, credit time, or mutate an attempt. Live competition timer/render isolation remains outstanding because its tick also drives audio and answer-lock presentation.
+
+### Validation
+
+- `npm test`: **122 suites passed, 0 failed, 7 skipped; 1,633 individual checks**. Includes new controlled-clock React coverage and mocked server-page query/aggregate coverage. Existing draft/video test harnesses now stub the extracted clock; independent clock tests exercise the real component.
+- New clock tests verify parent render isolation, pause/resume, server offset, focus catch-up, invalid/expired deadline presentation and cleanup. Existing connection pause, save queue, draft guard, grading and submission tests remain passing.
+- `npx tsc --noEmit` and production build passed. Lint: zero errors, 34 warnings. All checked token contrast pairs pass; not a full rendered accessibility certification.
+- Current Next build reports examination first-load JS **548 kB** (previous checkpoint 543 kB, original baseline 699 kB). Do not claim a new bundle reduction in this step. The clock work reduces periodic rendering, not payload size. Browser INP, navigation latency and Web Vitals remain unmeasured.
+- Previous checkpoint `ef0e5ed` was explicitly deployed to production: Vercel deployment `dpl_EUNZYAcQgw6RmthTon9EeJAmoAdi` was READY/PROMOTED, served `evalora-six.vercel.app`, and reported region `cdg1`. Public login and examination entry loaded; unauthenticated student dashboard redirected to login. This describes the prior deployment, not proof that this continuation is live.
+- No database migration or production exam action was executed in this continuation. The broad platform redesign and authenticated browser/device validation remain incomplete.
