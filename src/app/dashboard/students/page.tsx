@@ -1,3 +1,4 @@
+import { pageNumber, pageHref } from "@/lib/pagination";
 import { StudentImportWizard } from "@/components/StudentImportWizard";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
@@ -11,7 +12,7 @@ import { StudentRegistrationForm } from "./StudentRegistrationForm";
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
 
-interface SP { q?: string; class?: string; status?: string; ok?: string; e?: string }
+interface SP { page?: string; q?: string; class?: string; status?: string; ok?: string; e?: string }
 
 const ERR: Record<string, string> = {
   status: "That status change was not valid.", student: "Student not found in your school.",
@@ -47,33 +48,42 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
     return { id: m.user_id, name: p?.full_name || p?.email || "Member" };
   });
 
-  // Student list + filters
-  let sq = supabase.from("students").select("*").eq("organization_id", org.id).order("full_name").limit(500);
-  if (sp.q) sq = sq.or(`full_name.ilike.%${sp.q}%,email.ilike.%${sp.q}%,student_ref.ilike.%${sp.q}%`);
+  // Filter enrollment in PostgREST before applying the page range. Filtering
+  // a limited roster in JavaScript could hide matching students on later pages.
+  const page = pageNumber(sp.page);
+  const pageSize = 30;
+  const columns = sp.class ? "*, student_enrollments!inner(student_id, class_id, status)" : "*, student_enrollments(student_id, class_id, status)";
+  let sq = supabase.from("students").select(columns, { count: "exact" })
+    .eq("organization_id", org.id).order("full_name").order("id")
+    .range((page - 1) * pageSize, page * pageSize - 1);
+  // Remove PostgREST filter syntax from the plain-text search value.
+  const search = sp.q?.replace(/[(),%_*\\"]/g, " ").trim().slice(0, 160);
+  if (search) sq = sq.or(`full_name.ilike.%${search}%,email.ilike.%${search}%,student_ref.ilike.%${search}%`);
   if (sp.status) sq = sq.eq("status", sp.status);
-  const { data: studentRows } = await sq;
-  let students = studentRows ?? [];
+  if (sp.class) sq = sq.eq("student_enrollments.class_id", sp.class).eq("student_enrollments.status", "active");
 
-  const studentIds = students.map((s) => s.id);
-  const { data: enrollmentRows } = studentIds.length
-    ? await supabase.from("student_enrollments").select("student_id, class_id").eq("organization_id", org.id).in("student_id", studentIds).eq("status", "active")
-    : { data: [] };
+  const [rosterResult, { data: allStudents }, { data: batches }] = await Promise.all([
+    sq,
+    // Keep the existing duplicate-detection contract until it can be loaded
+    // on demand without changing the import review/confirmation workflow.
+    canEdit ? supabase.from("students").select("full_name, email, student_ref, date_of_birth").eq("organization_id", org.id).limit(20000) : Promise.resolve({ data: [] }),
+    canEdit ? supabase.from("import_batches")
+      .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
+      .eq("organization_id", org.id).order("created_at", { ascending: false }).limit(8) : Promise.resolve({ data: [] }),
+  ]);
+  type StudentRow = { id: string; full_name: string; email: string | null; student_ref: string | null; user_id: string | null; status: string; student_enrollments: { student_id: string; class_id: string; status: string }[] };
+  const students = (rosterResult.data ?? []) as unknown as StudentRow[];
+  const total = rosterResult.count ?? 0;
   const enrollmentByStudent = new Map<string, string>();
-  for (const e of enrollmentRows ?? []) if (!enrollmentByStudent.has(e.student_id)) enrollmentByStudent.set(e.student_id, e.class_id);
-  if (sp.class) students = students.filter((s) => enrollmentByStudent.get(s.id) === sp.class);
-
-  // Existing identities for import duplicate detection (this school only).
-  const { data: allStudents } = await supabase.from("students")
-    .select("full_name, email, student_ref, date_of_birth").eq("organization_id", org.id).limit(20000);
+  for (const student of students) {
+    const active = student.student_enrollments?.find(e => e.status === "active");
+    if (active) enrollmentByStudent.set(student.id, active.class_id);
+  }
   const existing = {
     refs: (allStudents ?? []).map((s) => s.student_ref?.trim().toLowerCase()).filter(Boolean) as string[],
     emails: (allStudents ?? []).map((s) => s.email?.trim().toLowerCase()).filter(Boolean) as string[],
     nameDob: (allStudents ?? []).map((s) => identityKey(s.full_name, s.date_of_birth)),
   };
-
-  const { data: batches } = await supabase.from("import_batches")
-    .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
-    .eq("organization_id", org.id).order("created_at", { ascending: false }).limit(8);
 
   return (
     <>
@@ -133,15 +143,23 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
       )}
 
       <Card className="p-6">
-        <h2 className="font-display text-lg font-semibold text-evergreen-950">Student list ({students.length})</h2>
+        <h2 className="font-display text-lg font-semibold text-evergreen-950">Student list ({total})</h2>
         <form method="get" className="mt-4 grid gap-3 sm:grid-cols-4">
           <Field label="Search"><Input name="q" defaultValue={sp.q ?? ""} placeholder="Name, email or reference" /></Field>
           <Field label="Class"><Select name="class" defaultValue={sp.class ?? ""}><option value="">All classes</option>{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="Status"><Select name="status" defaultValue={sp.status ?? ""}><option value="">All statuses</option>{["active", "suspended", "graduated", "withdrawn"].map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
           <div className="flex items-end"><Button type="submit" variant="outline">Apply filters</Button></div>
         </form>
-        {students.length === 0 ? (
-          <EmptyState title="No students yet" body="Register your first student above, or import a class register." />
+        {rosterResult.error && <p role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">The student list could not be loaded. Reload or try again; no records have been changed.</p>}
+        <nav aria-label="Student list pages" className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-ink-soft">Page {page} · {total} matching students</span>
+          <div className="flex gap-2">
+            {page > 1 && <ButtonLink variant="outline" href={pageHref("/dashboard/students", { ...sp }, page - 1)}>Previous</ButtonLink>}
+            {page * pageSize < total && <ButtonLink variant="outline" href={pageHref("/dashboard/students", { ...sp }, page + 1)}>Next</ButtonLink>}
+          </div>
+        </nav>
+        {students.length === 0 && !rosterResult.error ? (
+          <EmptyState title={sp.q || sp.class || sp.status ? "No students match these filters" : "No students yet"} body="Adjust the filters, register a student above, or import a class register." />
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">

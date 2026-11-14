@@ -104,10 +104,19 @@ export function NotificationBell({
     }
   }, []);
 
-  // Keep the badge honest across navigation, matching the previous behaviour.
+  // The chrome persists between routes. Refresh independently of navigation so
+  // switching modules never fans out two more notification queries. Opening the
+  // panel and read mutations still force a fresh read below.
   useEffect(() => {
     void load();
-  }, [load, pathname]);
+    const refresh = () => { if (document.visibilityState === "visible") void load(); };
+    const timer = window.setInterval(refresh, 60_000);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [load]);
 
   // Relative timestamps stay fresh while the panel is open.
   useEffect(() => {

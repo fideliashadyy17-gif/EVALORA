@@ -1,30 +1,44 @@
 "use client";
 
-import { RichContentEditor } from "@/components/editor/RichContentEditor";
+import dynamic from "next/dynamic";
+
 import { RichContent } from "@/components/RichContent";
-import { GraphEditor } from "@/components/graph/GraphEditor";
-import { GeometryEditor } from "@/components/geometry/GeometryEditor";
+
 import { GraphView } from "@/components/graph/GraphView";
 import { GeometryView } from "@/components/geometry/GeometryView";
-import { StatsEditor } from "@/components/stats/StatsEditor";
-import { DataTableEditor } from "@/components/stats/DataTableEditor";
+
 import { emptyDoc, docToPlainText, textToDoc, type RichDoc } from "@/lib/content";
 import { emptyGraphSpec, graphSpecHasWork, normaliseGraphSpec, type GraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec, geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "@/lib/geometrySpec";
 import { emptyStatsSpec, normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "@/lib/statsSpec";
 import { emptyDataTableSpec, dataTableHasWork, normaliseDataTableSpec, type DataTableSpec } from "@/lib/dataTableSpec";
-import { VennEditor } from "@/components/venn/VennEditor";
+
 import { emptyVennSpec, normaliseVennSpec, vennSpecHasWork, type VennSpec } from "@/lib/vennSpec";
-import { ProbabilityTreeEditor } from "@/components/probability/ProbabilityTreeEditor";
+
 import { ProbabilityTreeView } from "@/components/probability/ProbabilityTreeView";
 import { emptyProbabilityTreeSpec, normaliseProbabilityTreeSpec, probabilityTreeHasWork, type ProbabilityTreeSpec } from "@/lib/probabilityTreeSpec";
-import { StemLeafEditor } from "@/components/stem-leaf/StemLeafEditor";
+
 import { StemLeafView } from "@/components/stem-leaf/StemLeafView";
 import { emptyStemLeafSpec, normaliseStemLeafSpec, stemLeafHasWork, type StemLeafSpec } from "@/lib/stemLeafSpec";
 import type { ResponseWorkspace } from "@/lib/responseTools";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+function ToolLoading() {
+  return <p role="status" className="min-h-48 rounded-xl border border-evergreen-900/10 bg-paper p-5 text-sm text-ink-soft">Opening response tool… Your saved work is retained.</p>;
+}
+
+// Tool state stays in this parent. A tool chunk is requested only when its
+// workspace is rendered; switching tabs cannot erase a construction.
+const RichContentEditor = dynamic(() => import("@/components/editor/RichContentEditor").then(m => m.RichContentEditor), { loading: ToolLoading });
+const GraphEditor = dynamic(() => import("@/components/graph/GraphEditor").then(m => m.GraphEditor), { loading: ToolLoading });
+const GeometryEditor = dynamic(() => import("@/components/geometry/GeometryEditor").then(m => m.GeometryEditor), { loading: ToolLoading });
+const StatsEditor = dynamic(() => import("@/components/stats/StatsEditor").then(m => m.StatsEditor), { loading: ToolLoading });
+const DataTableEditor = dynamic(() => import("@/components/stats/DataTableEditor").then(m => m.DataTableEditor), { loading: ToolLoading });
+const VennEditor = dynamic(() => import("@/components/venn/VennEditor").then(m => m.VennEditor), { loading: ToolLoading });
+const ProbabilityTreeEditor = dynamic(() => import("@/components/probability/ProbabilityTreeEditor").then(m => m.ProbabilityTreeEditor), { loading: ToolLoading });
+const StemLeafEditor = dynamic(() => import("@/components/stem-leaf/StemLeafEditor").then(m => m.StemLeafEditor), { loading: ToolLoading });
 
 type Tab = "written" | "graph" | "geometry" | "statistics" | "data_table" | "venn" | "probability_tree" | "stem_leaf";
 

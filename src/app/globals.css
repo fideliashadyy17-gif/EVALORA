@@ -1,8 +1,7 @@
 @import "tailwindcss";
 
 /*
- * EVALORA design tokens — derived from the Oak Competition Platform
- * reference identity: deep academic evergreen, heritage gold, warm
+ * EVALORA design tokens — the platform’s academic identity: deep academic evergreen, heritage gold, warm
  * cream paper, serif display type. No generic blue/purple SaaS palette.
  *
  * Readability system (WCAG 2.2 AA — verified by scripts/check-contrast.mjs):
@@ -650,3 +649,11 @@ html.assessment-protected img {
 .graph-editor input:not([type="checkbox"]):not([type="color"]),
 .graph-editor select { min-height: 2.5rem; }
 .graph-editor input[type="checkbox"] { width: 1.15rem; height: 1.15rem; }
+
+/* Native progress keeps examination completion accessible without live-region
+   announcements on every keystroke or claiming locally queued answers saved. */
+.exam-answer-progress { appearance: none; overflow: hidden; border-radius: 999px; background: var(--color-evergreen-100); }
+.exam-answer-progress::-webkit-progress-bar { background: var(--color-evergreen-100); }
+.exam-answer-progress::-webkit-progress-value { background: var(--color-evergreen-700); border-radius: 999px; }
+.exam-answer-progress::-moz-progress-bar { background: var(--color-evergreen-700); border-radius: 999px; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }

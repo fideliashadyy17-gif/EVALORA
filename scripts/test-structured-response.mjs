@@ -38,6 +38,15 @@ let lastTableChange = null;
 const originalLoad = Module._load;
 Module._load = function (request, parent) {
   if (parent?.filename === file) {
+    // Resolve the existing tool doubles synchronously for these composition
+    // tests. Chunk loading itself requires a real Next/browser build test.
+    if (request === "next/dynamic") return { default: (loader) => {
+      const text = loader.toString();
+      const modulePath = /require\(["']([^"']+)["']\)/.exec(text)?.[1];
+      const exportName = /m\.(\w+)/.exec(text)?.[1];
+      assert.ok(modulePath && exportName, "dynamic tool resolves a named export");
+      return Module._load(modulePath, parent)[exportName];
+    } };
     if (request === "@/components/editor/RichContentEditor") {
       return {
         RichContentEditor: ({ onChange, disabled }) => React.createElement("button", {
