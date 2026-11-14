@@ -116,7 +116,7 @@ export function DashboardChrome({
   })).filter((section) => section.items.length > 0);
 
   const nav = (
-    <nav className="flex flex-col gap-1">
+    <nav className="flex flex-col gap-1" aria-label="Organization workspace">
       {sections.map((section) => (
         <div key={section.title ?? "top"} className="flex flex-col gap-1">
           {section.title && (
@@ -154,14 +154,14 @@ export function DashboardChrome({
       <a href="#workspace-main" className="skip-link">Skip to workspace</a>
       {/* Sidebar — desktop */}
       <aside className="dashboard-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex" aria-label="Organization workspace navigation">
-        <Logo href="/dashboard" />
-        <div className="mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
+        <div className="dashboard-brand"><Logo variant="light" href="/dashboard" /></div>
+        <div className="dashboard-org-card mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
           <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
           <p className="text-xs text-ink-soft">{workspaceLabel(orgRole)}</p>
           {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
           {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}
         </div>
-        <div className="mt-4">
+        <div className="dashboard-notification mt-4">
           <NotificationBell />
         </div>
         <div className="mt-2 flex-1 overflow-y-auto scroll-slim">{nav}</div>
@@ -175,24 +175,22 @@ export function DashboardChrome({
 
       <div className="min-w-0">
         {/* Topbar — mobile */}
-        <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
-          <Logo href="/dashboard" />
+        <header className="dashboard-mobile-header sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
+          <Logo variant="light" href="/dashboard" />
           <div className="flex items-center gap-1">
             <NotificationBell variant="icon" />
-            <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu">
+            <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu" aria-expanded={open} aria-controls="workspace-mobile-navigation">
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </header>
-        {open && (
-          <div className="border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
-            <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
-            {nav}
-            <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
-              <LogOut className="h-5 w-5" /> Sign out
-            </button>
-          </div>
-        )}
+        <div id="workspace-mobile-navigation" className={cn("dashboard-mobile-navigation border-b border-evergreen-900/15 bg-paper p-4 lg:hidden", !open && "hidden")}>
+          <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
+          {nav}
+          <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
+            <LogOut className="h-5 w-5" /> Sign out
+          </button>
+        </div>
         <main id="workspace-main" className="workspace-content mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-9 lg:py-10">{children}</main>
       </div>
     </div>

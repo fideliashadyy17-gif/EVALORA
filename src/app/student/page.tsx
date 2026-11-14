@@ -1,6 +1,7 @@
 import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
+import { Logo } from "@/components/Logo";
 import { SignOutButton } from "@/components/SignOutButton";
-import { Badge, ButtonLink, Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
 import { LocalTime } from "@/components/LocalTime";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { examLinkLifecycle } from "@/lib/examLink";
@@ -10,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import { FileCheck2, Radio, Sparkles } from "lucide-react";
 
 export const metadata: Metadata = { title: "Student workspace" };
 export const dynamic = "force-dynamic";
@@ -50,7 +52,7 @@ interface RequestRow {
   granted_attempts: number | null;
 }
 
-/** A small, real entry point to the existing code-based candidate flows. */
+/** Student hub for the authenticated learner's own examinations and live activities. */
 export default async function StudentWorkspace() {
   const ctx = await requireUser();
   if (ctx.profile.platform_role === "super_admin") redirect("/admin");
@@ -114,17 +116,53 @@ export default async function StudentWorkspace() {
 
   const pendingRequestIds = [...requestsByExam.values()].flat().filter((r) => r.status === "pending").map((r) => r.id);
 
-  return <main className="mx-auto max-w-3xl px-4 py-12">
-    {pendingRequestIds.length > 0 && <RetakeDecisionWatcher pendingIds={pendingRequestIds} />}
-    <p className="text-sm font-semibold uppercase tracking-wide text-evergreen-700">{org.name}</p>
-    <h1 className="mt-2 font-display text-3xl font-semibold text-evergreen-950">Welcome, {ctx.profile.full_name?.split(" ")[0] || "student"}</h1>
-    <p className="mt-3 text-ink-soft">Use the code provided by your institution to enter an examination or join a live activity.</p>
-    <div className="mt-7 grid gap-4 sm:grid-cols-2">
-      <Card className="p-6"><h2 className="font-display text-xl font-semibold">Enter an examination</h2><p className="mt-2 text-sm text-ink-soft">Enter your examination and candidate codes to access your paper.</p><ButtonLink href="/exam-access" className="mt-4">Enter examination</ButtonLink></Card>
-      <Card className="p-6"><h2 className="font-display text-xl font-semibold">Join a live activity</h2><p className="mt-2 text-sm text-ink-soft">Use your organizer’s join code to enter a live quiz.</p><ButtonLink href="/join" variant="outline" className="mt-4">Join activity</ButtonLink></Card>
-    </div>
+  return <main className="student-hub min-h-screen bg-cream px-4 py-5 sm:px-6 sm:py-8">
+    <div className="mx-auto max-w-5xl">
+      {pendingRequestIds.length > 0 && <RetakeDecisionWatcher pendingIds={pendingRequestIds} />}
+      <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <Logo href="/student" />
+        <div className="rounded-full border border-evergreen-900/10 bg-white px-4 py-2 text-right shadow-sm">
+          <p className="max-w-[16rem] truncate text-sm font-semibold text-evergreen-950">{org.name}</p>
+          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-soft">Student portal</p>
+        </div>
+      </header>
 
-    {attempts.length > 0 && (
+      <section className="student-hero relative isolate overflow-hidden rounded-[1.75rem] bg-evergreen-950 px-6 py-8 text-white shadow-[var(--shadow-lift)] sm:px-10 sm:py-11">
+        <div className="student-hero-orbit" aria-hidden="true" />
+        <div className="relative z-10 max-w-2xl">
+          <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-gold-200">
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5" /> Your learning space
+          </p>
+          <h1 className="mt-4 font-display text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
+            Welcome back, {ctx.profile.full_name?.split(" ")[0] || "student"}.
+          </h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-evergreen-100 sm:text-base">
+            Continue an examination or join a live activity. Your institution will provide the codes and instructions you need.
+          </p>
+        </div>
+        <div className="student-hero-mark" aria-hidden="true">E</div>
+      </section>
+
+      <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <Card className="student-entry-card group flex items-start gap-4 p-5 sm:p-6">
+          <span className="student-entry-icon"><FileCheck2 aria-hidden="true" className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">Examination access</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Enter your examination and candidate codes to access your paper.</p>
+            <Link href="/exam-access" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Enter codes <span aria-hidden="true">→</span></Link>
+          </div>
+        </Card>
+        <Card className="student-entry-card group flex items-start gap-4 p-5 sm:p-6">
+          <span className="student-entry-icon student-entry-icon-gold"><Radio aria-hidden="true" className="h-5 w-5" /></span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">Live activity</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Use your organizer’s join code to enter a live quiz.</p>
+            <Link href="/join" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Join with a code <span aria-hidden="true">→</span></Link>
+          </div>
+        </Card>
+      </div>
+
+      {attempts.length > 0 && (
       <section className="mt-8">
         <h2 className="font-display text-xl font-semibold text-evergreen-950">Your examination records</h2>
         <p className="mt-1 text-sm text-ink-soft">
@@ -205,8 +243,13 @@ export default async function StudentWorkspace() {
       </section>
     )}
 
-    <p className="mt-6 text-sm text-ink-soft">Your institution will provide codes and instructions.</p>
-    {ctx.memberships.length > 1 && !ctx.tenantSlug && <Link href="/workspaces" className="mt-6 block font-semibold text-evergreen-700 underline underline-offset-2">Switch workspace</Link>}
-    <div className="mt-6"><SignOutButton /></div>
+      <footer className="student-footer mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-evergreen-900/15 pt-5 text-sm">
+        <p className="text-ink-soft">Need help? Contact your institution for examination codes and instructions.</p>
+        <div className="flex flex-wrap items-center gap-4">
+          {ctx.memberships.length > 1 && !ctx.tenantSlug && <Link href="/workspaces" className="font-semibold text-evergreen-800 underline underline-offset-4">Switch workspace</Link>}
+          <SignOutButton />
+        </div>
+      </footer>
+    </div>
   </main>;
 }

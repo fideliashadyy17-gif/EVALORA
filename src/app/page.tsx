@@ -67,10 +67,10 @@ export default async function HomePage() {
     <div className="min-h-screen">
       <SiteHeader />
 
-      {/* Hero — clean light surface; no gradients or imagery behind text */}
-      <section className="border-b border-evergreen-900/10 bg-paper">
-        <div className="mx-auto max-w-7xl px-4 py-20 sm:px-6 lg:py-28">
-          <div className="max-w-3xl">
+      {/* Hero — high-contrast editorial type with a clear product journey. */}
+      <section className="public-hero relative isolate overflow-hidden border-b border-evergreen-900/10 bg-paper">
+        <div className="relative z-10 mx-auto grid max-w-7xl items-center gap-12 px-4 py-16 sm:px-6 sm:py-20 lg:grid-cols-[1.1fr_0.9fr] lg:gap-16 lg:py-24">
+          <div className="relative z-10 max-w-3xl">
             <Badge tone="gold" className="mb-5">Interactive quizzes · Examinations · Online proctoring</Badge>
             <h1 className="font-display text-4xl font-semibold leading-[1.08] text-evergreen-950 sm:text-6xl">
               Where learning is <em className="text-gold-700">assessed</em>,{" "}
@@ -98,6 +98,36 @@ export default async function HomePage() {
               ))}
             </div>
           </div>
+          <aside className="public-journey-card" aria-label="Assessment workflow">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-gold-200">One connected platform</p>
+                <h2 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">From first question to useful feedback.</h2>
+              </div>
+              <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-gold-200 sm:flex">
+                <GraduationCap aria-hidden="true" className="h-6 w-6" />
+              </span>
+            </div>
+            <ol className="mt-7 space-y-3">
+              {[
+                ["01", "Build", "Create question banks, quizzes and formal papers."],
+                ["02", "Run", "Host live activities or supervised examinations."],
+                ["03", "Understand", "Review marks, reports and feedback before publishing."],
+              ].map(([step, title, body]) => (
+                <li key={step} className="public-journey-step flex items-start gap-4 rounded-2xl p-4">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gold-400 font-mono text-sm font-bold text-evergreen-950">{step}</span>
+                  <div>
+                    <h3 className="font-semibold text-white">{title}</h3>
+                    <p className="mt-0.5 text-sm leading-relaxed text-evergreen-100">{body}</p>
+                  </div>
+                </li>
+              ))}
+            </ol>
+            <p className="mt-5 flex items-center gap-2 border-t border-white/15 pt-4 text-xs text-evergreen-100">
+              <ShieldCheck aria-hidden="true" className="h-4 w-4 shrink-0 text-gold-200" />
+              Tenant-aware access and server-kept timing throughout.
+            </p>
+          </aside>
         </div>
       </section>
 

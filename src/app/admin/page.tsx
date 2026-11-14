@@ -1,4 +1,4 @@
-import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, ButtonLink, Card, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime, money } from "@/lib/utils";
@@ -14,6 +14,7 @@ import {
   Radio,
   Repeat,
   ShieldAlert,
+  ShieldCheck,
   Trophy,
   UserPlus,
   Users,
@@ -130,10 +131,29 @@ export default async function AdminOverview() {
 
   return (
     <>
-      <PageTitle
-        title="Platform overview"
-        subtitle={`You run EVALORA${ctx.profile.is_primary ? " as its Primary Super Admin" : ""} — create and operate organizations, competitions, examinations and commerce from here. Every action is audit-logged.`}
-      />
+      <section className="admin-overview-hero mb-6 grid items-center gap-8 rounded-[1.75rem] p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:p-10">
+        <div className="max-w-3xl">
+          <Badge tone="gold" className="mb-4">Global platform · Control plane</Badge>
+          <h1 className="font-display text-3xl font-semibold leading-tight tracking-tight text-evergreen-950 sm:text-4xl">Platform overview</h1>
+          <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft sm:text-base">
+            You run EVALORA{ctx.profile.is_primary ? " as its Primary Super Admin" : ""} — create and operate organizations, competitions, examinations and commerce from here. Every action is audit-logged.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <ButtonLink href="/admin/organizations/new" variant="gold">Create organization</ButtonLink>
+            <ButtonLink href="/admin/examinations" variant="outline">Manage examinations</ButtonLink>
+          </div>
+        </div>
+        <div className="admin-overview-trust max-w-sm rounded-2xl p-5">
+          <div className="flex items-center gap-3">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/10 text-gold-200"><ShieldCheck aria-hidden="true" className="h-5 w-5" /></span>
+            <div>
+              <p className="font-semibold text-white">Built for responsible operations</p>
+              <p className="mt-0.5 text-xs text-evergreen-100">Tenant-aware access · Audit trail</p>
+            </div>
+          </div>
+          <p className="mt-4 border-t border-white/15 pt-3 text-xs leading-relaxed text-evergreen-100">Manage each organization from one shared platform while keeping its workspace and data boundaries intact.</p>
+        </div>
+      </section>
 
       {degradedQueries > 0 && (
         <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-950">
