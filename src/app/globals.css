@@ -657,3 +657,19 @@ html.assessment-protected img {
 .exam-answer-progress::-webkit-progress-value { background: var(--color-evergreen-700); border-radius: 999px; }
 .exam-answer-progress::-moz-progress-bar { background: var(--color-evergreen-700); border-radius: 999px; }
 @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* Shared institutional workspace rhythm; low-specificity rules preserve each
+   module's contextual styles while making dense administrative tables legible. */
+.dashboard-chrome { --shadow-card: 0 1px 3px rgb(6 53 31 / 0.05); }
+.dashboard-chrome :where(main > h2, main h2) { text-wrap: balance; }
+.dashboard-chrome :where(table) { border-collapse: separate; border-spacing: 0; }
+.dashboard-chrome :where(thead) { background: var(--color-evergreen-50); }
+.dashboard-chrome :where(th) { white-space: nowrap; font-weight: 600; }
+.dashboard-chrome :where(tbody tr) { transition: background-color 120ms ease; }
+.dashboard-chrome :where(tbody tr:hover) { background: var(--color-evergreen-50); }
+.dashboard-chrome :where(td) { vertical-align: middle; }
+.dashboard-chrome :where(button, input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select) { min-height: 2.75rem; }
+:where(button, a, input, textarea, select, summary):focus-visible { outline: 2px solid var(--color-evergreen-600); outline-offset: 3px; }
+.structured-tab { min-height: 2.75rem; }
+.structured-pane { padding: clamp(0.75rem, 2vw, 1.25rem); }
+.structured-hint { font-size: 0.875rem; line-height: 1.6; }

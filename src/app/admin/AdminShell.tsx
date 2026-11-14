@@ -298,7 +298,6 @@ export function AdminShell({
       <Link
         key={`${groupTitle}-${n.label}-${n.href}`}
         href={n.href}
-        prefetch={false}
         title={iconOnly ? n.label : undefined}
         onClick={() => setMobileOpen(false)}
         className={cn(
@@ -366,7 +365,6 @@ export function AdminShell({
           {!collapsed && <p className="truncate px-1 text-xs text-ink-soft">{email}</p>}
           <Link
             href="/dashboard"
-            prefetch={false}
             title={collapsed ? "My workspace" : undefined}
             className={cn(
               "mt-2 flex items-center gap-3 rounded-lg border border-evergreen-900/25 px-3 py-2.5 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50",
@@ -441,7 +439,6 @@ export function AdminShell({
                     <Link
                       key={a.href}
                       href={a.href}
-                      prefetch={false}
                       onClick={() => quick.setOpen(false)}
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50"
                     >

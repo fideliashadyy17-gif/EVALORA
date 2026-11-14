@@ -98,7 +98,7 @@ function liveQuizState() {
       id: "session-1",
       title: "Live Quiz Title",
       status: "live",
-      mode: "live",
+      mode: "synchronized",
       phase: "question",
       question_started_at: new Date(now).toISOString(),
       question_deadline_at: new Date(now + 120000).toISOString(),
@@ -127,12 +127,16 @@ function liveQuizState() {
 function publicScreenState() {
   return {
     server_now: liveNow(),
+    session_id: "session-1", competition_id: null,
+    presentation_stage: "lobby", session_round: 1,
+    answer_locked: false, admission_open: true, show_leaderboard: false,
+    connected: 0, participants: [], ranking: null, strip: [], final: null, next_session: null,
     title: "Public Screen Title",
     organization: null,
     instructions: null,
     join_code: "ABC123",
     status: "lobby",
-    mode: "live",
+    mode: "synchronized",
     phase: "waiting",
     progress: { index: 0, total: 3, remaining_after_current: 3 },
     question: null,
@@ -178,6 +182,8 @@ await context.route("**/api/**", async (route) => {
     server.messagingPolls = (server.messagingPolls ?? 0) + 1;
     return route.fulfill({ status: 200, json: { server_now: new Date().toISOString(), messages: [], unread_from_teacher: 0 } });
   }
+  if (path === "/api/exam/retake") return route.fulfill({ status: 200, json: { attempt_number: 1, attempt_label: "First attempt", submitted: true, can_request: false, can_start: false, message: "", pending: null, decision: null, grant: null, history: [] } });
+  if (path === "/api/live/control") return route.fulfill({ status: 403, json: { error: "Not signed in as host." } });
   if (path === "/api/exam/presence") return route.fulfill({ status: 200, json: { ok: true } });
   if (path === "/api/live/state") return route.fulfill({ status: 200, json: liveQuizState() });
   if (path === "/api/live/answer") return route.fulfill({ status: 200, json: { ok: true } });
@@ -277,7 +283,7 @@ try {
   ok((await pressCancelled("Control+Shift+V", "v")) === true, "Ctrl+Shift+V (paste as plain text) is cancelled");
   ok((await answerBox().inputValue()) === "mine", "pasted text never reaches the answer");
   const pasteInput = await page.evaluate(() => {
-    const field = document.querySelector("input[placeholder='Type your answer…']");
+    const field = document.querySelector("input[placeholder^='Type your answer'], textarea[placeholder^='Type your answer']");
     return field.dispatchEvent(new InputEvent("beforeinput", { inputType: "insertFromPaste", bubbles: true, cancelable: true }));
   });
   ok(pasteInput === false, "a paste through the Edit menu or drop path (beforeinput) is cancelled too");

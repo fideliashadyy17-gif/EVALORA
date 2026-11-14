@@ -1,78 +1,70 @@
-import { Badge, Card, EmptyState, PageTitle } from "@/components/ui";
+import { CollectionToolbar, type CollectionParams } from "@/components/dashboard/CollectionToolbar";
+import { Badge, ButtonLink, Card, EmptyState, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { pageNumber } from "@/lib/pagination";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
-import Link from "next/link";
 
 export const metadata: Metadata = { title: "Reports" };
 export const dynamic = "force-dynamic";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<CollectionParams & { kind?: string }> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  const sp = await searchParams;
   const supabase = await createClient();
-
-  const [{ data: sessions }, { data: exams }] = await Promise.all([
-    supabase.from("quiz_sessions").select("*, quizzes(title), session_participants(id)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(30),
-    supabase.from("exams").select("*, exam_attempts(id, status)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(30),
-  ]);
-
+  const sessionsView = sp.kind === "sessions";
+  const page = pageNumber(sp.page);
+  const pageSize = 20;
+  const statuses = sessionsView ? ["lobby", "live", "paused", "ended"] : ["draft", "scheduled", "open", "paused", "closed"];
+  const title = sp.q?.trim().slice(0, 160).replace(/[%_\\]/g, " ");
+  let examQuery = supabase.from("exams")
+    .select("id, title, status, created_at, submitted:exam_attempts(count), active:exam_attempts(count)", { count: "exact" })
+    .eq("organization_id", org.id).neq("submitted.status", "in_progress").eq("active.status", "in_progress");
+  let sessionQuery = supabase.from("quiz_sessions")
+    .select("id, title, status, created_at, quizzes(title), session_participants(count)", { count: "exact" })
+    .eq("organization_id", org.id);
+  if (title) { examQuery = examQuery.ilike("title", `%${title}%`); sessionQuery = sessionQuery.ilike("title", `%${title}%`); }
+  if (sp.status && statuses.includes(sp.status)) {
+    examQuery = examQuery.eq("status", sp.status); sessionQuery = sessionQuery.eq("status", sp.status);
+  }
+  const sort = sp.sort === "title" ? "title" : "created_at";
+  const ascending = sp.sort === "title" || sp.sort === "oldest";
+  // Only the visible report family is queried. Each report keeps its existing
+  // authorized detail/export route; this index never accesses answer content.
+  const exams = sessionsView ? null : await examQuery.order(sort, { ascending }).order("id").range((page - 1) * pageSize, page * pageSize - 1);
+  const sessions = sessionsView ? await sessionQuery.order(sort, { ascending }).order("id").range((page - 1) * pageSize, page * pageSize - 1) : null;
+  const error = exams?.error ?? sessions?.error;
+  const count = exams?.count ?? sessions?.count ?? 0;
   return (
     <>
-      <PageTitle
-        title="Reports & Analytics"
-        subtitle="Performance across live sessions and examinations. Every report exports to CSV (Excel-ready) and prints cleanly to PDF."
-      />
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Live quiz sessions</h2>
-          {(sessions ?? []).length === 0 ? (
-            <p className="mt-2 text-sm text-ink-soft">No sessions yet.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-evergreen-900/10">
-              {(sessions ?? []).map((s) => (
-                <li key={s.id} className="flex items-center justify-between gap-3 py-3">
-                  <div>
-                    <p className="font-medium">{s.title || (s.quizzes as { title: string } | null)?.title}</p>
-                    <p className="text-xs text-ink-soft">{(s.session_participants as unknown[])?.length ?? 0} participants · {fmtDateTime(s.created_at)}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge tone={s.status === "ended" ? "gray" : "amber"}>{s.status}</Badge>
-                    <Link href={`/dashboard/reports/session/${s.id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Report</Link>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Examinations</h2>
-          {(exams ?? []).length === 0 ? (
-            <p className="mt-2 text-sm text-ink-soft">No examinations yet.</p>
-          ) : (
-            <ul className="mt-3 divide-y divide-evergreen-900/10">
-              {(exams ?? []).map((e) => {
-                const attempts = (e.exam_attempts as { status: string }[]) ?? [];
-                return (
-                  <li key={e.id} className="flex items-center justify-between gap-3 py-3">
-                    <div>
-                      <p className="font-medium">{e.title}</p>
-                      <p className="text-xs text-ink-soft">{attempts.filter((a) => a.status !== "in_progress").length} submitted · {attempts.filter((a) => a.status === "in_progress").length} in progress</p>
-                    </div>
-                    <Link href={`/dashboard/reports/exam/${e.id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Report</Link>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+      <PageTitle title="Results & reports" subtitle="Review examination outcomes and live-session performance. Open a report for detailed analysis, CSV export and print-ready results." />
+      <div className="mb-5 flex flex-wrap gap-2" aria-label="Report type">
+        <ButtonLink href="/dashboard/reports" variant={sessionsView ? "outline" : "primary"}>Examination reports</ButtonLink>
+        <ButtonLink href="/dashboard/reports?kind=sessions" variant={sessionsView ? "primary" : "outline"}>Live-session reports</ButtonLink>
       </div>
-      {(sessions ?? []).length === 0 && (exams ?? []).length === 0 && (
-        <div className="mt-6">
-          <EmptyState title="Nothing to report yet" body="Run a live quiz session or open an examination — analytics appear here automatically." />
-        </div>
+      <CollectionToolbar path="/dashboard/reports" params={{ q: sp.q, status: sp.status, sort: sp.sort }} extraParams={sessionsView ? { kind: "sessions" } : {}} statuses={statuses} page={page} pageSize={pageSize} total={count} noun="reports" failed={Boolean(error)} />
+      {error ? null : count === 0 ? <EmptyState title="No reports match this view" body="Change the filters, or run an examination or live quiz to start collecting results." /> : (
+        <Card className="overflow-x-auto">
+          <table className="w-full min-w-[650px] text-left text-sm">
+            <thead><tr className="text-xs uppercase tracking-wide text-ink-soft"><th className="px-5 py-4">Assessment</th><th className="px-5 py-4">Status</th><th className="px-5 py-4">Participation</th><th className="px-5 py-4">Report</th></tr></thead>
+            <tbody className="divide-y divide-evergreen-900/10">
+              {(exams?.data ?? []).map(exam => <tr key={exam.id}>
+                <td className="px-5 py-4"><p className="font-semibold text-evergreen-950">{exam.title}</p><p className="mt-1 text-xs text-ink-soft">Created {fmtDateTime(exam.created_at)}</p></td>
+                <td className="px-5 py-4"><Badge tone={exam.status === "open" ? "green" : "gray"}>{exam.status}</Badge></td>
+                <td className="px-5 py-4">{(exam.submitted as { count: number }[])?.[0]?.count ?? 0} submitted · {(exam.active as { count: number }[])?.[0]?.count ?? 0} in progress</td>
+                <td className="px-5 py-4"><ButtonLink href={`/dashboard/reports/exam/${exam.id}`} variant="outline">Open report</ButtonLink></td>
+              </tr>)}
+              {(sessions?.data ?? []).map(session => <tr key={session.id}>
+                <td className="px-5 py-4"><p className="font-semibold text-evergreen-950">{session.title || (session.quizzes as unknown as { title: string } | null)?.title || "Live session"}</p><p className="mt-1 text-xs text-ink-soft">Created {fmtDateTime(session.created_at)}</p></td>
+                <td className="px-5 py-4"><Badge tone={session.status === "ended" ? "gray" : "green"}>{session.status}</Badge></td>
+                <td className="px-5 py-4">{(session.session_participants as { count: number }[])?.[0]?.count ?? 0} participants</td>
+                <td className="px-5 py-4"><ButtonLink href={`/dashboard/reports/session/${session.id}`} variant="outline">Open report</ButtonLink></td>
+              </tr>)}
+            </tbody>
+          </table>
+        </Card>
       )}
     </>
   );

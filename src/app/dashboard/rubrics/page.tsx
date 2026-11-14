@@ -1,6 +1,7 @@
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
-import { loadRubrics } from "@/lib/grading";
+import { CollectionToolbar, type CollectionParams } from "@/components/dashboard/CollectionToolbar";
+import { pageNumber } from "@/lib/pagination";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -19,22 +20,23 @@ const STATUS_TONE: Record<string, "amber" | "green" | "gray"> = {
 export default async function RubricsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; ok?: string }>;
+  searchParams: Promise<CollectionParams & { e?: string; ok?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const canMark = can(ctx, org.id, MARKER_ROLES);
   const supabase = await createClient();
-  const [rubrics, { data: criteria }] = await Promise.all([
-    loadRubrics(supabase, org.id),
-    supabase
-    .from("grading_rubric_criteria")
-    .select("id, rubric_id")
-    .eq("organization_id", org.id),
-  ]);
-  const counts = new Map<string, number>();
-  for (const c of criteria ?? []) counts.set(c.rubric_id, (counts.get(c.rubric_id) ?? 0) + 1);
+  const page = pageNumber(sp.page);
+  const pageSize = 20;
+  const statuses = ["draft", "published", "archived"];
+  let query = supabase.from("grading_rubrics")
+    .select("*, grading_rubric_criteria(count)", { count: "exact" }).eq("organization_id", org.id);
+  if (sp.q?.trim()) query = query.ilike("title", `%${sp.q.trim().slice(0, 160).replace(/[%_\\]/g, " ")}%`);
+  if (sp.status && statuses.includes(sp.status)) query = query.eq("status", sp.status);
+  query = sp.sort === "title" ? query.order("title") : query.order("updated_at", { ascending: sp.sort === "oldest" });
+  const { data, count, error } = await query.order("id").range((page - 1) * pageSize, page * pageSize - 1);
+  const rubrics = data ?? [];
 
   return (
     <>
@@ -63,7 +65,8 @@ export default async function RubricsPage({
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
           <div>
-            {rubrics.length === 0 ? (
+            <CollectionToolbar path="/dashboard/rubrics" params={{ q: sp.q, status: sp.status, sort: sp.sort }} statuses={statuses} page={page} pageSize={pageSize} total={count ?? 0} noun="rubrics" failed={Boolean(error)} />
+            {error ? null : rubrics.length === 0 ? (
               <EmptyState
                 title="No rubrics yet"
                 body="A rubric splits a question into criteria, each with its own maximum. Once attached to an examination, markers score every criterion and the total becomes the mark."
@@ -80,7 +83,7 @@ export default async function RubricsPage({
                         <Badge tone={STATUS_TONE[rubric.status] ?? "gray"}>{rubric.status}</Badge>
                       </div>
                       <p className="mt-1 text-sm text-slate-600">
-                        {Number(rubric.total_marks)} marks across {counts.get(rubric.id) ?? 0} criteria
+                        {Number(rubric.total_marks)} marks across {(rubric.grading_rubric_criteria as { count: number }[])?.[0]?.count ?? 0} criteria
                         {rubric.framework ? ` · ${rubric.framework}` : ""}
                       </p>
                       <p className="text-xs text-slate-400">Updated {fmtDateTime(rubric.updated_at)}</p>

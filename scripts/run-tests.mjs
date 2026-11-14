@@ -18,6 +18,7 @@ const files = readdirSync("scripts")
 // Suites that need a running server (a dev server on port 3101, or a production build on port 3102).
 const browserSuites = new Set([
   "test-exam-browser.mjs",
+  "test-response-tools-browser.mjs",
   "test-printable-paper-browser.mjs",
   "test-assessment-lockdown-browser.mjs",
   "test-exam-messaging-browser.mjs",

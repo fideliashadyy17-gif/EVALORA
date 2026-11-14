@@ -40,11 +40,13 @@ export function StudentImportWizard({
   organizationId: string;
   classes: ImportClassRef[];
   years: WizardYear[];
-  existing: WizardExisting;
+  existing?: WizardExisting;
 }) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState(1);
+  const [loadedExisting, setLoadedExisting] = useState<WizardExisting | null>(null);
+  const [checkingIdentities, setCheckingIdentities] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [extracting, setExtracting] = useState(false);
   const [ocrBusy, setOcrBusy] = useState(false);
@@ -64,8 +66,8 @@ export function StudentImportWizard({
 
   const activeClasses = useMemo(() => classes.filter((c) => !c.status || c.status === "active"), [classes]);
   const existingSets = useMemo<ExistingIdentities>(() => ({
-    refs: new Set(existing.refs), emails: new Set(existing.emails), nameDob: new Set(existing.nameDob),
-  }), [existing]);
+    refs: new Set((existing ?? loadedExisting)?.refs ?? []), emails: new Set((existing ?? loadedExisting)?.emails ?? []), nameDob: new Set((existing ?? loadedExisting)?.nameDob ?? []),
+  }), [existing, loadedExisting]);
   const defaultClass = activeClasses.find((c) => c.id === defaultClassId) ?? null;
 
   const validations = useMemo(() => {
@@ -92,6 +94,7 @@ export function StudentImportWizard({
   }, [records, validations, duplicateMode]);
 
   function reset(clearFile = true) {
+    setLoadedExisting(null);
     if (clearFile) setFile(null);
     setExtract(null); setRows([]); setMapping([]); setRecords([]); setResult(null);
     setConfirmed(false); setError(null); setStep(1);
@@ -169,9 +172,22 @@ export function StudentImportWizard({
     }
   }
 
-  function buildPreview() {
+  async function buildPreview() {
+    if (checkingIdentities) return;
     if (!mapping.includes("full_name")) { setError("Map one column to “Full name” before continuing — a name is required for every student."); return; }
     setError(null);
+    if (!existing) {
+      setCheckingIdentities(true);
+      try {
+        const response = await fetch("/api/students/import/identities", { cache: "no-store" });
+        const result = await response.json();
+        if (!response.ok || result.organization_id !== organizationId || !result.existing) throw new Error(result.error ?? "Duplicate checks could not be confirmed. Reload the workspace and retry.");
+        setLoadedExisting(result.existing);
+      } catch (error) {
+        setError(error instanceof Error ? error.message : "Duplicate checks could not be loaded.");
+        return;
+      } finally { setCheckingIdentities(false); }
+    }
     setRecords(rowsToRecords(rows, mapping, hasHeader).slice(0, 2000));
     setStep(3);
   }
@@ -217,6 +233,7 @@ export function StudentImportWizard({
     if (!file || !confirmed) return;
     setImporting(true); setError(null);
     try {
+      if (!existing && !loadedExisting) throw new Error("Load the duplicate-check preview before importing.");
       const batchId = crypto.randomUUID();
       const hash = await sha256Hex(await file.arrayBuffer());
       // Preserve the original privately in this school's storage area.
@@ -345,7 +362,7 @@ export function StudentImportWizard({
                   </div>
                   <div className="flex gap-3">
                     <Button type="button" variant="outline" onClick={() => reset()}>Start over</Button>
-                    <Button type="button" variant="gold" onClick={buildPreview}>Continue to preview →</Button>
+                    <Button type="button" variant="gold" onClick={() => void buildPreview()} disabled={checkingIdentities}>{checkingIdentities ? "Checking duplicates…" : "Continue to preview →"}</Button>
                   </div>
                 </>
               )}

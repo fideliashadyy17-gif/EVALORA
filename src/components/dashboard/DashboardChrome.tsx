@@ -101,6 +101,7 @@ export function DashboardChrome({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   async function signOut() {
     const supabase = createClient();
@@ -121,11 +122,11 @@ export function DashboardChrome({
       {sections.map((section) => (
         <div key={section.title ?? "top"} className="flex flex-col gap-1">
           {section.title && (
-            <p className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-evergreen-700/80">
-              {section.title}
-            </p>
+            <button type="button" aria-expanded={!collapsed[section.title]} onClick={() => setCollapsed(previous => ({ ...previous, [section.title!]: !previous[section.title!] }))} className="mt-3 flex min-h-10 items-center justify-between rounded-lg px-3 text-left text-xs font-semibold uppercase tracking-wide text-ink-soft hover:bg-evergreen-50">
+              {section.title}<span aria-hidden="true">{collapsed[section.title] ? "+" : "−"}</span>
+            </button>
           )}
-          {section.items.map((n) => {
+          {(!section.title || !collapsed[section.title]) && section.items.map((n) => {
             const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
             return (
               <Link
@@ -154,6 +155,7 @@ export function DashboardChrome({
 
   return (
     <div className="dashboard-chrome min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
+      <a href="#workspace-content" className="fixed left-4 top-4 z-50 -translate-y-24 rounded-lg bg-evergreen-950 px-4 py-3 text-white focus:translate-y-0">Skip to workspace content</a>
       {/* Sidebar — desktop */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
         <Logo href="/dashboard" />
@@ -185,13 +187,13 @@ export function DashboardChrome({
           <Logo href="/dashboard" />
           <div className="flex items-center gap-1">
             <NotificationBell variant="icon" />
-            <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu">
+            <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu" aria-expanded={open} aria-controls="workspace-mobile-menu">
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>
           </div>
         </header>
         {open && (
-          <div className="border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
+          <div id="workspace-mobile-menu" className="max-h-[calc(100dvh-64px)] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
             <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
             {nav}
             <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
@@ -199,7 +201,7 @@ export function DashboardChrome({
             </button>
           </div>
         )}
-        <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">{children}</main>
+        <main id="workspace-content" tabIndex={-1} className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">{children}</main>
       </div>
     </div>
   );

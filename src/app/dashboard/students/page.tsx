@@ -2,7 +2,6 @@ import { pageNumber, pageHref } from "@/lib/pagination";
 import { StudentImportWizard } from "@/components/StudentImportWizard";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { transferStudent } from "../academics/actions";
@@ -62,11 +61,8 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   if (sp.status) sq = sq.eq("status", sp.status);
   if (sp.class) sq = sq.eq("student_enrollments.class_id", sp.class).eq("student_enrollments.status", "active");
 
-  const [rosterResult, { data: allStudents }, { data: batches }] = await Promise.all([
+  const [rosterResult, { data: batches }] = await Promise.all([
     sq,
-    // Keep the existing duplicate-detection contract until it can be loaded
-    // on demand without changing the import review/confirmation workflow.
-    canEdit ? supabase.from("students").select("full_name, email, student_ref, date_of_birth").eq("organization_id", org.id).limit(20000) : Promise.resolve({ data: [] }),
     canEdit ? supabase.from("import_batches")
       .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
       .eq("organization_id", org.id).order("created_at", { ascending: false }).limit(8) : Promise.resolve({ data: [] }),
@@ -79,11 +75,7 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
     const active = student.student_enrollments?.find(e => e.status === "active");
     if (active) enrollmentByStudent.set(student.id, active.class_id);
   }
-  const existing = {
-    refs: (allStudents ?? []).map((s) => s.student_ref?.trim().toLowerCase()).filter(Boolean) as string[],
-    emails: (allStudents ?? []).map((s) => s.email?.trim().toLowerCase()).filter(Boolean) as string[],
-    nameDob: (allStudents ?? []).map((s) => identityKey(s.full_name, s.date_of_birth)),
-  };
+
 
   return (
     <>
@@ -121,10 +113,10 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Import students</h2>
           <p className="mb-4 mt-1 text-sm text-ink-soft">Upload a register in CSV, XLS, XLSX, PDF, DOC or DOCX format — map the columns, fix anything flagged, then confirm. Every row is accounted for in the final report.</p>
           <StudentImportWizard
+            key={org.id}
             organizationId={org.id}
             classes={activeClasses.map((c) => ({ id: c.id, name: c.name, code: c.code, academic_year_id: c.academic_year_id, status: c.status }))}
             years={(years ?? []).map((y) => ({ id: y.id, name: y.name, is_current: y.is_current }))}
-            existing={existing}
           />
           {(batches ?? []).length > 0 && (
             <div className="mt-6 border-t border-evergreen-900/10 pt-4">

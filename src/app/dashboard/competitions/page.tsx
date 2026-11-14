@@ -1,3 +1,5 @@
+import { CollectionToolbar, type CollectionParams } from "@/components/dashboard/CollectionToolbar";
+import { pageNumber } from "@/lib/pagination";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
@@ -50,7 +52,7 @@ interface CompetitionRow {
 export default async function OrganizationCompetitionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string }>;
+  searchParams: Promise<CollectionParams & { ok?: string; e?: string }>;
 }) {
   const sp = await searchParams;
   const ctx = await requireUser();
@@ -59,13 +61,17 @@ export default async function OrganizationCompetitionsPage({
   const isManager = can(ctx, org.id, ["owner", "admin"]);
   const supabase = await createClient();
 
-  const [{ data: comps }, { data: quizzes }] = await Promise.all([
-    supabase
-      .from("competitions")
-      .select("id, title, format, status, session_id, quiz_id, max_participants, created_at, results_published, competition_registrations(id, status), competition_access_codes(id), quizzes(title)")
-      .eq("organization_id", org.id)
-      .order("created_at", { ascending: false })
-      .limit(200),
+  const page = pageNumber(sp.page);
+  const pageSize = 20;
+  const statuses = Object.keys(STATUS_TONE);
+  let query = supabase.from("competitions")
+    .select("id, title, format, status, session_id, quiz_id, max_participants, created_at, results_published, competition_registrations(id, status), competition_access_codes(id), quizzes(title)", { count: "exact" })
+    .eq("organization_id", org.id);
+  if (sp.q?.trim()) query = query.ilike("title", `%${sp.q.trim().slice(0, 160).replace(/[%_\\]/g, " ")}%`);
+  if (sp.status && statuses.includes(sp.status)) query = query.eq("status", sp.status);
+  query = sp.sort === "title" ? query.order("title") : query.order("created_at", { ascending: sp.sort === "oldest" });
+  const [{ data: comps, count, error }, { data: quizzes }] = await Promise.all([
+    query.order("id").range((page - 1) * pageSize, page * pageSize - 1),
     supabase.from("quizzes").select("id, title").eq("organization_id", org.id).order("title").limit(200),
   ]);
 
@@ -103,6 +109,8 @@ export default async function OrganizationCompetitionsPage({
         </p>
       )}
 
+      <CollectionToolbar path="/dashboard/competitions" params={{ q: sp.q, status: sp.status, sort: sp.sort }} statuses={statuses} page={page} pageSize={pageSize} total={count ?? 0} noun="competitions" failed={Boolean(error)} />
+      <p className="mb-3 text-xs text-ink-soft">Summary for this page of competitions</p>
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Competitions" value={rows.length} icon={<Trophy className="h-5 w-5" />} />
         <StatCard label="Live or paused" value={live.length} icon={<Wifi className="h-5 w-5" />} />
@@ -110,7 +118,7 @@ export default async function OrganizationCompetitionsPage({
         <StatCard label="Results published" value={rows.filter((c) => c.results_published).length} />
       </div>
 
-      {rows.length === 0 ? (
+      {error ? null : rows.length === 0 ? (
         <EmptyState
           title="No competitions yet"
           body="Create a competition for your institution, share its admission code, and run it from the live host console."

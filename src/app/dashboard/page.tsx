@@ -43,13 +43,13 @@ export default async function DashboardPage() {
     }
   };
 
-  const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams, platformRow] =
+  const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams, platformRow, entitlement] =
     await Promise.all([
-      safeQuery<{ count: number | null }>(supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]), { count: 0 }),
+      safeQuery<{ count: number | null }>(supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: null }),
+      safeQuery<{ count: number | null }>(supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: null }),
+      safeQuery<{ count: number | null }>(supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: null }),
+      safeQuery<{ count: number | null }>(supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: null }),
+      safeQuery<{ count: number | null }>(supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]), { count: null }),
       safeQuery<{ data: { id: string; title: string | null; join_code: string; created_at: string; status: string; quizzes: { title: string } | null }[] | null }>(supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
       safeQuery<{ data: { id: string; title: string; duration_minutes: number; access_code: string; status: string }[] | null }>(supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
       safeQuery<{
@@ -69,18 +69,15 @@ export default async function DashboardPage() {
           .maybeSingle(),
         { data: null },
       ),
+      getEntitlementFor(supabase, ctx, org.id).catch(() => ({
+        planName: "Unavailable", status: "unknown", trialEndsAt: null, currentPeriodEnd: null,
+      })),
     ]);
 
   const platform = organizationPlatformAccess(
     platformRow.data ?? { slug: org.slug, status: org.status },
   );
 
-  const entitlement = await getEntitlementFor(supabase, ctx, org.id).catch(() => ({
-    planName: "Standard",
-    status: "active" as const,
-    trialEndsAt: null,
-    currentPeriodEnd: null,
-  }));
 
   return (
     <>
@@ -104,18 +101,18 @@ export default async function DashboardPage() {
               ? `Free trial until ${fmtDate(entitlement.trialEndsAt)}`
               : entitlement.status === "active" && entitlement.currentPeriodEnd
                 ? `Active until ${fmtDate(entitlement.currentPeriodEnd)}`
-                : "Free plan — upgrade for proctoring, bigger sessions and advanced reports."}
+                : entitlement.status === "unknown" ? "Plan information is unavailable. Open billing to retry." : entitlement.status === "owner" ? "Platform owner workspace — commercial limits do not apply." : "Review your current plan and available features in billing."}
           </p>
         </div>
         <ButtonLink href="/dashboard/billing" variant="gold">View plan &amp; billing</ButtonLink>
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-        <StatCard label="Quizzes" value={quizzes.count ?? 0} icon={<PenSquare className="h-5 w-5" />} />
-        <StatCard label="Questions in bank" value={questions.count ?? 0} icon={<Library className="h-5 w-5" />} />
-        <StatCard label="Examinations" value={exams.count ?? 0} icon={<FileCheck2 className="h-5 w-5" />} />
-        <StatCard label="Live / open sessions" value={sessions.count ?? 0} icon={<Radio className="h-5 w-5" />} />
-        <StatCard label="Team members" value={members.count ?? 0} icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Quizzes" value={quizzes.count ?? "—"} icon={<PenSquare className="h-5 w-5" />} />
+        <StatCard label="Questions in bank" value={questions.count ?? "—"} icon={<Library className="h-5 w-5" />} />
+        <StatCard label="Examinations" value={exams.count ?? "—"} icon={<FileCheck2 className="h-5 w-5" />} />
+        <StatCard label="Live / open sessions" value={sessions.count ?? "—"} icon={<Radio className="h-5 w-5" />} />
+        <StatCard label="Team members" value={members.count ?? "—"} icon={<Users className="h-5 w-5" />} />
       </div>
 
       <Card className="mt-6 p-5">

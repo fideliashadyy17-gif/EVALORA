@@ -23,7 +23,7 @@ import { emptyStemLeafSpec, normaliseStemLeafSpec, stemLeafHasWork, type StemLea
 import type { ResponseWorkspace } from "@/lib/responseTools";
 import { Button } from "@/components/ui";
 import { cn } from "@/lib/utils";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 function ToolLoading() {
   return <p role="status" className="min-h-48 rounded-xl border border-evergreen-900/10 bg-paper p-5 text-sm text-ink-soft">Opening response tool… Your saved work is retained.</p>;
@@ -72,6 +72,7 @@ export function StructuredResponseEditor({
   /** Receives the latest local construction before it has been saved. */
   onPayloadChange?: (payload: Record<string, unknown>) => void;
 }) {
+  const toolGroupId = useId();
   const initialDoc = useMemo<RichDoc>(() => {
     const raw = initial?.doc;
     if (raw && typeof raw === "object" && (raw as RichDoc).type === "doc") return raw as RichDoc;
@@ -229,44 +230,53 @@ export function StructuredResponseEditor({
 
   return (
     <div className="structured-response" data-testid="structured-response">
-      <div className="structured-tabs" role="tablist" aria-label="Answer tools">
+      <div className="structured-tabs" role="tablist" aria-label="Answer tools" onKeyDown={event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+        const index = tabs.indexOf(event.target as HTMLButtonElement);
+        if (index < 0) return;
+        event.preventDefault();
+        const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+        tabs[next]?.focus();
+        tabs[next]?.click();
+      }}>
         {workspace.tools.includes("rich_text") && (
-          <button type="button" role="tab" aria-selected={tab === "written"} className={cn("structured-tab", tab === "written" && "is-active")} onClick={() => setTab("written")}>
+          <button type="button" role="tab" id={`${toolGroupId}-written`} aria-controls={`${toolGroupId}-written-panel`} tabIndex={tab === "written" ? 0 : -1} aria-selected={tab === "written"} className={cn("structured-tab", tab === "written" && "is-active")} onClick={() => setTab("written")}>
             ✎ Written answer
           </button>
         )}
         {graphOn && (
-          <button type="button" role="tab" aria-selected={tab === "graph"} className={cn("structured-tab", tab === "graph" && "is-active")} onClick={() => setTab("graph")}>
+          <button type="button" role="tab" id={`${toolGroupId}-graph`} aria-controls={`${toolGroupId}-graph-panel`} tabIndex={tab === "graph" ? 0 : -1} aria-selected={tab === "graph"} className={cn("structured-tab", tab === "graph" && "is-active")} onClick={() => setTab("graph")}>
             📈 Graph {graphPreview ? "✓" : ""}
           </button>
         )}
         {geometryOn && (
-          <button type="button" role="tab" aria-selected={tab === "geometry"} className={cn("structured-tab", tab === "geometry" && "is-active")} onClick={() => setTab("geometry")}>
+          <button type="button" role="tab" id={`${toolGroupId}-geometry`} aria-controls={`${toolGroupId}-geometry-panel`} tabIndex={tab === "geometry" ? 0 : -1} aria-selected={tab === "geometry"} className={cn("structured-tab", tab === "geometry" && "is-active")} onClick={() => setTab("geometry")}>
             △ Geometry {geometryPreview ? "✓" : ""}
           </button>
         )}
         {statsOn && (
-          <button type="button" role="tab" aria-selected={tab === "statistics"} className={cn("structured-tab", tab === "statistics" && "is-active")} onClick={() => setTab("statistics")}>
+          <button type="button" role="tab" id={`${toolGroupId}-statistics`} aria-controls={`${toolGroupId}-statistics-panel`} tabIndex={tab === "statistics" ? 0 : -1} aria-selected={tab === "statistics"} className={cn("structured-tab", tab === "statistics" && "is-active")} onClick={() => setTab("statistics")}>
             📊 Statistics {statsPreview ? "✓" : ""}
           </button>
         )}
         {tableOn && (
-          <button type="button" role="tab" aria-selected={tab === "data_table"} className={cn("structured-tab", tab === "data_table" && "is-active")} onClick={() => setTab("data_table")}>
+          <button type="button" role="tab" id={`${toolGroupId}-data_table`} aria-controls={`${toolGroupId}-data_table-panel`} tabIndex={tab === "data_table" ? 0 : -1} aria-selected={tab === "data_table"} className={cn("structured-tab", tab === "data_table" && "is-active")} onClick={() => setTab("data_table")}>
             ▦ Data table {tablePreview ? "✓" : ""}
           </button>
         )}
         {vennOn && (
-          <button type="button" role="tab" aria-selected={tab === "venn"} className={cn("structured-tab", tab === "venn" && "is-active")} onClick={() => setTab("venn")}>
+          <button type="button" role="tab" id={`${toolGroupId}-venn`} aria-controls={`${toolGroupId}-venn-panel`} tabIndex={tab === "venn" ? 0 : -1} aria-selected={tab === "venn"} className={cn("structured-tab", tab === "venn" && "is-active")} onClick={() => setTab("venn")}>
             ◎ Venn diagram {vennPreview ? "✓" : ""}
           </button>
         )}
         {probabilityTreeOn && (
-          <button type="button" role="tab" aria-selected={tab === "probability_tree"} className={cn("structured-tab", tab === "probability_tree" && "is-active")} onClick={() => setTab("probability_tree")}>
+          <button type="button" role="tab" id={`${toolGroupId}-probability_tree`} aria-controls={`${toolGroupId}-probability_tree-panel`} tabIndex={tab === "probability_tree" ? 0 : -1} aria-selected={tab === "probability_tree"} className={cn("structured-tab", tab === "probability_tree" && "is-active")} onClick={() => setTab("probability_tree")}>
             ⑂ Probability tree {probabilityTreePreview ? "✓" : ""}
           </button>
         )}
         {stemLeafOn && (
-          <button type="button" role="tab" aria-selected={tab === "stem_leaf"} className={cn("structured-tab", tab === "stem_leaf" && "is-active")} onClick={() => setTab("stem_leaf")}>
+          <button type="button" role="tab" id={`${toolGroupId}-stem_leaf`} aria-controls={`${toolGroupId}-stem_leaf-panel`} tabIndex={tab === "stem_leaf" ? 0 : -1} aria-selected={tab === "stem_leaf"} className={cn("structured-tab", tab === "stem_leaf" && "is-active")} onClick={() => setTab("stem_leaf")}>
             ┃ Stem-and-leaf {stemLeafPreview ? "✓" : ""}
           </button>
         )}
@@ -278,7 +288,7 @@ export function StructuredResponseEditor({
       {workspace.guidance && <p className="structured-guidance">{workspace.guidance}</p>}
 
       {tab === "written" && workspace.tools.includes("rich_text") && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-written-panel`} aria-labelledby={`${toolGroupId}-written`} tabIndex={0}>
           <p className="structured-hint">
             Write your reasoning in full. Use the mathematics tools for any expression, and the table tool for data.
           </p>
@@ -310,7 +320,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "graph" && graphOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-graph-panel`} aria-labelledby={`${toolGroupId}-graph`} tabIndex={0}>
           {(workspace.graph.instructions || workspace.graph.title) && (
             <p className="structured-hint">
               {workspace.graph.instructions || "Draw or plot your graph on the axes below. You can add points, functions, segments and labels."}
@@ -341,7 +351,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "geometry" && geometryOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-geometry-panel`} aria-labelledby={`${toolGroupId}-geometry`} tabIndex={0}>
           <p className="structured-hint">
             {workspace.geometry.instructions || "Construct your figure. Drag the free points; midpoints, measurements and intersections update automatically."}
           </p>
@@ -361,7 +371,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "statistics" && statsOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-statistics-panel`} aria-labelledby={`${toolGroupId}-statistics`} tabIndex={0}>
           <p className="structured-hint">
             {workspace.statistics.instructions || "Enter your data and choose the representation the question asks for."}
           </p>
@@ -392,7 +402,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "venn" && vennOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-venn-panel`} aria-labelledby={`${toolGroupId}-venn`} tabIndex={0}>
           <p className="structured-hint">
             {workspace.venn.instructions || "Build the diagram the question asks for: name the sets, then write the value of each region."}
           </p>
@@ -420,7 +430,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "probability_tree" && probabilityTreeOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-probability_tree-panel`} aria-labelledby={`${toolGroupId}-probability_tree`} tabIndex={0}>
           <p className="structured-hint">{workspace.probabilityTree.instructions || "Build the branches, label each event and write every branch probability."}</p>
           <ProbabilityTreeEditor value={probabilityTree} onChange={(next) => { setProbabilityTree(next); markDirty(); }} disabled={disabled} allowStructure={workspace.probabilityTree.allowStructure} />
           {!disabled && <div className="mt-2"><Button variant="outline" onClick={() => { setProbabilityTree(normaliseProbabilityTreeSpec(workspace.probabilityTree.starter, emptyProbabilityTreeSpec())); markDirty(); }}>Reset probability tree</Button></div>}
@@ -429,7 +439,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "stem_leaf" && stemLeafOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-stem_leaf-panel`} aria-labelledby={`${toolGroupId}-stem_leaf`} tabIndex={0}>
           <p className="structured-hint">{workspace.stemLeaf.instructions || "Complete the stems, ordered leaves and key directly in the diagram."}</p>
           <StemLeafEditor value={stemLeaf} onChange={(next) => { setStemLeaf(next); markDirty(); }} disabled={disabled} />
           {!disabled && <div className="mt-2"><Button variant="outline" onClick={() => { setStemLeaf(normaliseStemLeafSpec(workspace.stemLeaf.starter, emptyStemLeafSpec())); markDirty(); }}>Reset stem-and-leaf diagram</Button></div>}
@@ -438,7 +448,7 @@ export function StructuredResponseEditor({
       )}
 
       {tab === "data_table" && tableOn && (
-        <div className="structured-pane">
+        <div className="structured-pane" role="tabpanel" id={`${toolGroupId}-data_table-panel`} aria-labelledby={`${toolGroupId}-data_table`} tabIndex={0}>
           <p className="structured-hint">
             {workspace.dataTable.instructions || "Complete the table. Each value keeps its row and column when your teacher marks it."}
           </p>

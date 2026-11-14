@@ -432,7 +432,8 @@ const serverLib = read("src/lib/examHintsServer.ts");
 check("the paper payload attaches hints without touching answers, timers or attempts", () => {
   assert.match(stateRoute, /loadPublishedHints/);
   assert.match(stateRoute, /hints: hintsByQuestion\.get\(row\.questions\.id\) \?\? \[\]/);
-  assert.match(stateRoute, /catch \{\n    hintsByQuestion = new Map\(\);/);
+  assert.match(stateRoute, /catch \{ return new Map<string,/);
+  assert.match(stateRoute, /hintsByQuestion, hintUsage\] = await Promise\.all/);
   assert.doesNotMatch(stateRoute, /exam_hints_policy.*update/i);
 });
 

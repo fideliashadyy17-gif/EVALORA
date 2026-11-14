@@ -135,35 +135,27 @@ export async function GET(request: Request) {
     }
   }
 
-  const { data: saved, error: savedError } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
+  // These reads depend only on the validated attempt/paper. Keep answer
+  // failures fatal, but let optional guidance fail independently as before.
+  const readHints = async () => {
+    try {
+      return await loadPublishedHints(admin, { id: exam.id, organization_id: exam.organization_id }, rows.map(row => row.questions.id));
+    } catch { return new Map<string, { level: number; text: string; doc: unknown | null }[]>(); }
+  };
+  const readHintUsage = async (): Promise<{ question_id: string; part_id: string; level: number; times_opened: number }[]> => {
+    try {
+      const { data } = await admin.from("exam_hint_usage")
+        .select("question_id, part_id, level, times_opened").eq("attempt_id", attempt.id);
+      return data ?? [];
+    } catch { return []; }
+  };
+  const [{ data: saved, error: savedError }, hintsByQuestion, hintUsage] = await Promise.all([
+    admin.from("exam_answers").select("*").eq("attempt_id", attempt.id),
+    readHints(),
+    readHintUsage(),
+  ]);
   if (savedError || !saved) return NextResponse.json({ error: "Saved answers could not be loaded. Reload or contact your invigilator." }, { status: 500, headers });
   const savedByQ = new Map((saved ?? []).map((a) => [a.question_id, a]));
-
-  // Hints ride along with the paper in ONE extra query, so the control below
-  // each question can open instantly. A hint failure degrades to "no hints";
-  // it can never fail the examination payload. Only published guidance text is
-  // attached — never an answer, key or marking scheme.
-  let hintsByQuestion = new Map<string, { level: number; text: string; doc: unknown | null }[]>();
-  try {
-    hintsByQuestion = await loadPublishedHints(
-      admin,
-      { id: exam.id, organization_id: exam.organization_id },
-      rows.map((row) => row.questions.id),
-    );
-  } catch {
-    hintsByQuestion = new Map();
-  }
-
-  // Hint usage is a formative record, shown back to the candidate in their
-  // feedback summary and to the teacher in the report. A failure here must
-  // never fail the paper, so it degrades to an empty list.
-  let hintUsage: { question_id: string; part_id: string; level: number; times_opened: number }[] = [];
-  try {
-    const { data } = await admin.from("exam_hint_usage")
-      .select("question_id, part_id, level, times_opened")
-      .eq("attempt_id", attempt.id);
-    hintUsage = data ?? [];
-  } catch { hintUsage = []; }
 
   const submitted = attempt.status !== "in_progress";
   const resultsPublished = Boolean(settings.results_published);

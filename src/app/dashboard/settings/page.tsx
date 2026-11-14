@@ -14,7 +14,8 @@ async function updateProfile(formData: FormData) {
   "use server";
   const ctx = await requireUser();
   const supabase = await createClient();
-  await supabase.from("profiles").update({ full_name: String(formData.get("full_name") ?? "").slice(0, 120) }).eq("id", ctx.user.id);
+  const { error } = await supabase.from("profiles").update({ full_name: String(formData.get("full_name") ?? "").slice(0, 120) }).eq("id", ctx.user.id);
+  if (error) redirect("/dashboard/settings?e=save");
   revalidatePath("/dashboard/settings");
   redirect("/dashboard/settings?saved=profile");
 }
@@ -28,7 +29,8 @@ async function updateOrg(formData: FormData) {
   const type = String(formData.get("type") ?? "school");
   if (!name) redirect("/dashboard/settings");
   const supabase = await createClient();
-  await supabase.from("organizations").update({ name, type }).eq("id", org.id);
+  const { error } = await supabase.from("organizations").update({ name, type }).eq("id", org.id);
+  if (error) redirect("/dashboard/settings?e=save");
   revalidatePath("/dashboard/settings");
   redirect("/dashboard/settings?saved=org");
 }
@@ -62,6 +64,7 @@ export default async function SettingsPage({
     <>
       <PageTitle title="Settings" subtitle="Your profile and your organization's configuration." />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Saved.</p>}
+      {sp.e === "save" && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">The update could not be confirmed. Your changes have not been reported as saved; please try again.</p>}
       {sp.e === "password" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Password must be at least 8 characters.</p>}
 
       <div className="grid gap-6 lg:grid-cols-2">
