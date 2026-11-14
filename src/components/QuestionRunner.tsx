@@ -203,24 +203,28 @@ export function QuestionRunner({
   }
 
   return (
-    <div>
+    <div className="question-runner" data-question-type={t}>
       {invalidSavedAnswer && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">Your saved answer for this question could not be displayed safely. It has not been changed. Please contact the organizer before answering this question again.</p>}
-      {question.media_url && question.media_type === "image" && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={question.media_url} alt="" className="mb-4 max-h-72 w-full rounded-xl object-contain" />
-      )}
-      {question.media_url && question.media_type === "audio" && (
-        <audio controls src={question.media_url} className="mb-4 w-full" />
-      )}
-      {question.media_url && question.media_type === "video" && (
-        <video controls src={question.media_url} className="mb-4 max-h-80 w-full rounded-xl" />
-      )}
+      {(question.media_url || question.prompt_doc || question.prompt) && <div className="question-prompt-panel">
+        {question.media_url && question.media_type === "image" && (
+          <div className="question-media-frame">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={question.media_url} alt="" className="question-image max-h-[34rem] w-full rounded-xl object-contain" />
+          </div>
+        )}
+        {question.media_url && question.media_type === "audio" && (
+          <audio controls src={question.media_url} className="question-audio w-full" />
+        )}
+        {question.media_url && question.media_type === "video" && (
+          <video controls src={question.media_url} className="question-video max-h-[34rem] w-full rounded-xl" />
+        )}
 
-      <div className="text-lg font-medium leading-relaxed text-ink sm:text-xl">
-        <RichContent doc={question.prompt_doc ?? null} text={question.prompt} />
-      </div>
+        <div className="question-prompt text-lg font-medium leading-relaxed text-ink sm:text-xl">
+          <RichContent doc={question.prompt_doc ?? null} text={question.prompt} />
+        </div>
+      </div>}
 
-      <div className="mt-5">
+      <div className="question-response mt-6">
         {(t === "single_choice" || t === "true_false" || t === "poll") && (
           <div className="grid gap-2.5 sm:grid-cols-2">
             {question.options.map((o, i) => (

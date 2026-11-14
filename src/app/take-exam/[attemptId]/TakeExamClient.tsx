@@ -976,16 +976,28 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               </> : <p className="text-xs text-ink-soft">Requesting video access…</p>}
             </Card>
           )}
-          <Card className="p-4">
-            <p className="mb-3 text-sm font-semibold text-evergreen-950">
-              {showCorrige ? `Corrigé · ${questions.length} questions` : "Questions"}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
+          <Card className="exam-question-navigation p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold text-evergreen-950">
+                {showCorrige ? `Corrigé · ${questions.length} questions` : "Question navigator"}
+              </p>
+              {!submitted && <span className="text-xs font-semibold tabular-nums text-evergreen-800">{savedIds.size}/{questions.length} saved</span>}
+            </div>
+            {!submitted && <div
+              className="exam-progress-track mb-3"
+              role="progressbar"
+              aria-label="Answers confirmed by the server"
+              aria-valuemin={0}
+              aria-valuemax={questions.length}
+              aria-valuenow={savedIds.size}
+            ><span style={{ width: `${questions.length ? Math.min(100, (savedIds.size / questions.length) * 100) : 0}%` }} /></div>}
+            <div className="exam-question-grid">
               {questions.map((q, i) => (
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
-                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : ""}`}
+                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+                  aria-current={i === index ? "step" : undefined}
                   className={cn(
                     "relative flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition",
                     i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
@@ -1072,7 +1084,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           ) : null}
 
           {submitted && !corrigeAll ? (
-            <Card className="p-7 text-center">
+            <Card className="exam-results-card p-7 text-center">
               {queueState.pending > 0 && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{queueState.pending} answer(s) were not confirmed before submission or expiry. Contact your invigilator; do not close this tab.</p>}
               <p className="text-5xl">📋</p>
               <h1 className="mt-3 font-display text-3xl font-semibold text-evergreen-950">
@@ -1194,8 +1206,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           ) : null}
 
           {current && !corrigeAll && (
-            <Card className={`${submitted ? "mt-5" : ""} p-6 sm:p-7`}>
-              <div className="mb-4 flex flex-wrap items-center gap-2">
+            <Card className={`exam-question-card ${submitted ? "mt-5" : ""} p-6 sm:p-7`}>
+              <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">Question {index + 1} of {questions.length}</Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (
@@ -1315,9 +1327,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           )}
 
           {confirmSubmit && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-evergreen-950/70 px-4">
-              <Card className="w-full max-w-md p-6">
-                <h2 className="font-display text-xl font-semibold text-evergreen-950">Submit your paper?</h2>
+            <div className="exam-submit-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setConfirmSubmit(false); }}>
+              <Card className="exam-submit-dialog w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="exam-submit-heading">
+                <p className="exam-entry-kicker">Final check</p>
+                <h2 id="exam-submit-heading" className="mt-1 font-display text-xl font-semibold text-evergreen-950">Submit your paper?</h2>
                 <p className="mt-2 text-sm text-ink-soft">
                   You have answered {savedIds.size} of {questions.length} questions
                   {flagged.length ? ` and flagged ${flagged.length} for review` : ""}.

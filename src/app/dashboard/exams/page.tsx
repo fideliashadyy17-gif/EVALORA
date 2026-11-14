@@ -1,4 +1,5 @@
-import { Badge, ButtonLink, Card, EmptyState, PageTitle } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -13,17 +14,22 @@ export const dynamic = "force-dynamic";
 export default async function ExamsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; ok?: string }>;
+  searchParams: Promise<{ e?: string; ok?: string; q?: string; status?: string; page?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const supabase = await createClient();
-  const { data: exams } = await supabase
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 12;
+  let examQuery = supabase
     .from("exams")
-    .select("*, quizzes(title), exam_candidates(id), exam_attempts(id, status)")
+    .select("*, quizzes(title), exam_candidates(id), exam_attempts(id, status)", { count: "exact" })
     .eq("organization_id", org.id)
     .order("created_at", { ascending: false });
+  if (sp.q?.trim()) examQuery = examQuery.ilike("title", `%${sp.q.trim()}%`);
+  if (sp.status) examQuery = examQuery.eq("status", sp.status);
+  const { data: exams, count: examTotal } = await examQuery.range((page - 1) * pageSize, page * pageSize - 1);
 
   return (
     <>
@@ -50,10 +56,23 @@ export default async function ExamsPage({
         </p>
       )}
 
+      <form method="get" className="mb-5 grid gap-3 rounded-2xl border border-evergreen-900/10 bg-paper p-4 sm:grid-cols-[minmax(0,1fr)_13rem_auto_auto] sm:items-end">
+        <label className="block text-sm font-medium text-evergreen-900">Search examinations
+          <Input name="q" defaultValue={sp.q ?? ""} placeholder="Examination title" className="mt-1.5" />
+        </label>
+        <label className="block text-sm font-medium text-evergreen-900">Status
+          <Select name="status" defaultValue={sp.status ?? ""} className="mt-1.5">
+            <option value="">All statuses</option><option value="draft">Draft</option><option value="scheduled">Scheduled</option><option value="open">Open</option><option value="paused">Paused</option><option value="closed">Closed</option>
+          </Select>
+        </label>
+        <Button type="submit" variant="outline">Apply filters</Button>
+        <Link href="/dashboard/exams" className="inline-flex min-h-11 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear</Link>
+      </form>
+
       {(exams ?? []).length === 0 ? (
         <EmptyState
-          title="No examinations yet"
-          body="Create an examination from a published quiz, register candidates with personal access codes, and open it when ready."
+          title={sp.q || sp.status ? "No examinations match these filters" : "No examinations yet"}
+          body={sp.q || sp.status ? "Try another search or clear the filters. Existing examination records are unchanged." : "Create an examination from a published quiz, register candidates with personal access codes, and open it when ready."}
           action={<ButtonLink href="/dashboard/exams/new">Create an examination</ButtonLink>}
         />
       ) : (
@@ -96,6 +115,7 @@ export default async function ExamsPage({
           })}
         </div>
       )}
+      <PageNavigation page={page} pageSize={pageSize} total={examTotal ?? 0} pathname="/dashboard/exams" query={{ q: sp.q, status: sp.status }} label="examinations" />
     </>
   );
 }

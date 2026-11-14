@@ -1,4 +1,5 @@
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
@@ -18,23 +19,26 @@ export const dynamic = "force-dynamic";
 export default async function AdminOrganizations({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; type?: string; status?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; type?: string; status?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
     .from("organizations")
     .select(
       "id, name, slug, type, status, country, city, created_at, portal_enabled, custom_domain, platform_domain_status, organization_members(id), students(id), quizzes(id), exams(id), competitions(id), subscriptions(status, source, plans(name), trial_ends_at, current_period_end)",
+      { count: "exact" },
     )
     .order("created_at", { ascending: false })
-    .limit(200);
+    .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.q) query = query.ilike("name", `%${sp.q}%`);
   if (sp.type) query = query.eq("type", sp.type);
   if (sp.status) query = query.eq("status", sp.status);
-  const { data: orgs } = await query;
+  const { data: orgs, count: filteredTotal } = await query;
 
   const head = { count: "exact" as const, head: true };
   const [total, schools, students] = await Promise.all([
@@ -173,6 +177,14 @@ export default async function AdminOrganizations({
           })}
         </Table>
       )}
+      <PageNavigation
+        page={page}
+        pageSize={pageSize}
+        total={filteredTotal ?? 0}
+        pathname="/admin/organizations"
+        query={{ q: sp.q, type: sp.type, status: sp.status }}
+        label="organizations"
+      />
     </>
   );
 }

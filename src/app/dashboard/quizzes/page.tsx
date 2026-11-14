@@ -1,4 +1,5 @@
-import { Badge, ButtonLink, Card, EmptyState, PageTitle } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -9,16 +10,21 @@ import { deleteQuiz, duplicateQuiz, setQuizStatus, startSession } from "./action
 export const metadata: Metadata = { title: "Quiz Studio" };
 export const dynamic = "force-dynamic";
 
-export default async function QuizzesPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+export default async function QuizzesPage({ searchParams }: { searchParams: Promise<{ e?: string; q?: string; status?: string; page?: string }> }) {
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
-  const { data: quizzes } = await supabase
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 12;
+  let quizQuery = supabase
     .from("quizzes")
-    .select("*, quiz_questions(id), quiz_sessions(id)")
+    .select("*, quiz_questions(id), quiz_sessions(id)", { count: "exact" })
     .eq("organization_id", org.id)
     .order("updated_at", { ascending: false });
+  if (sp.q?.trim()) quizQuery = quizQuery.ilike("title", `%${sp.q.trim()}%`);
+  if (sp.status) quizQuery = quizQuery.eq("status", sp.status);
+  const { data: quizzes, count: quizTotal } = await quizQuery.range((page - 1) * pageSize, page * pageSize - 1);
 
   return (
     <>
@@ -32,10 +38,22 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
           The Live Quizzes module is temporarily disabled platform-wide by the administrator. Existing sessions are unaffected.
         </p>
       )}
+      <form method="get" className="mb-5 grid gap-3 rounded-2xl border border-evergreen-900/10 bg-paper p-4 sm:grid-cols-[minmax(0,1fr)_13rem_auto_auto] sm:items-end">
+        <label className="block text-sm font-medium text-evergreen-900">Search quizzes
+          <Input name="q" defaultValue={sp.q ?? ""} placeholder="Quiz title" className="mt-1.5" />
+        </label>
+        <label className="block text-sm font-medium text-evergreen-900">Status
+          <Select name="status" defaultValue={sp.status ?? ""} className="mt-1.5">
+            <option value="">All statuses</option><option value="draft">Draft</option><option value="published">Published</option><option value="archived">Archived</option>
+          </Select>
+        </label>
+        <Button type="submit" variant="outline">Apply filters</Button>
+        <Link href="/dashboard/quizzes" className="inline-flex min-h-11 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear</Link>
+      </form>
       {(quizzes ?? []).length === 0 ? (
         <EmptyState
-          title="No quizzes yet"
-          body="Create a quiz, attach published questions from your bank, and start your first live session in minutes."
+          title={sp.q || sp.status ? "No quizzes match these filters" : "No quizzes yet"}
+          body={sp.q || sp.status ? "Try another search or clear the filters." : "Create a quiz, attach published questions from your bank, and start your first live session in minutes."}
           action={<ButtonLink href="/dashboard/quizzes/new">Create your first quiz</ButtonLink>}
         />
       ) : (
@@ -82,6 +100,7 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
           })}
         </div>
       )}
+      <PageNavigation page={page} pageSize={pageSize} total={quizTotal ?? 0} pathname="/dashboard/quizzes" query={{ q: sp.q, status: sp.status }} label="quizzes" />
     </>
   );
 }

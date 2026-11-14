@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -13,22 +14,24 @@ export const dynamic = "force-dynamic";
 export default async function AdminUsers({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; role?: string; status?: string; ok?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; role?: string; status?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
     .from("profiles")
-    .select("*, organization_members(role, organizations(name))")
+    .select("*, organization_members(role, organizations(name))", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(200);
+    .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.q) query = query.or(`email.ilike.%${sp.q}%,full_name.ilike.%${sp.q}%`);
   if (sp.role === "super_admin") query = query.eq("platform_role", "super_admin");
   if (sp.role === "user") query = query.eq("platform_role", "user");
   if (sp.status) query = query.eq("status", sp.status);
-  const { data: users } = await query;
+  const { data: users, count: filteredTotal } = await query;
 
   return (
     <>
@@ -112,6 +115,14 @@ export default async function AdminUsers({
           ))}
         </Table>
       )}
+      <PageNavigation
+        page={page}
+        pageSize={pageSize}
+        total={filteredTotal ?? 0}
+        pathname="/admin/users"
+        query={{ q: sp.q, role: sp.role, status: sp.status }}
+        label="users"
+      />
     </>
   );
 }
