@@ -1,9 +1,11 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, Input, PageTitle, Select } from "@/components/ui";
 import { enterOrgWorkspace } from "../actions/orgs";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { adminDeleteQuiz, adminSetQuizStatus } from "../actions";
 
 export const metadata: Metadata = { title: "Quiz Management" };
@@ -14,22 +16,23 @@ const tone = (s: string) => (s === "published" ? "green" : s === "draft" ? "ambe
 export default async function AdminQuizzes({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
     .from("quizzes")
-    .select("*, organizations(name), quiz_questions(count)")
-    .order("created_at", { ascending: false })
-    .limit(100);
+    .select("*, organizations(name), quiz_questions(count)", { count: "exact" })
+    .order("created_at", { ascending: false });
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.q) query = query.ilike("title", `%${sp.q}%`);
   if (sp.org) query = query.eq("organization_id", sp.org);
-  const [{ data: quizzes }, { data: orgList }] = await Promise.all([
-    query,
+  const [{ data: pageRows, count: quizTotal }, { data: orgList }] = await Promise.all([
+    query.range((page - 1) * pageSize, page * pageSize - 1),
     admin.from("organizations").select("id, name").order("name").limit(500),
   ]);
 
@@ -55,19 +58,14 @@ export default async function AdminQuizzes({
 
       <form method="get" className="mb-4 flex flex-wrap gap-2">
         <Input name="q" defaultValue={sp.q} placeholder="Search quiz title…" className="max-w-sm" />
-        <select name="status" defaultValue={sp.status ?? ""} className="rounded-lg border border-evergreen-900/55 bg-white px-3 py-2.5 text-sm">
-          <option value="">All statuses</option>
-          <option value="published">Published</option>
-          <option value="draft">Draft</option>
-          <option value="archived">Archived</option>
-        </select>
-        <select name="org" defaultValue={sp.org ?? ""} className="rounded-lg border border-evergreen-900/55 bg-white px-3 py-2.5 text-sm">
-          <option value="">All organizations</option>
-          {(orgList ?? []).map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-        <Button type="submit" variant="outline">Filter</Button>
+        <Select name="status" defaultValue={sp.status ?? ""} aria-label="Filter quizzes by status">
+          <option value="">All statuses</option><option value="published">Published</option><option value="draft">Draft</option><option value="archived">Archived</option>
+        </Select>
+        <Select name="org" defaultValue={sp.org ?? ""} aria-label="Filter quizzes by organization">
+          <option value="">All organizations</option>{(orgList ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </Select>
+        <Button type="submit" variant="outline">Apply filters</Button>
+        <Link href="/admin/quizzes" className="inline-flex min-h-11 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear</Link>
       </form>
 
       <Card className="overflow-x-auto p-0">
@@ -84,7 +82,7 @@ export default async function AdminQuizzes({
             </tr>
           </thead>
           <tbody>
-            {(quizzes ?? []).map((q) => (
+            {(pageRows ?? []).map((q) => (
               <tr key={q.id} className="border-b border-evergreen-900/10">
                 <td className="px-4 py-2.5 font-medium">
                   {q.title}
@@ -127,12 +125,13 @@ export default async function AdminQuizzes({
                 </td>
               </tr>
             ))}
-            {(quizzes ?? []).length === 0 && (
+            {(pageRows ?? []).length === 0 && (
               <tr><td colSpan={7} className="px-4 py-8 text-center text-ink-soft">No quizzes match this filter.</td></tr>
             )}
           </tbody>
         </table>
       </Card>
+      <PageNavigation page={page} pageSize={pageSize} total={quizTotal ?? 0} pathname="/admin/quizzes" query={{ q: sp.q, status: sp.status, org: sp.org }} label="quizzes" />
     </>
   );
 }
