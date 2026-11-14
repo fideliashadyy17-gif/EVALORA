@@ -542,21 +542,19 @@ export function AdminShell({
         </header>
 
         {/* Mobile nav */}
-        {mobileOpen && (
-          <div id="admin-mobile-navigation" className="max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden">
-            <label className="mb-4 block">
-              <span className="sr-only">Filter Super Admin modules</span>
-              <input
-                type="search"
-                value={moduleQuery}
-                onChange={(event) => setModuleQuery(event.target.value)}
-                placeholder="Find a module…"
-                className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
-              />
-            </label>
-            {renderNav(false)}
-          </div>
-        )}
+        <div id="admin-mobile-navigation" className={cn("max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden", !mobileOpen && "hidden")}>
+          <label className="mb-4 block">
+            <span className="sr-only">Filter Super Admin modules</span>
+            <input
+              type="search"
+              value={moduleQuery}
+              onChange={(event) => setModuleQuery(event.target.value)}
+              placeholder="Find a module…"
+              className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
+            />
+          </label>
+          {renderNav(false)}
+        </div>
 
         <main id="main-content" className="admin-content mx-auto w-full max-w-[1600px] px-4 py-7 sm:px-6 lg:px-9 lg:py-9">{children}</main>
       </div>

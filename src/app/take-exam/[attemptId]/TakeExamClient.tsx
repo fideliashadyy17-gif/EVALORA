@@ -910,11 +910,44 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             </p>
           </div>
           {!submitted && (
-            <ExamCountdown
-              deadline={attempt.deadline}
-              serverOffsetMs={offset.current}
-              paused={connState === "lost" || manualPause.paused}
-            />
+            <>
+              <ExamCountdown
+                deadline={attempt.deadline}
+                serverOffsetMs={offset.current}
+                paused={connState === "lost" || manualPause.paused}
+              />
+              <div
+                role="status"
+                aria-live="polite"
+                className={cn(
+                  "exam-save-status inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-semibold",
+                  !queueState.durable || queueState.error
+                    ? "border-red-300 bg-red-50 text-red-900"
+                    : queueState.pending > 0
+                      ? "border-amber-300 bg-amber-50 text-amber-950"
+                      : "border-evergreen-200 bg-evergreen-50 text-evergreen-900",
+                )}
+              >
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    "h-2 w-2 rounded-full",
+                    !queueState.durable || queueState.error
+                      ? "bg-red-600"
+                      : queueState.pending > 0
+                        ? "bg-amber-600"
+                        : "bg-evergreen-600",
+                  )}
+                />
+                {!queueState.durable
+                  ? "Recovery unavailable"
+                  : queueState.error
+                    ? "Save problem"
+                    : queueState.pending > 0
+                      ? queueState.syncing ? "Saving answers…" : "Save pending"
+                      : savedIds.size > 0 ? "Saved to server" : "Ready to begin"}
+              </div>
+            </>
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
           <PresenceRail

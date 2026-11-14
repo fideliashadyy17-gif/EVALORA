@@ -1,5 +1,5 @@
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
-import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, ButtonLink, Card, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
@@ -84,11 +84,19 @@ export default async function DashboardPage() {
 
   return (
     <>
-      <PageTitle
-        title={`Welcome, ${ctx.profile.full_name?.split(" ")[0] || "there"}`}
-        subtitle={`${org.name} · Your assessment workspace at a glance.`}
-        action={<ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink>}
-      />
+      <section className="workspace-dashboard-hero mb-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.6rem] p-6 sm:p-8">
+        <div className="max-w-2xl">
+          <p className="workspace-dashboard-kicker">Assessment workspace</p>
+          <h1 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight text-evergreen-950 sm:text-4xl">
+            Welcome, {ctx.profile.full_name?.split(" ")[0] || "there"}
+          </h1>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft sm:text-base">{org.name} · Your workspace at a glance.</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <ButtonLink href="/dashboard/quizzes/new" variant="gold">+ New quiz</ButtonLink>
+          <ButtonLink href="/dashboard/exams/new" variant="outline">Schedule an exam</ButtonLink>
+        </div>
+      </section>
 
       {degradedMetrics && (
         <div role="status" className="mb-5 rounded-xl border border-amber-500/40 bg-amber-50 px-4 py-3 text-sm text-amber-950">
