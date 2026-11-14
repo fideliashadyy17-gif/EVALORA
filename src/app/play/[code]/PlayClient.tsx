@@ -318,11 +318,31 @@ export function PlayClient({ code }: { code: string }) {
     }
   }
 
+  function resetParticipantSession() {
+    try {
+      localStorage.removeItem(storeKey);
+    } catch {
+      // Ignore storage removal errors in restricted modes.
+    }
+    setIdentity(null);
+    setState(null);
+    setRemoved(false);
+    setError(null);
+    setName("");
+    setRefValue("");
+    setQualificationToken("");
+  }
+
   if (removed) {
     return (
       <Shell>
         <h1 className="font-display text-2xl font-semibold text-evergreen-950">Session notice</h1>
         <p className="mt-2 text-ink-soft">{error ?? "You are no longer in this session."}</p>
+        <div className="mt-4">
+          <Button variant="outline" onClick={resetParticipantSession}>
+            Join as another student
+          </Button>
+        </div>
       </Shell>
     );
   }
@@ -450,6 +470,11 @@ export function PlayClient({ code }: { code: string }) {
           {state.my_rank && !state.final && <Badge tone="gray" className="px-3 py-1 text-base">#{state.my_rank}</Badge>}
           {session.answer_locked && session.status !== "ended" && (
             <Badge tone="red" className="px-3 py-1 text-base">🔒 Answers locked</Badge>
+          )}
+          {session.status === "ended" && (
+            <Button variant="outline" className="text-xs" onClick={resetParticipantSession}>
+              Exit session
+            </Button>
           )}
         </div>
       </div>

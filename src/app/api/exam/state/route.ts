@@ -167,11 +167,19 @@ export async function GET(request: Request) {
 
   const submitted = attempt.status !== "in_progress";
   const resultsPublished = Boolean(settings.results_published);
+  const rawInviteToken =
+    (typeof (attempt as { invite_token?: unknown }).invite_token === "string" &&
+      (attempt as { invite_token?: string }).invite_token) ||
+    (typeof (candidate as { invite_token?: unknown }).invite_token === "string" &&
+      (candidate as { invite_token?: string }).invite_token) ||
+    null;
+  const entryHref = rawInviteToken ? `/exam/join/${rawInviteToken}` : "/exam-access";
 
   return NextResponse.json({
     server_now: new Date(nowMs).toISOString(),
     exam: {
       id: exam.id,
+      entry_href: entryHref,
       title: exam.title,
       description: exam.description,
       instructions: exam.instructions,
