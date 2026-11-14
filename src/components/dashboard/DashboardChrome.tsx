@@ -1,5 +1,6 @@
 "use client";
 
+import { NavigationPending } from "@/components/NavigationPending";
 import { Logo } from "@/components/Logo";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
@@ -130,12 +131,13 @@ export function DashboardChrome({
               <Link
                 key={n.href + n.label}
                 href={n.href}
-                prefetch={false}
                 onClick={() => setOpen(false)}
+                aria-current={active ? "page" : undefined}
                 className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
               >
                 <n.icon className="h-5 w-5 shrink-0" />
                 {n.label}
+                <NavigationPending />
               </Link>
             );
           })}
@@ -174,6 +176,10 @@ export function DashboardChrome({
       </aside>
 
       <div className="min-w-0">
+        <header className="sticky top-0 z-30 hidden h-20 items-center justify-between border-b border-evergreen-900/10 bg-paper/95 px-8 backdrop-blur lg:flex">
+          <div><p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">{orgName}</p><p className="mt-1 font-semibold text-evergreen-950">{sections.flatMap(s => s.items).filter(n => n.exact ? pathname === n.href : pathname.startsWith(n.href)).sort((a, b) => b.href.length - a.href.length)[0]?.label ?? "Workspace"}</p></div>
+          <Link href="/dashboard/settings" className="flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm hover:bg-evergreen-50"><span className="flex h-9 w-9 items-center justify-center rounded-full bg-evergreen-100 font-semibold text-evergreen-800" aria-hidden="true">{userName.slice(0, 1).toUpperCase()}</span><span>{userName}</span></Link>
+        </header>
         {/* Topbar — mobile */}
         <header className="sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
           <Logo href="/dashboard" />

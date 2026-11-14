@@ -22,24 +22,17 @@ export default async function TeamPage({
   const supabase = await createClient();
   const admin = createAdminClient();
 
-  const { data: members } = await supabase
-    .from("organization_members")
-    .select("*")
-    .eq("organization_id", org.id)
-    .order("created_at");
+  const [{ data: members }, { data: invitations }, ent] = await Promise.all([
+    supabase.from("organization_members").select("*").eq("organization_id", org.id).order("created_at"),
+    supabase.from("invitations").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }),
+    getEntitlementFor(supabase, ctx, org.id),
+  ]);
   const memberIds = (members ?? []).map((m) => m.user_id);
   const { data: profiles } = memberIds.length
     ? await admin.from("profiles").select("id, email, full_name").in("id", memberIds)
     : { data: [] };
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
 
-  const { data: invitations } = await supabase
-    .from("invitations")
-    .select("*")
-    .eq("organization_id", org.id)
-    .order("created_at", { ascending: false });
-
-  const ent = await getEntitlementFor(supabase, ctx, org.id);
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   return (

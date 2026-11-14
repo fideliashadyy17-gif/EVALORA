@@ -894,14 +894,19 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             <p className="mb-3 text-sm font-semibold text-evergreen-950">
               {showCorrige ? `Corrigé · ${questions.length} questions` : "Questions"}
             </p>
+            {!showCorrige && <div className="mb-4">
+              <div className="mb-2 flex justify-between text-xs text-ink-soft"><span>Confirmed answers</span><span>{savedIds.size} / {questions.length}</span></div>
+              <progress aria-label="Server-confirmed answers" className="exam-answer-progress h-2 w-full" max={Math.max(1, questions.length)} value={savedIds.size} />
+            </div>}
             <div className="flex flex-wrap gap-1.5">
               {questions.map((q, i) => (
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
-                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : ""}`}
+                  aria-current={i === index ? "step" : undefined}
+                  aria-label={`Question ${i + 1}, ${savedIds.has(q.question_id) ? "answer confirmed" : "not confirmed"}${flagged.includes(q.question_id) ? ", marked for review" : ""}${q.result ? `, ${resultMark(q.result).label}` : ""}`}
                   className={cn(
-                    "relative flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition",
+                    "relative flex h-11 w-11 items-center justify-center rounded-xl text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-evergreen-700",
                     i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
                   )}
                 >
@@ -920,6 +925,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   )}
                 </button>
               ))}
+            </div>
+            <div className="mt-4 flex flex-wrap gap-x-3 gap-y-2 text-xs text-ink-soft" aria-label="Question navigator legend">
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-evergreen-700" />Current</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded border border-evergreen-700 bg-evergreen-100" />Confirmed</span>
+              <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-full bg-gold-500" />Review</span>
             </div>
             {showCorrige ? (
               <p className="mt-3 text-xs text-ink-soft">
@@ -1144,7 +1154,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     setFlagged(next);
                     if (current.saved_answer) save(current.question_id, current.quiz_question_id, current.saved_answer, next);
                   }}
-                  className={cn("ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium", flagged.includes(current.question_id) ? "bg-gold-100 text-gold-700" : "text-ink-soft hover:bg-cream")}
+                  className={cn("ml-auto inline-flex min-h-11 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium", flagged.includes(current.question_id) ? "bg-gold-100 text-gold-700" : "text-ink-soft hover:bg-cream")}
                 >
                   <Flag className="h-4 w-4" /> {flagged.includes(current.question_id) ? "Flagged for review" : "Flag for review"}
                 </button>

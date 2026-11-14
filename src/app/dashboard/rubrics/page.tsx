@@ -26,12 +26,13 @@ export default async function RubricsPage({
   const sp = await searchParams;
   const canMark = can(ctx, org.id, MARKER_ROLES);
   const supabase = await createClient();
-  const rubrics = await loadRubrics(supabase, org.id);
-
-  const { data: criteria } = await supabase
+  const [rubrics, { data: criteria }] = await Promise.all([
+    loadRubrics(supabase, org.id),
+    supabase
     .from("grading_rubric_criteria")
     .select("id, rubric_id")
-    .eq("organization_id", org.id);
+    .eq("organization_id", org.id),
+  ]);
   const counts = new Map<string, number>();
   for (const c of criteria ?? []) counts.set(c.rubric_id, (counts.get(c.rubric_id) ?? 0) + 1);
 

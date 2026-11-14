@@ -1,3 +1,4 @@
+import { FormButton } from "./FormButton";
 import { cn } from "@/lib/utils";
 import Link from "next/link";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
@@ -13,7 +14,7 @@ const btnStyles: Record<BtnVariant, string> = {
   dark: "bg-evergreen-950 text-white hover:bg-evergreen-900",
 };
 const btnBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-evergreen-600 whitespace-nowrap";
+  "inline-flex min-h-11 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-medium transition disabled:opacity-50 disabled:pointer-events-none focus:outline-none focus-visible:ring-2 focus-visible:ring-evergreen-600 whitespace-nowrap";
 
 /**
  * Shared button styling, for the few places that must render an anchor (a
@@ -29,7 +30,7 @@ export function Button({
   className,
   ...props
 }: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant }) {
-  return <button className={buttonClass(variant, className)} {...props} />;
+  return <FormButton className={buttonClass(variant, className)} {...props} />;
 }
 
 export function ButtonLink({

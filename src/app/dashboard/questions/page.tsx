@@ -1,3 +1,4 @@
+import { pageNumber, pageHref } from "@/lib/pagination";
 import { RichContent } from "@/components/RichContent";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
@@ -20,36 +21,30 @@ const STATUS_TONE: Record<string, "green" | "amber" | "gray"> = {
 export default async function QuestionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; page?: string; e?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const supabase = await createClient();
 
+  const page = pageNumber(sp.page);
+  const pageSize = 30;
   let query = supabase
     .from("questions")
-    .select("*, question_options(id), question_categories(name)")
+    .select("*, question_options(id), question_categories(name)", { count: "exact" })
     .eq("organization_id", org.id)
     .order("created_at", { ascending: false })
-    .limit(200);
+    .order("id")
+    .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.class) query = query.eq("class_id", sp.class);
   if (sp.curr) query = query.eq("curriculum", sp.curr);
-  const { data: questions } = await query;
-  const { data: classList } = await supabase
-    .from("classes")
-    .select("id, name")
-    .eq("organization_id", org.id)
-    .order("grade_order")
-    .order("name");
-
-  const { data: categories } = await supabase
-    .from("question_categories")
-    .select("*")
-    .eq("organization_id", org.id)
-    .order("name");
+  const [{ data: questions, count }, { data: categories }] = await Promise.all([
+    query,
+    supabase.from("question_categories").select("*").eq("organization_id", org.id).order("name"),
+  ]);
 
   return (
     <>
@@ -70,8 +65,17 @@ export default async function QuestionsPage({
 
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="text-ink-soft">{count ?? 0} questions · Page {page}</p>
+            <nav aria-label="Question bank pages" className="flex gap-3">
+              {page > 1 && <ButtonLink variant="outline" href={pageHref("/dashboard/questions", sp, page - 1)}>Previous</ButtonLink>}
+              {page * pageSize < (count ?? 0) && <ButtonLink variant="outline" href={pageHref("/dashboard/questions", sp, page + 1)}>Next</ButtonLink>}
+            </nav>
+          </div>
           <form className="mb-4 flex flex-wrap gap-2" method="get">
-            <Input name="q" placeholder="Search prompts…" defaultValue={sp.q} className="w-64" />
+            {sp.class && <input type="hidden" name="class" value={sp.class} />}
+            {sp.curr && <input type="hidden" name="curr" value={sp.curr} />}
+            <Input aria-label="Search question prompts" name="q" placeholder="Search prompts…" defaultValue={sp.q} className="w-64" />
             <select name="status" defaultValue={sp.status ?? ""} className="rounded-lg border border-evergreen-900/15 bg-white px-3 py-2.5 text-sm shadow-sm">
               <option value="">All statuses</option>
               <option value="published">Published</option>

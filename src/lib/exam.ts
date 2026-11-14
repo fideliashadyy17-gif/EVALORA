@@ -113,11 +113,10 @@ export async function loadAttemptContext(admin: SupabaseClient, attemptId: strin
     .eq("access_token", token)
     .maybeSingle();
   if (!attempt) return null;
-  const { data: exam } = await admin.from("exams").select("*").eq("id", attempt.exam_id).single();
-  const { data: candidate } = await admin
-    .from("exam_candidates")
-    .select("*")
-    .eq("id", attempt.candidate_id)
-    .single();
+  // Both reads depend only on the authenticated attempt, not on each other.
+  const [{ data: exam }, { data: candidate }] = await Promise.all([
+    admin.from("exams").select("*").eq("id", attempt.exam_id).single(),
+    admin.from("exam_candidates").select("*").eq("id", attempt.candidate_id).single(),
+  ]);
   return { attempt, exam, candidate };
 }
