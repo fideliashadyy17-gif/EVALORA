@@ -130,7 +130,6 @@ export function DashboardChrome({
               <Link
                 key={n.href + n.label}
                 href={n.href}
-                prefetch={false}
                 onClick={() => setOpen(false)}
                 className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
               >
@@ -142,8 +141,8 @@ export function DashboardChrome({
         </div>
       ))}
 
-      {canSwitchWorkspace && <Link href="/workspaces" prefetch={false} className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
-      <Link href="/" prefetch={false} className={cn(navLink, "mt-3", navIdle)}>
+      {canSwitchWorkspace && <Link href="/workspaces" className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
+      <Link href="/" className={cn(navLink, "mt-3", navIdle)}>
         <BookOpenCheck className="h-5 w-5 shrink-0" />
         Public website
       </Link>
@@ -152,8 +151,9 @@ export function DashboardChrome({
 
   return (
     <div className="dashboard-chrome min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
+      <a href="#workspace-main" className="skip-link">Skip to workspace</a>
       {/* Sidebar — desktop */}
-      <aside className="sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex">
+      <aside className="dashboard-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex" aria-label="Organization workspace navigation">
         <Logo href="/dashboard" />
         <div className="mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
           <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
@@ -193,7 +193,7 @@ export function DashboardChrome({
             </button>
           </div>
         )}
-        <main className="mx-auto w-full max-w-6xl px-4 py-7 sm:px-6 lg:py-10">{children}</main>
+        <main id="workspace-main" className="workspace-content mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-9 lg:py-10">{children}</main>
       </div>
     </div>
   );
