@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select } from "@/components/ui";
 import { registerClassForExam } from "../actions/academics";
 import { enterOrgWorkspace } from "../actions/orgs";
@@ -16,21 +17,23 @@ const tone = (s: string) =>
 export default async function AdminExaminations({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string; ok?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; saved?: string; e?: string; ok?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
     .from("exams")
-    .select("*, organizations(name), exam_candidates(count), exam_attempts(count)")
+    .select("*, organizations(name), exam_candidates(count), exam_attempts(count)", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(100);
+    .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.q) query = query.ilike("title", `%${sp.q}%`);
   if (sp.org) query = query.eq("organization_id", sp.org);
-  const [{ data: exams }, { data: orgList }, { data: classList }] = await Promise.all([
+  const [{ data: exams, count: filteredTotal }, { data: orgList }, { data: classList }] = await Promise.all([
     query,
     admin.from("organizations").select("id, name").order("name").limit(500),
     admin.from("classes").select("id, name, organization_id").order("name").limit(1000),
@@ -67,6 +70,7 @@ export default async function AdminExaminations({
           <option value="">All statuses</option>
           <option value="open">Open</option>
           <option value="scheduled">Scheduled</option>
+          <option value="paused">Paused</option>
           <option value="draft">Draft</option>
           <option value="closed">Closed</option>
         </select>
@@ -159,6 +163,14 @@ export default async function AdminExaminations({
           </tbody>
         </table>
       </Card>
+      <PageNavigation
+        page={page}
+        pageSize={pageSize}
+        total={filteredTotal ?? 0}
+        pathname="/admin/examinations"
+        query={{ q: sp.q, status: sp.status, org: sp.org }}
+        label="examinations"
+      />
     </>
   );
 }

@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { isStaffRole } from "@/lib/navAccess";
@@ -33,7 +34,7 @@ const ERRORS: Record<string, string> = {
 export default async function TeachersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ ok?: string; e?: string; detail?: string }>;
+  searchParams: Promise<{ ok?: string; e?: string; detail?: string; status?: string; page?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -42,16 +43,20 @@ export default async function TeachersPage({
 
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 20;
 
-  const { data: members } = await supabase
+  let teacherQuery = supabase
     .from("organization_members")
-    .select("id, user_id, role, status, created_at")
+    .select("id, user_id, role, status, created_at", { count: "exact" })
     .eq("organization_id", org.id)
     .eq("role", "teacher")
-    .order("created_at");
+    .order("created_at", { ascending: false });
+  if (sp.status) teacherQuery = teacherQuery.eq("status", sp.status);
+  const { data: members, count: teacherTotal } = await teacherQuery.range((page - 1) * pageSize, page * pageSize - 1);
 
   const teacherIds = (members ?? []).map((m) => m.user_id);
-  const [{ data: profiles }, { data: classes }, { data: exams }] = await Promise.all([
+  const [{ data: profiles }, { data: classes }, { data: exams }, { count: activeTeacherTotal }] = await Promise.all([
     teacherIds.length
       ? supabase.from("profiles").select("id, full_name, email").in("id", teacherIds)
       : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
@@ -59,6 +64,7 @@ export default async function TeachersPage({
     teacherIds.length
       ? supabase.from("exams").select("id, created_by, status").eq("organization_id", org.id).in("created_by", teacherIds)
       : Promise.resolve({ data: [] as { id: string; created_by: string | null; status: string | null }[] }),
+    supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("role", "teacher").eq("status", "active"),
   ]);
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
@@ -78,14 +84,14 @@ export default async function TeachersPage({
     examsByTeacher.set(exam.created_by, entry);
   }
 
-  const active = (members ?? []).filter((m) => m.status !== "suspended" && m.status !== "inactive").length;
+  const active = activeTeacherTotal ?? 0;
   const unassignedClasses = (classes ?? []).filter((k) => !k.teacher_id).length;
 
   return (
     <>
       <PageTitle
         title="Teachers"
-        subtitle={`${members?.length ?? 0} teaching accounts · ${active} active · ${classes?.length ?? 0} classes in this institution`}
+        subtitle={`${teacherTotal ?? 0} matching teaching accounts · ${active} active in this institution · ${classes?.length ?? 0} classes`}
         action={
           isManager ? (
             <Link href="/dashboard/accounts" className="text-sm font-semibold text-evergreen-700 underline-offset-2 hover:underline">
@@ -123,14 +129,29 @@ export default async function TeachersPage({
       )}
 
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
-        <Card className="overflow-x-auto p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Teaching staff</h2>
+        <Card className="min-w-0 p-5 sm:p-6">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">Teaching staff</h2>
+              <p className="mt-1 text-sm text-ink-soft">{teacherTotal ?? 0} teacher accounts · page {page}</p>
+            </div>
+            <form method="get" className="flex flex-wrap items-end gap-2">
+              <label className="text-sm font-medium text-evergreen-900">Account status
+                <Select name="status" defaultValue={sp.status ?? ""} className="mt-1 block min-w-36" aria-label="Filter teacher accounts by status">
+                  <option value="">All statuses</option><option value="active">Active</option><option value="suspended">Suspended</option>
+                </Select>
+              </label>
+              <Button type="submit" variant="outline">Apply</Button>
+              {sp.status && <Link href="/dashboard/teachers" className="inline-flex min-h-11 items-center text-sm text-evergreen-800 underline underline-offset-2">Clear</Link>}
+            </form>
+          </div>
           {(members ?? []).length === 0 ? (
             <p className="mt-4 rounded-lg bg-cream px-4 py-6 text-sm text-ink-soft">
               No teacher accounts yet. {isManager ? "Add the first teacher with the form on the right." : "An owner or administrator can add teachers."}
             </p>
           ) : (
-            <table className="mt-4 w-full text-sm">
+            <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[680px] text-sm">
               <thead>
                 <tr className="border-b border-evergreen-900/10 text-left text-ink-soft">
                   <th className="py-2 pr-3 font-medium">Teacher</th>
@@ -175,7 +196,9 @@ export default async function TeachersPage({
                 })}
               </tbody>
             </table>
+            </div>
           )}
+          <PageNavigation page={page} pageSize={pageSize} total={teacherTotal ?? 0} pathname="/dashboard/teachers" query={{ status: sp.status }} label="teachers" />
         </Card>
 
         {isManager ? (

@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Input, PageTitle, Select } from "@/components/ui";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
@@ -11,6 +12,7 @@ import type { Metadata } from "next";
 import { adminDeleteQuestion, adminSetQuestionStatus } from "../actions";
 import { duplicateQuestionAsAdmin, setQuestionReview } from "./actions";
 import { Notice } from "../ui";
+import Link from "next/link";
 
 export const metadata: Metadata = { title: "Question Bank" };
 export const dynamic = "force-dynamic";
@@ -21,31 +23,33 @@ const tone = (s: string) =>
 export default async function AdminQuestions({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; org?: string; class?: string; curr?: string; review?: string; saved?: string; e?: string; ok?: string; n?: string; dup?: string; short?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; org?: string; class?: string; curr?: string; review?: string; type?: string; saved?: string; e?: string; ok?: string; n?: string; dup?: string; short?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
   const admin = createAdminClient();
 
   let query = admin
     .from("questions")
-    .select("*, organizations(name), classes(name)")
+    .select("*, organizations(name), classes(name)", { count: "exact" })
     .order("created_at", { ascending: false })
-    .limit(100);
+    .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.org) query = query.eq("organization_id", sp.org);
   if (sp.class) query = query.eq("class_id", sp.class);
   if (sp.curr) query = query.eq("curriculum", sp.curr);
   if (sp.review) query = query.eq("review_status", sp.review);
-  const [{ data: questions }, { data: orgList }, { data: classList }] = await Promise.all([
+  if (sp.type) query = query.eq("type", sp.type);
+  const [{ data: questions, count: filteredTotal }, { data: orgList }, { data: classList }] = await Promise.all([
     query,
     admin.from("organizations").select("id, name").order("name").limit(500),
     sp.org
       ? admin.from("classes").select("id, name, organization_id").eq("organization_id", sp.org).order("grade_order").order("name").limit(500)
       : admin.from("classes").select("id, name, organization_id").order("name").limit(500),
   ]);
-  const orgNameById = new Map((orgList ?? []).map((o) => [o.id, o.name]));
   const back = `/admin/questions${sp.org || sp.class ? `?${new URLSearchParams({ ...(sp.org ? { org: sp.org } : {}), ...(sp.class ? { class: sp.class } : {}), ...(sp.review ? { review: sp.review } : {}) }).toString()}` : ""}`;
   const exportCsv = toCsv([
     ["Prompt", "Type", "Difficulty", "Points", "Status", "Organization", "Topic", "Tags"],
@@ -76,7 +80,7 @@ export default async function AdminQuestions({
               </Select>
               <Button type="submit" variant="outline">Add in workspace</Button>
             </form>
-            <ExportButton filename="questions.csv" csv={exportCsv} label="Export listed" />
+            <ExportButton filename="questions.csv" csv={exportCsv} label="Export this page" />
           </div>
         }
       />
@@ -84,22 +88,43 @@ export default async function AdminQuestions({
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
       {sp.e === "confirm" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Tick the confirmation box before deleting.</p>}
 
-      <form method="get" className="mb-4 flex flex-wrap gap-2">
-        <Input name="q" defaultValue={sp.q} placeholder="Search question text…" className="max-w-sm" />
-        <select name="status" defaultValue={sp.status ?? ""} className="rounded-lg border border-evergreen-900/55 bg-white px-3 py-2.5 text-sm">
+      <form method="get" className="mb-4 grid gap-3 rounded-2xl border border-evergreen-900/10 bg-paper p-4 sm:grid-cols-2 xl:grid-cols-5">
+        <Input name="q" defaultValue={sp.q} placeholder="Search question text…" aria-label="Search question text" />
+        <Select name="status" defaultValue={sp.status ?? ""} aria-label="Filter by question status">
           <option value="">All statuses</option>
           <option value="published">Published</option>
           <option value="pending_review">Pending review</option>
           <option value="draft">Draft</option>
           <option value="archived">Archived</option>
-        </select>
-        <select name="org" defaultValue={sp.org ?? ""} className="rounded-lg border border-evergreen-900/55 bg-white px-3 py-2.5 text-sm">
+        </Select>
+        <Select name="org" defaultValue={sp.org ?? ""} aria-label="Filter by organization">
           <option value="">All organizations</option>
-          {(orgList ?? []).map((o) => (
-            <option key={o.id} value={o.id}>{o.name}</option>
-          ))}
-        </select>
-        <Button type="submit" variant="outline">Filter</Button>
+          {(orgList ?? []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+        </Select>
+        <Select name="class" defaultValue={sp.class ?? ""} aria-label="Filter by class">
+          <option value="">All classes</option>
+          {(classList ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+        </Select>
+        <Select name="review" defaultValue={sp.review ?? ""} aria-label="Filter by review state">
+          <option value="">All review states</option>
+          <option value="draft">Draft review</option>
+          <option value="reviewed">Reviewed</option>
+          <option value="approved">Approved</option>
+          <option value="rejected">Rejected</option>
+          <option value="archived">Archived</option>
+        </Select>
+        <Select name="type" defaultValue={sp.type ?? ""} aria-label="Filter by question type">
+          <option value="">All question types</option>
+          <option value="single_choice">Single choice</option><option value="multiple_select">Multiple select</option>
+          <option value="true_false">True or false</option><option value="short_answer">Short answer</option>
+          <option value="numeric">Numeric</option><option value="ordering">Ordering</option>
+          <option value="matching">Matching</option><option value="open_ended">Open ended</option>
+          <option value="assess_parts">Assess parts</option><option value="slide">Slide</option>
+        </Select>
+        <div className="flex items-center gap-2 sm:col-span-2 xl:col-span-5">
+          <Button type="submit" variant="outline">Apply filters</Button>
+          <Link href="/admin/questions" className="text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear filters</Link>
+        </div>
       </form>
 
       <Card className="overflow-x-auto p-0">
@@ -189,6 +214,14 @@ export default async function AdminQuestions({
           </tbody>
         </table>
       </Card>
+      <PageNavigation
+        page={page}
+        pageSize={pageSize}
+        total={filteredTotal ?? 0}
+        pathname="/admin/questions"
+        query={{ q: sp.q, status: sp.status, org: sp.org, class: sp.class, curr: sp.curr, review: sp.review, type: sp.type }}
+        label="questions"
+      />
     </>
   );
 }

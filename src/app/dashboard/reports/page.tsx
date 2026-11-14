@@ -1,3 +1,4 @@
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Card, EmptyState, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -8,15 +9,21 @@ import Link from "next/link";
 export const metadata: Metadata = { title: "Reports" };
 export const dynamic = "force-dynamic";
 
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ sessionsPage?: string; examsPage?: string }> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  const sp = await searchParams;
   const supabase = await createClient();
+  const pageSize = 12;
+  const sessionsPage = Math.max(1, Number.parseInt(sp.sessionsPage ?? "1", 10) || 1);
+  const examsPage = Math.max(1, Number.parseInt(sp.examsPage ?? "1", 10) || 1);
 
-  const [{ data: sessions }, { data: exams }] = await Promise.all([
-    supabase.from("quiz_sessions").select("*, quizzes(title), session_participants(id)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(30),
-    supabase.from("exams").select("*, exam_attempts(id, status)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(30),
+  const [sessionResult, examResult] = await Promise.all([
+    supabase.from("quiz_sessions").select("*, quizzes(title), session_participants(id)", { count: "exact" }).eq("organization_id", org.id).order("created_at", { ascending: false }).range((sessionsPage - 1) * pageSize, sessionsPage * pageSize - 1),
+    supabase.from("exams").select("*, exam_attempts(id, status)", { count: "exact" }).eq("organization_id", org.id).order("created_at", { ascending: false }).range((examsPage - 1) * pageSize, examsPage * pageSize - 1),
   ]);
+  const sessions = sessionResult.data;
+  const exams = examResult.data;
 
   return (
     <>
@@ -25,8 +32,8 @@ export default async function ReportsPage() {
         subtitle="Performance across live sessions and examinations. Every report exports to CSV (Excel-ready) and prints cleanly to PDF."
       />
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Live quiz sessions</h2>
+        <Card className="min-w-0 p-5 sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold text-evergreen-950">Live quiz sessions</h2><span className="text-xs text-ink-soft">{sessionResult.count ?? 0} total</span></div>
           {(sessions ?? []).length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No sessions yet.</p>
           ) : (
@@ -45,10 +52,11 @@ export default async function ReportsPage() {
               ))}
             </ul>
           )}
+          <PageNavigation page={sessionsPage} pageSize={pageSize} total={sessionResult.count ?? 0} pathname="/dashboard/reports" query={{ examsPage: String(examsPage) }} pageParam="sessionsPage" label="quiz sessions" />
         </Card>
 
-        <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Examinations</h2>
+        <Card className="min-w-0 p-5 sm:p-6">
+          <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold text-evergreen-950">Examinations</h2><span className="text-xs text-ink-soft">{examResult.count ?? 0} total</span></div>
           {(exams ?? []).length === 0 ? (
             <p className="mt-2 text-sm text-ink-soft">No examinations yet.</p>
           ) : (
@@ -67,6 +75,7 @@ export default async function ReportsPage() {
               })}
             </ul>
           )}
+          <PageNavigation page={examsPage} pageSize={pageSize} total={examResult.count ?? 0} pathname="/dashboard/reports" query={{ sessionsPage: String(sessionsPage) }} pageParam="examsPage" label="examinations" />
         </Card>
       </div>
       {(sessions ?? []).length === 0 && (exams ?? []).length === 0 && (

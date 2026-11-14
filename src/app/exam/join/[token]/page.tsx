@@ -1,4 +1,6 @@
+import { Logo } from "@/components/Logo";
 import { Card } from "@/components/ui";
+import Link from "next/link";
 import {
   examAccessAvailability,
   mergeEligibleClassIds,
@@ -140,11 +142,25 @@ export default async function SharedExamJoinPage({
 
 function Shell({ title, body }: { title: string; body: string }) {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-cream px-4">
-      <Card className="w-full max-w-lg p-8 text-center">
-        <h1 className="font-display text-2xl font-semibold text-evergreen-950">{title}</h1>
-        <p className="mt-2 text-sm text-ink-soft">{body}</p>
-      </Card>
-    </div>
+    <main className="exam-entry flex min-h-screen items-center px-4 py-8 sm:px-6 sm:py-12">
+      <div className="mx-auto w-full max-w-xl">
+        <div className="mb-6 flex items-center justify-between gap-4">
+          <Logo />
+          <span className="exam-entry-secure">Candidate access</span>
+        </div>
+        <Card className="exam-entry-card overflow-hidden">
+          <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
+            <p className="exam-entry-kicker">Examination invitation</p>
+            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
+          </div>
+          <div className="p-6 sm:p-9">
+            <p role="status" className="text-sm leading-6 text-ink-soft">{body}</p>
+            <Link href="/exam" className="mt-5 inline-flex min-h-11 items-center justify-center rounded-lg bg-evergreen-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-evergreen-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-evergreen-700 focus-visible:ring-offset-2">
+              Return to examination entry
+            </Link>
+          </div>
+        </Card>
+      </div>
+    </main>
   );
 }

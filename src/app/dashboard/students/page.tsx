@@ -1,9 +1,11 @@
 import { StudentImportWizard } from "@/components/StudentImportWizard";
+import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { transferStudent } from "../academics/actions";
 import { createStudentLogin, setStudentStatus } from "./actions";
 import { StudentRegistrationForm } from "./StudentRegistrationForm";
@@ -11,7 +13,7 @@ import { StudentRegistrationForm } from "./StudentRegistrationForm";
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
 
-interface SP { q?: string; class?: string; status?: string; ok?: string; e?: string }
+interface SP { q?: string; class?: string; status?: string; ok?: string; e?: string; page?: string }
 
 const ERR: Record<string, string> = {
   status: "That status change was not valid.", student: "Student not found in your school.",
@@ -31,6 +33,8 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const canEdit = can(ctx, org.id, CREATOR_ROLES);
   const canManageClasses = can(ctx, org.id, MANAGER_ROLES) || canEdit;
   const supabase = await createClient();
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 25;
 
   const [{ data: years }, { data: levels }, { data: departments }, { data: classRows }, { data: members }] = await Promise.all([
     supabase.from("academic_years").select("id, name, is_current").eq("organization_id", org.id).order("created_at", { ascending: false }),
@@ -47,12 +51,26 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
     return { id: m.user_id, name: p?.full_name || p?.email || "Member" };
   });
 
-  // Student list + filters
-  let sq = supabase.from("students").select("*").eq("organization_id", org.id).order("full_name").limit(500);
-  if (sp.q) sq = sq.or(`full_name.ilike.%${sp.q}%,email.ilike.%${sp.q}%,student_ref.ilike.%${sp.q}%`);
+  // Student list is tenant-scoped and server-paginated. Resolve a class filter
+  // to student ids first so search, status, count, and page boundaries all
+  // apply to the same roster without relying on a client-side partial slice.
+  const classStudentIds = sp.class
+    ? ((await supabase.from("student_enrollments").select("student_id").eq("organization_id", org.id).eq("class_id", sp.class).eq("status", "active").limit(2000)).data ?? []).map((row) => row.student_id)
+    : null;
+  let sq = supabase
+    .from("students")
+    .select("*", { count: "exact" })
+    .eq("organization_id", org.id)
+    .order("full_name");
+  if (sp.q?.trim()) sq = sq.or(`full_name.ilike.%${sp.q.trim()}%,email.ilike.%${sp.q.trim()}%,student_ref.ilike.%${sp.q.trim()}%`);
   if (sp.status) sq = sq.eq("status", sp.status);
-  const { data: studentRows } = await sq;
-  let students = studentRows ?? [];
+  if (classStudentIds) sq = sq.in("id", classStudentIds);
+  const studentResult = classStudentIds?.length === 0
+    ? null
+    : await sq.range((page - 1) * pageSize, page * pageSize - 1);
+  const studentRows = studentResult?.data ?? [];
+  const studentTotal = studentResult?.count ?? 0;
+  const students = studentRows;
 
   const studentIds = students.map((s) => s.id);
   const { data: enrollmentRows } = studentIds.length
@@ -60,7 +78,6 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
     : { data: [] };
   const enrollmentByStudent = new Map<string, string>();
   for (const e of enrollmentRows ?? []) if (!enrollmentByStudent.has(e.student_id)) enrollmentByStudent.set(e.student_id, e.class_id);
-  if (sp.class) students = students.filter((s) => enrollmentByStudent.get(s.id) === sp.class);
 
   // Existing identities for import duplicate detection (this school only).
   const { data: allStudents } = await supabase.from("students")
@@ -133,15 +150,15 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
       )}
 
       <Card className="p-6">
-        <h2 className="font-display text-lg font-semibold text-evergreen-950">Student list ({students.length})</h2>
+        <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold text-evergreen-950">Student list</h2><span className="text-sm text-ink-soft">{studentTotal ?? 0} matching students · page {page}</span></div>
         <form method="get" className="mt-4 grid gap-3 sm:grid-cols-4">
           <Field label="Search"><Input name="q" defaultValue={sp.q ?? ""} placeholder="Name, email or reference" /></Field>
           <Field label="Class"><Select name="class" defaultValue={sp.class ?? ""}><option value="">All classes</option>{classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}</Select></Field>
           <Field label="Status"><Select name="status" defaultValue={sp.status ?? ""}><option value="">All statuses</option>{["active", "suspended", "graduated", "withdrawn"].map((s) => <option key={s} value={s}>{s}</option>)}</Select></Field>
-          <div className="flex items-end"><Button type="submit" variant="outline">Apply filters</Button></div>
+          <div className="flex items-end gap-3"><Button type="submit" variant="outline">Apply filters</Button><Link href="/dashboard/students" className="inline-flex min-h-11 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear</Link></div>
         </form>
         {students.length === 0 ? (
-          <EmptyState title="No students yet" body="Register your first student above, or import a class register." />
+          <EmptyState title={sp.q || sp.class || sp.status ? "No students match these filters" : "No students yet"} body={sp.q || sp.class || sp.status ? "Try another search or clear the filters. Student records are unchanged." : "Register your first student above, or import a class register."} />
         ) : (
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-sm">
@@ -185,6 +202,7 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
           </div>
         )}
       </Card>
+      <PageNavigation page={page} pageSize={pageSize} total={studentTotal ?? 0} pathname="/dashboard/students" query={{ q: sp.q, class: sp.class, status: sp.status }} label="students" />
     </>
   );
 }

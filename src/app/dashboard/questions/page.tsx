@@ -1,5 +1,6 @@
 import { RichContent } from "@/components/RichContent";
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle } from "@/components/ui";
+import { PageNavigation } from "@/components/PageNavigation";
+import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -20,24 +21,25 @@ const STATUS_TONE: Record<string, "green" | "amber" | "gray"> = {
 export default async function QuestionsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; e?: string }>;
+  searchParams: Promise<{ q?: string; status?: string; class?: string; curr?: string; e?: string; page?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
+  const pageSize = 20;
   const supabase = await createClient();
 
   let query = supabase
     .from("questions")
-    .select("*, question_options(id), question_categories(name)")
+    .select("*, question_options(id), question_categories(name)", { count: "exact" })
     .eq("organization_id", org.id)
-    .order("created_at", { ascending: false })
-    .limit(200);
+    .order("created_at", { ascending: false });
   if (sp.q) query = query.ilike("prompt", `%${sp.q}%`);
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.class) query = query.eq("class_id", sp.class);
   if (sp.curr) query = query.eq("curriculum", sp.curr);
-  const { data: questions } = await query;
+  const { data: questions, count: questionTotal } = await query.range((page - 1) * pageSize, page * pageSize - 1);
   const { data: classList } = await supabase
     .from("classes")
     .select("id, name")
@@ -71,21 +73,26 @@ export default async function QuestionsPage({
       <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
         <div>
           <form className="mb-4 flex flex-wrap gap-2" method="get">
-            <Input name="q" placeholder="Search prompts…" defaultValue={sp.q} className="w-64" />
-            <select name="status" defaultValue={sp.status ?? ""} className="rounded-lg border border-evergreen-900/15 bg-white px-3 py-2.5 text-sm shadow-sm">
+            <Input name="q" placeholder="Search prompts…" defaultValue={sp.q} className="w-64" aria-label="Search question prompts" />
+            <Select name="status" defaultValue={sp.status ?? ""} aria-label="Filter by question status">
               <option value="">All statuses</option>
               <option value="published">Published</option>
               <option value="pending_review">Pending review</option>
               <option value="draft">Draft</option>
               <option value="archived">Archived</option>
-            </select>
-            <Button type="submit" variant="outline">Filter</Button>
+            </Select>
+            <Select name="class" defaultValue={sp.class ?? ""} aria-label="Filter by class">
+              <option value="">All classes</option>
+              {(classList ?? []).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+            <Button type="submit" variant="outline">Apply filters</Button>
+            <Link href="/dashboard/questions" className="inline-flex min-h-11 items-center text-sm font-medium text-evergreen-800 underline underline-offset-2">Clear</Link>
           </form>
 
           {(questions ?? []).length === 0 ? (
             <EmptyState
-              title="No questions yet"
-              body="Create your first question, or import a CSV — imports arrive as Pending review so nothing publishes unchecked."
+              title={sp.q || sp.status || sp.class ? "No questions match these filters" : "No questions yet"}
+              body={sp.q || sp.status || sp.class ? "Try another search or clear the filters. No question content has been changed." : "Create your first question, or import a CSV — imports arrive as Pending review so nothing publishes unchecked."}
               action={<ButtonLink href="/dashboard/questions/new">Create a question</ButtonLink>}
             />
           ) : (
@@ -157,6 +164,7 @@ export default async function QuestionsPage({
           </Card>
         </div>
       </div>
+      <PageNavigation page={page} pageSize={pageSize} total={questionTotal ?? 0} pathname="/dashboard/questions" query={{ q: sp.q, status: sp.status, class: sp.class, curr: sp.curr }} label="questions" />
     </>
   );
 }

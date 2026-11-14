@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import Link from "next/link";
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
+import type { ButtonHTMLAttributes, HTMLAttributes, InputHTMLAttributes, ReactNode, Ref, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
 
 /* ─── Buttons ─────────────────────────────────────────────────────── */
 type BtnVariant = "primary" | "gold" | "outline" | "ghost" | "danger" | "dark";
@@ -108,17 +108,9 @@ export function Field({
 }
 
 /* ─── Surfaces ────────────────────────────────────────────────────── */
-export function Card({
-  children,
-  className,
-  id,
-}: {
-  children: ReactNode;
-  className?: string;
-  id?: string;
-}) {
+export function Card({ children, className, ...props }: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
   return (
-    <div id={id} className={cn("evalora-card rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
+    <div {...props} className={cn("evalora-card rounded-2xl border border-evergreen-900/20 bg-paper shadow-[var(--shadow-card)]", className)}>
       {children}
     </div>
   );
