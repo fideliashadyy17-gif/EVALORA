@@ -10,6 +10,7 @@ import { notFound } from "next/navigation";
 import {
   setCompetitionStatus,
   startCompetitionSession,
+  startNextCompetitionRound,
 } from "../../actions/competitions";
 import { Notice, StatusBadge } from "../../ui";
 import { CodesTab } from "./tabs/CodesTab";
@@ -55,7 +56,7 @@ export default async function CompetitionDetailPage({
   const quiz = comp.quizzes as unknown as { id: string; title: string; status: string } | null;
 
   let monitor: {
-    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; display_token_version?: number; created_at: string } | null;
+    session: { id: string; join_code: string; status: string; mode: string; current_question_index: number; question_started_at: string | null; display_token_version?: number; created_at: string; session_round: number | null } | null;
     participants: number;
     connected: number;
     finished: number;
@@ -67,7 +68,7 @@ export default async function CompetitionDetailPage({
   {
     const head = { count: "exact" as const, head: true };
     const sessionRes = comp.session_id
-      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at").eq("id", comp.session_id).maybeSingle()
+      ? await admin.from("quiz_sessions").select("id, join_code, status, mode, current_question_index, question_started_at, display_token_version, created_at, session_round").eq("id", comp.session_id).maybeSingle()
       : { data: null };
     const session = sessionRes.data;
     const [participants, finished, answers, questions, registrations, codes, connectedRes] = await Promise.all([
@@ -189,6 +190,11 @@ export default async function CompetitionDetailPage({
                 session_failed: "Could not create or link the live session. Check the competition before retrying.",
                 phase_closed: "Open the event phase after meeting its progression requirements before starting this competition.",
                 session_mismatch: "The event session is ended or does not match this competition. Check the event links before proceeding.",
+                next_round: "The next round is open in its own waiting room with a fresh join code. The finished round keeps its participants, answers, scores and champion untouched.",
+                round_no_session: "Start a live session before opening another round.",
+                round_not_ended: "Finish the current round before opening the next one — participants still in the round would be dropped.",
+                round_failed: "The next round could not be created. Check the competition and retry.",
+                round_cancelled: "A cancelled or archived competition cannot open another round.",
               }}
             />
             <div className="grid gap-4 lg:grid-cols-2">
@@ -197,7 +203,7 @@ export default async function CompetitionDetailPage({
                 {monitor?.session ? (
                   <>
                     <p className="mt-2 text-sm text-ink-soft">
-                      Session is <strong className="capitalize text-ink">{monitor.session.status}</strong> ({monitor.session.mode === "synchronized" ? "synchronized" : "self-paced"}),
+                      Round {Math.max(1, Number(monitor.session.session_round ?? 1))} is <strong className="capitalize text-ink">{monitor.session.status}</strong> ({monitor.session.mode === "synchronized" ? "synchronized" : "self-paced"}),
                       opened {fmtDateTime(monitor.session.created_at)}.
                       {monitor.session.current_question_index >= 0 && (
                         <> Currently on question {monitor.session.current_question_index + 1} of {monitor.questions}.</>
@@ -222,6 +228,22 @@ export default async function CompetitionDetailPage({
                         ↻ Refresh monitor
                       </Link>
                     </div>
+                    {/* A finished round is never reopened or reset: the next
+                        round is a new session, so this round's participants,
+                        answers, scores, snapshots and champion stay intact. */}
+                    {monitor.session.status === "ended" && !["cancelled", "archived"].includes(comp.status) && (
+                      <form action={startNextCompetitionRound} className="mt-4 rounded-xl border border-evergreen-700/30 bg-evergreen-50 p-4">
+                        <input type="hidden" name="id" value={id} />
+                        <p className="text-sm font-semibold text-evergreen-900">
+                          Open round {Math.max(1, Number(monitor.session.session_round ?? 1)) + 1}
+                        </p>
+                        <p className="mt-1 text-sm text-evergreen-900">
+                          Creates a new waiting room with a fresh join code and points this competition at it.
+                          Round {Math.max(1, Number(monitor.session.session_round ?? 1))} stays as it finished.
+                        </p>
+                        <Button type="submit" variant="gold" className="mt-3">Start next round →</Button>
+                      </form>
+                    )}
                   </>
                 ) : (
                   <>

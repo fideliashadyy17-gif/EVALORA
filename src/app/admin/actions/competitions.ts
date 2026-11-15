@@ -6,6 +6,7 @@ import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { parseCsvRecords } from "@/lib/csv";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import { createAdminClient } from "@/lib/supabase/server";
+import { createNextRoundSession } from "@/lib/liveControlServer";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -280,6 +281,85 @@ export async function startCompetitionSession(formData: FormData) {
     httpOnly: true, sameSite: "lax", path: "/", maxAge: 60 * 60 * 12,
   });
   redirect(`/dashboard/sessions/${sessionId}/host`);
+}
+
+/**
+ * Open the NEXT round of a competition as a brand-new live session.
+ *
+ * A round is never a reset: the finished session keeps its participants,
+ * answers, scores, snapshots and champion, and the new session starts in its
+ * own waiting room with a fresh join code. This is the same transition the
+ * organizer's "finish" command performs at the end of a podium presentation,
+ * exposed here as an explicit Super Admin action so a round can be opened
+ * without replaying the presentation, and so a competition that was ended by
+ * status can be given another round.
+ *
+ * The cascade mirrors `setCompetitionStatus` and `startCompetitionSession`:
+ * the competition is pointed at the new session, returned to "live", and a
+ * multi-phase competition's phase linkage follows it too.
+ */
+export async function startNextCompetitionRound(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const id = String(formData.get("id"));
+  const { data: comp } = await admin
+    .from("competitions")
+    .select("id, organization_id, session_id, status, quiz_id, title")
+    .eq("id", id)
+    .maybeSingle();
+  if (!comp) redirect("/admin/competitions");
+  if (["cancelled", "archived"].includes(String(comp!.status)))
+    redirect(`/admin/competitions/${id}?e=round_cancelled`);
+  if (!comp!.session_id) redirect(`/admin/competitions/${id}?e=round_no_session`);
+
+  const { data: session } = await admin
+    .from("quiz_sessions")
+    .select("id, quiz_id, organization_id, host_id, title, mode, settings, session_round, status")
+    .eq("id", comp!.session_id)
+    .maybeSingle();
+  if (!session) redirect(`/admin/competitions/${id}?e=round_no_session`);
+  // Only a finished round can be followed. Ending an unfinished round would
+  // discard live participants, so that decision stays with the host console.
+  if (session!.status !== "ended") redirect(`/admin/competitions/${id}?e=round_not_ended`);
+
+  const created = await createNextRoundSession(admin, {
+    id: session!.id,
+    quiz_id: session!.quiz_id,
+    organization_id: session!.organization_id,
+    host_id: session!.host_id ?? null,
+    title: session!.title ?? comp!.title,
+    mode: session!.mode ?? null,
+    settings: session!.settings as Record<string, unknown> | null,
+    session_round: session!.session_round ?? null,
+  });
+  if (!created.ok) redirect(`/admin/competitions/${id}?e=round_failed`);
+
+  // Mirror the lifecycle cascade: the competition follows the new round. The
+  // automatic relink inside createNextRoundSession skips multi-phase
+  // competitions, so both paths are applied here — they are idempotent.
+  await admin
+    .from("competitions")
+    .update({ session_id: created.sessionId, status: "live", updated_at: new Date().toISOString() })
+    .eq("id", id);
+  const { data: phaseClass } = await admin
+    .from("competition_phase_classes")
+    .select("id")
+    .eq("competition_id", id)
+    .maybeSingle();
+  if (phaseClass) {
+    await admin
+      .from("competition_phase_classes")
+      .update({ session_id: created.sessionId })
+      .eq("id", phaseClass.id);
+  }
+
+  await audit(ctx, "competition.next_round", "competitions", id, comp!.organization_id, {
+    from_session_id: session!.id,
+    to_session_id: created.sessionId,
+    round: Math.max(1, Number(session!.session_round ?? 1)) + 1,
+  });
+  revalidatePath(`/admin/competitions/${id}`);
+  redirect(`/admin/competitions/${id}?ok=next_round`);
 }
 
 /* ── Access codes ───────────────────────────────────────────────────── */
