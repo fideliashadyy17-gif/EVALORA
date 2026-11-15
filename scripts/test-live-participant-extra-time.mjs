@@ -50,6 +50,7 @@ const live = compile("src/lib/live.ts", "scripts/__extra_time_live.cjs", {
   // inference is not part of the deadline rules.
   "./responseTools": { responseWorkspaceFor: () => ({ tools: [], calculator: { enabled: false, scientific: false } }) },
   "./assessParts": { assessPartsFromConfig: () => [] },
+  "./examResults": compile("src/lib/examResults.ts", "scripts/__extra_time_results.cjs"),
 });
 
 const START = "2026-11-10T12:00:00.000Z";

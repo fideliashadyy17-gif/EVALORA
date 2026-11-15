@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { responseWorkspaceFor } from "./responseTools";
 import { assessPartsFromConfig, assessPartSummary, publicAssessParts } from "./assessParts";
+import { criterionTitle } from "./examResults";
 
 export type LivePhase =
   | "waiting"
@@ -391,7 +392,12 @@ export function publicQuestion(
     criterion_label: typeof cfg.criterion_label === "string"
       ? cfg.criterion_label
       : (typeof cfg.myp_criterion === "string" ? `Criterion ${cfg.myp_criterion}` : null),
-    criterion_title: typeof cfg.criterion_title === "string" ? cfg.criterion_title : null,
+    // The paper may name the criterion itself; when it does not, the shared
+    // MYP vocabulary supplies the official title so the screen, the printed
+    // paper and every report call the same criterion the same thing.
+    criterion_title: typeof cfg.criterion_title === "string"
+      ? cfg.criterion_title
+      : criterionTitle(typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null),
     difficulty_level: typeof cfg.difficulty_level === "string" ? cfg.difficulty_level : null,
     marks: Number.isFinite(Number(cfg.marks)) ? Number(cfg.marks) : Number(row.points ?? q.points),
   };

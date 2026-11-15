@@ -8,7 +8,8 @@ function compile(src, dest){let file=path.resolve(dest);let m=new Module(file);m
 const responseTools={responseWorkspaceFor:()=>({tools:[],graph:{enabled:false,title:'Graph',instructions:'',allowFunctions:true,starter:null},geometry:{enabled:false,title:'Geometry',instructions:'',starter:null},guidance:'',requirement:'any',source:'native',calculator:{enabled:false,scientific:false}})};
 const liveFile=path.resolve('scripts/__print_live.cjs');const liveOld=Module._load;
 const assessParts=compile('src/lib/assessParts.ts','scripts/__print_assess_parts.cjs');
-Module._load=function(req,parent){if(parent?.filename===liveFile && req==='./responseTools')return responseTools;if(parent?.filename===liveFile && req==='./assessParts')return assessParts;return liveOld.apply(this,arguments);};
+const examResults=compile('src/lib/examResults.ts','scripts/__print_exam_results.cjs');
+Module._load=function(req,parent){if(parent?.filename===liveFile && req==='./responseTools')return responseTools;if(parent?.filename===liveFile && req==='./assessParts')return assessParts;if(parent?.filename===liveFile && req==='./examResults')return examResults;return liveOld.apply(this,arguments);};
 let live;try{live=compile('src/lib/live.ts','scripts/__print_live.cjs');}finally{Module._load=liveOld;}
 const paperFile=path.resolve('scripts/__print_paper.cjs');const orig=Module._load;
 Module._load=function(req,parent){if(parent?.filename===paperFile && req==='./live')return live;return orig.apply(this,arguments);};
