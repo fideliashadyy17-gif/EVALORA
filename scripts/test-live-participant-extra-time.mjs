@@ -142,7 +142,7 @@ const stateRoute = readFileSync("src/app/api/live/state/route.ts", "utf8");
 const answerRoute = readFileSync("src/app/api/live/answer/route.ts", "utf8");
 const hostStateRoute = readFileSync("src/app/api/live/host/state/route.ts", "utf8");
 const hostConsole = readFileSync("src/app/dashboard/sessions/[id]/host/HostConsole.tsx", "utf8");
-const migration = readFileSync("supabase/migrations/0107_live_participant_extra_time.sql", "utf8");
+const migration = readFileSync("supabase/migrations/0121_live_participant_extra_time.sql", "utf8");
 
 check("granting is host-or-organizer only, decided on the server",
   /getSessionContext\(\)/.test(grantRoute)

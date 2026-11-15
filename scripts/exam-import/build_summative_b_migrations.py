@@ -7,10 +7,10 @@ Run from the repository root:
 
 It writes four idempotent SQL files into supabase/migrations/:
 
-    0102_myp2_grade7_term1_summative_b.sql
-    0103_myp3_grade8_term1_summative_b.sql
-    0104_myp4_grade9_term1_summative_b.sql
-    0105_myp5_grade10_sequences_summative.sql
+    0116_myp2_grade7_term1_summative_b.sql
+    0117_myp3_grade8_term1_summative_b.sql
+    0118_myp4_grade9_term1_summative_b.sql
+    0119_myp5_grade10_sequences_summative.sql
 
 Each file creates one quiz (published), its 45 questions with their printed
 criterion, level, marks, calculator policy and response tools, the printed
@@ -39,7 +39,7 @@ OUT = ROOT / "supabase" / "migrations"
 
 PAPERS = [
     {
-        "file": "0102_myp2_grade7_term1_summative_b.sql",
+        "file": "0116_myp2_grade7_term1_summative_b.sql",
         "module": p2,
         "grade": 7,
         "myp": "2",
@@ -54,7 +54,7 @@ PAPERS = [
         "duration": 120,
     },
     {
-        "file": "0103_myp3_grade8_term1_summative_b.sql",
+        "file": "0117_myp3_grade8_term1_summative_b.sql",
         "module": p3,
         "grade": 8,
         "myp": "3",
@@ -80,7 +80,7 @@ PAPERS = [
         "duration": 120,
     },
     {
-        "file": "0104_myp4_grade9_term1_summative_b.sql",
+        "file": "0118_myp4_grade9_term1_summative_b.sql",
         "module": p4,
         "grade": 9,
         "myp": "4",
@@ -98,7 +98,7 @@ PAPERS = [
         "duration": 120,
     },
     {
-        "file": "0105_myp5_grade10_sequences_summative.sql",
+        "file": "0119_myp5_grade10_sequences_summative.sql",
         "module": p5,
         "grade": 10,
         "myp": "5",

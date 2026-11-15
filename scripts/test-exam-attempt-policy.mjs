@@ -282,7 +282,7 @@ ok("the organizer's choice is persisted onto the examination settings",
   /settings\.attempt_mode = normalizeAttemptMode/.test(eventOps)
   && /settings\.max_attempts = normalizeMaxAttempts/.test(eventOps));
 
-const migration = read("supabase/migrations/0106_exam_attempt_policy.sql");
+const migration = read("supabase/migrations/0120_exam_attempt_policy.sql");
 ok("the migration widens the grant column instead of dropping rows or policies",
   /drop constraint if exists exam_retake_requests_granted_attempts_check/.test(migration)
   && /check \(granted_attempts is null or granted_attempts between 1 and 20\)/.test(migration)
