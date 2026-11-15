@@ -75,6 +75,8 @@ interface HostParticipant {
   answers_count: number;
   average_response_ms: number | null;
   last_response_ms: number | null;
+  /** Personal extra time granted by the host, in milliseconds. */
+  extra_time_ms: number;
 }
 
 interface HostState {
@@ -667,8 +669,19 @@ export function HostConsole({
                         )}
                         {p.average_response_ms !== null && <span className="rounded-full bg-cream px-2 py-1">avg {(p.average_response_ms / 1000).toFixed(1)}s</span>}
                         {p.reconnect_count > 0 && <span className="rounded-full bg-blue-50 px-2 py-1">↻ reconnected ×{p.reconnect_count}</span>}
+                        {p.extra_time_ms > 0 && (
+                          <span className="rounded-full bg-evergreen-700 px-2 py-1 text-white">+{Math.round(p.extra_time_ms / 1000)}s extra time</span>
+                        )}
                       </div>
                       <ParticipantActions participant={p} busy={busy} ended={session.status === "ended"} act={act} sessionId={session.id} />
+                      <ParticipantExtraTime
+                        participant={p}
+                        busy={busy}
+                        ended={session.status === "ended"}
+                        act={act}
+                        sessionId={session.id}
+                        synchronized={session.mode === "synchronized"}
+                      />
                     </div>
                   </div>
                 </li>
@@ -717,6 +730,82 @@ function ParticipantActions({
       {["rejected", "blocked"].includes(participant.status) && (
         <button disabled={busy} onClick={() => set("admitted")} className="rounded-full bg-evergreen-50 px-2.5 py-1.5 text-evergreen-800 disabled:opacity-50">
           Restore
+        </button>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Personal extra time for one participant.
+ *
+ * A dropped connection or a slow device costs one person time without changing
+ * what everyone else sees. This grants that person a personal allowance: the
+ * room's countdown, the projected screen and every other participant's window
+ * are untouched, and only when THIS participant may still answer is extended.
+ * It is deliberately unavailable in self-paced sessions, where there is no
+ * shared window to extend.
+ */
+function ParticipantExtraTime({
+  participant,
+  busy,
+  ended,
+  sessionId,
+  synchronized,
+  act,
+}: {
+  participant: HostParticipant;
+  busy: boolean;
+  ended: boolean;
+  sessionId: string;
+  synchronized: boolean;
+  act: (fn: () => Promise<ActionResult>) => Promise<void>;
+}) {
+  if (ended || !synchronized) return null;
+  const grant = (seconds: number) =>
+    act(async () => {
+      const res = await fetch("/api/live/participants/extra-time", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, participant_id: participant.id, seconds, mode: "add" }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) return { error: data?.error ?? "The extra time could not be granted." };
+      return { ok: true };
+    });
+  const clear = () =>
+    act(async () => {
+      const res = await fetch("/api/live/participants/extra-time", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: sessionId, participant_id: participant.id, seconds: 0, mode: "clear" }),
+      });
+      const data = (await res.json().catch(() => null)) as { error?: string } | null;
+      if (!res.ok) return { error: data?.error ?? "The extra time could not be cleared." };
+      return { ok: true };
+    });
+  const has = participant.extra_time_ms > 0;
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
+      <span className="text-ink-soft">Extra time:</span>
+      {[15, 30, 60].map((seconds) => (
+        <button
+          key={seconds}
+          disabled={busy}
+          onClick={() => grant(seconds)}
+          className="rounded-full border border-evergreen-900/15 bg-cream px-2.5 py-1 text-evergreen-900 hover:bg-evergreen-50 disabled:opacity-50"
+          title={`Give ${participant.display_name} ${seconds} more seconds on the current question without changing anyone else's timer`}
+        >
+          +{seconds}s
+        </button>
+      ))}
+      {has && (
+        <button
+          disabled={busy}
+          onClick={clear}
+          className="rounded-full border border-evergreen-900/15 bg-white px-2.5 py-1 text-ink-soft hover:bg-cream disabled:opacity-50"
+        >
+          Clear {Math.round(participant.extra_time_ms / 1000)}s
         </button>
       )}
     </div>

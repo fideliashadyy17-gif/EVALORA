@@ -1,7 +1,9 @@
 import {
   effectivePhase,
   loadQuizQuestions,
+  normalizeExtraTimeMs,
   parseLiveSettings,
+  participantDeadlineAt,
   publicQuestion,
   questionDeadlineAt,
   questionDurationSeconds,
@@ -83,7 +85,13 @@ export async function GET(request: Request) {
   const index = session.mode === "synchronized" ? session.current_question_index : participant.current_index;
   const currentRow = index >= 0 && index < effectiveRows.length ? effectiveRows[index] : null;
   const phase = effectivePhase(session, currentRow, quizSettings, now);
-  const deadline = questionDeadlineAt(session, currentRow, quizSettings);
+  // The deadline this participant answers against, including any personal
+  // allowance the host granted them. The room's own deadline is published
+  // separately so the projected countdown is never affected by one person's
+  // extra time.
+  const extraTimeMs = normalizeExtraTimeMs(participant.extra_time_ms);
+  const roomDeadline = questionDeadlineAt(session, currentRow, quizSettings);
+  const deadline = participantDeadlineAt(session, currentRow, quizSettings, extraTimeMs);
   const stage = parsePresentationStage(session.presentation_stage);
 
   let myAnswerRow: {
@@ -283,7 +291,7 @@ export async function GET(request: Request) {
       answer_locked: Boolean(session.answer_locked),
       presentation_stage: stage,
       question_started_at: session.question_started_at,
-      question_deadline_at: deadline,
+      question_deadline_at: roomDeadline,
       time_per_question_seconds: questionDurationSeconds(currentRow, quizSettings),
     },
     progress: {
@@ -302,6 +310,12 @@ export async function GET(request: Request) {
       score: displayedScore,
       finished: participantStatus === "finished",
       reconnect_count: Number(presencePatch.reconnect_count ?? participant.reconnect_count ?? 0),
+      // The participant's own window, and the extra time behind it. The client
+      // uses this only to render a countdown; acceptance is decided here and
+      // re-decided on submit.
+      question_deadline_at: deadline,
+      extra_time_ms: extraTimeMs,
+      extra_time_granted: extraTimeMs > 0,
     },
     participant_count: participantCount,
     presence,

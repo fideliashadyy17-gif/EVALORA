@@ -123,6 +123,69 @@ export function questionDeadlineAt(
   ).toISOString();
 }
 
+/* ── Per-participant extra time ─────────────────────────────────────────
+ * A shared countdown is right for the room, but a participant can lose time
+ * to a dropped connection, a slow device or an accessibility need. The host
+ * may grant that one participant a personal allowance (migration 0107) which
+ * extends only when THEY may still answer. The session deadline, the room's
+ * phase and every projected countdown are untouched, so nobody else's round
+ * changes and the speed scoring of other participants is unaffected.
+ */
+
+/** Upper bound on one participant's allowance: 30 minutes. */
+export const MAX_PARTICIPANT_EXTRA_TIME_MS = 30 * 60 * 1000;
+
+/** Clamp a requested allowance to 0..MAX. Unreadable values mean "no extra time". */
+export function normalizeExtraTimeMs(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(MAX_PARTICIPANT_EXTRA_TIME_MS, n);
+}
+
+/**
+ * This participant's own deadline: the room's deadline plus their allowance.
+ * Null when the room has no open question, in which case extra time has
+ * nothing to extend.
+ */
+export function participantDeadlineAt(
+  session: LiveSessionTiming,
+  row: SessionQuestionRow | null | undefined,
+  quizSettings: Record<string, unknown> | null | undefined,
+  extraTimeMs: unknown = 0,
+): string | null {
+  const base = questionDeadlineAt(session, row, quizSettings);
+  if (!base) return null;
+  const extra = normalizeExtraTimeMs(extraTimeMs);
+  const ms = new Date(base).getTime();
+  if (!extra || !Number.isFinite(ms)) return base;
+  return new Date(ms + extra).toISOString();
+}
+
+/**
+ * Whether this participant may still submit an answer, honouring their own
+ * allowance.
+ *
+ * Deliberately narrow: it only reopens the window that has already closed for
+ * the room ("time_expired"). Every other phase rule is unchanged, so extra
+ * time never lets anyone answer a question that has not opened, that has been
+ * closed by the organizer, or that the room has moved past.
+ */
+export function answerWindowOpenFor(
+  session: LiveSessionTiming,
+  row: SessionQuestionRow | null | undefined,
+  quizSettings: Record<string, unknown> | null | undefined,
+  extraTimeMs: unknown = 0,
+  now = new Date(),
+): boolean {
+  const phase = effectivePhase(session, row, quizSettings, now);
+  if (phase === "question") return true;
+  if (phase !== "time_expired") return false;
+  const deadline = participantDeadlineAt(session, row, quizSettings, extraTimeMs);
+  if (!deadline) return false;
+  const ms = new Date(deadline).getTime();
+  return Number.isFinite(ms) && now.getTime() <= ms;
+}
+
 /**
  * Derives the one effective presentation phase from authoritative DB
  * fields. Browser clocks only render the countdown; this server-side

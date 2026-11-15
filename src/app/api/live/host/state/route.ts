@@ -4,6 +4,7 @@ import {
   effectivePhase,
   isParticipantConnected,
   loadQuizQuestions,
+  normalizeExtraTimeMs,
   questionDeadlineAt,
   questionDurationSeconds,
   rankedParticipants,
@@ -49,7 +50,7 @@ export async function GET(request: Request) {
       admin
         .from("session_participants")
         .select(
-          "id, display_name, participant_ref, avatar_key, score, status, current_index, joined_at, last_seen_at, reconnect_count, last_disconnected_at",
+          "id, display_name, participant_ref, avatar_key, score, status, current_index, joined_at, last_seen_at, reconnect_count, last_disconnected_at, extra_time_ms",
         )
         .eq("session_id", session.id)
         .limit(5000),
@@ -131,6 +132,9 @@ export async function GET(request: Request) {
       average_response_ms: stats?.timedCount ? Math.round(stats.totalMs / stats.timedCount) : null,
       last_response_ms: stats?.lastMs ?? null,
       last_submitted_at: stats?.lastAt ?? null,
+      // Host-granted personal allowance (migration 0107). Organizer view only:
+      // it is never serialized to the public screen or to other participants.
+      extra_time_ms: normalizeExtraTimeMs(p.extra_time_ms),
     };
   });
 
