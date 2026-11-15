@@ -1,0 +1,295 @@
+PART B Theory & problem-solving (Q1–Q20) — write full working, tables and reasoning in your answer booklet
+20 questions  ·  70 marks
+CRITERIA
+A Knowing and understanding
+B Investigating patterns
+C Communicating
+D Applying mathematics in real-life contexts
+Page 2 of 2
+TASK 1 · CRITERION A
+Knowing and understanding
+22 marks
+1
+A
+Explicit & recursive term generation [3 marks]
+(a) Sequence A has explicit rule un = 3n2 − 2n + 4. Calculate u1, u3
+and u8.
+[1]
+(b) Sequence B satisfies v1 = 6 and vn+1 = 1
+2 vn + 5 (n ≥ 1). Generate
+v2, v3 and v4, showing each step.
+[2]
+2
+A
+Linear sequence analysis [3 marks]
+ A linear sequence begins
+46, 39, 32, 25, …
+(a) State u1 and d, and derive the simplified explicit formula for
+un.
+[2]
+(b) Find which term equals −45, and state the value of the first
+negative term.
+[1]
+3
+A
+Simultaneous arithmetic sequence & series [4 marks]
+ An
+arithmetic sequence has u5 = 23 and u12 = 58.
+(a) Form and solve simultaneous equations to find u1 and
+common difference d.
+[2]
+(b) Calculate the sum S20 of the first 20 terms of the arithmetic
+series.
+[2]
+4
+A
+Alternating geometric sequence [4 marks]
+ A geometric
+sequence has u2 = −24 and u5 = 192.
+(a) Determine the common ratio r, the first term u1, and the
+explicit formula un.
+[2]
+(b) Calculate u8 and justify algebraically whether −3072 is a term
+of this sequence.
+[2]
+5
+A
+Quadratic sequence from differences [4 marks]
+ The first five
+terms of a quadratic sequence un = an2 + bn + c are tabulated below:
+Term n
+1
+2
+3
+4
+5
+Value un
+4
+9
+18
+31
+48
+(a) Construct first and second differences to find a, b and c, stating
+un.
+[2]
+(b) Calculate u12 and solve for the term number n where un = 193.
+[2]
+6
+A
+Evaluating finite series [4 marks]
+ Find the number of terms n
+and evaluate the exact sum Sn of each finite series:
+(a) Arithmetic series: 5 + 11 + 17 + … + 119.
+[2]
+(b) Finite geometric series: 320 + 160 + 80 + … + 5.
+[2]
+TASK 2 · CRITERION B
+Investigating patterns
+16 marks
+7
+B
+Courtyard tile pattern [4 marks] Stage n
+is an (n + 1) × (n + 2) grid of green core
+tiles (Cn) and pale L-border tiles (Bn).
+Stage 1
+Stage 2
+Stage 3
+Core (Cn)
+Border (Bn)
+Stage n
+1
+2
+3
+4
+Border Bn / Core Cn / Total Tn
+4 / 2 / 6
+6 / 6 / 12
+8 / 12 / 20
+? / ? / ?
+(a) 
+ Find B4, C4 and T4 for Stage 4.
+[1]
+(b) 
+ Classify Bn and Tn using differences and derive explicit
+rules in n.
+[2]
+(c) 
+ Verify Cn + Bn = Tn algebraically and find n when Tn = 210.
+[1]
+8
+B
+Recovering a sequence from partial sums [4 marks] A sequence has
+partial sums Sn = 3n2 + 4n for all n ≥ 1.
+(a) 
+ Compute S1, S2, S3, S4 and deduce individual terms u1, u2,
+u3, u4.
+[2]
+(b) 
+ Using un = Sn − Sn−1 (n ≥ 2), prove algebraically that {un} is
+arithmetic and state un and d.
+[2]
+9
+B
+Affine recursive investigation [4 marks] Investigate the recursive
+relationship:
+u1 = 5  →  un+1 = 3un − 4  (for n ≥ 1)
+(a) 
+ Find u2, u3, u4 and show the first differences
+Δun = un+1 − un form a geometric sequence.
+[2]
+(b) 
+ Let vn = un − 2. Prove vn+1 = 3vn and deduce the explicit
+formula for un.
+[2]
+10
+B
+Arithmetic vs geometric growth [4 marks] Arithmetic sequence Pn
+and geometric sequence Qn share first two terms P1 = Q1 = 8 and
+P2 = Q2 = 12.
+(a) 
+ Write explicit and recursive formulae (with initial terms)
+for Pn and Qn.
+[2]
+(b) 
+ Tabulate n = 1..5, evaluate (Q5 − P5) / P5, and explain why
+Qn > Pn for all n ≥ 3.
+[2]
+TASK 3 · CRITERION C
+Communicating
+15 marks
+11
+C
+Sequence vs series & summation notation [3 marks]
+(a) 
+ Explain clearly, giving one symbolic example of each, the
+difference between a geometric sequence and a finite geometric
+series.
+[2]
+(b) 
+ Write 9 + 13 + 17 + … + 45 in sigma (Σ) notation, showing
+how the upper limit is found.
+[1]
+12
+C
+Communicating explicit & recursive rules [3 marks] Consider
+−5, −1, 3, 7, 11, …
+(a) 
+ Write both a complete recursive definition and a
+simplified explicit formula using proper subscript notation.
+[2]
+(b) 
+ Explain why writing un+1 = un + 4 without u1 fails to define
+a unique sequence.
+[1]
+13
+C
+Proving the constant second-difference property [3 marks] Let
+un = an2 + bn + c (a ≠ 0).
+(a) 
+ Expand and simplify the first difference un+1 − un in terms
+of a, b and n.
+[2]
+(b) 
+ Hence prove (un+2 − un+1) − (un+1 − un) = 2a and explain
+why it is constant.
+[1]
+14
+C
+Critiquing a flawed series calculation [3 marks] To sum 6 terms of
+100 − 50 + 25 − 12.5 + …, Kofi writes: “r = 0.5, so S6 = 100(1 − 0.56)/(1 − 0.5)
+= 196.875.”
+(a) 
+ Identify Kofi’s error in r and explain from the alternating
+terms why S6 < 100.
+[1]
+(b) 
+ Present a clearly structured calculation of the exact value
+of S6 (fraction & decimal).
+[2]
+15
+C
+Multi-sequence classification & justification [3 marks]
+ID
+First four terms (u1, u2, u3, u4)
+Seq I
+18,  12,  8,   16
+3
+Seq II
+5,  9,  15,  23
+Seq III
+22,  15,  8,  1
+(a) Classify each sequence as linear/arithmetic, quadratic, or
+geometric, justifying with differences or ratios.
+[2]
+(b) State the exact fifth term u5 of each sequence.
+[1]
+TASK 4 · CRITERION D
+Applying mathematics in real-life contexts
+17 marks
+16
+D
+Deep-borehole drilling budget [3 marks] Drilling in northern Benin
+costs 35 000 FCFA for the 1st metre, increasing by 4 500 FCFA for each
+deeper metre.
+(a) 
+ Calculate the cost of drilling the 20th metre alone (u20).
+[1]
+(b) 
+ Find the total cost of a 20 m borehole (S20) and state
+whether a 1 600 000 FCFA grant suffices.
+[2]
+17
+D
+Medical scanner depreciation [4 marks] A clinic buys an ultrasound
+scanner for $40 000. Its value drops by 15% per year (V1 = $34 000 after
+1 year).
+(a) 
+ State r, write an explicit formula for Vn (after n years), and
+find V5 to 2 d.p.
+[2]
+(b) 
+ Clinic policy replaces the unit at the end of the first year
+its value falls below $12 000. Find that year, justifying clearly.
+[2]
+18
+D
+Stacked pipe crates [3 marks] Port Crate n
+holds un = n2 + 4n + 3 concrete pipes in
+(n + 1) × (n + 3) layers.
+Crate 1 (8)
+Crate 2 (15)
+(a) 
+ Verify u1, u2, u3 and interpret un+1 − un in context.
+[1]
+(b) 
+ Find which crate holds 143 pipes and explain why no
+single crate holds 130 pipes.
+[2]
+19
+D
+Scholarship endowment annuity [4 marks] An alumni body invests
+$5 000 at the start of each year for 8 years at 6% compound interest
+per annum.
+(a) 
+ Explain why the total at the end of Year 8 equals
+5000(1.06) + 5000(1.06)2 + … + 5000(1.06)8, stating u1, r and n.
+[2]
+(b) 
+ Calculate the end-of-Year-8 balance (to 2 d.p.) and the
+total interest earned.
+[2]
+20
+D
+Comparing internship salary contracts [3 marks] Over a 10-month
+placement, Contract X pays 150 000 FCFA in Month 1 (+20 000
+FCFA/month); Contract Y pays 100 000 FCFA in Month 1 (+20% per
+month, r = 1.20).
+(a) 
+ Calculate total 10-month earnings (S10) under Contract X
+and Contract Y (nearest FCFA).
+[2]
+(b) 
+ Advise a 10-month intern vs an intern leaving after 5
+months, with figures.
+[1]
+END OF ASSESSMENT

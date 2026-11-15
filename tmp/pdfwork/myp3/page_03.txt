@@ -1,0 +1,147 @@
+Q30
+A
+Right-angled quadrilateral · Topic 5 (Pythagoras’ Theorem) · Intermediate
+4 marks
+(a)
+In right-angled ΔPQR (∠PQR = 90°): PR2 = PQ2 + QR2 = 72 + 242 = 49 + 576 = 625 M1
+PR = √625 = 25 cm
+A1
+[2 marks]
+(b)
+In right-angled ΔPSR (∠PSR = 90°, hypotenuse PR = 25 cm):
+SR = √PR2 − PS2 = √252 − 152 = √625 − 225 = √400 = 20 cm
+M1
+Perimeter of PQRS = PQ + QR + SR + PS = 7 + 24 + 20 + 15 = 66 cm
+A1
+[2 marks]
+FT & ERROR NOTE: Award FT in (b) if student uses their positive PR > 15 from (a). Note: adding diagonal 25 cm into the exterior perimeter (giving 91 cm)
+loses A1 in (b) ( M1 A0).
+Q31
+A
+Divided triangle · Topic 7 (Trigonometric Ratios) · Challenge
+4 marks
+(a)
+In right-angled ΔABD: tan 42° = BD
+AD = 10
+AD ⇒ AD = 
+10
+tan 42°
+M1
+AD = 
+10
+0.900404… = 11.1061… = 11.11 cm (2 d.p.) A1
+[2 marks]
+(b)
+In right-angled ΔBDC: tan(∠DBC) = DC
+BD = 14
+10 = 1.4 ⇒ ∠DBC = tan−1(1.4) = 54.462° = 54.5° (1 d.p.) M1
+In ΔABD, ∠ABD = 90° − 42° = 48°. Hence ∠ABC = 48° + 54.462° = 102.462° = 102.5° (1 d.p.) A1
+[2 marks]
+GUIDANCE: Also accept finding ∠BCD = tan−1(10/14) = 35.5°, then ∠ABC = 180° − (42° + 35.5°) = 102.5° (provided ∠DBC = 54.5° is also stated).
+TASK 2 · CRITERION B — INVESTIGATING PATTERNS (Q32–Q35)
+Subtotal: 15 marks
+Q32
+B
+Multiples of one-eleventh · Topic 2 (Decimals to Fractions Patterns) · Challenge
+4 marks
+(a)
+8
+11 = 0.72
+A1 ;  the sum of the two repeating digits is always d1 + d2 = 9 (e.g. 0+9 = 1+8 = 2+7 = 7+2 = 9) A1 .
+[2 marks]
+(b)
+Rule & justification: The 2-digit repeating block equals 9n (padded to two digits for n = 1). Scaling numerator and
+denominator by 9 gives n
+11 = 9n
+99 , and any two-digit integer AB divided by 99 equals 0.AB (since 99 × 0.AB = AB) R1 .
+Application: Since 81 = 9 × 9, 0.81 = 9
+11 ; therefore 3.81 = 3 + 9
+11 = 
+42
+11
+A1 .
+[2 marks]
+GUIDANCE: In (b), R1 requires both the expression 9n and linking denominator 99 to 2-digit repeating decimals. Leaving 3 9
+11 mixed instead of
+improper 42
+11 scores R1 A0.
+Q33
+B
+Decreasing power sequence · Topic 3 (Simplifying Powers Patterns) · Challenge
+4 marks
+(a)
+U1 = 34
+35 = 3−1,  U2 = 36
+38 = 3−2,  U3 = 38
+311 = 3−3
+A1 .
+Pattern: Each term’s exponent of 3 decreases by 1 (equivalently, each term is divided by 3, or multiplied by 1
+3 ) R1 .
+[2 marks]
+(b)
+General term & proof: Numerator exponents are 2, 3, 4, … = n + 1; denominator exponents are 5, 8, 11, … = 3n + 2.
+Un = 9n+1
+33n+2 = (32)n+1
+33n+2 = 32n+2
+33n+2 = 3(2n+2) − (3n+2) = 3−n
+R1 .
+Solve:
+1
+2187 = 1
+37 = 3−7 ⇒ 3−n = 3−7 ⇒ n = 7
+A1 .
+[2 marks]
+GUIDANCE: Award R1 in (b) only if the unsimplified fraction 9n+1
+33n+2 is stated and algebraically reduced to 3−n.
+Q34
+B
+Expanding rectangle diagonals · Topics 1 & 5 (Pythagoras & Irrationality) · Challenge
+4 marks
+(a)
+d1 = √22 + 22 = √8 = 2√2 cm;  d2 = √42 + 22 = √20 = 2√5 cm;  d3 = √62 + 22 = √40 = 2√10 cm A1 .
+General formula: dn = √(2n)2 + 22 = √4n2 + 4 = 2√n2 + 1 cm
+A1 .
+[2 marks]
+(b)
+For dn = 2√n2 + 1 to be rational, n2 + 1 must be a perfect square M1 .
+However, for every integer n ≥ 1, n2 < n2 + 1 < n2 + 2n + 1 = (n + 1)2. Since n2 + 1 lies strictly between two consecutive
+perfect squares, it is never a perfect square; hence √n2 + 1 and dn are always irrational R1 .
+[2 marks]
+GUIDANCE: Alternative proof in (b): if n2 + 1 = m2 for integer m > 0, then (m − n)(m + n) = 1, forcing m − n = m + n = 1 ⇒ n = 0, contradicting n ≥ 1 (full 2/2
+marks). Merely testing n = 1..5 scores 0/2 in (b).
+Q35
+B
+Fundamental trigonometric relationship · Topics 5 & 7 (Pythagoras & Trig Identities) · Challenge
+3 marks
+(a)
+sin θ = 8
+17 , cos θ = 15
+17 ⇒ sin θ
+cos θ = 
+8
+15 (= tan θ)  and  sin2θ + cos2θ = 64 + 225
+289
+ = 289
+289 = 1
+A1 (both required).
+[1 mark]
+(b)
+Proof: sin2θ + cos2θ = ( a
+c )2 + ( b
+c )2 = a2 + b2
+c2
+; since a2 + b2 = c2 (Pythagoras), this equals c2
+c2 = 1
+R1 .
+Evaluate: When sin θ = 3
+5 , cos2θ = 1 − ( 3
+5 )2 = 1 − 9
+25 = 16
+25 ; since θ is acute (cos θ > 0), cos θ = 
+4
+5
+A1 .
+[2 marks]
+GUIDANCE: Writing ± 4
+5 without selecting positive 4
+5 for acute θ loses A1 .

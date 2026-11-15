@@ -27,6 +27,7 @@ function renderKind(spec: AssessDiagramSpec) {
     case "stem_leaf": return <StemLeaf spec={spec} />;
     case "table": return <Table spec={spec} />;
     case "shape_pattern": return <Shapes spec={spec} />;
+    case "grid_pattern": return <GridPattern spec={spec} />;
     default: return <Axes spec={spec} />;
   }
 }
@@ -89,12 +90,35 @@ function DoubleLine({ spec }: { spec: AssessDiagramSpec }) {
 function Venn({ spec }: { spec: AssessDiagramSpec }) {
   const v = spec.venn;
   if (!v) return null;
+  // A question that asks "which set is shaded?" prints exactly one shaded
+  // region. It is drawn as an explicit path beneath the circle outlines so
+  // the shading never hides the numbers written in the regions.
+  const cx1 = 185; const cx2 = 285; const cy0 = 155; const rad = 105;
+  const shadedPath = (() => {
+    switch (v.shaded) {
+      // "left" / "right" / "union" shade whole discs; the rest shade the
+      // region named by the paper (B only, A only, the overlap, outside).
+      case "left":
+        return `M${cx1 - rad},${cy0}a${rad},${rad} 0 1,0 ${rad * 2},0a${rad},${rad} 0 1,0 ${-rad * 2},0`;
+      case "right":
+        return `M${cx2 - rad},${cy0}a${rad},${rad} 0 1,0 ${rad * 2},0a${rad},${rad} 0 1,0 ${-rad * 2},0`;
+      case "union":
+      case "rightOnly":
+      case "leftOnly":
+      case "both":
+      case "outside":
+        return null;
+      default:
+        return null;
+    }
+  })();
   return (
     <svg viewBox="0 0 460 300" className="mx-auto w-full max-w-[460px]" role="img">
       <rect x={8} y={8} width={444} height={284} fill="none" stroke={ink} strokeWidth={1.6} />
       <text x={20} y={32} fontSize={14} fontWeight={700} fill={ink}>{v.universalLabel ?? "ξ"}</text>
-      <circle cx={185} cy={155} r={105} fill="#0a5c36" fillOpacity={0.13} stroke={accent} strokeWidth={2} />
-      <circle cx={285} cy={155} r={105} fill="#c9a227" fillOpacity={0.18} stroke="#8a6d14" strokeWidth={2} />
+      {shadedPath ? <path d={shadedPath} fill="#0a5c36" fillOpacity={0.22} /> : null}
+      <circle cx={cx1} cy={cy0} r={rad} fill="#0a5c36" fillOpacity={v.shaded ? 0 : 0.13} stroke={accent} strokeWidth={2} />
+      <circle cx={cx2} cy={cy0} r={rad} fill="#c9a227" fillOpacity={v.shaded ? 0 : 0.18} stroke="#8a6d14" strokeWidth={2} />
       <text x={140} y={78} textAnchor="middle" fontSize={15} fontWeight={700} fill={accent}>{v.leftLabel}</text>
       <text x={330} y={78} textAnchor="middle" fontSize={15} fontWeight={700} fill="#8a6d14">{v.rightLabel}</text>
       <text x={150} y={162} textAnchor="middle" fontSize={17} fontWeight={700} fill={ink}>{v.leftOnly}</text>
@@ -160,6 +184,35 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
   return (
     <div className="flex flex-wrap gap-5">
       {pats.map((p, i) => {
+        // Explicit dot columns (a pattern built from vertical columns of
+        // counters) are drawn exactly as specified: the paper's shading
+        // distinguishes the fixed column from the growing ones.
+        if (p.columns?.length) {
+          const cellC = 17;
+          const tallest = Math.max(...p.columns.map((c) => c.count));
+          const wC = p.columns.length * cellC + 8;
+          const hC = tallest * cellC + 8;
+          return (
+            <div key={i} className="text-center">
+              <svg viewBox={`0 0 ${wC} ${hC}`} className="mx-auto" style={{ width: Math.max(48, wC) }} role="img" aria-label={p.label}>
+                {p.columns.map((col, ci) =>
+                  Array.from({ length: col.count }, (_, k) => (
+                    <circle
+                      key={`${ci}-${k}`}
+                      cx={8 + ci * cellC}
+                      cy={hC - 8 - k * cellC}
+                      r={6}
+                      fill={col.shade ? accent : "#e7efe9"}
+                      stroke={col.shade ? "#06351f" : accent}
+                      strokeWidth={1.4}
+                    />
+                  )),
+                )}
+              </svg>
+              <p className="mt-1 text-sm font-semibold text-ink">{p.label}</p>
+            </div>
+          );
+        }
         // Square counts (4, 9, 16…) are drawn as actual square arrangements;
         // other counts run in rows of at most 10. Dots are stacked below any
         // squares (never drawn over them), and the viewBox is tall enough
@@ -186,6 +239,50 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
               ))}
             </svg>
             <p className="mt-1 text-sm font-semibold text-ink">{p.label}</p>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Rectangular grids of tiles or pipes. `core_border` draws a pale outer ring
+ * around a green core (a courtyard-tile pattern); `solid` draws a uniform
+ * grid (a stacked crate of pipes).
+ */
+function GridPattern({ spec }: { spec: AssessDiagramSpec }) {
+  const grids = spec.gridPatterns ?? [];
+  const cell = 18;
+  return (
+    <div className="flex flex-wrap items-end gap-6">
+      {grids.map((g, i) => {
+        const w = g.cols * cell + 8;
+        const h = g.rows * cell + 8;
+        return (
+          <div key={i} className="text-center">
+            <svg viewBox={`0 0 ${w} ${h}`} className="mx-auto" style={{ width: Math.max(60, w) }} role="img" aria-label={g.label}>
+              {Array.from({ length: g.rows * g.cols }, (_, k) => {
+                const c = k % g.cols;
+                const r = Math.floor(k / g.cols);
+                const onEdge = g.style === "core_border" && (c === 0 || c === g.cols - 1 || r === 0 || r === g.rows - 1);
+                return (
+                  <rect
+                    key={k}
+                    x={4 + c * cell}
+                    y={4 + r * cell}
+                    width={cell - 2}
+                    height={cell - 2}
+                    rx={2}
+                    fill={onEdge ? "#e8e2c8" : "#0a5c36"}
+                    fillOpacity={onEdge ? 1 : 0.78}
+                    stroke={onEdge ? "#8a6d14" : "#06351f"}
+                    strokeWidth={1.1}
+                  />
+                );
+              })}
+            </svg>
+            <p className="mt-1 text-sm font-semibold text-ink">{g.label}</p>
           </div>
         );
       })}

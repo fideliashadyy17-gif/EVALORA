@@ -223,6 +223,9 @@ export async function GET(request: Request) {
       const pub = publicQuestion(row, {
         randomizeOptions: Boolean(settings.randomize_options),
         seed: attempt.id,
+        // A paper that permits a calculator permits it on every question in it
+        // unless the question itself opts out with config.calculator = false.
+        calculatorByDefault: settings.calculator === true,
       });
       const s = savedByQ.get(row.questions.id);
       // Correctness is only revealed after submission AND publication. Once it

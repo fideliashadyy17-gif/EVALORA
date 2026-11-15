@@ -258,7 +258,7 @@ export async function loadQuizQuestions(
  */
 export function publicQuestion(
   row: SessionQuestionRow,
-  opts: { randomizeOptions?: boolean; seed?: string } = {},
+  opts: { randomizeOptions?: boolean; seed?: string; calculatorByDefault?: boolean } = {},
 ) {
   const q = row.questions;
   const cfg = (q.config ?? {}) as Record<string, unknown>;
@@ -270,11 +270,15 @@ export function publicQuestion(
   const optionBackedTypes = ["single_choice", "multiple_select", "true_false", "poll", "ordering"];
   // The composition environment is derived from the question itself. Only the
   // tool description travels: never marking criteria, never an answer key.
-  const workspace = responseWorkspaceFor({ ...q, config: cfg });
+  const workspace = responseWorkspaceFor({ ...q, config: cfg }, { calculatorByDefault: opts.calculatorByDefault });
   const out: Record<string, unknown> = {
     quiz_question_id: row.id,
     question_id: q.id,
     type: q.type,
+    // A calculator rides along with every question that permits one,
+    // including objective questions with a native interface and no
+    // composition workspace at all.
+    calculator: workspace.calculator.enabled,
     prompt: q.prompt,
     prompt_doc: q.prompt_doc ?? null,
     points: Number(row.points ?? q.points),
@@ -312,6 +316,22 @@ export function publicQuestion(
   out.topic = q.topic ?? null;
   out.criterion = typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
   out.strand = typeof cfg.strand === "string" ? cfg.strand : null;
+  // The MYP criterion is part of the paper the candidate is answering, not
+  // hidden metadata: the source paper prints it beside every question number,
+  // so the candidate and the marker see the same label, level and mark value.
+  out.question_meta = {
+    question_number: typeof cfg.question_number === "number"
+      ? cfg.question_number
+      : Number.isFinite(Number(cfg.question_number)) ? Number(cfg.question_number) : null,
+    paper_section: typeof cfg.paper_section === "string" ? cfg.paper_section : null,
+    criterion: typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null,
+    criterion_label: typeof cfg.criterion_label === "string"
+      ? cfg.criterion_label
+      : (typeof cfg.myp_criterion === "string" ? `Criterion ${cfg.myp_criterion}` : null),
+    criterion_title: typeof cfg.criterion_title === "string" ? cfg.criterion_title : null,
+    difficulty_level: typeof cfg.difficulty_level === "string" ? cfg.difficulty_level : null,
+    marks: Number.isFinite(Number(cfg.marks)) ? Number(cfg.marks) : Number(row.points ?? q.points),
+  };
   if (q.type === "assess_parts") {
     out.assess_parts = publicAssessParts(assessPartsFromConfig(cfg));
   }

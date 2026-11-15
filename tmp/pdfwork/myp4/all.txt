@@ -1,0 +1,658 @@
+
+
+===== PAGE 1 =====
+OAK INTERNATIONAL SCHOOL, BENIN
+End of First Term E-assessment 2026/27
+Subject: Mathematics
+Name --------------------------------------
+Grade: MYP 4 (Grade 9)
+Date: ------------
+Time: 2h
+GRADE 9 · MYP 4 MATHEMATICS 
+Term 1 Summative Assessment · Version B
+DURATION 2 HOURS  ·  TOTAL 100 MARKS
+INSTRUCTIONS Answer all 45 questions. Part A (Q1–25): mark or write your answers directly on this
+paper. Part B (Q26–45): write complete solutions, statistical tables, diagrams and reasoning in your
+separate exam script. A scientific calculator may be used. Where standard deviation is required, use
+the population standard deviation (σ). Give non-exact answers to 3 s.f. (2 d.p. where stated). Criteria
+(key at foot) & level: 
+ basic, 
+ intermediate, 
+ challenge.
+Criterion
+A
+B
+C
+D
+Total
+Marks
+/ 32
+/ 20
+/ 24
+/ 24
+/ 100
+PART A Objective questions
+25 questions  ·  30 marks
+CRITERIA
+A Knowing and understanding
+B Investigating patterns
+C Communicating
+D Applying mathematics in real-life contexts
+Version B  ·  Page 1 of 2  ·  Turn over ▸
+|
+LEVEL 1 · BASIC
+Q1–9 · circle the correct letter
+1 mark each
+1
+A In a school cafeteria audit, which recorded variable is
+quantitative discrete data?
+A Favourite fruit choice
+B Soup temperature (°C)
+C Number of meals sold daily
+D Rating (Poor, Fair, Good)
+2
+C The ordered stem-and-leaf diagram shows the ages (years) of
+13 chess-club members:
+1
+2  3  4  4  4  6
+2
+0  1  5  8
+3
+1  4  7
+Key:
+1 | 4 = 14 years
+What are the mode and median ages?
+A Mode 14, median 20
+B Mode 4, median 20
+C Mode 14, median 16
+D Mode 14, median 21
+3
+A Eight daily maximum temperatures (°C) are: 29, 31, 28, 33, 30,
+31, 27, 31. Find the mean and range.
+A Mean 30°C, range 6°C
+B Mean 31°C, range 6°C
+C Mean 30°C, range 2°C
+D Mean 30.5°C, range 5°C
+4
+A Wooden rod lengths, measured to the nearest centimetre, are
+grouped into 20–29 cm, 30–39 cm, 40–49 cm. What are the class
+width and midpoint of 30–39 cm?
+A Width 9 cm, mid 34.5 cm
+B Width 10 cm, mid 35 cm
+C Width 10 cm, mid 34.5 cm
+D Width 9 cm, mid 35 cm
+5
+C Which visual feature confirms this
+graph of travel times is a histogram
+rather than a bar graph?
+A Four bars shown
+B Adjacent bars on
+continuous axis
+C Falling heights
+D Zero baseline
+0
+5
+10
+15
+0
+10
+20
+30
+40
+Time (min)
+Freq.
+6
+A Fifty ping times p (ms): 0 ≤ p < 20 (f = 9), 20 ≤ p < 40 (f = 19),
+40 ≤ p < 60 (f = 14), 60 ≤ p < 80 (f = 8). State the modal & median
+classes.
+A Both 20 ≤ p < 40
+B Modal 20–40; med 40–60
+C Both 40 ≤ p < 60
+D Modal 0–20; med 20–40
+7
+C In the box-and-whisker diagram below, what percentage of
+data values lie between 25 and 75?
+0
+10
+20
+30
+40
+50
+60
+70
+80
+10
+25
+38
+55
+75
+A 25%
+B 50%
+C 75%
+D 65%
+8
+D Six sales bonuses (in 1000 FCFA) are 4, 5, 5, 6, 6, 7. When a
+seventh bonus of 37 is included, what happens?
+A Mean 5.5 → 10; med 5.5 → 6
+B Mean stays 5.5; med → 10
+C Both rise to 10
+D Mean → 10; range stays 3
+9
+A A population of N = 5 values {4, 6, 8, 10, 12} has mean μ = 8.
+What is its population standard deviation σ?
+A 8
+B √10
+C 2√2
+D 4
+TRUE OR FALSE
+Q10–14 · circle T or F
+1 mark each
+10
+A From a grouped continuous table alone, the modal class
+is exact but the exact single mode is unknown.
+T
+F
+11
+C A stem-and-leaf diagram needs no key because stems
+always represent tens and leaves represent units.
+T
+F
+12
+B If every item in a population of 15 observations equals
+9, then μ = 9 and σ = 0.
+T
+F
+13
+A A cumulative frequency curve slopes downward
+whenever a class has fewer items than the class before it.
+T
+F
+14
+A For continuous interval 20 ≤ x < 35, the class width is 15
+and the midpoint is 27.5.
+T
+F
+MATCHING
+Q15–18 · write one letter, P to U, in each box
+1 mark each
+P Q3 − Q1
+Q Bar graph
+R Σfx
+Σf
+S Box-and-whisker
+T lL + lU
+2
+U Σ(x − μ)2
+N − 1
+15
+C Chart with separated bars best suited for unordered
+qualitative categories
+16
+A Formula using class midpoints x and frequencies f to
+estimate the mean
+17
+A Dispersion measure of the middle 50% of data that resists
+extreme outliers
+18
+C Diagram constructed directly from the five-number
+summary
+LEVEL 2 · SHORT RESPONSE
+Q19–20 · write answer in box
+1 mark each
+19
+D Masses of 25 avocados: 150 ≤ m < 190 g (f =
+10) and 190 ≤ m < 230 g (f = 15). Calculate the
+estimated mean mass.
+g
+20
+D Five parcels have mean mass 14.2 kg. After
+one parcel is delivered, the remaining four
+have mean 13.5 kg. Find the delivered parcel’s
+mass.
+kg
+LEVEL 3 · CHALLENGE
+Q21–25 · multiple choice
+2 marks each
+21
+D Marks (out of 80) of 100 students are
+shown. Marks above 60 earn
+Distinction. Find Distinction count and
+Q1.
+A 80; Q1 = 30
+B 20; Q1 = 30
+C 20; Q1 = 25
+D 80; Q1 = 25
+0
+20
+40
+60
+80
+0
+25
+50
+75
+100
+Mark (out of 80)
+Cum. freq.
+22
+D The unequal-width histogram shows
+trunk diameters d (cm). How many trees
+have 10 ≤ d < 50 cm?
+A 3.2
+B 44
+C 56
+D 68
+0
+10
+20
+30
+40
+50
+0
+1
+2
+3
+1.2
+2.4
+0.8
+Diameter, d (cm)
+Freq. density
+23
+B Classes 0 ≤ x < 10 (f = 4), 10 ≤ x < 20 (f = m) and 20 ≤ x < 30 (f = 6)
+give an estimated mean of 16. Find m.
+A 5
+B 8
+C 10
+D 15
+24
+D Driver reaction times (ms) have Min = 155, Q1 = 210, Med = 235,
+Q3 = 250, Max = 305. Using fences Q1 − 1.5 × IQR and Q3 + 1.5 × IQR,
+which is true?
+A 150 & 310; no outliers
+B 170 & 290; two outliers
+C 150 & 310; two outliers
+D 190 & 270; high outlier
+25
+B A population of 18 masses has μ = 48 g and σ = 6 g. Each mass x
+is transformed via y = 1
+3 x + 8. Find μy and σy.
+A 16 g; 2 g
+B 24 g; 10 g
+C 24 g; 2 g
+D 24 g; 6 g
+
+
+===== PAGE 2 =====
+PART B Theory questions — write all working, tables, diagrams and reasoning in your separate exam script
+20 questions  ·  70 marks
+CRITERIA
+A Knowing and understanding
+B Investigating patterns
+C Communicating
+D Applying mathematics in real-life contexts
+Version B  ·  Page 2 of 2
+TASK 1 · CRITERION A
+Knowing and understanding
+22 marks
+26
+A
+Data classification & graph selection [3 marks]
+ Classify each
+variable as qualitative, quantitative discrete, or quantitative continuous,
+and name a suitable chart (bar graph or histogram) for (b) and (c):
+(a) Blood group (A, B, AB, O) of hospital blood donors.
+[1]
+(b) Number of solar panels installed per school roof in a district.
+[1]
+(c) Exact mass (in grams) of 120 laboratory soil samples.
+[1]
+27
+A
+Central tendency & dispersion [3 marks]
+ Student absences
+recorded per day over 11 school days: 3, 1, 4, 0, 2, 1, 5, 1, 3, 2, 0.
+(a) Find the mode, median, and range of daily absences.
+[2]
+(b) Calculate the exact mean number of absences per day.
+[1]
+28
+A
+Grouped discrete-limit distribution [4 marks] Lengths (to the
+nearest mm) of 40 beetle specimens:
+Length (mm)
+10–14
+15–19
+20–24
+25–29
+30–34
+Freq. (f)
+5
+13
+12
+7
+3
+(a) 
+ State the lower & upper class boundaries of 20–24, the
+modal class, and the class containing the median.
+[2]
+(b) 
+ Using exact mid-interval values, calculate an estimate of
+the mean length.
+[2]
+29
+A
+Population standard deviation [4 marks]
+ A lab balance
+calibrates a complete population of N = 5 masses (g): 16, 19, 20, 22, 23.
+(a) Calculate the population mean μ and each squared deviation
+(x − μ)2.
+[2]
+(b) Find the population standard deviation σ in exact surd form
+and to 2 d.p.
+[2]
+30
+A
+Cumulative frequency curve [4 marks]
+The ogive shows journey times (min) of 80
+commuters.
+(a) 
+ Estimate Q2, Q1, Q3 and the
+IQR.
+[2]
+(b) 
+ Journeys over 50 min qualify
+for flexi-hours. Estimate how many
+qualify and their %.
+[2]
+10
+20
+30
+40
+50
+60
+0
+20
+40
+60
+80
+Time (min)
+Cum. freq.
+31
+A
+Unequal widths & frequency density [4 marks] Airline baggage
+masses m (kg) for 72 bags:
+Mass m (kg)
+0 ≤ m < 8
+8 ≤ m < 16
+16 ≤ m < 28
+28 ≤ m < 44
+Freq. (f)
+12
+28
+24
+8
+(a) 
+ Calculate the class width and frequency density for all
+four classes.
+[2]
+(b) 
+ On a histogram, the bar for 0 ≤ m < 8 has height 3.0 cm.
+Find the other three bar heights (cm) and estimate how many
+bags satisfy 12 ≤ m < 22 kg.
+[2]
+TASK 2 · CRITERION B
+Investigating patterns
+15 marks
+32
+B
+Low-outlier invariance pattern [4 marks] Six quiz scores (out of 50)
+are 34, 36, 38, 40, 42, 44. A seventh student scores y (0 ≤ y ≤ 34).
+(a) 
+ Find the 6-student mean, median & IQR; then recalculate
+all three for 7 students when y = 11.
+[2]
+(b) 
+ Express the 7-student mean in terms of y, and explain
+why the 7-student median and IQR remain constant for every y in
+0 ≤ y ≤ 34.
+[2]
+33
+B
+Evenly spaced populations [4 marks] Consider populations of size N
+= 5 with step d > 0: A1 = {8, 9, 10, 11, 12} (d = 1), A2 = {6, 8, 10, 12, 14} (d =
+2) and A3 = {4, 7, 10, 13, 16} (d = 3).
+(a) 
+ Verify μ = 10 for each set and find σ1, σ2, σ3 in exact surd
+form k√2.
+[2]
+(b) 
+ Prove from the population formula that {c − 2d, c − d, c, c +
+d, c + 2d} has σ = d√2, and state d when σ = 6√2.
+[2]
+34
+B
+Within-class clustering & estimated mean [4 marks] Two batches of
+10 parcels (kg) are grouped into 0 ≤ m < 10 and 10 ≤ m < 20:
+Batch P: 1, 2, 2, 3, 4, 6, 11, 12, 14, 15 (exact mean 7.0)  |  Batch Q: 2, 3, 5, 5,
+7, 8, 12, 14, 16, 18 (exact mean 9.0).
+(a) 
+ Show both batches share the same grouped table and
+calculate their shared estimated mean.
+[2]
+(b) 
+ Explain mathematically why the midpoint estimate has
+zero error for Q yet overestimates P by +2.0.
+[2]
+35
+B
+Upper-tail stretching & quartiles [3 marks] Symmetric set D (80
+items) has Min = 20, Q1 = 35, Q2 = 50, Q3 = 65, Max = 80. Values above 50
+map to x′ = 50 + 2(x − 50) (values ≤ 50 unchanged) to form D′.
+(a) 
+ State the five-number summary and IQR of D′, and
+identify its skewness.
+[2]
+(b) 
+ Generalise the ratio (Q3′ − Q2′) / (Q2′ − Q1′) if factor 2 is
+replaced by k > 1.
+[1]
+TASK 3 · CRITERION C
+Communicating
+18 marks
+36
+C
+Back-to-back stem-and-leaf diagram [4 marks] Typing speeds
+(wpm) of 10 students:
+Term Start: 28, 34, 25, 41, 32, 29, 36, 34, 43, 30  |  Term End: 42, 51, 39, 46,
+54, 45, 48, 61, 45, 53.
+(a) 
+ Construct an ordered back-to-back stem-and-leaf
+diagram (stems 2 to 6) with a dual key.
+[3]
+(b) 
+ Compare the two distributions in context using their
+medians and ranges.
+[1]
+37
+C
+Constructing a continuous grouped table [3 marks] Masses m (g) of
+20 tomatoes:
+82.4, 96.1, 104.5, 91.0, 112.8, 88.3, 100.0, 95.6, 118.2, 85.0, 107.4, 93.2,
+110.0, 89.7, 102.3, 98.5, 115.6, 90.0, 106.1, 94.8.
+(a) 
+ Tabulate into 80 ≤ m < 90, 90 ≤ m < 100, 100 ≤ m < 110,
+110 ≤ m < 120 with midpoints & frequencies.
+[2]
+(b) 
+ State which classes contain 90.0 g and 110.0 g and explain
+why ≤ and < prevent double-counting.
+[1]
+38
+C
+Critiquing & constructing a histogram
+[4 marks] Amina plots continuous commute
+distances 0 ≤ d < 5 (f = 8), 5 ≤ d < 10 (f = 12),
+10 ≤ d < 25 (f = 15) as shown.
+(a) 
+ Explain two
+statistical/graphical errors in Amina’s
+chart.
+[2]
+(b) 
+ Draw a labelled frequency-
+density histogram in your script.
+[2]
+0
+5
+10
+15
+8
+0–5
+12
+5–10
+15
+10–25
+Distance (km)
+Freq.
+39
+C
+Comparing box-and-whisker diagrams
+[4 marks] Customer wait times (min) at
+Branch North (40) and Branch South (40)
+are shown.
+(a) 
+ State the five-number
+summary of North and calculate the
+IQR of both branches.
+[2]
+(b) 
+ Write two contextual
+comparisons (average & service
+consistency) with evidence.
+[2]
+0
+5
+10
+15
+20
+25
+30
+35
+North
+South
+Wait time (min)
+40
+C
+Communicating statistical definitions [3 marks]
+(a) 
+ Explain why Σfx / Σf is exact for ungrouped discrete
+values (x = 0, 1, 2, 3) yet only an estimate for grouped intervals.
+[1]
+(b) 
+ Write formulas for population variance σ2 and
+population SD σ, stating the units of each when x is in cm.
+[2]
+TASK 4 · CRITERION D
+Applying mathematics in real-life contexts
+15 marks
+41
+D
+Borehole extraction audit [3 marks] Daily volume V (m3) pumped
+across 30 days in Parakou:
+Volume V (m3)
+10 ≤ V < 14
+14 ≤ V < 18
+18 ≤ V < 22
+22 ≤ V < 26
+Days (f)
+6
+12
+9
+3
+(a) 
+ Calculate the estimated mean daily volume pumped.
+[2]
+(b) 
+ Sustainability rules cap 30-day extraction at 500 m3.
+Check whether estimated total exceeds 500 m3, and find the
+theoretical minimum 30-day volume from the table.
+[1]
+42
+D
+Cement-bag pallet compliance [3 marks] An entire pallet
+population of N = 8 bags has masses:
+Mass x (kg)
+48
+49
+50
+51
+52
+Bags (f)
+1
+2
+2
+2
+1
+(a) 
+ Calculate the population mean μ and population standard
+deviation σ (to 2 d.p.).
+[2]
+(b) 
+ Dispatch standards require 49.5 ≤ μ ≤ 50.5 kg and σ ≤ 1.30
+kg. Justify whether the pallet passes.
+[1]
+43
+D
+Scholarship exam cut-off [3 marks] Cumulative frequencies for 120
+entrance candidates’ scores s:
+s ≤
+30
+40
+50
+60
+70
+80
+90
+Cum. freq.
+0
+15
+30
+60
+90
+108
+120
+(a) 
+ State Q1, Q2, Q3 and calculate the IQR of scores.
+[2]
+(b) 
+ The top 10% win scholarships. Find the minimum
+qualifying score and how many scored 70 < s ≤ 80.
+[1]
+44
+D
+Apartment rents & luxury outlier [3 marks] Seven monthly rents (in
+1000 FCFA) on a Cotonou street are: 85, 90, 92, 98, 100, 105, 270 (270 is
+a penthouse).
+(a) 
+ Calculate the mean and median for all 7 units, and again
+for the 6 standard flats.
+[2]
+(b) 
+ Advise tenants which average best reflects typical rent
+and why a tax office still requires all 7 values.
+[1]
+45
+D
+Clinic solar-lantern selection [3 marks] Two lantern battery brands
+tested across 20 units each (run-time in hours):
+Solis: μ = 14.2, Med = 14.3, IQR = 0.8, σ = 0.50  |  VoltX: μ = 15.0, Med =
+14.9, IQR = 2.6, σ = 1.65.
+(a) 
+ Compare average run-time and consistency using both
+central and dispersion measures.
+[2]
+(b) 
+ Recommend one brand for a maternity ward requiring at
+least 13.0 h nightly, justifying statistically.
+[1]
+END OF ASSESSMENT · VERSION B

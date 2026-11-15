@@ -19,7 +19,8 @@ export function RetakeAccessForm({
   requestId: string;
   examTitle: string;
   expiresAt: string | null;
-  remaining: number;
+  /** null = unlimited: the approval authorizes as many attempts as needed. */
+  remaining: number | null;
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
@@ -78,7 +79,9 @@ export function RetakeAccessForm({
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-evergreen-700">Retake approved</p>
       <h1 className="mt-2 font-display text-2xl font-semibold text-evergreen-950">Start your authorized retake</h1>
       <p className="mt-2 text-sm text-ink-soft">
-        {examTitle} · {remaining} authorized attempt{remaining === 1 ? "" : "s"} remaining
+        {examTitle} · {remaining === null
+          ? "Unlimited authorized attempts"
+          : `${remaining} authorized attempt${remaining === 1 ? "" : "s"} remaining`}
         {expiresAt ? ` · start before ${new Date(expiresAt).toISOString().slice(0, 16).replace("T", " ")} UTC` : ""}
       </p>
       <p className="mt-3 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">

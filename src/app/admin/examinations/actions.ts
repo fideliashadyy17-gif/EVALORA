@@ -117,6 +117,8 @@ export async function createExamAsAdmin(formData: FormData) {
         identity_fields: [],
         eligible_class_ids: [],
         attempt_policy: "single_resume",
+        attempt_mode: "limited",
+        max_attempts: 1,
       },
       created_by: ctx.user.id,
     })

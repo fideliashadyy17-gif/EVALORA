@@ -12,6 +12,11 @@ interface RetakeView {
   submitted: boolean;
   can_request: boolean;
   can_start: boolean;
+  /**
+   * True when the paper's own attempt policy authorizes the restart, so no
+   * approval row exists and `grant` stays null.
+   */
+  policy_allows_restart?: boolean;
   message: string;
   pending: { id: string; created_at: string; reason: string | null } | null;
   decision: {
@@ -24,9 +29,10 @@ interface RetakeView {
   } | null;
   grant: {
     request_id: string;
-    attempts_granted: number;
+    attempts_granted: number | null;
     attempts_used: number;
-    remaining: number;
+    remaining: number | null;
+    unlimited: boolean;
     window_open: boolean;
     access_expires_at: string | null;
   } | null;
@@ -150,8 +156,16 @@ export function RetakePanel({
 
   const pending = view?.pending ?? null;
   const decision = view?.decision ?? null;
-  const approvedAvailable = Boolean(view?.can_start && view?.grant?.window_open && (view.grant?.remaining ?? 0) > 0);
-  const approvedWindowClosed = Boolean(view?.grant && !view.grant.window_open && (view.grant?.remaining ?? 0) > 0);
+  // A null remaining means the approval has no ceiling (Unlimited Attempts),
+  // so "attempts left" is not a reason to withhold the button.
+  const grantHasAttemptsLeft = view?.grant
+    ? view.grant.unlimited || view.grant.remaining === null || view.grant.remaining > 0
+    : false;
+  const approvedAvailable = Boolean(view?.can_start && view?.grant?.window_open && grantHasAttemptsLeft);
+  const approvedWindowClosed = Boolean(view?.grant && !view.grant.window_open && grantHasAttemptsLeft);
+  // The paper itself allows another sit: no approval, no access window, nothing
+  // to wait for. The server re-checks the policy on every start.
+  const policyRestart = Boolean(view?.can_start && view?.policy_allows_restart);
 
   return (
     <div className="mt-5 text-left">
@@ -167,8 +181,8 @@ export function RetakePanel({
               {view?.attempt_label ?? (submitted ? "Submitted attempt" : "Attempt in progress")}
             </p>
           </div>
-          <Badge tone={pending ? "amber" : approvedAvailable ? "green" : "gray"}>
-            {pending ? "Retake pending" : approvedAvailable ? "Retake approved" : "Locked after submission"}
+          <Badge tone={pending ? "amber" : approvedAvailable || policyRestart ? "green" : "gray"}>
+            {pending ? "Retake pending" : approvedAvailable ? "Retake approved" : policyRestart ? "Another attempt available" : "Locked after submission"}
           </Badge>
         </div>
 
@@ -186,6 +200,19 @@ export function RetakePanel({
             </p>
             <Button variant="gold" className="mt-3" disabled={busy} onClick={() => void call("start")}>
               {busy ? "Opening…" : "Start authorized attempt"}
+            </Button>
+          </div>
+        )}
+
+        {policyRestart && !approvedAvailable && (
+          <div className="mt-4 rounded-xl border border-evergreen-700/30 bg-evergreen-50 p-4">
+            <p className="text-sm font-semibold text-evergreen-900">This paper allows another attempt.</p>
+            <p className="mt-1 text-sm text-evergreen-900">
+              No approval is needed. Starting a new attempt leaves your submitted answers, score and
+              submission unchanged.
+            </p>
+            <Button variant="gold" className="mt-3" disabled={busy} onClick={() => void call("start")}>
+              {busy ? "Opening…" : "Start another attempt"}
             </Button>
           </div>
         )}

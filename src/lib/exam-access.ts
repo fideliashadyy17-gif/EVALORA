@@ -25,7 +25,33 @@ export interface ExamAccessSettings {
   /** Classes explicitly linked to this examination (settings.linked_class_ids). */
   linkedClassIds: string[];
   attemptPolicy: AttemptPolicy;
+  /** How many attempts the paper itself allows: a fixed number, or unlimited. */
+  attemptMode: AttemptMode;
+  /** Bound used when attemptMode is "limited". Always 1..20. */
+  maxAttempts: number;
   proctoring: boolean;
+}
+
+/**
+ * "Limited Attempts" caps how many times a candidate may sit the paper;
+ * "Unlimited Attempts" lets them sit it as many times as they need. The mode
+ * is the paper's policy; the retake approval is the instrument that grants
+ * additional attempts on top of the first one.
+ */
+export type AttemptMode = "limited" | "unlimited";
+
+/** Upper bound of the Limited Attempts mode, matching exam_retake_requests.granted_attempts. */
+export const MAX_LIMITED_ATTEMPTS = 20;
+
+export function normalizeAttemptMode(value: unknown): AttemptMode {
+  return value === "unlimited" ? "unlimited" : "limited";
+}
+
+/** A limited bound is clamped to 1..20; anything unreadable falls back to 1. */
+export function normalizeMaxAttempts(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.min(MAX_LIMITED_ATTEMPTS, n);
 }
 
 /**
@@ -115,6 +141,8 @@ export function parseExamAccessSettings(
     attemptPolicy: raw.attempt_policy === "read_only_reentry"
       ? "read_only_reentry"
       : "single_resume",
+    attemptMode: normalizeAttemptMode(raw.attempt_mode),
+    maxAttempts: normalizeMaxAttempts(raw.max_attempts),
     proctoring: raw.proctoring === true,
   };
 }

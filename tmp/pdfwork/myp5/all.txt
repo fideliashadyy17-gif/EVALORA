@@ -1,0 +1,544 @@
+
+
+===== PAGE 1 =====
+OAK INTERNATIONAL SCHOOL, BENIN
+End of First Term E-assessment 2026/27
+Subject: Mathematics
+Name --------------------------------------
+Grade: MYP 5 (Grade 10)
+Date: ------------
+Time: 2h
+GRADE 10 · MYP 5 MATHEMATICS 
+Summative Assessment · Sequences and Series
+DURATION 2 HOURS  ·  TOTAL 100 MARKS
+INSTRUCTIONS Answer all 45 questions (25 Objective + 20 Theory). Part A (Q1–25): circle the letter (A,
+B, C or D) of the single correct option on this paper. Part B (Q1–20): write full algebraic working,
+sequence/difference tables, formulae and contextual reasoning in your separate answer booklet. A
+scientific calculator is permitted. Give non-exact numerical answers to 3 s.f. (2 d.p. for currency).
+Criteria (key at foot) & difficulty: 
+ basic, 
+ intermediate, 
+ advanced.
+Criterion
+A
+B
+C
+D
+Total
+Marks
+/ 32
+/ 24
+/ 20
+/ 24
+/ 100
+PART A Objective multiple-choice questions (Q1–Q25)
+25 questions  ·  30 marks
+CRITERIA
+A Knowing and understanding
+B Investigating patterns
+C Communicating
+D Applying mathematics in real-life contexts
+Page 1 of 2  ·  Turn over ▸
+|
+LEVEL 1 · BASIC
+Q1–10 · circle A, B, C or D
+1 mark each
+1
+A Which mathematical expression represents a finite arithmetic
+series?
+A 4, 9, 14, 19, 24
+B 4 + 9 + 14 + 19 + 24
+C 4 + 8 + 16 + 32 + 64
+D un = 5n − 1
+2
+A For the linear sequence 19, 13, 7, 1, …, state the common
+difference d and the 5th term u5.
+A d = 6, u5 = −5
+B d = −6, u5 = −5
+C d = −6, u5 = −6
+D d = 13
+19 , u5 = −5
+3
+A Identify the first term u1 and common ratio r of the geometric
+sequence 96, −48, 24, −12, …
+A u1 = 96, r = −1
+2
+B u1 = 96, r = 1
+2
+C u1 = 96, r = −2
+D u1 = −48, r = −1
+2
+4
+A A sequence has explicit formula un = 2n2 − 5n + 1. Calculate u6.
+A 13
+B 41
+C 43
+D 115
+5
+A Given the recursive rule u1 = 3 and un+1 = 2un − 1 (n ≥ 1), find u4.
+A 9
+B 11
+C 15
+D 17
+6
+B How is the sequence 3, 8, 15, 24, 35, … best classified?
+A Linear
+B Geometric
+C Quadratic
+D Constant
+7
+C Which statement correctly distinguishes a recursive formula
+from an explicit formula?
+A Gives un directly in n
+B Relates un+1 to prior term(s) + u1
+C Applies only to linear rules
+D Computes the sum Sn
+8
+A Find the missing terms x and y in the arithmetic sequence
+7, x, y, 28.
+A 12, 20
+B 13, 22
+C 14, 21
+D 10.5, 17.5
+9
+B Which explicit formula gives the total number of dots un in
+Figure n?
+Fig. 1 (5)
+Fig. 2 (8)
+Fig. 3 (11)
+A un = 5n
+B un = 3n + 2
+C un = 2n + 3
+D un = n2 + 4
+10
+A An arithmetic series has u1 = 6, u20 = 63 and n = 20 terms.
+Calculate S20.
+A 630
+B 1260
+C 1380
+D 690
+LEVEL 2 · INTERMEDIATE
+Q11–20 · circle A, B, C or D
+1 mark each
+11
+C Convert u1 = 12, un+1 = un − 4 (n ≥ 1) into an equivalent explicit
+formula.
+A un = 16 − 4n
+B un = 12 − 4n
+C un = 12(−4)n−1
+D un = 4n + 8
+12
+C Select the complete recursive specification for 5, 15, 45, 135, …
+A un = 5(3)n−1
+B u1 = 5, un+1 = un + 10
+C u1 = 5, un+1 = 3un
+D un+1 = 3un (no u1)
+13
+B The table shows a quadratic sequence un = an2 + bn + c:
+n
+1
+2
+3
+4
+un
+4
+13
+28
+49
+State the constant second difference and the value of a.
+A 2nd diff = 6, a = 6
+B 2nd diff = 9, a = 3
+C 2nd diff = 3, a = 6
+D 2nd diff = 6, a = 3
+LEVEL 2 · INTERMEDIATE
+continued (Q14–20)
+1 mark each
+14
+B Find the general term un of the quadratic sequence
+2, 7, 14, 23, 34, …
+A un = n2 + 2n − 1
+B un = 2n2
+C un = n2 + 1
+D un = n2 + 5n − 4
+15
+A In an arithmetic sequence, u4 = 17 and u10 = 41. Calculate u25.
+A 97
+B 100
+C 101
+D 105
+16
+A A geometric sequence of positive terms has u2 = 12 and u5 = 324.
+Find u1 and r.
+A u1 = 3, r = 4
+B u1 = 4, r = 3
+C u1 = 6, r = 2
+D u1 = 4, r = 9
+17
+D A tapered wall has 35 bricks in Row 1, decreasing by 3 bricks
+per row up to 11 bricks in Row 9. Find the total bricks in all 9 rows.
+A 184
+B 198
+C 216
+D 207
+18
+A Find the sum S7 of the first 7 terms of the geometric series
+3 + 6 + 12 + 24 + …
+A 192
+B 378
+C 381
+D 765
+19
+D A solar array generates 18 kWh on Day 1 and increases by 2.5
+kWh each day. On which day does daily output equal 53 kWh?
+A Day 14
+B Day 15
+C Day 16
+D Day 21
+20
+D Water enters a purifier at 500 mg/L. Each filter pass removes
+20% of remaining impurities (u1 = 400 mg/L after 1 pass). Find u3.
+A 256 mg/L
+B 200 mg/L
+C 320 mg/L
+D 204.8 mg/L
+LEVEL 3 · ADVANCED
+Q21–25 · circle A, B, C or D
+2 marks each
+21
+B Consecutive terms k − 1, k + 3, 3k + 1 form a geometric sequence
+with r > 1. Find k and r.
+A k = −1, r = −1
+B k = 3, r = 3
+C k = 5, r = 2
+D k = 5, r = 4
+22
+D An amphitheatre has 24 seats in Row 1, 28 in Row 2, 32 in Row 3,
+and so on. How many rows give a total capacity of 780 seats?
+A 14
+B 15
+C 16
+D 18
+23
+C Evaluate the exact value of the finite geometric series
+6
+Σ
+k=1243( 2
+3)k−1.
+A 633
+B 729
+C 1330
+3
+D 665
+24
+B A sequence satisfies u1 = 4 and un+1 = un + 2n + 3 for n ≥ 1. Which
+explicit quadratic formula defines un?
+A un = n2 + 2n + 1
+B un = n2 + 3
+C un = 2n2 + 2
+D un = n2 + 3n
+25
+D Plan A saves 10 000 FCFA in Month 1, adding 5 000 FCFA each
+month. Plan B saves 2 000 FCFA in Month 1, doubling each month.
+Compare 6-month totals (S6).
+A Plan B exceeds A by 9 000
+B Equal at 135 000 FCFA
+C Plan A exceeds B by 9 000
+D Plan B exceeds A by 2 000
+
+
+===== PAGE 2 =====
+PART B Theory & problem-solving (Q1–Q20) — write full working, tables and reasoning in your answer booklet
+20 questions  ·  70 marks
+CRITERIA
+A Knowing and understanding
+B Investigating patterns
+C Communicating
+D Applying mathematics in real-life contexts
+Page 2 of 2
+TASK 1 · CRITERION A
+Knowing and understanding
+22 marks
+1
+A
+Explicit & recursive term generation [3 marks]
+(a) Sequence A has explicit rule un = 3n2 − 2n + 4. Calculate u1, u3
+and u8.
+[1]
+(b) Sequence B satisfies v1 = 6 and vn+1 = 1
+2 vn + 5 (n ≥ 1). Generate
+v2, v3 and v4, showing each step.
+[2]
+2
+A
+Linear sequence analysis [3 marks]
+ A linear sequence begins
+46, 39, 32, 25, …
+(a) State u1 and d, and derive the simplified explicit formula for
+un.
+[2]
+(b) Find which term equals −45, and state the value of the first
+negative term.
+[1]
+3
+A
+Simultaneous arithmetic sequence & series [4 marks]
+ An
+arithmetic sequence has u5 = 23 and u12 = 58.
+(a) Form and solve simultaneous equations to find u1 and
+common difference d.
+[2]
+(b) Calculate the sum S20 of the first 20 terms of the arithmetic
+series.
+[2]
+4
+A
+Alternating geometric sequence [4 marks]
+ A geometric
+sequence has u2 = −24 and u5 = 192.
+(a) Determine the common ratio r, the first term u1, and the
+explicit formula un.
+[2]
+(b) Calculate u8 and justify algebraically whether −3072 is a term
+of this sequence.
+[2]
+5
+A
+Quadratic sequence from differences [4 marks]
+ The first five
+terms of a quadratic sequence un = an2 + bn + c are tabulated below:
+Term n
+1
+2
+3
+4
+5
+Value un
+4
+9
+18
+31
+48
+(a) Construct first and second differences to find a, b and c, stating
+un.
+[2]
+(b) Calculate u12 and solve for the term number n where un = 193.
+[2]
+6
+A
+Evaluating finite series [4 marks]
+ Find the number of terms n
+and evaluate the exact sum Sn of each finite series:
+(a) Arithmetic series: 5 + 11 + 17 + … + 119.
+[2]
+(b) Finite geometric series: 320 + 160 + 80 + … + 5.
+[2]
+TASK 2 · CRITERION B
+Investigating patterns
+16 marks
+7
+B
+Courtyard tile pattern [4 marks] Stage n
+is an (n + 1) × (n + 2) grid of green core
+tiles (Cn) and pale L-border tiles (Bn).
+Stage 1
+Stage 2
+Stage 3
+Core (Cn)
+Border (Bn)
+Stage n
+1
+2
+3
+4
+Border Bn / Core Cn / Total Tn
+4 / 2 / 6
+6 / 6 / 12
+8 / 12 / 20
+? / ? / ?
+(a) 
+ Find B4, C4 and T4 for Stage 4.
+[1]
+(b) 
+ Classify Bn and Tn using differences and derive explicit
+rules in n.
+[2]
+(c) 
+ Verify Cn + Bn = Tn algebraically and find n when Tn = 210.
+[1]
+8
+B
+Recovering a sequence from partial sums [4 marks] A sequence has
+partial sums Sn = 3n2 + 4n for all n ≥ 1.
+(a) 
+ Compute S1, S2, S3, S4 and deduce individual terms u1, u2,
+u3, u4.
+[2]
+(b) 
+ Using un = Sn − Sn−1 (n ≥ 2), prove algebraically that {un} is
+arithmetic and state un and d.
+[2]
+9
+B
+Affine recursive investigation [4 marks] Investigate the recursive
+relationship:
+u1 = 5  →  un+1 = 3un − 4  (for n ≥ 1)
+(a) 
+ Find u2, u3, u4 and show the first differences
+Δun = un+1 − un form a geometric sequence.
+[2]
+(b) 
+ Let vn = un − 2. Prove vn+1 = 3vn and deduce the explicit
+formula for un.
+[2]
+10
+B
+Arithmetic vs geometric growth [4 marks] Arithmetic sequence Pn
+and geometric sequence Qn share first two terms P1 = Q1 = 8 and
+P2 = Q2 = 12.
+(a) 
+ Write explicit and recursive formulae (with initial terms)
+for Pn and Qn.
+[2]
+(b) 
+ Tabulate n = 1..5, evaluate (Q5 − P5) / P5, and explain why
+Qn > Pn for all n ≥ 3.
+[2]
+TASK 3 · CRITERION C
+Communicating
+15 marks
+11
+C
+Sequence vs series & summation notation [3 marks]
+(a) 
+ Explain clearly, giving one symbolic example of each, the
+difference between a geometric sequence and a finite geometric
+series.
+[2]
+(b) 
+ Write 9 + 13 + 17 + … + 45 in sigma (Σ) notation, showing
+how the upper limit is found.
+[1]
+12
+C
+Communicating explicit & recursive rules [3 marks] Consider
+−5, −1, 3, 7, 11, …
+(a) 
+ Write both a complete recursive definition and a
+simplified explicit formula using proper subscript notation.
+[2]
+(b) 
+ Explain why writing un+1 = un + 4 without u1 fails to define
+a unique sequence.
+[1]
+13
+C
+Proving the constant second-difference property [3 marks] Let
+un = an2 + bn + c (a ≠ 0).
+(a) 
+ Expand and simplify the first difference un+1 − un in terms
+of a, b and n.
+[2]
+(b) 
+ Hence prove (un+2 − un+1) − (un+1 − un) = 2a and explain
+why it is constant.
+[1]
+14
+C
+Critiquing a flawed series calculation [3 marks] To sum 6 terms of
+100 − 50 + 25 − 12.5 + …, Kofi writes: “r = 0.5, so S6 = 100(1 − 0.56)/(1 − 0.5)
+= 196.875.”
+(a) 
+ Identify Kofi’s error in r and explain from the alternating
+terms why S6 < 100.
+[1]
+(b) 
+ Present a clearly structured calculation of the exact value
+of S6 (fraction & decimal).
+[2]
+15
+C
+Multi-sequence classification & justification [3 marks]
+ID
+First four terms (u1, u2, u3, u4)
+Seq I
+18,  12,  8,   16
+3
+Seq II
+5,  9,  15,  23
+Seq III
+22,  15,  8,  1
+(a) Classify each sequence as linear/arithmetic, quadratic, or
+geometric, justifying with differences or ratios.
+[2]
+(b) State the exact fifth term u5 of each sequence.
+[1]
+TASK 4 · CRITERION D
+Applying mathematics in real-life contexts
+17 marks
+16
+D
+Deep-borehole drilling budget [3 marks] Drilling in northern Benin
+costs 35 000 FCFA for the 1st metre, increasing by 4 500 FCFA for each
+deeper metre.
+(a) 
+ Calculate the cost of drilling the 20th metre alone (u20).
+[1]
+(b) 
+ Find the total cost of a 20 m borehole (S20) and state
+whether a 1 600 000 FCFA grant suffices.
+[2]
+17
+D
+Medical scanner depreciation [4 marks] A clinic buys an ultrasound
+scanner for $40 000. Its value drops by 15% per year (V1 = $34 000 after
+1 year).
+(a) 
+ State r, write an explicit formula for Vn (after n years), and
+find V5 to 2 d.p.
+[2]
+(b) 
+ Clinic policy replaces the unit at the end of the first year
+its value falls below $12 000. Find that year, justifying clearly.
+[2]
+18
+D
+Stacked pipe crates [3 marks] Port Crate n
+holds un = n2 + 4n + 3 concrete pipes in
+(n + 1) × (n + 3) layers.
+Crate 1 (8)
+Crate 2 (15)
+(a) 
+ Verify u1, u2, u3 and interpret un+1 − un in context.
+[1]
+(b) 
+ Find which crate holds 143 pipes and explain why no
+single crate holds 130 pipes.
+[2]
+19
+D
+Scholarship endowment annuity [4 marks] An alumni body invests
+$5 000 at the start of each year for 8 years at 6% compound interest
+per annum.
+(a) 
+ Explain why the total at the end of Year 8 equals
+5000(1.06) + 5000(1.06)2 + … + 5000(1.06)8, stating u1, r and n.
+[2]
+(b) 
+ Calculate the end-of-Year-8 balance (to 2 d.p.) and the
+total interest earned.
+[2]
+20
+D
+Comparing internship salary contracts [3 marks] Over a 10-month
+placement, Contract X pays 150 000 FCFA in Month 1 (+20 000
+FCFA/month); Contract Y pays 100 000 FCFA in Month 1 (+20% per
+month, r = 1.20).
+(a) 
+ Calculate total 10-month earnings (S10) under Contract X
+and Contract Y (nearest FCFA).
+[2]
+(b) 
+ Advise a 10-month intern vs an intern leaving after 5
+months, with figures.
+[1]
+END OF ASSESSMENT

@@ -1,7 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
-import { parseExamAccessSettings } from "@/lib/exam-access";
+import { MAX_LIMITED_ATTEMPTS, parseExamAccessSettings } from "@/lib/exam-access";
 import { examLinkLifecycle } from "@/lib/examLink";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -158,6 +158,28 @@ export default async function ExamInvitationsPage({
                       <option value="single_resume">One attempt; resume while in progress</option>
                       <option value="read_only_reentry">Allow read-only return after submission</option>
                     </Select>
+                  </Field>
+                  <Field
+                    label="Attempts allowed"
+                    hint="“Limited Attempts” caps how many times one candidate may sit this paper; “Unlimited Attempts” lets them sit it as many times as they need. This is the default a retake approval starts from."
+                  >
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <Select name="attempt_mode" defaultValue={access.attemptMode}>
+                        <option value="limited">Limited Attempts</option>
+                        <option value="unlimited">Unlimited Attempts</option>
+                      </Select>
+                      <Input
+                        name="max_attempts"
+                        type="number"
+                        min={1}
+                        max={MAX_LIMITED_ATTEMPTS}
+                        defaultValue={access.maxAttempts}
+                        aria-label="Maximum attempts"
+                      />
+                    </div>
+                    <p className="mt-1 text-xs text-ink-soft">
+                      Maximum attempts (1–{MAX_LIMITED_ATTEMPTS}) applies to Limited Attempts only.
+                    </p>
                   </Field>
                   <Field label="Additional identity fields (JSON array)" hint='Example: [{"key":"student_id","label":"Student ID","required":true,"type":"text"}]'>
                     <Textarea name="identity_fields" rows={4} className="font-mono text-xs" defaultValue={JSON.stringify(access.identityFields, null, 2)} />

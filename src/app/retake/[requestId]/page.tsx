@@ -4,6 +4,7 @@ import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { ButtonLink, Card } from "@/components/ui";
 import { getSessionContext } from "@/lib/auth";
 import {
+  grantCeiling,
   retakeAccessProblem,
   retakeAccessProblemMessage,
 } from "@/lib/examRetake";
@@ -93,7 +94,7 @@ export default async function RetakePage({ params }: { params: Promise<{ request
     .select("id", { count: "exact", head: true })
     .eq("retake_request_id", row.id);
   const used = attemptsUsed ?? 0;
-  const granted = Math.max(1, Math.min(3, Math.floor(Number(row.granted_attempts ?? 1))));
+  const { granted, unlimited } = grantCeiling(row.granted_attempts);
   const examTitle = row.exams?.title ?? "Your examination";
   const institution = row.exams?.organizations?.name ?? null;
 
@@ -189,7 +190,7 @@ export default async function RetakePage({ params }: { params: Promise<{ request
       requestId={row.id}
       examTitle={`${examTitle}${institution ? ` · ${institution}` : ""}`}
       expiresAt={row.access_expires_at}
-      remaining={Math.max(0, granted - used)}
+      remaining={unlimited ? null : Math.max(0, granted - used)}
     />,
   );
 }

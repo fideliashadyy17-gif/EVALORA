@@ -34,6 +34,8 @@ export interface RetakeGrant {
   attemptsGranted: number;
   attemptsUsed: number;
   remaining: number;
+  /** True when the approval authorizes an unbounded number of new attempts. */
+  unlimited: boolean;
   windowOpen: boolean;
   accessExpiresAt: string | null;
 }
@@ -45,6 +47,13 @@ export interface RetakeStateInput {
   requests: RetakeRequestView[];
   /** How many attempts each approved request has already authorized. */
   attemptsUsedByRequest?: Record<string, number>;
+  /**
+   * The paper's own attempt policy. "unlimited" lets a candidate start another
+   * attempt without asking; "limited" allows `maxAttempts` sits in total.
+   * Omitted means one attempt, which is the long-standing default.
+   */
+  attemptMode?: "limited" | "unlimited";
+  maxAttempts?: number;
   now?: Date;
 }
 
@@ -56,6 +65,12 @@ export interface RetakeState {
   latestDecision: RetakeRequestView | null;
   canRequest: boolean;
   canStartAuthorizedRetake: boolean;
+  /**
+   * True when the restart is authorized by the paper's own attempt policy
+   * rather than by an approval. The candidate can start again immediately; no
+   * Super Admin decision is involved, so `grant` stays null.
+   */
+  policyAllowsRestart: boolean;
   grant: RetakeGrant | null;
   message: string;
 }
@@ -86,6 +101,30 @@ function byNewest(a: RetakeRequestView, b: RetakeRequestView): number {
 }
 
 /**
+ * How many NEW attempts an approval authorizes.
+ *
+ * A stored `granted_attempts` is interpreted the way the examination is
+ * configured:
+ *   - a positive number is a Limited Attempts bound, clamped to 1..20 so a
+ *     corrupt or legacy value can never authorize more than the schema allows;
+ *   - null (or a missing/unreadable value) means Unlimited Attempts. It is
+ *     reported as a large-but-finite ceiling so callers can render a number,
+ *     and `unlimited: true` is the authoritative flag.
+ *
+ * Mirrors exam_retake_requests.granted_attempts as widened by migration 0106.
+ */
+export function grantCeiling(stored: unknown): { granted: number; unlimited: boolean } {
+  if (stored === null || stored === undefined || stored === "") return { granted: UNLIMITED_GRANT_CEILING, unlimited: true };
+  const n = Number(stored);
+  if (!Number.isFinite(n)) return { granted: UNLIMITED_GRANT_CEILING, unlimited: true };
+  return { granted: Math.max(1, Math.min(MAX_GRANTED_ATTEMPTS, Math.floor(n))), unlimited: false };
+}
+
+/** Bounds for the Limited Attempts mode. NULL above this is Unlimited Attempts. */
+export const MAX_GRANTED_ATTEMPTS = 20;
+export const UNLIMITED_GRANT_CEILING = 1_000_000;
+
+/**
  * Whether an approval still authorizes a new attempt.
  *
  * Three conditions, all required: the request is approved, attempts remain
@@ -99,9 +138,9 @@ export function usableGrant(
 ): RetakeGrant | null {
   if (request.status !== "approved") return null;
   const now = options.now ?? new Date();
-  const granted = Math.max(1, Math.min(3, Math.floor(Number(request.granted_attempts ?? 1))));
+  const { granted, unlimited } = grantCeiling(request.granted_attempts);
   const used = Math.max(0, Math.floor(Number(options.attemptsUsed ?? 0)));
-  const remaining = Math.max(0, granted - used);
+  const remaining = unlimited ? Number.POSITIVE_INFINITY : Math.max(0, granted - used);
   const windowMs = request.access_expires_at ? Date.parse(request.access_expires_at) : NaN;
   const windowOpen = Number.isFinite(windowMs) && windowMs > now.getTime();
   return {
@@ -109,6 +148,7 @@ export function usableGrant(
     attemptsGranted: granted,
     attemptsUsed: used,
     remaining,
+    unlimited,
     windowOpen,
     accessExpiresAt: request.access_expires_at ?? null,
   };
@@ -139,32 +179,66 @@ export function retakeState(input: RetakeStateInput): RetakeState {
   const activeGrant = grants.find((g) => g.remaining > 0 && g.windowOpen) ?? null;
   const closedGrant = grants.find((g) => g.remaining > 0 && !g.windowOpen) ?? null;
 
+  // How many sits the paper itself allows, and how many this candidate has
+  // used. Attempt numbers are 1-based, so attempt N means N sittings so far.
+  const attemptsAllowed = input.attemptMode === "unlimited"
+    ? Number.POSITIVE_INFINITY
+    : Number.isFinite(Number(input.maxAttempts)) && Number(input.maxAttempts) >= 1
+      ? Math.floor(Number(input.maxAttempts))
+      : 1;
+  const used = Math.max(1, Math.floor(Number(input.attemptNumber) || 1));
+  const policyAllowsRestart = submitted
+    && attemptsAllowed > 1
+    && used < attemptsAllowed
+    && used < MAX_GRANTED_ATTEMPTS;
+
   let message: string;
   let canRequest: boolean;
+  let canStartAuthorizedRetake: boolean;
+  let policyRestart = false;
   if (!submitted) {
     canRequest = false;
+    canStartAuthorizedRetake = false;
     message = "Your paper is still open. Requesting a retake is only possible after you have submitted.";
   } else if (pending) {
     canRequest = false;
+    canStartAuthorizedRetake = false;
     message = "Your retake request has been sent and is awaiting Super Admin approval.";
   } else if (activeGrant) {
     canRequest = false;
+    canStartAuthorizedRetake = true;
     message = `A retake has been approved. You may start ${attemptLabel(input.attemptNumber + 1).toLowerCase()} before the access window closes.`;
+  } else if (policyAllowsRestart) {
+    // The paper itself authorizes the restart, so no approval is needed and
+    // the candidate is never sent to ask for one that would be redundant.
+    canRequest = false;
+    canStartAuthorizedRetake = true;
+    policyRestart = true;
+    message = attemptsAllowed === Number.POSITIVE_INFINITY
+      ? `This paper allows unlimited attempts. You may start ${attemptLabel(input.attemptNumber + 1).toLowerCase()} whenever you are ready.`
+      : `This paper allows ${attemptsAllowed} attempts. You have used ${used}. You may start ${attemptLabel(input.attemptNumber + 1).toLowerCase()} now.`;
   } else if (closedGrant) {
     canRequest = true;
+    canStartAuthorizedRetake = false;
     message = "The access window for your approved retake has closed. You may request another retake.";
   } else if (grants.length && grants.every((g) => g.remaining === 0)) {
     canRequest = true;
+    canStartAuthorizedRetake = false;
     message = "Your approved retake has already been used. If you need another attempt, request a new retake.";
   } else if (latestDecision?.status === "rejected") {
     canRequest = true;
+    canStartAuthorizedRetake = false;
     message = "Your last retake request was rejected. You may submit a new request if your situation changes.";
   } else if (latestDecision?.status === "cancelled") {
     canRequest = true;
+    canStartAuthorizedRetake = false;
     message = "Your retake request was cancelled. You may submit a new request.";
   } else {
     canRequest = true;
-    message = "This attempt is submitted and locked. You can request a retake, which requires Super Admin approval.";
+    canStartAuthorizedRetake = false;
+    message = attemptsAllowed > 1 && used >= attemptsAllowed
+      ? `You have used all ${attemptsAllowed === Number.POSITIVE_INFINITY ? MAX_GRANTED_ATTEMPTS : attemptsAllowed} attempts this paper allows. Requesting a retake requires Super Admin approval.`
+      : "This attempt is submitted and locked. You can request a retake, which requires Super Admin approval.";
   }
 
   return {
@@ -174,7 +248,8 @@ export function retakeState(input: RetakeStateInput): RetakeState {
     pending,
     latestDecision,
     canRequest,
-    canStartAuthorizedRetake: Boolean(activeGrant),
+    canStartAuthorizedRetake,
+    policyAllowsRestart: policyRestart,
     grant: activeGrant ?? closedGrant ?? grants[0] ?? null,
     message,
   };
@@ -233,11 +308,20 @@ export function decisionMessage(request: RetakeRequestView): string {
   return "Awaiting Super Admin approval.";
 }
 
-/** Attempts an approval may authorize. Explicit, bounded, never unlimited. */
-export function normalizeGrantedAttempts(value: unknown): number {
+/**
+ * What a Super Admin's grant input authorizes.
+ *
+ * "Limited Attempts" clamps to 1..20; "Unlimited Attempts" (and an unreadable
+ * value) returns null, which is stored as NULL by migration 0106 and read
+ * back as an unbounded grant. An approval is never silently downgraded to one
+ * attempt because the policy is not a small number.
+ */
+export function normalizeGrantedAttempts(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return 1;
+  if (typeof value === "string" && /^unlimited$/i.test(value.trim())) return null;
   const n = Math.floor(Number(value));
   if (!Number.isFinite(n) || n < 1) return 1;
-  return Math.min(3, n);
+  return Math.min(MAX_GRANTED_ATTEMPTS, n);
 }
 
 /* ── Retake access code ─────────────────────────────────────────────────
@@ -355,8 +439,8 @@ export function retakeAccessProblem(
   if (request.status === "rejected" || request.status === "cancelled") return "rejected";
   if (request.status !== "approved") return "not_approved";
   if (!request.retake_code) return "no_code";
-  const granted = Math.max(1, Math.min(3, Math.floor(Number(request.granted_attempts ?? 1))));
-  if (attemptsUsed >= granted) return "consumed";
+  const { granted, unlimited } = grantCeiling(request.granted_attempts);
+  if (!unlimited && attemptsUsed >= granted) return "consumed";
   if (request.retake_code_consumed_at) return "consumed";
   const expiry = request.access_expires_at ? Date.parse(request.access_expires_at) : NaN;
   if (!Number.isFinite(expiry) || expiry <= now.getTime()) return "expired";

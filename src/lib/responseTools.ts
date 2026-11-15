@@ -113,9 +113,21 @@ export interface ResponseStemLeafConfig {
   starter: StemLeafSpec;
 }
 
+export interface ResponseCalculatorConfig {
+  enabled: boolean;
+  /** Scientific keypad (trigonometry, logs, powers) rather than four-function. */
+  scientific: boolean;
+}
+
 export interface ResponseWorkspace {
   /** Empty for question types that have their own native interface. */
   tools: ResponseToolId[];
+  /**
+   * Whether the candidate may open a calculator on this question. This is
+   * independent of `tools`: an objective question with a native interface and
+   * no composition tools can still require a calculator.
+   */
+  calculator: ResponseCalculatorConfig;
   graph: ResponseGraphConfig;
   geometry: ResponseGeometryConfig;
   statistics: ResponseStatsConfig;
@@ -182,7 +194,7 @@ export function responseWorkspaceFor(question: {
   prompt?: string | null;
   prompt_doc?: RichDoc | null;
   config?: Record<string, unknown> | null;
-}): ResponseWorkspace {
+}, options: { calculatorByDefault?: boolean } = {}): ResponseWorkspace {
   const cfg = asRecord(question.config);
   const rawGraph = asRecord(cfg.response_graph);
   const rawGeometry = asRecord(cfg.response_geometry);
@@ -192,6 +204,11 @@ export function responseWorkspaceFor(question: {
   const rawProbabilityTree = asRecord(cfg.response_probability_tree);
   const rawStemLeaf = asRecord(cfg.response_stem_leaf);
   const guidance = typeof cfg.response_guidance === "string" ? cfg.response_guidance.slice(0, 1000) : "";
+  // A calculator is a reading/computation aid, not a composition tool, so it
+  // is decided once for the question and shared by every code path. An
+  // explicit false always wins; otherwise config, then the caller's default
+  // (the exam or quiz the question sits in), then off.
+  const calculator = calculatorEnabledFor(question, { allowByDefault: Boolean(options.calculatorByDefault) });
   const requirementRaw = typeof cfg.response_requirement === "string" ? cfg.response_requirement : "any";
   const requirement = (["any", "text", "graph", "geometry", "statistics", "data_table", "venn", "probability_tree", "stem_leaf"].includes(requirementRaw)
     ? requirementRaw
@@ -219,6 +236,7 @@ export function responseWorkspaceFor(question: {
   if (NATIVE_TYPES.has(question.type) && !partsWorkingConfigured) {
     return {
       tools: [],
+      calculator,
       graph: { enabled: false, title: "Graph", instructions: "", allowFunctions: true, starter: graphStarter },
       geometry: { enabled: false, title: "Geometry", instructions: "", starter: geometryStarter },
       statistics: { enabled: false, title: "Statistics", instructions: "", chart: "any", starter: statsStarter },
@@ -237,6 +255,7 @@ export function responseWorkspaceFor(question: {
   const tools = configured.length ? configured : inferResponseTools(question);
   return {
     tools,
+    calculator,
     graph: {
       enabled: tools.includes("graph"),
       title: typeof rawGraph.title === "string" && rawGraph.title.trim() ? rawGraph.title.slice(0, 80) : "Your graph",
@@ -288,6 +307,49 @@ export function responseWorkspaceFor(question: {
     defaultTool: uniqueTools([cfg.response_default_tool])[0] ?? tools.find((tool) => !["rich_text", "math", "table", "science"].includes(tool)) ?? null,
     source: configured.length ? "configured" : "inferred",
   };
+}
+
+/**
+ * Is a calculator available on this question?
+ *
+ * `config.calculator === true` turns it on for the question;
+ * `config.calculator === false` turns it off for the question even when the
+ * paper allows one (a mental-arithmetic item inside a calculator paper);
+ * otherwise `options.allowByDefault` (the exam's or quiz's own calculator
+ * switch) decides. Answer keys and marking data are never consulted.
+ */
+/**
+ * Whether the candidate may open a calculator on this question.
+ *
+ * Precedence, highest first:
+ *   1. `config.calculator` — the question's own explicit switch (true/false);
+ *   2. `config.calculator_policy` — the paper's stated policy, where
+ *      "not_permitted" switches it off, "required" switches it on and
+ *      "permitted" defers to the caller;
+ *   3. `options.allowByDefault` — the exam or quiz the question sits in;
+ *   4. off.
+ *
+ * A calculator is a computation aid, so it is never treated as one of the
+ * composition tools and never changes the answer interface.
+ */
+export function calculatorEnabledFor(
+  question: { config?: Record<string, unknown> | null; type?: string },
+  options: { allowByDefault?: boolean } = {},
+): ResponseCalculatorConfig {
+  const cfg = asRecord(question?.config);
+  const raw = cfg.calculator;
+  if (raw === true || raw === false) {
+    return { enabled: raw, scientific: cfg.calculator_scientific === true };
+  }
+  const policy = typeof cfg.calculator_policy === "string" ? cfg.calculator_policy.toLowerCase() : "";
+  if (policy === "not_permitted" || policy === "not-allowed" || policy === "none") {
+    return { enabled: false, scientific: false };
+  }
+  if (policy === "required") {
+    return { enabled: true, scientific: cfg.calculator_scientific === true };
+  }
+  const enabled = Boolean(options.allowByDefault);
+  return { enabled, scientific: enabled && cfg.calculator_scientific === true };
 }
 
 /** A workspace with no prose editor at all (pure graph/geometry question). */

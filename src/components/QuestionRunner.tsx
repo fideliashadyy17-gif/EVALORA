@@ -11,6 +11,7 @@ import { responseWorkspaceFor, type ResponseWorkspace } from "@/lib/responseTool
 import type { PublicAssessPart } from "@/lib/assessParts";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
 import { MathAnswerInput } from "@/components/MathAnswerInput";
+import { CalculatorLauncher } from "@/components/Calculator";
 
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value)
@@ -47,11 +48,29 @@ export interface PublicQuestion {
    * carries an answer key; it only names the tools this question needs.
    */
   response_workspace?: ResponseWorkspace | null;
+  /**
+   * Whether the paper permits a calculator on this question. Independent of
+   * the response workspace: a multiple-choice question permits one too.
+   */
+  calculator?: boolean;
   /** Assess Prep typed parts (keys never included) + curriculum metadata. */
   assess_parts?: PublicAssessPart[] | null;
   topic?: string | null;
   criterion?: string | null;
   strand?: string | null;
+  /** Criterion, level, marks and printed question number as the paper shows them. */
+  question_meta?: QuestionMeta | null;
+}
+
+/** The paper's own metadata for a question, shown to candidates and markers. */
+export interface QuestionMeta {
+  question_number: number | null;
+  paper_section: string | null;
+  criterion: string | null;
+  criterion_label: string | null;
+  criterion_title: string | null;
+  difficulty_level: string | null;
+  marks: number;
 }
 
 /**
@@ -223,6 +242,47 @@ export function QuestionRunner({
           <RichContent doc={question.prompt_doc ?? null} text={question.prompt} />
         </div>
       </div>}
+
+      {question.question_meta ? (() => {
+        const meta = question.question_meta;
+        const level = meta.difficulty_level;
+        const bits = [
+          meta.criterion_label ?? (meta.criterion ? `Criterion ${meta.criterion}` : null),
+          level ? level[0].toUpperCase() + level.slice(1) : null,
+          meta.marks ? `${meta.marks} mark${meta.marks === 1 ? "" : "s"}` : null,
+          meta.paper_section ? (meta.paper_section === "A" ? "Part A" : "Part B") : null,
+        ].filter(Boolean) as string[];
+        if (!bits.length) return null;
+        return (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {meta.question_number !== null ? (
+              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-evergreen-700 px-1.5 text-xs font-bold text-white">
+                {meta.question_number}
+              </span>
+            ) : null}
+            {bits.map((bit) => (
+              <span key={bit} className="rounded-md border border-evergreen-900/15 bg-cream px-2 py-0.5 text-[11px] font-semibold text-evergreen-900">
+                {bit}
+              </span>
+            ))}
+            {question.calculator ? (
+              <span className="rounded-md border border-evergreen-900/15 bg-white px-2 py-0.5 text-[11px] font-semibold text-evergreen-800">
+                Calculator allowed
+              </span>
+            ) : null}
+          </div>
+        );
+      })() : null}
+
+      {/* A calculator is a computation aid, not a composition tool, so it is
+          offered for every question type the paper allows one on — including
+          objective questions whose interface is otherwise native. It is a
+          sibling of the answer controls and never writes to them. */}
+      {question.calculator ? (
+        <div className="mt-3 flex justify-end">
+          <CalculatorLauncher />
+        </div>
+      ) : null}
 
       <div className="question-response mt-6">
         {(t === "single_choice" || t === "true_false" || t === "poll") && (

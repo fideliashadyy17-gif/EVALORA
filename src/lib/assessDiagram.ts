@@ -11,13 +11,15 @@
  *   cumulative_curve   cumulative frequency curve (points joined smoothly)
  *   histogram          bars over class intervals (frequency or frequency density)
  *   shape_pattern      matchstick/dot shape patterns, one figure per pattern
+ *   grid_pattern       rectangular grids of tiles/pipes, optionally with a border ring
  *   term_graph         term-number graph (points, optionally joined)
  *   table              a plain data table
  */
 
 export const ASSESS_DIAGRAM_KINDS = [
   "tape", "double_number_line", "venn2", "stem_leaf", "box_plot",
-  "cumulative_curve", "histogram", "shape_pattern", "term_graph", "table",
+  "cumulative_curve", "histogram", "shape_pattern", "grid_pattern",
+  "term_graph", "table",
 ] as const;
 export type AssessDiagramKind = (typeof ASSESS_DIAGRAM_KINDS)[number];
 
@@ -29,8 +31,8 @@ export interface AssessDiagramSpec {
   tapeRows?: { label: string; segments: { label: string; span: number; shade?: boolean }[] }[];
   // double_number_line
   lines?: { label: string; unit: string; ticks: { at: number; label: string }[]; max: number }[];
-  // venn2
-  venn?: { leftLabel: string; rightLabel: string; leftOnly: string; both: string; rightOnly: string; outside: string; universalLabel?: string };
+  // venn2 — `shaded` names the one region the paper shades.
+  venn?: { leftLabel: string; rightLabel: string; leftOnly: string; both: string; rightOnly: string; outside: string; universalLabel?: string; shaded?: VennRegion };
   // stem_leaf (back-to-back when rows carry `left`)
   stemRows?: { stem: string; leaves: string[]; left?: string[] }[];
   stemKey?: string;
@@ -45,12 +47,17 @@ export interface AssessDiagramSpec {
   points?: [number, number][];
   joinPoints?: boolean;
   bars?: { from: number; to: number; height: number }[];
-  // shape_pattern
-  patterns?: { label: string; squares: number; dots?: number }[];
+  // shape_pattern — either squares/dots counts, or explicit dot columns.
+  patterns?: { label: string; squares: number; dots?: number; columns?: { count: number; shade?: boolean }[] }[];
+  // grid_pattern
+  gridPatterns?: { label: string; cols: number; rows: number; style: "core_border" | "solid" }[];
   // table
   columns?: string[];
   rows?: string[][];
 }
+
+export type VennRegion = "leftOnly" | "both" | "rightOnly" | "outside" | "left" | "right" | "union";
+const VENN_REGIONS: VennRegion[] = ["leftOnly", "both", "rightOnly", "outside", "left", "right", "union"];
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === "object" && !Array.isArray(v);
@@ -94,6 +101,9 @@ export function normaliseAssessDiagram(raw: unknown): AssessDiagramSpec | null {
       leftLabel: s(v.leftLabel), rightLabel: s(v.rightLabel), leftOnly: s(v.leftOnly),
       both: s(v.both), rightOnly: s(v.rightOnly), outside: s(v.outside),
       ...(s(v.universalLabel) ? { universalLabel: s(v.universalLabel) } : {}),
+      ...(VENN_REGIONS.includes(s(v.shaded) as VennRegion)
+        ? { shaded: s(v.shaded) as VennRegion }
+        : {}),
     };
   }
   if (kind === "stem_leaf" && Array.isArray(raw.stemRows)) {
@@ -143,7 +153,32 @@ export function normaliseAssessDiagram(raw: unknown): AssessDiagramSpec | null {
   if (Array.isArray(raw.patterns)) {
     spec.patterns = raw.patterns.slice(0, 6).map((p) => {
       const pat = isRecord(p) ? p : {};
-      return { label: s(pat.label), squares: Math.max(0, Math.floor(n(pat.squares) ?? 0)), ...(n(pat.dots) !== null ? { dots: Math.max(0, Math.floor(n(pat.dots)!)) } : {}) };
+      const out: NonNullable<AssessDiagramSpec["patterns"]>[number] = {
+        label: s(pat.label),
+        squares: Math.max(0, Math.floor(n(pat.squares) ?? 0)),
+        ...(n(pat.dots) !== null ? { dots: Math.max(0, Math.floor(n(pat.dots)!)) } : {}),
+      };
+      if (Array.isArray(pat.columns)) {
+        out.columns = pat.columns.slice(0, 12).flatMap((c) => {
+          if (!isRecord(c)) return [];
+          const count = n(c.count);
+          return count === null ? [] : [{ count: Math.max(0, Math.floor(count)), shade: c.shade === true }];
+        });
+      }
+      return out;
+    });
+  }
+  if (Array.isArray(raw.gridPatterns)) {
+    spec.gridPatterns = raw.gridPatterns.slice(0, 6).flatMap((g) => {
+      if (!isRecord(g)) return [];
+      const cols = n(g.cols); const rows = n(g.rows);
+      if (cols === null || rows === null) return [];
+      return [{
+        label: s(g.label),
+        cols: Math.max(1, Math.min(24, Math.floor(cols))),
+        rows: Math.max(1, Math.min(24, Math.floor(rows))),
+        style: g.style === "solid" ? "solid" as const : "core_border" as const,
+      }];
     });
   }
   // Wide data tables (a full data set across 10–12 columns) must survive

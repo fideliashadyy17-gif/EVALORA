@@ -1,0 +1,780 @@
+
+
+===== PAGE 1 =====
+OAK INTERNATIONAL SCHOOL, BENIN
+End of First Term E-assessment 2026/27 — Subject: Mathematics
+OFFICIAL TEACHER MARKING SCHEME & BLUEPRINT ·
+VERSION B (GRADE 8 · IB MYP 3)
+GRADE 8 · MYP 3 MATHEMATICS  |  Term 1 Summative Assessment · Version B
+MARKING SCHEME · 45 QUESTIONS · 100 MARKS
+IB MYP MARKING PRINCIPLES & MARK-CODE KEY
+M1 Method mark: Awarded for selecting and applying a valid mathematical
+strategy, algebraic setup, index rule, geometric proportion, or trigonometric
+equation, even if a subsequent numerical slip occurs.
+A1 Accuracy mark: Awarded for a correct simplified numerical or algebraic
+answer (with correct units where applicable). An unsupported correct answer
+in Part B receives full marks only on 1-mark items; multi-mark items require
+visible mathematical working.
+R1 / C1 Reasoning & Communication mark: Awarded for clear
+mathematical notation, explicit geometric reasons, proper vertex
+correspondence, structured tables, or justified contextual conclusions.
+Follow-Through (FT): Where a subpart states “Hence…”, award full FT
+method/accuracy credit if a student correctly uses their own non-trivial value
+from part (a), provided mathematical complexity is preserved.
+VERSION B BLUEPRINT & EQUIVALENCE
+VERIFICATION
+Criterion
+Part A
+(Obj.)
+Part B
+(Theory)
+Total
+Marks
+A Knowing &
+understanding
+10
+22 (Q26–
+31)
+32
+B Investigating
+patterns
+5
+15 (Q32–
+35)
+20
+C Communicating
+6
+18 (Q36–
+40)
+24
+D Applying in real-
+life contexts
+9
+15 (Q41–45)
+24
+TOTAL (45 Questions)
+30 (25
+Qs)
+70 (20 Qs)
+100 /
+100
+Parallel Parity with Version A: Exact 1:1 match across all 7
+curriculum topics, Criterion A–D mark totals (32/20/24/24),
+item types (9 L1 MCQ, 5 T/F, 4 Match, 2 Short, 5 L3 MCQ, 20
+Structured Theory), and 2-hour cognitive demand.
+PART A — OBJECTIVE ANSWER KEY & RATIONALES · VERSION B (Q1–Q25)
+25 questions  ·  30 marks (marked on exam paper)
+Q#
+Correct Answer
+Mk
+Crit.
+Lvl
+Curriculum Topic
+Mathematical Working / Concept Rationale
+1
+C (−√64)
+1
+A
+L1
+Topic 1: Rational & Irrational
+−√64 = −8 = −8
+1 , a ratio of integers (rational). By contrast, √27 = 3√3, π
+4 , and
+non-repeating 0.101001… are irrational.
+2
+A ( 9
+8 )
+1
+A
+L1
+Topic 2: Decimals to
+Fractions
+1.125 = 1125
+1000 ; dividing numerator and denominator by HCF 125 gives 9
+8 (note
+C = 45
+40 is unsimplified).
+3
+B (X)
+1
+C
+L1
+Topic 1: Real Number Line
+Since √3 ≈ 1.732, −√3 ≈ −1.732 lies between −2 and −1.5, matching arrow X
+(W ≈ −2.65, Y ≈ −0.71, Z ≈ +1.73).
+4
+D (k10)
+1
+A
+L1
+Topic 3: Simplifying
+Powers
+Power-of-a-power then quotient law: (k4)3 ÷ k2 = k12 ÷ k2 = k12 − 2 = k10.
+5
+B (5.46 × 107 km)
+1
+C
+L1
+Topic 4: Scientific Notation
+Moving the decimal point 7 places left gives coefficient a = 5.46 (1 ≤ a < 10)
+and exponent +7: 5.46 × 107 km.
+6
+A (15 cm)
+1
+A
+L1
+Topic 5: Pythagoras’
+Theorem
+JL = √JK2 + KL2 = √92 + 122 = √81 + 144 = √225 = 15 cm.
+7
+B (65°)
+1
+A
+L1
+Topic 6: Congruent
+Triangles
+In ΔABC, ∠C = 180° − (72° + 43°) = 65°. Since ΔABC ≅ ΔXYZ, corresponding angle
+∠Z = ∠C = 65°.
+8
+C ( 9
+40 )
+1
+C
+L1
+Topic 7: Trigonometric
+Ratios
+Relative to top acute angle φ, opposite = 9 cm and adjacent = 40 cm, so tan φ =
+opposite
+adjacent = 9
+40 .
+9
+B (5.85 × 10−3 g)
+1
+D
+L1
+Topic 4: Scientific Notation
+(−)
+Align powers to 10−3: 6.3 × 10−3 − 0.45 × 10−3 = 5.85 × 10−3 g.
+10
+F (False)
+1
+A
+L1
+Topic 1: Irrational
+Operations
+Counterexample: √2 × √8 = √16 = 4 (or √3 × √3 = 3), which is rational.
+11
+F (False)
+1
+A
+L2
+Topic 3: Negative Indices
+A negative exponent denotes a reciprocal, not a negative sign: 2−3 = 1
+23 = 1
+8 ≠
+−8.
+12
+F (False)
+1
+C
+L2
+Topic 6: AAA Similarity vs
+Congruence
+Three equal angles (AAA) prove triangles are similar, not necessarily
+congruent (side lengths can differ by any scale factor k ≠ 1).
+13
+T (True)
+1
+B
+L2
+Topic 2: Terminating
+Decimals
+A reduced fraction p/q can be scaled to denominator 10k = 2k · 5k iff q has no
+prime factors other than 2 and/or 5.
+14
+T (True)
+1
+A
+L2
+Topic 7: Sine Ratio Bounds
+In any right triangle with 0° < θ < 90°, 0 < opposite < hypotenuse, so 0 < sin θ =
+opposite/hypotenuse < 1.
+15
+T (2√5)
+1
+A
+L2
+Topic 1: Irrational Bounds
+2√5 = √20; since 16 < 20 < 25 and 20 is non-square, √20 ≈ 4.472 is irrational in
+(4, 5).
+16
+P ( 7
+9 )
+1
+C
+L2
+Topic 2: Repeating
+Decimals
+Let x = 0.7; then 10x − x = 7 ⇒ 9x = 7 ⇒ x = 7
+9 (note S = 7
+10 = 0.7 terminating).
+17
+R (4−1 + 2−2)
+1
+A
+L2
+Topic 3: Negative Indices
+4−1 + 2−2 = 1
+4 + 1
+4 = 2
+4 = 1
+2 (note U = 1 − 3 = −2).
+
+
+===== PAGE 2 =====
+Q#
+Correct Answer
+Mk
+Crit.
+Lvl
+Curriculum Topic
+Mathematical Working / Concept Rationale
+18
+Q (√1.44)
+1
+C
+L2
+Topic 1 & 2:
+Representations
+√1.44 = √144
+100 = 12
+10 = 6
+5 = 1.2.
+19
+1.2 × 1012 bytes
+1
+D
+L2
+Topic 4: Scientific Notation
+(+)
+(7.4 + 4.6) × 1011 = 12.0 × 1011 = 1.2 × 1012 bytes (also accept 1.20 × 1012; do not
+credit 12 × 1011).
+20
+6 m (or 6.0 m)
+1
+D
+L2
+Topic 5: Pythagoras in
+Context
+Height h = √6.52 − 2.52 = √42.25 − 6.25 = √36 = 6 m.
+21
+B (7)
+2
+B
+L3
+Topic 3: Exponential
+Equations
+Write 9n+1 = (32)n+1 = 32n+2; divide by 3n−2: 3(2n+2)−(n−2) = 3n+4 = 311 ⇒ n + 4 = 11
+⇒ n = 7.
+22
+C (41)
+2
+B
+L3
+Topic 2: Mixed Repeating
+Decimals
+Let x = 0.36: 100x − 10x = 36.6 − 3.6 ⇒ 90x = 33 ⇒ x = 33
+90 = 11
+30 . Lowest terms
+gives a + b = 11 + 30 = 41.
+23
+A (7 cm)
+2
+D
+L3
+Topic 6: Hourglass Similar
+Triangles
+Since PQ ∥ SR, ΔPOQ ∼ ΔROS (AA: alternate + vertically opposite angles). Thus
+PQ
+17.5 = 4
+10 ⇒ PQ = 0.4 × 17.5 = 7 cm.
+24
+B (
+48
+tan 28° )
+2
+D
+L3
+Topic 7: Angle of
+Depression
+By alternate interior angles, angle of elevation from boat = 28°. Thus tan 28° =
+48
+x ⇒ x = 
+48
+tan 28° .
+25
+A (120 cm2)
+2
+D
+L3
+Topic 5: Isosceles Altitude
+& Area
+Altitude from E bisects base FG into 8 cm halves: h = √172 − 82 = √225 = 15 cm.
+Area = 1
+2 × 16 × 15 = 120 cm2.
+PART B — THEORY WORKED SOLUTIONS & MARKING GUIDANCE · VERSION B (Q26–Q45)20 questions  ·  70 marks (written in student exam script)
+TASK 1 · CRITERION A — KNOWING AND UNDERSTANDING (Q26–Q31)
+Subtotal: 22 marks
+Q26
+A
+Decimal-to-fraction conversion · Topic 2 (Converting Decimals into Fractions) · Basic
+3 marks
+(a)
+0.875 = 875
+1000 = 875 ÷ 125
+1000 ÷ 125 = 
+7
+8
+A1
+[1 mark]
+(b)
+Let x = 0.63 = 0.636363… ⇒ 100x = 63.6363…
+Subtract: 100x − x = 63 ⇒ 99x = 63 M1 ⇒ x = 63
+99 = 63 ÷ 9
+99 ÷ 9 = 
+7
+11
+A1
+[2 marks]
+GUIDANCE: In (a), unsimplified 875
+1000 or 35
+40 scores 0/1. In (b), writing 7
+11 directly from calculator without algebraic subtraction scores 0/2; stopping at
+unsimplified 63
+99 or 21
+33 with valid algebra scores M1 A0.
+Q27
+A
+Mixed repeating decimals · Topic 2 (Converting Decimals into Fractions) · Intermediate
+4 marks
+(a)
+Let x = 1.16 = 1.1666… Then 10x = 11.666… and 100x = 116.666…
+Subtract: 100x − 10x = 116.6 − 11.6 ⇒ 90x = 105 M1
+x = 105
+90 = 105 ÷ 15
+90 ÷ 15 = 
+7
+6 (proven) A1
+[2 marks]
+(b)
+Convert 0.28 = 28
+100 = 7
+25 . Common denominator of 6 and 25 is 150:
+7
+6 − 7
+25 = 175 − 42
+150
+M1 = 
+133
+150
+A1  (since gcd(133, 150) = 1).
+[2 marks]
+ALTERNATIVE FOR (A): Splitting 1.16 = 1.1 + 0.06, then letting y = 0.06 ⇒ 90y = 6 ⇒ y = 1
+15
+M1 and computing 11
+10 + 1
+15 = 33 + 2
+30
+ = 35
+30 = 7
+6
+A1 earns full
+marks. Since 7
+6 is a given target in (a), explicit simplification from 105
+90 or 35
+30 must be shown.
+Q28
+A
+Laws of indices · Topic 3 (Simplifying Powers) · Intermediate
+4 marks
+(a)
+15
+5 · p−3 − 2 · q6 − (−1) = 3p−5q7
+M1 = 
+3q7
+p5
+A1
+[2 marks]
+(b)
+Apply power −2 and zero index u0 = 1: (3−2u(−2)(−2)v4(−2)) × 9(1) = 1
+9 u4v−8 × 9 M1
+Simplify coefficient ( 1
+9 × 9 = 1) and rewrite with positive indices: 
+u4
+v8
+A1
+[2 marks]
+GUIDANCE: Leaving 3p−5q7 in (a) or u4v−8 in (b) scores M1 A0 (violates positive-index requirement). Writing 1u4/v8 is accepted for full marks.
+Q29
+A
+Operations in scientific notation · Topic 4 (Addition & Subtraction in Scientific Notation) · Intermediate
+3 marks
+(a)
+Align to 108: (5.3 × 108) − (0.65 × 108) = (5.3 − 0.65) × 108 = 4.65 × 108
+A1
+[1 mark]
+(b)
+Align to 10−4: (0.74 × 10−4) + (4.6 × 10−4) = 5.34 × 10−4
+M1 = 5.34 × 10−4
+A1
+(Or via 10−5: (7.4 + 46) × 10−5 = 53.4 × 10−5
+M1 = 5.34 × 10−4
+A1 .)
+[2 marks]
+GUIDANCE: In (b), award M1 for 53.4 × 10−5 or 0.000534, and A1 only when normalized to 5.34 × 10−4.
+
+
+===== PAGE 3 =====
+Q30
+A
+Right-angled quadrilateral · Topic 5 (Pythagoras’ Theorem) · Intermediate
+4 marks
+(a)
+In right-angled ΔPQR (∠PQR = 90°): PR2 = PQ2 + QR2 = 72 + 242 = 49 + 576 = 625 M1
+PR = √625 = 25 cm
+A1
+[2 marks]
+(b)
+In right-angled ΔPSR (∠PSR = 90°, hypotenuse PR = 25 cm):
+SR = √PR2 − PS2 = √252 − 152 = √625 − 225 = √400 = 20 cm
+M1
+Perimeter of PQRS = PQ + QR + SR + PS = 7 + 24 + 20 + 15 = 66 cm
+A1
+[2 marks]
+FT & ERROR NOTE: Award FT in (b) if student uses their positive PR > 15 from (a). Note: adding diagonal 25 cm into the exterior perimeter (giving 91 cm)
+loses A1 in (b) ( M1 A0).
+Q31
+A
+Divided triangle · Topic 7 (Trigonometric Ratios) · Challenge
+4 marks
+(a)
+In right-angled ΔABD: tan 42° = BD
+AD = 10
+AD ⇒ AD = 
+10
+tan 42°
+M1
+AD = 
+10
+0.900404… = 11.1061… = 11.11 cm (2 d.p.) A1
+[2 marks]
+(b)
+In right-angled ΔBDC: tan(∠DBC) = DC
+BD = 14
+10 = 1.4 ⇒ ∠DBC = tan−1(1.4) = 54.462° = 54.5° (1 d.p.) M1
+In ΔABD, ∠ABD = 90° − 42° = 48°. Hence ∠ABC = 48° + 54.462° = 102.462° = 102.5° (1 d.p.) A1
+[2 marks]
+GUIDANCE: Also accept finding ∠BCD = tan−1(10/14) = 35.5°, then ∠ABC = 180° − (42° + 35.5°) = 102.5° (provided ∠DBC = 54.5° is also stated).
+TASK 2 · CRITERION B — INVESTIGATING PATTERNS (Q32–Q35)
+Subtotal: 15 marks
+Q32
+B
+Multiples of one-eleventh · Topic 2 (Decimals to Fractions Patterns) · Challenge
+4 marks
+(a)
+8
+11 = 0.72
+A1 ;  the sum of the two repeating digits is always d1 + d2 = 9 (e.g. 0+9 = 1+8 = 2+7 = 7+2 = 9) A1 .
+[2 marks]
+(b)
+Rule & justification: The 2-digit repeating block equals 9n (padded to two digits for n = 1). Scaling numerator and
+denominator by 9 gives n
+11 = 9n
+99 , and any two-digit integer AB divided by 99 equals 0.AB (since 99 × 0.AB = AB) R1 .
+Application: Since 81 = 9 × 9, 0.81 = 9
+11 ; therefore 3.81 = 3 + 9
+11 = 
+42
+11
+A1 .
+[2 marks]
+GUIDANCE: In (b), R1 requires both the expression 9n and linking denominator 99 to 2-digit repeating decimals. Leaving 3 9
+11 mixed instead of
+improper 42
+11 scores R1 A0.
+Q33
+B
+Decreasing power sequence · Topic 3 (Simplifying Powers Patterns) · Challenge
+4 marks
+(a)
+U1 = 34
+35 = 3−1,  U2 = 36
+38 = 3−2,  U3 = 38
+311 = 3−3
+A1 .
+Pattern: Each term’s exponent of 3 decreases by 1 (equivalently, each term is divided by 3, or multiplied by 1
+3 ) R1 .
+[2 marks]
+(b)
+General term & proof: Numerator exponents are 2, 3, 4, … = n + 1; denominator exponents are 5, 8, 11, … = 3n + 2.
+Un = 9n+1
+33n+2 = (32)n+1
+33n+2 = 32n+2
+33n+2 = 3(2n+2) − (3n+2) = 3−n
+R1 .
+Solve:
+1
+2187 = 1
+37 = 3−7 ⇒ 3−n = 3−7 ⇒ n = 7
+A1 .
+[2 marks]
+GUIDANCE: Award R1 in (b) only if the unsimplified fraction 9n+1
+33n+2 is stated and algebraically reduced to 3−n.
+Q34
+B
+Expanding rectangle diagonals · Topics 1 & 5 (Pythagoras & Irrationality) · Challenge
+4 marks
+(a)
+d1 = √22 + 22 = √8 = 2√2 cm;  d2 = √42 + 22 = √20 = 2√5 cm;  d3 = √62 + 22 = √40 = 2√10 cm A1 .
+General formula: dn = √(2n)2 + 22 = √4n2 + 4 = 2√n2 + 1 cm
+A1 .
+[2 marks]
+(b)
+For dn = 2√n2 + 1 to be rational, n2 + 1 must be a perfect square M1 .
+However, for every integer n ≥ 1, n2 < n2 + 1 < n2 + 2n + 1 = (n + 1)2. Since n2 + 1 lies strictly between two consecutive
+perfect squares, it is never a perfect square; hence √n2 + 1 and dn are always irrational R1 .
+[2 marks]
+GUIDANCE: Alternative proof in (b): if n2 + 1 = m2 for integer m > 0, then (m − n)(m + n) = 1, forcing m − n = m + n = 1 ⇒ n = 0, contradicting n ≥ 1 (full 2/2
+marks). Merely testing n = 1..5 scores 0/2 in (b).
+Q35
+B
+Fundamental trigonometric relationship · Topics 5 & 7 (Pythagoras & Trig Identities) · Challenge
+3 marks
+(a)
+sin θ = 8
+17 , cos θ = 15
+17 ⇒ sin θ
+cos θ = 
+8
+15 (= tan θ)  and  sin2θ + cos2θ = 64 + 225
+289
+ = 289
+289 = 1
+A1 (both required).
+[1 mark]
+(b)
+Proof: sin2θ + cos2θ = ( a
+c )2 + ( b
+c )2 = a2 + b2
+c2
+; since a2 + b2 = c2 (Pythagoras), this equals c2
+c2 = 1
+R1 .
+Evaluate: When sin θ = 3
+5 , cos2θ = 1 − ( 3
+5 )2 = 1 − 9
+25 = 16
+25 ; since θ is acute (cos θ > 0), cos θ = 
+4
+5
+A1 .
+[2 marks]
+GUIDANCE: Writing ± 4
+5 without selecting positive 4
+5 for acute θ loses A1 .
+
+
+===== PAGE 4 =====
+TASK 3 · CRITERION C — COMMUNICATING (Q36–Q40)
+Subtotal: 18 marks
+Q36
+C
+Real number subsets & counterexamples · Topic 1 (Rational & Irrational Numbers) · Basic–Int.
+3 marks
+(a)
+Rational Numbers (ℚ)
+Irrational Numbers (ℝ ∖ ℚ)
+√81 (= 9),   7
+12 ,  −1.23 (= −122
+99 )
+−√20 (= −2√5),  π + 2,  0.10110111…
+C1 for 4–5 elements placed correctly in a clear two-column table; A1 for all 6 correct.
+[2 marks]
+(b)
+Chantal’s claim is false: √81 ∈ T uses a radical sign, yet 81 = 92 is a perfect square, so √81 = 9 = 9
+1 , which is a ratio of two
+integers p/q (q ≠ 0) and therefore rational
+C1 .
+[1 mark]
+COMMUNICATION NOTE: Part (b) requires citing √81 = 9 from set T AND referencing the integer-ratio definition of rational numbers.
+Q37
+C
+Critiquing scientific notation working · Topic 4 (Scientific Notation) · Intermediate
+3 marks
+(a)
+Error 1 (Power-of-ten alignment): Sènan rewrote 7.0 × 10−4 as 0.07 × 10−3 (shifting two decimal places instead of one);
+since 10−4 = 0.1 × 10−3, it equals 0.7 × 10−3
+C1 .
+Error 2 (Invalid coefficient): Even from his own intermediate value 4.13 × 10−3, Sènan wrote 41.3 × 10−4 whose
+coefficient 41.3 violates the standard scientific-notation bound 1 ≤ a < 10 C1 .
+[2 marks]
+(b)
+(4.2 × 10−3) − (0.7 × 10−3) = (4.2 − 0.7) × 10−3 = 3.5 × 10−3
+A1
+[1 mark]
+GUIDANCE: Award 1 mark per clearly communicated error in (a) using formal mathematical vocabulary (power of ten / exponent and coefficient / mantissa).
+Q38
+C
+Shared-hypotenuse congruence · Topic 6 (Congruent Triangles) · Intermediate
+4 marks
+(a)
+In ΔEFG and ΔEHG:
+1. ∠EFG = ∠EHG = 90° (given right angles)
+M1
+2. EG = EG (common / shared hypotenuse opposite 90°)
+3. EF = EH = 7.5 cm (given equal legs)
+C1
+Therefore, ΔEFG ≅ ΔEHG by RHS (Right angle–Hypotenuse–Side) A1 .
+[3 marks]
+(b)
+Corresponding angles of congruent triangles are equal (CPCTC), so ∠FEG = ∠HEG; therefore,
+diagonal EG bisects ∠FEH
+C1 .
+[1 mark]
+ERROR PENALTY: Writing “SSA” or “ASS” instead of RHS (or HL) loses the final A1 in (a) (max 2/3). Alternative: using Pythagoras to show FG =
+√EG2 − 7.52 = HG and concluding by SSS or SAS earns full 3/3 marks.
+Q39
+C
+Intersecting right triangles · Topic 6 (Similar Triangles) · Intermediate
+4 marks
+(a)
+In ΔABC and ΔEDC:
+• ∠ABC = ∠EDC = 90° (given AB ⊥ BD and ED ⊥ BD)
+M1
+• ∠ACB = ∠ECD (vertically opposite angles at intersection C)
+Hence ΔABC ∼ ΔEDC by AA similarity
+C1 .
+[2 marks]
+(b)
+From ΔABC ∼ ΔEDC, scale factor k = CD
+BC = 12
+8 = 3
+2 = 1.5:
+• ED
+AB = CD
+BC ⇒ ED
+6 = 12
+8 ⇒ ED = 9 cm
+A1
+• In right ΔABC, AC = √62 + 82 = 10 cm ⇒ CE = 1.5 × 10 = 15 cm (or √92 + 122 = √225 = 15 cm)
+A1 .
+[2 marks]
+GUIDANCE: Also accept alternate interior angles (∠BAC = ∠DEC since AB ∥ ED, both perpendicular to BD) in (a).
+Q40
+C
+Surd triangle classification · Topics 1 & 5 (Irrational Surds & Converse of Pythagoras) · Challenge
+4 marks
+(a)
+Square all three sides: LM2 + MN2 = (√18)2 + (√32)2 = 18 + 32 = 50, and LN2 = (√50)2 = 50 M1 .
+Since LM2 + MN2 = LN2, by the Converse of Pythagoras’ Theorem, ΔLMN is right-angled with ∠LMN = 90° (opposite
+longest side LN) C1 .
+[2 marks]
+(b)
+Simplify surds: LM = √9 × 2 = 3√2 m,  MN = √16 × 2 = 4√2 m,  LN = √25 × 2 = 5√2 m.
+Perimeter = 3√2 + 4√2 + 5√2 = 12√2 m
+A1 .
+Since √2 is irrational (2 is not a perfect square) and 12 is a non-zero rational integer, their product 12√2 is irrational
+C1 .
+[2 marks]
+GUIDANCE: Naming the right angle at L or N instead of ∠LMN (or ∠M) loses C1 in (a). Decimal perimeter 16.97 m without exact 12√2 m scores 0/1 for
+A1 .
+
+
+===== PAGE 5 =====
+TASK 4 · CRITERION D — APPLYING MATHEMATICS IN REAL-LIFE CONTEXTS (Q41–Q45)
+Subtotal: 15 marks
+Q41
+D
+Port of Cotonou cargo · Topic 4 (Scientific Notation in Context) · Intermediate
+3 marks
+(a)
+Align all masses to 109 kg (or 108 kg):
+(1.18 × 109) + (0.67 × 109) − (0.29 × 109) = (1.18 + 0.67 − 0.29) × 109
+M1 = 1.56 × 109 kg
+A1
+[2 marks]
+(b)
+Capacity of 38 000 trips = (3.8 × 104) × (4.0 × 104) = 1.52 × 109 kg < 1.56 × 109 kg (or trips needed = 1.56 × 109 ÷ 4.0 × 104 =
+39 000 > 38 000) ⇒ No, 38 000 trips do not suffice (short by 4.0 × 107 kg / 1 000 trips) R1 .
+[1 mark]
+GUIDANCE: Saying “No” without quantitative comparison (1.52 × 109 vs 1.56 × 109, or 39 000 vs 38 000) scores 0/1 in (b). Award FT in (b) from student’s (a).
+Q42
+D
+School media archive · Topics 3 & 4 (Index Laws & Scientific Notation) · Int.–Challenge
+3 marks
+(a)
+Total size = (5 × 24) × (26 × 103) = 5 × 210 × 103 = 5 × 1024 × 1000 M1
+Exact integer = 5 120 000 KB;  Scientific notation = 5.12 × 106 KB
+A1 (both forms required).
+[2 marks]
+(b)
+Compressed size = (5 × 210 × 103) × 2−2 = 5 × 28 × 103 = 5 × 256 × 1000 = 1 280 000 KB (or 1.28 × 106 KB)
+A1 .
+[1 mark]
+FT NOTE: Dividing student’s answer from (a) by 4 (= 22) earns full FT mark in (b).
+Q43
+D
+Baobab shadow survey · Topic 6 (Similar Triangles in Context) · Intermediate
+3 marks
+(a)
+Both tree and pole stand vertically (∠ABC = ∠DEC = 90°) and share common angle ∠C at the shadow tip, so ΔABC ∼
+ΔDEC by AA similarity
+M1 .
+h
+1.75 = 16.8
+2.4 = 7 ⇒ h = 7 × 1.75 = 12.25 m (or 12.3 m to 3 s.f.) A1 .
+[2 marks]
+(b)
+Any one sensible physical limitation R1 : e.g., a baobab’s wide, rounded canopy means the highest shadow-casting
+branch is offset horizontally from trunk centre B; ground may not be perfectly horizontal; shadow tip C has a blurred
+penumbra; or the pole/trunk may lean slightly from 90°.
+[1 mark]
+GUIDANCE: Award M1 A0 in (a) if ratio 
+h
+1.75 = 16.8
+2.4 is solved correctly to 12.25 m with no similarity justification.
+Q44
+D
+Cross-river medical drone · Topic 5 (Pythagoras’ Theorem in Context) · Intermediate
+3 marks
+(a)
+Vertical drop Δy = 32 − 8 = 24 m; horizontal span Δx = 70 m M1 .
+Flight distance AB = √242 + 702 = √576 + 4900 = √5476 = 74 m
+A1 .
+[2 marks]
+(b)
+Flight time = distance
+speed = 
+74 m
+12.5 m/s = 5.92 seconds (or 5.9 s) A1 .
+[1 mark]
+COMMON ERROR: Using 322 + 702 = 5924 (⇒ 76.97 m) without subtracting bank height 8 m scores 0/2 in (a), but earns FT A1 in (b) if divided accurately
+by 12.5 m/s (= 6.16 s).
+Q45
+D
+Rooftop solar panel tilt · Topics 5 & 7 (Trigonometry & Pythagoras in Engineering) · Challenge
+3 marks
+(a)
+Panel length 1.80 m is the hypotenuse and 0.42 m is opposite θ: sin θ = 0.42
+1.80 = 7
+30 = 0.2333… M1 .
+θ = sin−1(0.42 ÷ 1.80) = 13.493° = 13.5° (1 d.p.). Since 12.0° ≤ 13.5° ≤ 15.0°, θ = 13.5° — Yes, meets target
+A1 .
+[2 marks]
+(b)
+By Pythagoras: w = √1.802 − 0.422 = √3.24 − 0.1764 = √3.0636 = 1.7503… = 1.75 m (2 d.p.) A1 .
+(Or via trigonometry: w = 1.80 cos 13.493° = 1.7503… = 1.75 m.)
+[1 mark]
+GUIDANCE: Using tan θ = 0.42/1.80 (= 13.1°) misidentifies the tilted 1.80 m panel as horizontal base rather than hypotenuse and scores 0/2 in (a). Both 13.5°
+and the affirmative compliance statement are needed for A1 in (a).
+OAK INTERNATIONAL SCHOOL, BENIN  ·  GRADE 8 (IB MYP 3) MATHEMATICS MARKING SCHEME (VERSION B)  ·  VERIFIED TOTAL: 100 MARKS

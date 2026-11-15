@@ -1,0 +1,200 @@
+Q#
+Correct Answer
+Mk
+Crit.
+Lvl
+Curriculum Topic
+Mathematical Working / Concept Rationale
+18
+Q (√1.44)
+1
+C
+L2
+Topic 1 & 2:
+Representations
+√1.44 = √144
+100 = 12
+10 = 6
+5 = 1.2.
+19
+1.2 × 1012 bytes
+1
+D
+L2
+Topic 4: Scientific Notation
+(+)
+(7.4 + 4.6) × 1011 = 12.0 × 1011 = 1.2 × 1012 bytes (also accept 1.20 × 1012; do not
+credit 12 × 1011).
+20
+6 m (or 6.0 m)
+1
+D
+L2
+Topic 5: Pythagoras in
+Context
+Height h = √6.52 − 2.52 = √42.25 − 6.25 = √36 = 6 m.
+21
+B (7)
+2
+B
+L3
+Topic 3: Exponential
+Equations
+Write 9n+1 = (32)n+1 = 32n+2; divide by 3n−2: 3(2n+2)−(n−2) = 3n+4 = 311 ⇒ n + 4 = 11
+⇒ n = 7.
+22
+C (41)
+2
+B
+L3
+Topic 2: Mixed Repeating
+Decimals
+Let x = 0.36: 100x − 10x = 36.6 − 3.6 ⇒ 90x = 33 ⇒ x = 33
+90 = 11
+30 . Lowest terms
+gives a + b = 11 + 30 = 41.
+23
+A (7 cm)
+2
+D
+L3
+Topic 6: Hourglass Similar
+Triangles
+Since PQ ∥ SR, ΔPOQ ∼ ΔROS (AA: alternate + vertically opposite angles). Thus
+PQ
+17.5 = 4
+10 ⇒ PQ = 0.4 × 17.5 = 7 cm.
+24
+B (
+48
+tan 28° )
+2
+D
+L3
+Topic 7: Angle of
+Depression
+By alternate interior angles, angle of elevation from boat = 28°. Thus tan 28° =
+48
+x ⇒ x = 
+48
+tan 28° .
+25
+A (120 cm2)
+2
+D
+L3
+Topic 5: Isosceles Altitude
+& Area
+Altitude from E bisects base FG into 8 cm halves: h = √172 − 82 = √225 = 15 cm.
+Area = 1
+2 × 16 × 15 = 120 cm2.
+PART B — THEORY WORKED SOLUTIONS & MARKING GUIDANCE · VERSION B (Q26–Q45)20 questions  ·  70 marks (written in student exam script)
+TASK 1 · CRITERION A — KNOWING AND UNDERSTANDING (Q26–Q31)
+Subtotal: 22 marks
+Q26
+A
+Decimal-to-fraction conversion · Topic 2 (Converting Decimals into Fractions) · Basic
+3 marks
+(a)
+0.875 = 875
+1000 = 875 ÷ 125
+1000 ÷ 125 = 
+7
+8
+A1
+[1 mark]
+(b)
+Let x = 0.63 = 0.636363… ⇒ 100x = 63.6363…
+Subtract: 100x − x = 63 ⇒ 99x = 63 M1 ⇒ x = 63
+99 = 63 ÷ 9
+99 ÷ 9 = 
+7
+11
+A1
+[2 marks]
+GUIDANCE: In (a), unsimplified 875
+1000 or 35
+40 scores 0/1. In (b), writing 7
+11 directly from calculator without algebraic subtraction scores 0/2; stopping at
+unsimplified 63
+99 or 21
+33 with valid algebra scores M1 A0.
+Q27
+A
+Mixed repeating decimals · Topic 2 (Converting Decimals into Fractions) · Intermediate
+4 marks
+(a)
+Let x = 1.16 = 1.1666… Then 10x = 11.666… and 100x = 116.666…
+Subtract: 100x − 10x = 116.6 − 11.6 ⇒ 90x = 105 M1
+x = 105
+90 = 105 ÷ 15
+90 ÷ 15 = 
+7
+6 (proven) A1
+[2 marks]
+(b)
+Convert 0.28 = 28
+100 = 7
+25 . Common denominator of 6 and 25 is 150:
+7
+6 − 7
+25 = 175 − 42
+150
+M1 = 
+133
+150
+A1  (since gcd(133, 150) = 1).
+[2 marks]
+ALTERNATIVE FOR (A): Splitting 1.16 = 1.1 + 0.06, then letting y = 0.06 ⇒ 90y = 6 ⇒ y = 1
+15
+M1 and computing 11
+10 + 1
+15 = 33 + 2
+30
+ = 35
+30 = 7
+6
+A1 earns full
+marks. Since 7
+6 is a given target in (a), explicit simplification from 105
+90 or 35
+30 must be shown.
+Q28
+A
+Laws of indices · Topic 3 (Simplifying Powers) · Intermediate
+4 marks
+(a)
+15
+5 · p−3 − 2 · q6 − (−1) = 3p−5q7
+M1 = 
+3q7
+p5
+A1
+[2 marks]
+(b)
+Apply power −2 and zero index u0 = 1: (3−2u(−2)(−2)v4(−2)) × 9(1) = 1
+9 u4v−8 × 9 M1
+Simplify coefficient ( 1
+9 × 9 = 1) and rewrite with positive indices: 
+u4
+v8
+A1
+[2 marks]
+GUIDANCE: Leaving 3p−5q7 in (a) or u4v−8 in (b) scores M1 A0 (violates positive-index requirement). Writing 1u4/v8 is accepted for full marks.
+Q29
+A
+Operations in scientific notation · Topic 4 (Addition & Subtraction in Scientific Notation) · Intermediate
+3 marks
+(a)
+Align to 108: (5.3 × 108) − (0.65 × 108) = (5.3 − 0.65) × 108 = 4.65 × 108
+A1
+[1 mark]
+(b)
+Align to 10−4: (0.74 × 10−4) + (4.6 × 10−4) = 5.34 × 10−4
+M1 = 5.34 × 10−4
+A1
+(Or via 10−5: (7.4 + 46) × 10−5 = 53.4 × 10−5
+M1 = 5.34 × 10−4
+A1 .)
+[2 marks]
+GUIDANCE: In (b), award M1 for 53.4 × 10−5 or 0.000534, and A1 only when normalized to 5.34 × 10−4.
