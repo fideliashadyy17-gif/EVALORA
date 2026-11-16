@@ -22,6 +22,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='./ExamMessenger')return {ExamMessenger:()=>null};
  if(req==='./RetakePanel')return {RetakePanel:()=>null};
  if(req==='./HintPanel')return {HintPanel:()=>null};
+ if(req==='./FormulaPanel')return {FormulaPanel:()=>null};
  if(req==='@/components/PresenceRail')return {PresenceRail:()=>null};
  if(req==='@/lib/hintAttention')return {answerStateFor:({hasSavedAnswer,isCorrect})=>!hasSavedAnswer?'unanswered':isCorrect===true?'correct':isCorrect===false?'incorrect':'answered'};
  if(req==='@/lib/presence')return {PRESENCE_HEARTBEAT_MS:20000,PRESENCE_REFRESH_MS:15000};

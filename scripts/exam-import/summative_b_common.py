@@ -323,6 +323,18 @@ def q(n, *, sec, crit, marks, lvl, topic, blocks, qtype="single_choice",
             {"label": "F", "body": "False", "correct": ans == "F"},
         ]
         assert ans in ("T", "F"), f"question {n}: true/false answer must be T or F"
+    elif qtype == "short_answer":
+        # short_answer is marked against the labels of its correct options; a
+        # question without them can only ever raise a ScoringError at submit.
+        assert opts, f"question {n}: short_answer needs the accepted answer(s) as options"
+        tags = labels or LETTERS
+        record["options"] = [
+            {"label": tags[i], "body": o, "correct": (ans == tags[i])}
+            for i, o in enumerate(opts)
+        ]
+        assert any(o["correct"] for o in record["options"]), f"question {n}: no accepted answer"
+    elif qtype == "numeric":
+        assert numeric is not None, f"question {n}: numeric needs numeric_answer"
     return record
 
 

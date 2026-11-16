@@ -172,10 +172,7 @@ def build():
 
     Q.append(q(21, sec="A", crit="B", marks=1, lvl="intermediate", topic="Direct proportion",
                subtopic="graph of direct proportion",
-               blocks=[para("Which graph shows that $y$ is directly proportional to $x$?"),
-                       stats_figure(stats_spec(
-                           "dot_plot", title="Option A",
-                           x_label="x", y_label="y", values=[]))],
+               blocks=[para("Which description matches the graph of $y$ directly proportional to $x$?")],
                opts=["A straight line through the origin",
                      "A straight line that does not pass through the origin",
                      "A curve through the origin",
@@ -198,7 +195,8 @@ def build():
                blocks=[para("Which set is shaded in the Venn diagram?"),
                        diagram({"kind": "venn2", "title": "Shaded region",
                                 "venn": {"leftLabel": "A", "rightLabel": "B", "leftOnly": "",
-                                         "both": "", "rightOnly": "shaded", "outside": ""}})],
+                                         "both": "", "rightOnly": "", "outside": "",
+                                         "shaded": "rightOnly"}})],
                opts=["$A \\cap B$", "$A \\cup B$", "$A \\cap B'$", "$A' \\cap B$"], ans="D",
                expl="Only the part of B that lies outside A is shaded, which is $A' \\cap B$ (B only)."))
 
@@ -278,7 +276,7 @@ def build():
     Q.append(q(34, sec="A", crit="B", marks=2, lvl="challenge", topic="Direct proportion",
                subtopic="proportionality table",
                blocks=[para("In the table, $y$ is directly proportional to $x$. What is the value of $a + b$?"),
-                       data_table(["$x$", "$x$", "6", "15", "$b$"], [["$y$", "$y$", "$a$", "20", "36"]])],
+                       data_table(["$x$", "6", "15", "$b$"], [["$y$", "$a$", "20", "36"]])],
                opts=["27", "35", "38", "42"], ans="B",
                expl="From 15 → 20 the multiplier is 4/3, so $a = 6 \\times \\frac{4}{3} = 8$ and "
                     "$b = 36 \\div \\frac{4}{3} = 27$. Hence $a + b = 35$."))

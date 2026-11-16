@@ -133,7 +133,8 @@ def build():
 
     Q.append(q(9, sec="A", crit="D", marks=1, lvl="basic", topic="Scientific notation",
                subtopic="subtraction in scientific notation",
-               blocks=[para("Evaluate $(6.3 \\times 10^{-3}) - (4.5 \\times 10^{-4})$, giving your answer in "
+               blocks=[para("The masses of two samples are $(6.3 \\times 10^{-3})$ g and "
+                            "$(4.5 \\times 10^{-4})$ g. Evaluate the difference, giving your answer in "
                             "standard form.")],
                opts=[r"$5.85 \times 10^{-3}$ g", r"$5.85 \times 10^{-4}$ g", r"$1.8 \times 10^{-3}$ g",
                      r"$6.3 \times 10^{-4}$ g"], ans="A",
@@ -175,19 +176,19 @@ def build():
 
     # ── PART A · Q15 · SHORT RESPONSE (scheme prints the answer 2√5) ─────────
     Q.append(q(15, sec="A", crit="A", marks=1, lvl="intermediate", topic="Irrational bounds",
-               subtopic="simplifying a surd", qtype="short_answer",
+               subtopic="simplifying a surd", qtype="open_ended",
+               tools=["math", "rich_text"],
+               guidance="Simplify the surd and justify whether the value is rational.",
                expl=r"$2\sqrt{5} = \sqrt{20}$. Since $16 < 20 < 25$ and 20 is not a perfect square, "
                     r"$\sqrt{20} \approx 4.472$ is irrational and lies between 4 and 5.",
-               blocks=[para("The marking scheme records the answer to this item as $2\\sqrt{5}$. Simplify "
-                            "$\\sqrt{20}$ and state, with a reason, whether the value is rational."),
-                       para("(Scheme answer: $2\\sqrt{5}$.)")]))
+               blocks=[para("Simplify $\\sqrt{20}$ and state, with a reason, whether the value is rational.")]))
 
     # ── PART A · Q16–18 · MATCHING ───────────────────────────────────────────
     for n, (stem, answer, reason) in enumerate([
         ("Write the recurring decimal $0.\\dot{7}$ as a fraction in its simplest form.", "P",
          r"Let $x = 0.\dot{7}$; then $10x - x = 7 \Rightarrow 9x = 7 \Rightarrow x = \frac{7}{9}$. "
          r"Note that $\frac{7}{10} = 0.7$ terminates."),
-        ("Evaluate $4^{-1} + 2^{-2}$.", "R",
+        ("Which entry in the answer bank has the value $\\dfrac{1}{2}$?", "R",
          r"$4^{-1} + 2^{-2} = \frac{1}{4} + \frac{1}{4} = \frac{2}{4} = \frac{1}{2}$. (Note $1 - 3 = -2$.)"),
         ("Which of the following is a rational number equal to 1.2?", "Q",
          r"$\sqrt{1.44} = \sqrt{\frac{144}{100}} = \frac{12}{10} = \frac{6}{5} = 1.2$."),
@@ -199,15 +200,15 @@ def build():
 
     # ── PART A · Q19–20 · SHORT RESPONSE (answers printed in the scheme) ─────
     Q.append(q(19, sec="A", crit="D", marks=1, lvl="intermediate", topic="Scientific notation",
-               subtopic="addition in scientific notation", qtype="short_answer",
+               subtopic="addition in scientific notation", qtype="numeric",
                numeric=1.2e12, tol=0,
                expl=r"$(7.4 + 4.6) \times 10^{11} = 12.0 \times 10^{11} = 1.2 \times 10^{12}$ bytes "
                     r"(also accept $1.20 \times 10^{12}$; do not credit $12 \times 10^{11}$).",
                blocks=[para("A data centre stores $7.4 \\times 10^{11}$ bytes on one server and $4.6 \\times "
-                            "10^{11}$ bytes on another. Find the total, in standard form (bytes).")]))
+                            "10^{11}$ bytes on another. Find the total number of bytes.")]))
 
     Q.append(q(20, sec="A", crit="D", marks=1, lvl="intermediate", topic="Pythagoras in context",
-               subtopic="finding a height", qtype="short_answer",
+               subtopic="finding a height", qtype="numeric",
                numeric=6, tol=0,
                expl=r"$h = \sqrt{6.5^2 - 2.5^2} = \sqrt{42.25 - 6.25} = \sqrt{36} = 6$ m.",
                blocks=[para("A 6.5 m ladder leans against a wall with its foot 2.5 m from the base of the wall. "

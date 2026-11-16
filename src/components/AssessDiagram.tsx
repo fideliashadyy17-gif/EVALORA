@@ -94,20 +94,35 @@ function Venn({ spec }: { spec: AssessDiagramSpec }) {
   // region. It is drawn as an explicit path beneath the circle outlines so
   // the shading never hides the numbers written in the regions.
   const cx1 = 185; const cx2 = 285; const cy0 = 155; const rad = 105;
+  // The circles overlap: their intersection points sit h above/below the centre
+  // line, and the region paths below follow the two arcs between them.
+  const half = (cx2 - cx1) / 2;
+  const h = Math.sqrt(rad * rad - half * half);
+  const ix = (cx1 + cx2) / 2;
+  const top = `${ix},${+(cy0 - h).toFixed(2)}`;
+  const bottom = `${ix},${+(cy0 + h).toFixed(2)}`;
+  const disc = (cx: number) => `M${cx - rad},${cy0}a${rad},${rad} 0 1,0 ${rad * 2},0a${rad},${rad} 0 1,0 ${-rad * 2},0`;
   const shadedPath = (() => {
     switch (v.shaded) {
-      // "left" / "right" / "union" shade whole discs; the rest shade the
-      // region named by the paper (B only, A only, the overlap, outside).
+      // Whole discs.
       case "left":
-        return `M${cx1 - rad},${cy0}a${rad},${rad} 0 1,0 ${rad * 2},0a${rad},${rad} 0 1,0 ${-rad * 2},0`;
+        return disc(cx1);
       case "right":
-        return `M${cx2 - rad},${cy0}a${rad},${rad} 0 1,0 ${rad * 2},0a${rad},${rad} 0 1,0 ${-rad * 2},0`;
+        return disc(cx2);
       case "union":
+        return `${disc(cx1)} ${disc(cx2)}`;
+      // B only: the right circle's outer arc, then A's inner arc back.
       case "rightOnly":
+        return `M${top} A${rad},${rad} 0 1 1 ${bottom} A${rad},${rad} 0 0 0 ${top} Z`;
+      // A only: mirror of the above.
       case "leftOnly":
+        return `M${top} A${rad},${rad} 0 1 0 ${bottom} A${rad},${rad} 0 0 1 ${top} Z`;
+      // Both: the lens between the two intersection points.
       case "both":
+        return `M${top} A${rad},${rad} 0 0 0 ${bottom} A${rad},${rad} 0 0 0 ${top} Z`;
+      // Outside both circles: the surround with the discs cut out (even-odd).
       case "outside":
-        return null;
+        return `M8,8H452V292H8Z ${disc(cx1)} ${disc(cx2)}`;
       default:
         return null;
     }
@@ -116,7 +131,15 @@ function Venn({ spec }: { spec: AssessDiagramSpec }) {
     <svg viewBox="0 0 460 300" className="mx-auto w-full max-w-[460px]" role="img">
       <rect x={8} y={8} width={444} height={284} fill="none" stroke={ink} strokeWidth={1.6} />
       <text x={20} y={32} fontSize={14} fontWeight={700} fill={ink}>{v.universalLabel ?? "ξ"}</text>
-      {shadedPath ? <path d={shadedPath} fill="#0a5c36" fillOpacity={0.22} /> : null}
+      {shadedPath ? (
+        <path
+          d={shadedPath}
+          fill="#0a5c36"
+          fillOpacity={0.22}
+          fillRule={v.shaded === "outside" ? "evenodd" : "nonzero"}
+          data-testid="venn-shaded-region"
+        />
+      ) : null}
       <circle cx={cx1} cy={cy0} r={rad} fill="#0a5c36" fillOpacity={v.shaded ? 0 : 0.13} stroke={accent} strokeWidth={2} />
       <circle cx={cx2} cy={cy0} r={rad} fill="#c9a227" fillOpacity={v.shaded ? 0 : 0.18} stroke="#8a6d14" strokeWidth={2} />
       <text x={140} y={78} textAnchor="middle" fontSize={15} fontWeight={700} fill={accent}>{v.leftLabel}</text>
