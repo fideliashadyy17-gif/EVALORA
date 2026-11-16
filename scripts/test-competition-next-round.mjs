@@ -278,4 +278,4 @@ check("every refusal and the success have organizer-readable copy",
   ["next_round", "round_no_session", "round_not_ended", "round_failed", "round_cancelled"]
     .every((key) => new RegExp(`${key}: "`).test(page)));
 
-console.log(`\n${checks} competition-round checks passed (real transition module, fake database).`);
+console.log(`\n${checks} checks passed (competition next round: real transition module, fake database).`);

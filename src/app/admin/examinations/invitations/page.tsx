@@ -181,6 +181,15 @@ export default async function ExamInvitationsPage({
                       Maximum attempts (1–{MAX_LIMITED_ATTEMPTS}) applies to Limited Attempts only.
                     </p>
                   </Field>
+                  <Field
+                    label="Calculator on this paper"
+                    hint="Permitted offers a calculator on every question of this paper. A question can still override it: “not_permitted” hides it and “required” forces it on, whatever the paper says."
+                  >
+                    <Select name="calculator" defaultValue={access.calculator ? "1" : "0"}>
+                      <option value="0">Not permitted</option>
+                      <option value="1">Permitted on every question</option>
+                    </Select>
+                  </Field>
                   <Field label="Additional identity fields (JSON array)" hint='Example: [{"key":"student_id","label":"Student ID","required":true,"type":"text"}]'>
                     <Textarea name="identity_fields" rows={4} className="font-mono text-xs" defaultValue={JSON.stringify(access.identityFields, null, 2)} />
                   </Field>

@@ -201,4 +201,4 @@ ok("the feedback summary no longer keeps its own band or level rules",
 ok("the published question falls back to the shared title when the paper has none",
   /criterionTitle\(typeof cfg\.myp_criterion === "string" \? cfg\.myp_criterion : null\)/.test(live));
 
-console.log(`\n${passed} MYP criterion checks passed (real modules, no DB/browser).`);
+console.log(`\n${passed} checks passed (MYP criteria: real modules, no DB/browser).`);

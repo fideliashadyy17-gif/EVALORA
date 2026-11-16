@@ -390,6 +390,9 @@ export async function updateExamInvitation(formData: FormData) {
     // numeric cap; "limited" stores a clamped 1..20 bound.
     settings.attempt_mode = normalizeAttemptMode(val(formData, "attempt_mode", 20));
     settings.max_attempts = normalizeMaxAttempts(formData.get("max_attempts"));
+    // The paper's calculator default. A question keeps the last word: its own
+    // `calculator` or `calculator_policy` config overrides this either way.
+    settings.calculator = val(formData, "calculator", 10) === "1";
     const rawIdentity = val(formData, "identity_fields", 4000);
     let parsedIdentity: unknown = [];
     if (rawIdentity) {
