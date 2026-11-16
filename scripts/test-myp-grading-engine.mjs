@@ -379,6 +379,7 @@ const badMark = M.buildMypResult({
 ok("a non-numeric mark is reported as a marking data error", badMark.criteria.find((c) => c.code === "A").status === "error" && badMark.errorCriteria.join("") === "A");
 ok("the other criteria are unaffected by the error", badMark.criteria.find((c) => c.code === "B").status === "assessed" && badMark.criteria.find((c) => c.code === "C").status === "assessed");
 ok("a marking data error withholds the overall grade instead of scoring zero", badMark.overallGrade === null && badMark.gradeStatus === "incomplete");
+ok("an invalid mark never poisons the paper totals", Number.isFinite(badMark.marksAwarded) && Number.isFinite(badMark.marksMax) && badMark.percent !== null);
 ok("the error carries a teacher-facing meaning and a red tone",
   M.CRITERION_STATUS_MEANING.error.includes("never converted to zero") && M.criterionStatusTone("error") === "red");
 

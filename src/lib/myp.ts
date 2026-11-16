@@ -667,12 +667,15 @@ export function buildMypResult(args: {
   let marksMaxRaw = 0;
   for (const question of paper) {
     const answer = answerByQuestion.get(question.questionId);
-    const marked = answer?.pointsAwarded !== null && answer?.pointsAwarded !== undefined;
+    const raw = answer?.pointsAwarded;
+    // A non-numeric mark is a data error (its criterion is red); it must not
+    // poison the paper totals with NaN, so it is excluded like pending work.
+    const marked = raw !== null && raw !== undefined && Number.isFinite(Number(raw));
     const blankOnFinalPaper = !answer && final;
-    if (!marked && !blankOnFinalPaper && final) continue; // pending marking
+    if (!marked && !blankOnFinalPaper && final) continue; // pending marking or data error
     marksMaxRaw += Number(question.points);
     if (marked) {
-      marksAwardedRaw += Math.max(0, Math.min(Number(question.points), Number(answer?.pointsAwarded)));
+      marksAwardedRaw += Math.max(0, Math.min(Number(question.points), Number(raw)));
     }
   }
   const marksMax = round(marksMaxRaw);
