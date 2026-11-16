@@ -36,6 +36,20 @@ export async function GET(
   const scope = url.searchParams.get("scope") === "individual" ? "individual" : "collective";
   const attemptId = url.searchParams.get("attempt");
 
+  // An export is an API endpoint, so an anonymous request gets a plain 401
+  // rather than an HTML login redirect (which would be mistaken for a failed
+  // download). The role check below still runs for every signed-in caller.
+  const sessionClient = await createClient();
+  const {
+    data: { user },
+  } = await sessionClient.auth.getUser();
+  if (!user) {
+    return new Response("Sign in is required to export MYP results.", {
+      status: 401,
+      headers: { "Cache-Control": "private, no-store" },
+    });
+  }
+
   try {
     const access = await mypAccess({ global: true });
     const learner = !access.isSuperAdmin && !access.canExport;
@@ -159,6 +173,14 @@ export async function GET(
       headers: xlsxHeaders(`evalora-myp-results-${safeFilename(scopeLabel)}.xlsx`),
     });
   } catch (error) {
+    // A redirect raised by the authorization helpers means "not permitted" for
+    // an API caller; never surface it as a 500 with a framework digest.
+    if (error && typeof error === "object" && "digest" in error && String((error as { digest?: unknown }).digest ?? "").startsWith("NEXT_REDIRECT")) {
+      return new Response("You do not have access to that MYP result.", {
+        status: 403,
+        headers: { "Cache-Control": "private, no-store" },
+      });
+    }
     const message = error instanceof Error ? error.message : "Export failed.";
     return new Response(`The MYP export could not be generated: ${message}`, { status: 500 });
   }
