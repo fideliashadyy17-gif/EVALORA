@@ -74,6 +74,12 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
     ...qStats.map((q, i) => [`Q${i + 1}`, q.type, q.topic ?? "", q.difficulty, q.answered, q.pct ?? "n/a"]),
   ]);
 
+  // MYP reports are only meaningful when the paper is criterion-mapped. The
+  // links take the same examination scope into the MYP results workspace, where
+  // the configured criteria, levels and 1–7 grade are computed by one engine.
+  const hasCriteria = qStats.some((q) => q.crit);
+  const mypQuery = `exam=${encodeURIComponent(id)}`;
+
   return (
     <>
       <PageTitle
@@ -83,6 +89,13 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
         action={
           <div className="flex flex-wrap gap-2 print:hidden">
             <ButtonLink href={`/dashboard/exams/${id}`} variant="outline">← Examination</ButtonLink>
+            {hasCriteria && (
+              <>
+                <ButtonLink href={`/dashboard/myp-results?${mypQuery}`} variant="outline">MYP criterion results</ButtonLink>
+                <ButtonLink href={`/api/myp/export/pdf?scope=collective&${mypQuery}`} variant="outline">MYP PDF</ButtonLink>
+                <ButtonLink href={`/api/myp/export/xlsx?scope=collective&${mypQuery}`} variant="outline">MYP Excel</ButtonLink>
+              </>
+            )}
             <ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} />
             <PrintButton />
           </div>
@@ -103,7 +116,10 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
             {list.length === 0 ? (
               <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>
             ) : (
-              <DataTable head={["Candidate", "Score", "%", "Hints", "Result"]} label="Candidate examination results">
+              <DataTable
+                head={hasCriteria ? ["Candidate", "Score", "%", "Hints", "Result", "MYP"] : ["Candidate", "Score", "%", "Hints", "Result"]}
+                label="Candidate examination results"
+              >
                 {list.map((a) => {
                   const pct = a.score !== null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
                   return (
@@ -116,6 +132,16 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                       <td className="tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
                       <td className="tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
                       <td>{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
+                      {hasCriteria && (
+                        <td className="whitespace-nowrap">
+                          <a
+                            className="text-xs font-semibold text-evergreen-800 underline underline-offset-2"
+                            href={`/dashboard/myp-results/${a.id}`}
+                          >
+                            Report
+                          </a>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

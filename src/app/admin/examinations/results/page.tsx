@@ -160,6 +160,9 @@ export default async function ExaminationResultsPage({
               <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish results" : "Validate & publish results"}</Button>
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
+            <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>
+            <a href={`/api/myp/export/pdf?scope=collective&exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Collective MYP PDF</a>
+            <a href={`/api/myp/export/xlsx?scope=collective&exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP Excel</a>
             <form action={enterOrgWorkspace}>
               <input type="hidden" name="organization_id" value={selected.organization_id} />
               <input type="hidden" name="next" value={`/dashboard/reports/exam/${selected.id}`} />
@@ -172,7 +175,7 @@ export default async function ExaminationResultsPage({
               <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No attempts match this outcome.</p>
             ) : (
               <>
-                <Table head={["Rank", "Candidate", "Attempt", "Score", "%", "Outcome", "Extension", "Submitted"]}>
+                <Table head={["Rank", "Candidate", "Attempt", "Score", "%", "Outcome", "Extension", "Submitted", "MYP"]}>
                   {filtered.slice((page - 1) * pageSize, page * pageSize).map((a, idx) => {
                     const i = (page - 1) * pageSize + idx;
                     const pct = a.score != null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
@@ -186,6 +189,14 @@ export default async function ExaminationResultsPage({
                         <td>{pct === null ? <Badge tone="gray">Pending</Badge> : <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge>}</td>
                         <td>{Number(a.extension_minutes) > 0 ? `+${a.extension_minutes} min` : "—"}</td>
                         <td className="text-ink-soft">{a.submitted_at ? fmtDateTime(a.submitted_at) : `Started ${fmtDateTime(a.started_at)}`}</td>
+                        <td>
+                          <Link
+                            href={`/admin/myp-results/${a.id}`}
+                            className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2"
+                          >
+                            Report
+                          </Link>
+                        </td>
                       </tr>
                     );
                   })}
