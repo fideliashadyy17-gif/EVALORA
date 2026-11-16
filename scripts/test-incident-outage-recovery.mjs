@@ -421,6 +421,7 @@ const stateRoute = compile("src/app/api/exam/state/route.ts", "scripts/__inciden
   "@/lib/examResults": { buildExamResult: () => ({ published: false }) },
   "@/lib/integrity": { parseIntegrityPolicy: () => ({ mode: "off" }) },
   "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
+  "@/lib/examFormulas": { parseFormulaSheet: () => null },
   "@/lib/supabase/server": { createAdminClient: () => activeDb },
 });
 

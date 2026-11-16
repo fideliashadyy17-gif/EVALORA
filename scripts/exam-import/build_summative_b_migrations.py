@@ -118,7 +118,23 @@ PAPERS = [
 ]
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # 0116–0119 are already applied in production.  Their content is now
+    # corrected by the forward migration built by
+    # build_summative_b_corrections.py; rewriting an applied migration would
+    # make the repository disagree with the database history.  A deliberate
+    # rebuild (fresh environment, reviewed diff) must opt in explicitly.
+    args = sys.argv[1:] if argv is None else argv
+    if "--force-applied-rewrite" not in args:
+        print(
+            "Refusing to rewrite the applied migrations 0116–0119.\n"
+            "Content corrections ship as "
+            "20261116150000–150003_summative_b_maths_corrections_*.sql; build those with "
+            "build_summative_b_corrections.py.\n"
+            "Pass --force-applied-rewrite only for a reviewed fresh rebuild.",
+            file=sys.stderr,
+        )
+        return 1
     OUT.mkdir(parents=True, exist_ok=True)
     for paper in PAPERS:
         mod = paper["module"]

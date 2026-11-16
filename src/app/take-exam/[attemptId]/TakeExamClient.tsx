@@ -29,18 +29,20 @@ import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Flag, ShieldAlert, X } from "lucide-react";
+import { Flag, ShieldAlert, Sigma, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
+import { FormulaPanel } from "./FormulaPanel";
+import type { FormulaSheet } from "@/lib/examFormulas";
 import { PresenceRail } from "@/components/PresenceRail";
 import { answerStateFor } from "@/lib/hintAttention";
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
+  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; formula_sheet?: FormulaSheet | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -243,6 +245,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const [confirmSubmit, setConfirmSubmit] = useState(false);
   // One-page corrigé: every question of the paper, answered or left blank.
   const [corrigeAll, setCorrigeAll] = useState(false);
+  // Formula sheet: a local dialog. It never mutates an answer, the queue, the
+  // deadline or the timer, and it is only offered when this examination has a
+  // sheet that validates as its own.
+  const [formulasOpen, setFormulasOpen] = useState(false);
   // Integrity: the browser reports what it can observe (tab hidden, focus lost,
   // full-screen exit, clipboard use); the server records it and owns the count.
   const [warning, setWarning] = useState<IntegrityWarning | null>(null);
@@ -1013,6 +1019,19 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           </div>
           {!submitted && (
             <>
+              {exam.formula_sheet && (
+                <Button
+                  variant="outline"
+                  className="text-xs"
+                  aria-expanded={formulasOpen}
+                  aria-controls="exam-formula-panel"
+                  data-testid="formulas-button"
+                  onClick={() => setFormulasOpen((open) => !open)}
+                >
+                  <Sigma className="mr-1 h-4 w-4" aria-hidden="true" />
+                  Formulas
+                </Button>
+              )}
               <ExamCountdown
                 deadline={attempt.deadline}
                 serverOffsetMs={offset.current}
@@ -1477,6 +1496,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   return (
     <>
       {examBody}
+      {!submitted && formulasOpen && exam.formula_sheet ? (
+        <FormulaPanel sheet={exam.formula_sheet} onClose={() => setFormulasOpen(false)} />
+      ) : null}
       {token ? (
         <ExamMessenger
           attemptId={attemptId}

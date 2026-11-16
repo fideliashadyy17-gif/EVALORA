@@ -35,6 +35,7 @@ Module._load=function(request,parent) {
   if(request==='./ExamMessenger') return {ExamMessenger:()=>null};
   if(request==='./RetakePanel') return {RetakePanel:()=>null};
   if(request==='./HintPanel') return {HintPanel:()=>null};
+  if(request==='./FormulaPanel') return {FormulaPanel:()=>null};
   if(request==='@/components/PresenceRail') return {PresenceRail:()=>null};
   if(request==='@/lib/hintAttention') return {answerStateFor:({hasSavedAnswer,isCorrect})=>!hasSavedAnswer?'unanswered':isCorrect===true?'correct':isCorrect===false?'incorrect':'answered'};
   if(request==='@/lib/presence') return {PRESENCE_HEARTBEAT_MS:20000,PRESENCE_REFRESH_MS:15000};

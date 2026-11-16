@@ -5,6 +5,7 @@ import { hasConnectionPause, isManuallyPaused, manualPauseMs, pauseNoticeKind, p
 import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion, releasedFeedback } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
+import { parseFormulaSheet } from "@/lib/examFormulas";
 import { parseIntegrityPolicy } from "@/lib/integrity";
 import { loadPublishedHints } from "@/lib/examHintsServer";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -186,6 +187,10 @@ export async function GET(request: Request) {
       proctoring: Boolean(settings.proctoring),
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
+      // Exam-specific formula sheet. It is validated against THIS examination
+      // (settings.formula_sheet.exam_id) and is null when absent, malformed or
+      // copied from another paper, so no button is shown for an empty sheet.
+      formula_sheet: parseFormulaSheet(settings.formula_sheet, exam.id),
       // The candidate client needs the assessment's integrity policy to know
       // which browser events to report and when to warn. Only thresholds and
       // switches travel here — never an answer, never another candidate.

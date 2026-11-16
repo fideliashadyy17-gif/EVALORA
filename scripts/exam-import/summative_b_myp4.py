@@ -438,8 +438,13 @@ def build():
                        para("(a) Find the 6-student mean, median & IQR; then recalculate all three for 7 students "
                             "when $y = 11$. [2]"),
                        para("(b) Express the 7-student mean in terms of $y$, and explain why the 7-student median "
-                            "and IQR remain constant for every $y$ in $0 \\le y \\le 34$. [2]")],
-               parts=[("(a)", 2, "Statistics with and without y"), ("(b)", 2, "Explanation of invariance")]))
+                            "and upper quartile remain constant for every $y$ in $0 \\le y \\le 34$. [2]")],
+               parts=[("(a)", 2, "Statistics with and without y"), ("(b)", 2, "Explanation of invariance")],
+               expl="Six scores: mean 39, median 39, $Q_1 = 36$, $Q_3 = 42$, IQR 6. With $y = 11$: mean "
+                    "$\\frac{245}{7} = 35$, median 38, $Q_1 = 34$, $Q_3 = 42$, IQR 8. For any $y \\le 34$ the "
+                    "ordered list starts $y, 34, 36$, so the 4th value (median) stays 38 and the upper half "
+                    "is still 40, 42, 44, so $Q_3$ stays 42; the lower quartile, and therefore the IQR, "
+                    "does change."))
 
     Q.append(q(33, sec="B", crit="B", marks=4, lvl="challenge", topic="Investigating patterns",
                subtopic="standard deviation of evenly spaced populations", qtype="open_ended",
