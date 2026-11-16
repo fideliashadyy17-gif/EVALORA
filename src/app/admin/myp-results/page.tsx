@@ -1,4 +1,4 @@
-import { ButtonLink, Card, PageTitle } from "@/components/ui";
+import { Card, PageTitle } from "@/components/ui";
 import { MypFilters } from "@/components/myp/MypFilters";
 import { MypAnalyticsCards, MypResultsTable } from "@/components/myp/MypResultsTable";
 import { requireSuperAdmin } from "@/lib/auth";
@@ -6,6 +6,7 @@ import { mypAccess, parseMypFilters } from "@/lib/mypAccess";
 import { loadMypResults } from "@/lib/mypResults";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "MYP results — all organizations" };
 export const dynamic = "force-dynamic";
@@ -52,8 +53,8 @@ export default async function AdminMypResultsPage({ searchParams }: { searchPara
         subtitle="Detailed criterion results and overall MYP grades for every student on the platform. Tenant boundaries are preserved: each row names the organization whose data it is, and filters keep results from different organizations and subjects apart."
         action={
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href={`/api/myp/export/xlsx?scope=collective&${params}`} variant="outline">⬇ Excel (.xlsx)</ButtonLink>
-            <ButtonLink href={`/api/myp/export/pdf?scope=collective&${params}`}>⬇ Collective PDF</ButtonLink>
+            <MypExportButton format="xlsx" scope="collective" query={params} label="⬇ Excel (.xlsx)" />
+            <MypExportButton format="pdf" scope="collective" query={params} label="⬇ Collective PDF" variant="primary" />
           </div>
         }
         meta={

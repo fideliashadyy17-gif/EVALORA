@@ -223,9 +223,10 @@ const attempts = [
   attemptRow("attempt-5", "exam-5", "student-2"),
   attemptRow("attempt-6", "exam-1", "student-2", { status: "in_progress", submitted_at: null }),
 ];
-const answer = (attemptId, questionId, pointsAwarded, note = null) => ({
+const answer = (attemptId, questionId, pointsAwarded, note = null, content = { text: "worked answer" }) => ({
   attempt_id: attemptId,
   question_id: questionId,
+  answer: content,
   points_awarded: pointsAwarded,
   is_correct: null,
   marker_note: note,
@@ -405,7 +406,7 @@ ok("a student read of another tenant's attempt is empty", (await L.loadMypResult
 
 /* ── Pending marking ─────────────────────────────────────────────────── */
 const pendingB = unpublished.criteria.find((criterion) => criterion.code === "B");
-ok("a pending criterion has no achievement level", pendingB.level === null && pendingB.status === "pending_marking");
+ok("a criterion with an unmarked answer has no achievement level", pendingB.level === null && (pendingB.status === "pending_marking" || pendingB.status === "partially_marked"), pendingB.status);
 ok("a pending criterion is never coerced to level zero", !(pendingB.level === 0));
 ok("the pending criterion is named", unpublished.pendingCriteria.join("") === "B");
 ok("pending marking is visible as an incomplete result", unpublished.gradeStatus === "incomplete" && unpublished.overallGrade === null);

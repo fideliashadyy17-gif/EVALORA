@@ -1,9 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
-import {
-  CRITERION_STATUS_LABEL,
-  type MypAnalytics,
-  type MypResult,
-} from "./myp";
+import type { MypAnalytics, MypResult } from "./myp";
 
 /**
  * Professional, printable MYP reports (individual and collective).
@@ -16,10 +12,10 @@ import {
  * mark, a criterion or a feedback line.
  */
 
-const PAGE_WIDTH = 595.28;
-const PAGE_HEIGHT = 841.89;
 const MARGIN = 42;
-const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
+/** A4 in points. Individual reports are portrait; wide collective tables are landscape. */
+const A4_PORTRAIT = { width: 595.28, height: 841.89 };
+const A4_LANDSCAPE = { width: 841.89, height: 595.28 };
 
 const COLOURS = {
   primary: hexToRgb("#0a5c36"),
@@ -113,6 +109,10 @@ function winAnsi(input: string): string {
 function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
   const source = winAnsi(text);
   if (!source) return [""];
+  // A point of slack: PDF text engines differ from the font's nominal advance by
+  // a fraction of a point per run, and a line measured exactly to the margin can
+  // render a hair past it. Keeping a point in hand guarantees the margin holds.
+  const limit = Math.max(8, maxWidth - 4);
   const lines: string[] = [];
   for (const paragraph of source.split(/\n/)) {
     const words = paragraph.split(/\s+/).filter(Boolean);
@@ -123,18 +123,18 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
     let line = "";
     for (const word of words) {
       const candidate = line ? `${line} ${word}` : word;
-      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      if (font.widthOfTextAtSize(candidate, size) <= limit) {
         line = candidate;
         continue;
       }
       if (line) lines.push(line);
-      if (font.widthOfTextAtSize(word, size) > maxWidth) {
+      if (font.widthOfTextAtSize(word, size) > limit) {
         // Break an unbroken token (a URL or a long formula) instead of letting
         // it run off the page.
         let rest = word;
-        while (rest && font.widthOfTextAtSize(rest, size) > maxWidth) {
+        while (rest && font.widthOfTextAtSize(rest, size) > limit) {
           let cut = rest.length;
-          while (cut > 1 && font.widthOfTextAtSize(rest.slice(0, cut), size) > maxWidth) cut -= 1;
+          while (cut > 1 && font.widthOfTextAtSize(rest.slice(0, cut), size) > limit) cut -= 1;
           lines.push(rest.slice(0, cut));
           rest = rest.slice(cut);
         }
@@ -150,9 +150,12 @@ function wrapText(text: string, font: PDFFont, size: number, maxWidth: number): 
 
 interface TableColumn {
   label: string;
-  width: number;
+  /** A width hint; treated as a proportion of the printable width. */
+  width?: number;
   align?: "left" | "right" | "center";
 }
+
+type Orientation = "portrait" | "landscape";
 
 class Report {
   pdf!: PDFDocument;
@@ -165,14 +168,21 @@ class Report {
   headerTitle: string;
   headerSubtitle: string;
   footerLabel: string;
+  pageWidth: number;
+  pageHeight: number;
+  contentWidth: number;
 
-  constructor(args: { title: string; subtitle: string; footer: string }) {
+  constructor(args: { title: string; subtitle: string; footer: string; orientation?: Orientation }) {
     this.headerTitle = args.title;
     this.headerSubtitle = args.subtitle;
     this.footerLabel = args.footer;
+    const size = args.orientation === "landscape" ? A4_LANDSCAPE : A4_PORTRAIT;
+    this.pageWidth = size.width;
+    this.pageHeight = size.height;
+    this.contentWidth = this.pageWidth - MARGIN * 2;
   }
 
-  static async create(args: { title: string; subtitle: string; footer: string }): Promise<Report> {
+  static async create(args: { title: string; subtitle: string; footer: string; orientation?: Orientation }): Promise<Report> {
     const report = new Report(args);
     report.pdf = await PDFDocument.create();
     report.pdf.setTitle(winAnsi(args.title));
@@ -187,34 +197,34 @@ class Report {
   }
 
   newPage(): void {
-    this.page = this.pdf.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    this.page = this.pdf.addPage([this.pageWidth, this.pageHeight]);
     this.pages.push(this.page);
     // Header
-    this.page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 74, width: PAGE_WIDTH, height: 74, color: COLOURS.primary });
-    this.page.drawRectangle({ x: 0, y: PAGE_HEIGHT - 78, width: PAGE_WIDTH, height: 4, color: COLOURS.accent });
+    this.page.drawRectangle({ x: 0, y: this.pageHeight - 74, width: this.pageWidth, height: 74, color: COLOURS.primary });
+    this.page.drawRectangle({ x: 0, y: this.pageHeight - 78, width: this.pageWidth, height: 4, color: COLOURS.accent });
     this.page.drawText("EVALORA", {
       x: MARGIN,
-      y: PAGE_HEIGHT - 36,
+      y: this.pageHeight - 36,
       size: 17,
       font: this.bold,
       color: COLOURS.white,
     });
     this.page.drawText(winAnsi(this.headerTitle), {
       x: MARGIN,
-      y: PAGE_HEIGHT - 54,
+      y: this.pageHeight - 54,
       size: 9,
       font: this.font,
       color: hexToRgb("#d9e7de"),
     });
     const subtitleWidth = this.font.widthOfTextAtSize(winAnsi(this.headerSubtitle), 8);
     this.page.drawText(winAnsi(this.headerSubtitle), {
-      x: PAGE_WIDTH - MARGIN - Math.min(subtitleWidth, 220),
-      y: PAGE_HEIGHT - 50,
+      x: this.pageWidth - MARGIN - Math.min(subtitleWidth, 220),
+      y: this.pageHeight - 50,
       size: 8,
       font: this.font,
       color: hexToRgb("#d9e7de"),
     });
-    this.y = PAGE_HEIGHT - 106;
+    this.y = this.pageHeight - 106;
   }
 
   ensure(height: number): void {
@@ -237,7 +247,7 @@ class Report {
     this.y -= size + 6;
     this.page.drawLine({
       start: { x: MARGIN, y: this.y + 2 },
-      end: { x: PAGE_WIDTH - MARGIN, y: this.y + 2 },
+      end: { x: this.pageWidth - MARGIN, y: this.y + 2 },
       thickness: 0.7,
       color: COLOURS.line,
     });
@@ -249,7 +259,7 @@ class Report {
     options: { size?: number; color?: ReturnType<typeof rgb>; bold?: boolean; italic?: boolean; width?: number; indent?: number } = {},
   ): void {
     const size = options.size ?? 9.5;
-    const width = (options.width ?? CONTENT_WIDTH) - (options.indent ?? 0);
+    const width = (options.width ?? this.contentWidth) - (options.indent ?? 0);
     const lines = wrapText(text, options.bold ? this.bold : this.italic ? this.italic : this.font, size, width);
     const lineHeight = size * 1.34;
     for (const line of lines) {
@@ -270,7 +280,7 @@ class Report {
   bullets(items: string[], options: { size?: number; color?: ReturnType<typeof rgb> } = {}): void {
     const size = options.size ?? 9;
     for (const item of items) {
-      const lines = wrapText(item, this.font, size, CONTENT_WIDTH - 14);
+      const lines = wrapText(item, this.font, size, this.contentWidth - 14);
       lines.forEach((line, index) => {
         this.ensure(size * 1.35);
         if (index === 0) {
@@ -290,7 +300,7 @@ class Report {
   }
 
   keyValueGrid(rows: [string, string][]): void {
-    const colWidth = CONTENT_WIDTH / 2;
+    const colWidth = this.contentWidth / 2;
     const size = 8.5;
     for (let index = 0; index < rows.length; index += 2) {
       const pair = rows.slice(index, index + 2);
@@ -328,7 +338,7 @@ class Report {
 
   summaryStrip(items: { label: string; value: string; tone?: "primary" | "accent" | "soft" }[]): void {
     const gap = 6;
-    const width = (CONTENT_WIDTH - gap * (items.length - 1)) / items.length;
+    const width = (this.contentWidth - gap * (items.length - 1)) / items.length;
     const height = 46;
     this.ensure(height + 8);
     items.forEach((item, index) => {
@@ -361,31 +371,54 @@ class Report {
     this.y -= height + 12;
   }
 
-  table(columns: TableColumn[], rows: string[][], options: { headerFill?: boolean; fontSize?: number } = {}): void {
+  /**
+   * Draw a table that always fits the printable width.
+   *
+   * Widths are proportions when `width` is omitted: the library measures every
+   * header and cell, guarantees each column at least fits its longest word,
+   * then distributes the remaining space. Header labels wrap instead of
+   * overflowing, so a heading can never run off the page or into the next
+   * column, and the header is repeated after every page break.
+   */
+  table(
+    columns: TableColumn[],
+    rows: string[][],
+    options: { headerFill?: boolean; fontSize?: number; repeatHeader?: boolean } = {},
+  ): void {
     const size = options.fontSize ?? 8.2;
-    const lineHeight = size * 1.3;
+    const lineHeight = size * 1.32;
     const padding = 4;
+    const widths = this.resolveColumnWidths(columns, rows, size, padding);
+
+    const headerCells = columns.map((column, index) =>
+      wrapText(column.label, this.bold, size - 0.2, widths[index] - padding * 2),
+    );
+    const headerLines = Math.max(1, ...headerCells.map((cell) => cell.length));
+    const headerHeight = headerLines * lineHeight + padding * 2;
+
     const drawHeader = () => {
-      this.ensure(lineHeight + padding * 2 + 2);
+      this.ensure(headerHeight + 2);
       this.page.drawRectangle({
         x: MARGIN,
-        y: this.y - (lineHeight + padding * 2),
-        width: CONTENT_WIDTH,
-        height: lineHeight + padding * 2,
+        y: this.y - headerHeight,
+        width: this.contentWidth,
+        height: headerHeight,
         color: COLOURS.primary,
       });
       let x = MARGIN;
-      columns.forEach((column) => {
-        this.page.drawText(winAnsi(column.label), {
-          x: x + padding,
-          y: this.y - padding - size,
-          size: size - 0.2,
-          font: this.bold,
-          color: COLOURS.white,
+      headerCells.forEach((cell, index) => {
+        cell.forEach((line, lineIndex) => {
+          this.page.drawText(line, {
+            x: x + padding,
+            y: this.y - padding - size + 0.2 - lineIndex * lineHeight,
+            size: size - 0.2,
+            font: this.bold,
+            color: COLOURS.white,
+          });
         });
-        x += column.width;
+        x += widths[index];
       });
-      this.y -= lineHeight + padding * 2;
+      this.y -= headerHeight;
     };
 
     drawHeader();
@@ -404,34 +437,34 @@ class Report {
     }
 
     rows.forEach((row, rowIndex) => {
-      const cells = columns.map((column, columnIndex) =>
-        wrapText(row[columnIndex] ?? "", this.font, size, column.width - padding * 2),
+      const cells = widths.map((width, columnIndex) =>
+        wrapText(row[columnIndex] ?? "", this.font, size, width - padding * 2),
       );
       const lines = Math.max(1, ...cells.map((cell) => cell.length));
       const rowHeight = lines * lineHeight + padding * 2;
       if (this.y - rowHeight < MARGIN + 34) {
         this.newPage();
-        drawHeader();
+        if (options.repeatHeader !== false) drawHeader();
       }
       if (rowIndex % 2 === 1) {
         this.page.drawRectangle({
           x: MARGIN,
           y: this.y - rowHeight,
-          width: CONTENT_WIDTH,
+          width: this.contentWidth,
           height: rowHeight,
           color: COLOURS.band,
         });
       }
       let x = MARGIN;
-      columns.forEach((column, columnIndex) => {
-        cells[columnIndex].forEach((line, lineIndex) => {
+      cells.forEach((cell, columnIndex) => {
+        cell.forEach((line, lineIndex) => {
           if (!line) return;
           const textWidth = this.font.widthOfTextAtSize(line, size);
           const alignedX =
-            column.align === "right"
-              ? x + column.width - padding - textWidth
-              : column.align === "center"
-                ? x + (column.width - textWidth) / 2
+            columns[columnIndex].align === "right"
+              ? x + widths[columnIndex] - padding - textWidth
+              : columns[columnIndex].align === "center"
+                ? x + (widths[columnIndex] - textWidth) / 2
                 : x + padding;
           this.page.drawText(line, {
             x: alignedX,
@@ -441,11 +474,11 @@ class Report {
             color: COLOURS.ink,
           });
         });
-        x += column.width;
+        x += widths[columnIndex];
       });
       this.page.drawLine({
         start: { x: MARGIN, y: this.y - rowHeight },
-        end: { x: PAGE_WIDTH - MARGIN, y: this.y - rowHeight },
+        end: { x: this.pageWidth - MARGIN, y: this.y - rowHeight },
         thickness: 0.4,
         color: COLOURS.line,
       });
@@ -454,12 +487,69 @@ class Report {
     this.y -= 8;
   }
 
+  /**
+   * Turn the caller's column hints into widths that sum to the printable width.
+   * A hint is treated as a proportion (not a hard pixel width), so nothing can
+   * be pushed past the right margin when the page orientation changes.
+   */
+  private resolveColumnWidths(columns: TableColumn[], rows: string[][], size: number, padding: number): number[] {
+    const count = columns.length;
+    const natural = columns.map((column, index) => {
+      const headerWidth = Math.max(
+        0,
+        ...column.label.split(/\s+/).map((word) => this.bold.widthOfTextAtSize(word, size - 0.2)),
+      );
+      const cellWidth = Math.max(
+        0,
+        ...rows.slice(0, 200).map((row) => {
+          const longestWord = (row[index] ?? "").split(/\s+/).reduce((max, word) =>
+            Math.max(max, this.font.widthOfTextAtSize(word, size)), 0);
+          return longestWord;
+        }),
+      );
+      const hint = column.width ? (column.width / Math.max(1, columns.reduce((sum, c) => sum + (c.width ?? 0), 0))) * this.contentWidth : null;
+      return Math.max(headerWidth, cellWidth, hint ?? 0, 34) + padding * 2;
+    });
+
+    const total = natural.reduce((sum, width) => sum + width, 0);
+    if (total <= this.contentWidth) {
+      // Spread the unused space in proportion to how much each column needs.
+      return natural.map((width) => (width / total) * this.contentWidth);
+    }
+
+    // Shrink proportionally but never below the widest single word.
+    const minimums = columns.map((column, index) => {
+      const headerWord = Math.max(
+        ...column.label.split(/\s+/).map((word) => this.bold.widthOfTextAtSize(word, size - 0.2)),
+        0,
+      );
+      const cellWord = Math.max(
+        0,
+        ...rows.slice(0, 200).map((row) =>
+          (row[index] ?? "").split(/\s+/).reduce((max, word) =>
+            Math.max(max, this.font.widthOfTextAtSize(word, size)), 0),
+        ),
+      );
+      return Math.min(Math.max(headerWord, cellWord), this.contentWidth / Math.max(1, count)) + padding * 2;
+    });
+    const minTotal = minimums.reduce((sum, width) => sum + width, 0);
+    if (minTotal >= this.contentWidth) {
+      // Extremely long words everywhere: fall back to equal columns and let the
+      // wrapper break the words character by character inside the page.
+      return Array.from({ length: count }, () => this.contentWidth / count);
+    }
+    const slack = this.contentWidth - minTotal;
+    const extra = natural.map((width, index) => Math.max(0, width - minimums[index]));
+    const extraTotal = extra.reduce((sum, width) => sum + width, 0) || 1;
+    return minimums.map((width, index) => width + (extra[index] / extraTotal) * slack);
+  }
+
   async finish(): Promise<Uint8Array> {
     const total = this.pages.length;
     this.pages.forEach((page, index) => {
       page.drawLine({
         start: { x: MARGIN, y: 34 },
-        end: { x: PAGE_WIDTH - MARGIN, y: 34 },
+        end: { x: this.pageWidth - MARGIN, y: 34 },
         thickness: 0.5,
         color: COLOURS.line,
       });
@@ -473,7 +563,7 @@ class Report {
       const pageLabel = `Page ${index + 1} of ${total}`;
       const width = this.font.widthOfTextAtSize(pageLabel, 7.2);
       page.drawText(pageLabel, {
-        x: PAGE_WIDTH - MARGIN - width,
+        x: this.pageWidth - MARGIN - width,
         y: 22,
         size: 7.2,
         font: this.font,
@@ -499,11 +589,6 @@ function formatDate(value: string | null): string {
   return date.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric", timeZone: "UTC" });
 }
 
-function levelText(result: MypResult, level: number | null, status: string): string {
-  if (level === null) return CRITERION_STATUS_LABEL[status as keyof typeof CRITERION_STATUS_LABEL] ?? status;
-  return `${level} / 8`;
-}
-
 /** One student's complete MYP report. */
 export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Array> {
   const report = await Report.create({
@@ -516,70 +601,80 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
   report.paragraph(result.examTitle, { size: 10.5, color: COLOURS.soft });
   report.space(8);
 
+  report.heading("Student information", 11);
   report.keyValueGrid([
     ["Student", result.studentName],
     ["Student reference", result.studentRef ?? "Not recorded"],
     ["MYP year", result.mypYearLabel ?? "Not mapped to an MYP year"],
     ["Class", result.className ?? "Not recorded"],
+  ]);
+  report.space(6);
+
+  report.heading("Examination information", 11);
+  report.keyValueGrid([
     ["Subject", result.subjectLabel],
+    ["Examination", result.examTitle],
     ["Examination date", formatDate(result.examDate)],
     ["Attempt status", result.attemptStatus.replace(/_/g, " ")],
     ["Result status", result.publicationLabel],
+    ["Reporting period", result.reportingPeriod ?? "Not set"],
   ]);
   report.space(4);
 
+  report.heading("Overall examination performance", 11);
   report.summaryStrip([
-    { label: "Marks", value: `${result.marksAwarded} / ${result.marksMax}` },
+    { label: "Marks obtained", value: `${result.marksAwarded} / ${result.marksMax}`, tone: "primary" },
     { label: "Percentage", value: result.percent === null ? "Pending" : `${result.percent}%` },
     {
       label: "Overall MYP grade",
       value: result.overallGrade === null ? result.gradeStatusLabel : `${result.overallGrade} / 7`,
-      tone: "primary",
     },
-    {
-      label: "Criterion levels",
-      value: result.totalLevels === null ? "-" : `${result.totalLevels} / ${result.totalLevelsMax}`,
-    },
+    { label: "Criterion levels", value: result.totalLevels === null ? "-" : `${result.totalLevels} / ${result.totalLevelsMax}` },
   ]);
 
-  report.heading("Criterion breakdown");
-  report.table(
-    [
-      { label: "Criterion", width: 232 },
-      { label: "Marks", width: 64, align: "right" },
-      { label: "Percent", width: 58, align: "right" },
-      { label: "Level", width: 62, align: "right" },
-      { label: "Status", width: CONTENT_WIDTH - 416, align: "center" },
-    ],
-    result.criteria.map((criterion) => [
-      criterion.heading,
-      criterion.questionCount === 0 ? "-" : `${criterion.marksAwarded} / ${criterion.marksMax}`,
-      criterion.percent === null ? "-" : `${criterion.percent}%`,
-      levelText(result, criterion.level, criterion.status),
-      criterion.statusLabel,
-    ]),
-  );
-
+  report.heading("Detailed criterion breakdown", 11);
   if (!result.hasCriteria) {
     report.paragraph(
       "This paper is not criterion-mapped, so no MYP criterion levels or overall MYP grade can be derived. The examination marks above remain valid.",
       { italic: true, color: COLOURS.soft },
     );
+  } else {
+    report.table(
+      [
+        { label: "Criterion", width: 210 },
+        { label: "Marks obtained", width: 62, align: "right" },
+        { label: "Maximum marks", width: 66, align: "right" },
+        { label: "Percentage", width: 58, align: "right" },
+        { label: "Achievement level (0-8)", width: 64, align: "center" },
+        { label: "Status", width: 84, align: "center" },
+      ],
+      result.criteria.map((criterion) => [
+        criterion.heading,
+        criterion.questionCount === 0 ? "-" : String(criterion.marksAwarded),
+        criterion.questionCount === 0 ? "-" : String(criterion.marksMax),
+        criterion.percent === null ? "-" : `${criterion.percent}%`,
+        criterion.level === null ? "-" : String(criterion.level),
+        criterion.statusLabel,
+      ]),
+    );
   }
 
-  report.heading("Overall MYP grade");
+  report.heading("Overall MYP grade", 11);
   const gradeLine = result.overallGrade === null
     ? `${result.gradeStatusLabel}. ${result.gradeNote}`
     : `Overall grade ${result.overallGrade} / 7 (${result.gradeStatusLabel}). Total criterion levels: ${result.totalLevels} of ${result.totalLevelsMax}. ${result.gradeNote}`;
   report.paragraph(gradeLine, { size: 9.5 });
   report.paragraph(`Grade boundaries: ${result.gradeSource}`, { size: 8, color: COLOURS.soft });
   report.paragraph(`Criterion levels: ${result.levelSource}`, { size: 8, color: COLOURS.soft });
-  report.paragraph(
-    "Criterion levels are derived from the marks earned on this paper. They are the evidence a teacher moderates; they are not an IB eAssessment result and EVALORA is not affiliated with the IB.",
-    { size: 8, color: COLOURS.soft, italic: true },
-  );
 
-  if (result.pendingCriteria.length || result.unassessedCriteria.length) {
+  if (result.zeroFilledQuestions > 0) {
+    report.paragraph(
+      `${result.zeroFilledQuestions} question${result.zeroFilledQuestions === 1 ? " was" : "s were"} left unanswered when this attempt ended. Those questions are part of the assessment, so they score zero; the criteria they belong to remain fully assessed.`,
+      { size: 8.4, color: COLOURS.ink },
+    );
+  }
+
+  if (result.pendingCriteria.length || result.unassessedCriteria.length || result.errorCriteria.length) {
     report.space(4);
     report.heading("Incomplete evidence", 10);
     if (result.pendingCriteria.length) {
@@ -592,6 +687,12 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
       report.paragraph(
         `Not assessed on this paper: ${result.unassessedCriteria.map((code) => `Criterion ${code}`).join(", ")}. No level is awarded for them and they are not counted as zero.`,
         { size: 9 },
+      );
+    }
+    if (result.errorCriteria.length) {
+      report.paragraph(
+        `Marking data error: ${result.errorCriteria.map((code) => `Criterion ${code}`).join(", ")}. A mark in this criterion is not a valid number; it needs correction and is excluded from the overall grade rather than scored as zero.`,
+        { size: 9, color: COLOURS.danger },
       );
     }
   }
@@ -611,7 +712,13 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
     if (criterion.assessedAtZero) {
       report.paragraph(
         "This criterion was fully marked and earned no marks: the achievement level is 0, which is different from a criterion that was not assessed.",
-        { size: 8.4, color: COLOURS.danger },
+        { size: 8.4, color: COLOURS.ink },
+      );
+    }
+    if (criterion.zeroFilledCount > 0) {
+      report.paragraph(
+        `${criterion.zeroFilledCount} question${criterion.zeroFilledCount === 1 ? "" : "s"} in this criterion were unanswered at the end of the attempt and scored zero.`,
+        { size: 8.4, color: COLOURS.soft },
       );
     }
     if (criterion.feedback) report.paragraph(`Teacher feedback: ${criterion.feedback}`, { size: 8.8 });
@@ -632,7 +739,7 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
     report.space(4);
   }
 
-  report.heading("Summary feedback", 10.5);
+  report.heading("Teacher feedback and improvement recommendations", 10.5);
   if (!result.strengths.length && !result.improvements.length && !result.teacherFeedback.length) {
     report.paragraph("No criterion feedback has been recorded for this paper yet.", { italic: true, color: COLOURS.soft });
   } else {
@@ -650,10 +757,18 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
     }
   }
 
-  report.space(8);
+  report.heading("Assessment status and reporting information", 10.5);
+  report.paragraph(
+    "Criterion status key: Assessed (green) - fully marked, including a genuine 0. Partially marked / Pending marking (amber) - some or all questions still await a mark, so no level is inferred and the criterion is not zero. Not assessed (grey) - the criterion has no questions on this paper; no level is awarded. Marking data error (red) - a mark is invalid and needs correction.",
+    { size: 8.2, color: COLOURS.ink },
+  );
   report.paragraph(
     `Publication status: ${result.publicationLabel}. ${result.published ? "This is the released result of record." : "This report is for authorised staff only and the result has not been released to the student."}`,
     { size: 8.4, color: COLOURS.soft },
+  );
+  report.paragraph(
+    "Criterion levels are derived from the marks earned on this paper. They are the evidence a teacher moderates; they are not an IB eAssessment result and EVALORA is not affiliated with the IB.",
+    { size: 8, color: COLOURS.soft, italic: true },
   );
   report.paragraph(
     "Strengths and improvement points are derived automatically from the marks recorded against each criterion; they are not a substitute for the teacher's professional judgement.",
@@ -665,13 +780,13 @@ export async function renderMypIndividualPdf(result: MypResult): Promise<Uint8Ar
 
 function distributionBar(report: Report, analytics: MypAnalytics): void {
   const max = Math.max(1, ...analytics.gradeDistribution.map((bucket) => bucket.count));
-  const barWidth = CONTENT_WIDTH / 7 - 8;
+  const barWidth = report.contentWidth / 7 - 8;
   const height = 46;
   report.ensure(height + 30);
   report.page.drawRectangle({
     x: MARGIN,
     y: report.y - height - 14,
-    width: CONTENT_WIDTH,
+    width: report.contentWidth,
     height: height + 26,
     color: COLOURS.band,
     borderColor: COLOURS.line,
@@ -728,6 +843,9 @@ export async function renderMypCollectivePdf(args: {
     title: "MYP collective results report",
     subtitle: args.scope,
     footer: `${args.title} - ${results.length} result${results.length === 1 ? "" : "s"}`,
+    // Wide criterion tables stay readable in landscape; nothing is squeezed
+    // into a portrait column that would cut a name or a heading off.
+    orientation: "landscape",
   });
 
   report.paragraph(args.title, { size: 15, bold: true, color: COLOURS.deep });
@@ -764,7 +882,7 @@ export async function renderMypCollectivePdf(args: {
       { label: "Avg %", width: 62, align: "right" },
       { label: "Avg level", width: 66, align: "right" },
       { label: "Pending", width: 50, align: "right" },
-      { label: "Not assessed", width: CONTENT_WIDTH - 490, align: "right" },
+      { label: "Not assessed", align: "right" },
     ],
     analytics.criteria.map((criterion) => [
       criterion.title ? `Criterion ${criterion.code} - ${criterion.title}` : `Criterion ${criterion.code}`,
@@ -784,7 +902,7 @@ export async function renderMypCollectivePdf(args: {
         { label: "MYP year", width: 140 },
         { label: "Results", width: 90, align: "right" },
         { label: "Average %", width: 90, align: "right" },
-        { label: "", width: CONTENT_WIDTH - 320 },
+        { label: "" },
       ],
       yearRows.map((year) => [
         `MYP ${year.year}`,
@@ -806,7 +924,7 @@ export async function renderMypCollectivePdf(args: {
       { label: "%", width: 40, align: "right" },
       { label: "Levels", width: 44, align: "right" },
       { label: "Grade", width: 40, align: "center" },
-      { label: "Status", width: CONTENT_WIDTH - 502, align: "center" },
+      { label: "Status", align: "center" },
     ],
     results.map((result) => [
       result.studentName,
@@ -825,6 +943,14 @@ export async function renderMypCollectivePdf(args: {
     "A grade marked Incomplete means at least one required criterion is not yet marked; it is not a zero and it is not an estimate. Provisional grades aggregate only the criteria that are fully marked, under the organization's configured assessment rules.",
     { size: 8, color: COLOURS.soft, italic: true },
   );
+  report.paragraph(
+    "Unanswered questions at the end of a submitted attempt score zero, so a student who did not finish the paper still receives a mark, an achievement level and a status for every criterion the paper assesses. A genuine 0 is an assessed result; a criterion that is still being marked is amber and is never shown as 0.",
+    { size: 8, color: COLOURS.soft, italic: true },
+  );
+  report.paragraph(
+    "Criterion status key: Assessed (green) - fully marked, including a genuine 0. Partially marked / Pending marking (amber) - marking outstanding, no level inferred. Not assessed (grey) - no questions on this paper. Marking data error (red) - invalid mark needing correction.",
+    { size: 8, color: COLOURS.soft },
+  );
   report.paragraph(`Grade boundaries in use: ${results[0]?.gradeSource ?? "IB MYP published boundaries"}.`, {
     size: 8,
     color: COLOURS.soft,
@@ -833,7 +959,7 @@ export async function renderMypCollectivePdf(args: {
   report.heading("Individual criterion records");
   for (const result of results) {
     report.ensure(120);
-    report.paragraph(result.studentName, { size: 10.5, bold: true, color: COLOURS.deep, width: CONTENT_WIDTH });
+    report.paragraph(result.studentName, { size: 10.5, bold: true, color: COLOURS.deep, width: report.contentWidth });
     report.paragraph(
       `${result.mypYearLabel ?? "MYP year not mapped"} - ${result.className ?? "No class"} - ${result.subjectLabel} - ${result.examTitle} - ${formatDate(result.examDate)}`,
       { size: 8.2, color: COLOURS.soft },
@@ -846,17 +972,19 @@ export async function renderMypCollectivePdf(args: {
     );
     report.table(
       [
-        { label: "Criterion", width: 240 },
-        { label: "Marks", width: 66, align: "right" },
-        { label: "%", width: 50, align: "right" },
-        { label: "Level", width: 58, align: "right" },
-        { label: "Status", width: CONTENT_WIDTH - 414, align: "center" },
+        { label: "Criterion", width: 260 },
+        { label: "Marks obtained", width: 64, align: "right" },
+        { label: "Maximum marks", width: 66, align: "right" },
+        { label: "Percentage", width: 58, align: "right" },
+        { label: "Achievement level (0-8)", width: 72, align: "center" },
+        { label: "Status", width: 96, align: "center" },
       ],
       result.criteria.map((criterion) => [
         criterion.heading,
-        criterion.questionCount === 0 ? "-" : `${criterion.marksAwarded} / ${criterion.marksMax}`,
+        criterion.questionCount === 0 ? "-" : String(criterion.marksAwarded),
+        criterion.questionCount === 0 ? "-" : String(criterion.marksMax),
         criterion.percent === null ? "-" : `${criterion.percent}%`,
-        criterion.level === null ? "-" : `${criterion.level} / 8`,
+        criterion.level === null ? "-" : String(criterion.level),
         criterion.statusLabel,
       ]),
       { fontSize: 7.8 },

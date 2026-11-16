@@ -1,21 +1,15 @@
 import { Badge, DataTable, StatCard } from "@/components/ui";
-import { CRITERION_STATUS_LABEL, GRADE_STATUS_LABEL, type MypResult } from "@/lib/myp";
+import {
+  CRITERION_STATUS_LABEL,
+  GRADE_STATUS_LABEL,
+  criterionStatusTone,
+  type MypResult,
+} from "@/lib/myp";
 import type { MypHistoryRow } from "@/lib/mypResults";
 import { fmtDateTime } from "@/lib/utils";
-import { resultTone } from "./MypResultsTable";
+import { MypStatusLegend, resultTone } from "./MypResultsTable";
 
-const STATUS_LEGEND = [
-  { key: "assessed", body: "Fully marked; the achievement level comes from the marks earned." },
-  { key: "partially_marked", body: "Some questions in the criterion are marked, others are pending. No level is inferred." },
-  { key: "pending_marking", body: "Nothing in the criterion has been marked yet." },
-  { key: "not_assessed", body: "The criterion has no questions on this paper (or no configured criterion). Never treated as zero." },
-] as const;
 
-function statusTone(status: string): "green" | "amber" | "gray" {
-  if (status === "assessed") return "green";
-  if (status === "not_assessed") return "gray";
-  return "amber";
-}
 
 /** Full criterion result page shared by the organization and global consoles. */
 export function MypResultDetail({
@@ -79,6 +73,26 @@ export function MypResultDetail({
           <Badge tone={resultTone(result)}>{result.gradeStatusLabel}</Badge>
         </div>
 
+        <div className="mt-4">
+          <MypStatusLegend />
+        </div>
+
+        {result.errorCriteria.length > 0 && (
+          <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-800" role="alert">
+            <strong>Marking data error.</strong> {result.errorCriteria.map((code) => `Criterion ${code}`).join(", ")} contains a
+            mark that is not a valid number. It is excluded from the overall grade and is not treated as zero — correct the
+            marking before releasing this result.
+          </p>
+        )}
+
+        {result.zeroFilledQuestions > 0 && (
+          <p className="mt-4 rounded-lg border border-evergreen-900/15 bg-evergreen-50/60 px-4 py-3 text-xs text-evergreen-900">
+            {result.zeroFilledQuestions} question{result.zeroFilledQuestions === 1 ? " was" : "s were"} left unanswered when this
+            attempt ended. Those questions are part of the assessment, so they score zero and the criteria they belong to are
+            still fully assessed. A zero here is a result, not missing data.
+          </p>
+        )}
+
         {!result.hasCriteria ? (
           <p className="mt-4 rounded-lg border border-dashed border-evergreen-900/30 px-4 py-6 text-sm text-ink-soft">
             This paper is not criterion-mapped: its questions carry no MYP criterion, so no criterion levels or overall MYP
@@ -100,7 +114,7 @@ export function MypResultDetail({
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <Badge tone={statusTone(criterion.status)}>{CRITERION_STATUS_LABEL[criterion.status]}</Badge>
+                    <Badge tone={criterionStatusTone(criterion.status)}>{CRITERION_STATUS_LABEL[criterion.status]}</Badge>
                     <span className="rounded-lg bg-evergreen-50 px-2.5 py-1 text-sm font-semibold tabular-nums text-evergreen-900">
                       {criterion.level === null ? "Level —" : `Level ${criterion.level} / 8`}
                     </span>
@@ -119,22 +133,29 @@ export function MypResultDetail({
                   <div>
                     <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Questions</dt>
                     <dd className="text-sm tabular-nums text-evergreen-950">
-                      {criterion.markedCount} / {criterion.questionCount} marked
+                      {criterion.markedCount + criterion.zeroFilledCount} / {criterion.questionCount} resolved
+                      {criterion.zeroFilledCount > 0 && (
+                        <span className="block text-[10px] font-normal text-ink-soft">
+                          {criterion.zeroFilledCount} unanswered, scored 0
+                        </span>
+                      )}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-[10px] font-semibold uppercase tracking-wide text-ink-soft">Achievement level</dt>
                     <dd className="text-sm tabular-nums text-evergreen-950">
                       {criterion.level === null ? "Not awarded" : `${criterion.level} / 8`}
-                      {criterion.assessedAtZero && <span className="ml-1 text-[10px] font-semibold text-red-700">assessed at zero</span>}
+                      {criterion.assessedAtZero && (
+                        <span className="ml-1 text-[10px] font-semibold text-evergreen-800">assessed — genuine 0</span>
+                      )}
                     </dd>
                   </div>
                 </dl>
 
                 {criterion.assessedAtZero && (
-                  <p className="mt-2 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-800">
+                  <p className="mt-2 rounded-lg bg-evergreen-50 px-3 py-2 text-xs text-evergreen-900">
                     This criterion was fully marked and earned no marks. That is an assessed level 0 — it is different from a
-                    criterion that was not assessed.
+                    criterion that was not assessed, and it is never treated as missing data.
                   </p>
                 )}
                 {criterion.feedback && (
@@ -201,13 +222,9 @@ export function MypResultDetail({
           <p><span className="font-semibold">Criterion levels:</span> {result.levelSource}</p>
           <details className="mt-2">
             <summary className="cursor-pointer font-semibold text-evergreen-900">Assessment status vocabulary</summary>
-            <ul className="mt-1 list-disc space-y-0.5 pl-5">
-              {STATUS_LEGEND.map((entry) => (
-                <li key={entry.key}>
-                  <span className="font-medium">{CRITERION_STATUS_LABEL[entry.key]}</span> — {entry.body}
-                </li>
-              ))}
-            </ul>
+            <div className="mt-2">
+              <MypStatusLegend />
+            </div>
           </details>
         </div>
       </div>

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { recordMypSnapshot } from "../actions";
+import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "MYP student result" };
 export const dynamic = "force-dynamic";
@@ -49,8 +50,8 @@ export default async function MypResultPage({
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/dashboard/myp-results" variant="outline">← All MYP results</ButtonLink>
-            <ButtonLink href={`/api/myp/export/pdf?scope=individual&attempt=${result.attemptId}`}>⬇ PDF report</ButtonLink>
-            <ButtonLink href={`/api/myp/export/xlsx?scope=individual&attempt=${result.attemptId}`} variant="outline">⬇ Excel</ButtonLink>
+            <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ PDF report" variant="primary" />
+            <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="⬇ Excel" />
           </div>
         }
         meta={

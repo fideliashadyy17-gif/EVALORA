@@ -308,6 +308,116 @@ const noCriteria = M.buildMypResult({
 ok("a non-criterion paper reports not applicable", noCriteria.gradeStatus === "not_applicable" && noCriteria.hasCriteria === false);
 ok("a non-criterion paper still reports its percentage", noCriteria.percent === 60);
 
+/* ── Scenario B: an incomplete examination still grades every criterion ─ */
+const incomplete = M.buildMypResult({
+  attempt: attemptBase,
+  paper,
+  // The candidate answered A fully and one B question, then submitted.
+  answers: [
+    { questionId: "q1", pointsAwarded: 8 },
+    { questionId: "q2", pointsAwarded: 9 },
+    { questionId: "q3", pointsAwarded: 5 },
+  ],
+  rules,
+});
+ok("an incomplete examination still assesses every criterion", incomplete.criteria.every((criterion) => criterion.status === "assessed"));
+ok("the attempted criterion keeps its real marks", incomplete.criteria.find((c) => c.code === "A").marksAwarded === 17);
+ok("a partly attempted criterion earns the marks it earned", incomplete.criteria.find((c) => c.code === "B").marksAwarded === 5);
+ok("a criterion the candidate never reached is a genuine zero, not pending", (() => {
+  const c = incomplete.criteria.find((criterion) => criterion.code === "C");
+  return c.marksAwarded === 0 && c.marksMax === 20 && c.level === 0 && c.status === "assessed" && c.assessedAtZero;
+})());
+ok("unanswered questions are counted and explained", incomplete.zeroFilledQuestions === 5 && incomplete.criteria.find((c) => c.code === "B").zeroFilledCount === 1);
+ok("nothing is left pending when every question is resolved", incomplete.pendingCriteria.length === 0 && incomplete.errorCriteria.length === 0);
+ok("the incomplete attempt still gets an overall grade once every criterion is resolved",
+  incomplete.gradeStatus === "final" && incomplete.overallGrade === M.gradeFromTotal(incomplete.totalLevels),
+  `${incomplete.totalLevels} → ${incomplete.overallGrade}`);
+ok("the overall marks include the unanswered questions as zero",
+  incomplete.marksAwarded === 22 && incomplete.marksMax === 80 && incomplete.percent === 27.5,
+  `${incomplete.marksAwarded}/${incomplete.marksMax} = ${incomplete.percent}%`);
+
+/* ── Blank saved answers versus unmarked answers ─────────────────────── */
+const blankAnswer = M.buildMypResult({
+  attempt: attemptBase,
+  paper,
+  answers: [
+    { questionId: "q1", pointsAwarded: 8 },
+    { questionId: "q2", pointsAwarded: 9 },
+    { questionId: "q3", pointsAwarded: 5 },
+    { questionId: "q4", pointsAwarded: null, hasContent: false },
+  ],
+  rules,
+});
+ok("a saved but empty answer is zero on a final attempt", blankAnswer.criteria.find((c) => c.code === "B").marksAwarded === 5 && blankAnswer.criteria.find((c) => c.code === "B").status === "assessed");
+const unmarkedAnswer = M.buildMypResult({
+  attempt: attemptBase,
+  paper,
+  answers: [
+    { questionId: "q1", pointsAwarded: 8 },
+    { questionId: "q2", pointsAwarded: 9 },
+    { questionId: "q3", pointsAwarded: 5 },
+    { questionId: "q4", pointsAwarded: null, hasContent: true },
+  ],
+  rules,
+});
+const unmarkedB = unmarkedAnswer.criteria.find((c) => c.code === "B");
+ok("an answer with content and no mark stays pending, not zero", unmarkedB.status === "partially_marked" && unmarkedB.level === null && unmarkedB.pendingCount === 1);
+ok("pending marking is named while the other criteria keep their results", unmarkedAnswer.pendingCriteria.join("") === "B" && unmarkedAnswer.criteria.find((c) => c.code === "A").level !== null);
+ok("a pending criterion withholds the overall grade", unmarkedAnswer.overallGrade === null && unmarkedAnswer.gradeStatus === "incomplete");
+
+/* ── Scenario D: marking data error is red, never zero ──────────────── */
+const badMark = M.buildMypResult({
+  attempt: attemptBase,
+  paper,
+  answers: [
+    { questionId: "q1", pointsAwarded: 8 },
+    { questionId: "q2", pointsAwarded: Number.NaN },
+    { questionId: "q3", pointsAwarded: 5 },
+  ],
+  rules,
+});
+ok("a non-numeric mark is reported as a marking data error", badMark.criteria.find((c) => c.code === "A").status === "error" && badMark.errorCriteria.join("") === "A");
+ok("the other criteria are unaffected by the error", badMark.criteria.find((c) => c.code === "B").status === "assessed" && badMark.criteria.find((c) => c.code === "C").status === "assessed");
+ok("a marking data error withholds the overall grade instead of scoring zero", badMark.overallGrade === null && badMark.gradeStatus === "incomplete");
+ok("the error carries a teacher-facing meaning and a red tone",
+  M.CRITERION_STATUS_MEANING.error.includes("never converted to zero") && M.criterionStatusTone("error") === "red");
+
+/* ── Status vocabulary and tones ─────────────────────────────────────── */
+ok("assessed is green, including a genuine zero", M.criterionStatusTone("assessed") === "green" && M.criterionStatusTone(zeroA.status) === "green");
+ok("pending and partially marked are amber", M.criterionStatusTone("pending_marking") === "amber" && M.criterionStatusTone("partially_marked") === "amber");
+ok("not assessed is grey", M.criterionStatusTone("not_assessed") === "gray");
+ok("every status has a plain-language meaning", Object.values(M.CRITERION_STATUS_MEANING).every((text) => text.length > 20));
+
+/* ── Scenario H: MYP 1-5 and another subject's criteria ─────────────── */
+for (let year = 1; year <= 5; year += 1) {
+  const result = M.buildMypResult({
+    attempt: { ...attemptBase, attemptId: `attempt-myp-${year}`, mypYear: year, className: `Grade ${year + 5} - MYP ${year}` },
+    paper,
+    answers: answered([8, 9, 7, 8, 6, 7, 8, 9]),
+    rules,
+  });
+  ok(`MYP ${year} produces a complete graded result`, result.mypYear === year && result.mypYearLabel === `MYP ${year}` && result.criteria.every((c) => c.status === "assessed") && result.overallGrade !== null);
+}
+const scienceRules = {
+  ...rules,
+  criteria: scienceConfig.map((criterion, index) => ({ ...criterion, description: null, position: index })),
+};
+const sciencePaper = [
+  { questionId: "s1", points: 8, criterion: "A" },
+  { questionId: "s2", points: 8, criterion: "B" },
+  { questionId: "s3", points: 8, criterion: "C" },
+  { questionId: "s4", points: 8, criterion: "D" },
+];
+const scienceResult = M.buildMypResult({
+  attempt: { ...attemptBase, subjectNames: ["Integrated Science"], subjectId: "subject-science" },
+  paper: sciencePaper,
+  answers: [{ questionId: "s1", pointsAwarded: 7 }, { questionId: "s2", pointsAwarded: 6 }],
+  rules: scienceRules,
+});
+ok("another subject uses its own criterion names in the report", scienceResult.criteria[1].title === "Inquiring and designing" && scienceResult.criteria[3].title === "Reflecting on the impacts of science");
+ok("the other subject grades unanswered criteria as zero and still produces a grade",
+  scienceResult.criteria.find((c) => c.code === "D").level === 0 && scienceResult.gradeStatus === "final");
+
 /* ── Analytics ──────────────────────────────────────────────────────── */
 const analytics = M.summarizeMyp([complete, pending, unassessed]);
 ok("analytics counts every result", analytics.results === 3);

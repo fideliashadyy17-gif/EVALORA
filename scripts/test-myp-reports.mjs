@@ -18,6 +18,7 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { inflateRawSync, inflateSync } from "node:zlib";
+import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import ts from "typescript";
 
 const outDir = "/tmp/evalora-myp-reports-test";
@@ -169,6 +170,47 @@ function inflatedPdf(buffer) {
   return text;
 }
 
+/** Every text run with its page box, read by a real PDF engine rather than a regex. */
+async function textItems(buffer) {
+  const doc = await getDocument({ data: new Uint8Array(buffer), useSystemFonts: true, disableFontFace: true }).promise;
+  const pages = [];
+  for (let index = 1; index <= doc.numPages; index += 1) {
+    const page = await doc.getPage(index);
+    const viewport = page.getViewport({ scale: 1 });
+    const content = await page.getTextContent();
+    const items = content.items
+      .filter((item) => "str" in item && item.str.trim())
+      .map((item) => ({
+        text: item.str,
+        left: item.transform[4],
+        right: item.transform[4] + item.width,
+        top: item.transform[5],
+        size: item.height,
+      }));
+    pages.push({ width: viewport.width, height: viewport.height, items });
+  }
+  return pages;
+}
+
+function overflowingItems(pages, margin = 42) {
+  const violations = [];
+  for (const page of pages) {
+    for (const item of page.items) {
+      // Sub-point rounding in the text matrix is not a layout defect.
+      if (item.left < margin - 1 || item.right > page.width - margin + 1) {
+        violations.push(`${item.text} @ ${item.left.toFixed(1)}..${item.right.toFixed(1)} of ${page.width.toFixed(1)}`);
+      }
+      if (item.top < 6 || item.top > page.height - 6) violations.push(`${item.text} @ y=${item.top.toFixed(1)}`);
+    }
+  }
+  return violations;
+}
+
+function mediaBox(buffer) {
+  const match = /\/MediaBox \[ 0 0 ([\d.]+) ([\d.]+) \]/.exec(inflatedPdf(buffer) + Buffer.from(buffer).toString("latin1"));
+  return match ? { width: Number(match[1]), height: Number(match[2]) } : null;
+}
+
 function pageCount(buffer) {
   const source = `${buffer.toString("latin1")}\n${inflatedPdf(buffer)}`;
   const counts = [...source.matchAll(/\/Count\s+(\d+)/g)].map((match) => Number(match[1]));
@@ -219,6 +261,29 @@ ok("individual PDF prints the marks and percentage", individualText.includes("64
 ok("individual PDF prints the boundary source", individualText.includes("Grade boundaries: IB MYP published grade boundaries"));
 ok("individual PDF prints a page footer", individualText.includes("Page 1 of"));
 ok("individual PDF carries the EVALORA brand", individualText.includes("EVALORA"));
+ok("the individual report separates student, examination and criterion sections",
+  individualText.includes("Student information") && individualText.includes("Examination information") && individualText.includes("Detailed criterion breakdown"));
+const individualFlat = individualText.replace(/\s+/g, " ");
+ok("the criterion table names marks obtained, maximum marks and the achievement level",
+  individualFlat.includes("Marks obtained") && individualFlat.includes("Maximum marks") && individualFlat.includes("Achievement level (0-8)"));
+ok("the criterion table prints every criterion, not only a combined total",
+  ["Criterion A", "Criterion B", "Criterion C", "Criterion D"].every((code) => individualText.includes(code)));
+ok("the report explains the status vocabulary instead of relying on colour",
+  individualFlat.includes("status key") && individualFlat.includes("Assessed") && individualFlat.includes("Pending marking") && individualFlat.includes("Not assessed") && individualFlat.includes("Marking data error"));
+const individualBox = mediaBox(individual);
+ok("the individual report is A4 portrait", individualBox && Math.abs(individualBox.width - 595.28) < 0.01 && Math.abs(individualBox.height - 841.89) < 0.01, JSON.stringify(individualBox));
+
+/* A student who answered nothing still has every criterion marked zero, not blank. */
+const skippedEverything = makeResult(
+  { attemptId: "attempt-skipped", studentName: "Candidate Who Did Not Finish" },
+  { answers: [] },
+);
+const skippedPdf = await PDF.renderMypIndividualPdf(skippedEverything);
+const skippedText = pdfText(skippedPdf);
+ok("an unfinished attempt produces a complete report", skippedEverything.criteria.every((criterion) => criterion.status === "assessed"));
+ok("the unfinished attempt report prints a genuine zero, not a dash",
+  /Marks 0 \/ 20/.test(skippedText) && skippedText.replace(/\s+/g, " ").includes("scored zero"));
+ok("the unfinished attempt still receives an overall grade", /Overall grade \d \/ 7/.test(skippedText));
 
 const individualPending = await PDF.renderMypIndividualPdf(pending);
 const pendingText = pdfText(individualPending);
@@ -260,6 +325,8 @@ const collective = await PDF.renderMypCollectivePdf({
   analytics,
 });
 ok("collective PDF is generated", Buffer.from(collective).subarray(0, 5).toString() === "%PDF-");
+const collectiveBox = mediaBox(collective);
+ok("the wide collective report uses A4 landscape", collectiveBox && Math.abs(collectiveBox.width - 841.89) < 0.01 && Math.abs(collectiveBox.height - 595.28) < 0.01, JSON.stringify(collectiveBox));
 ok("collective PDF spans several pages", pageCount(collective) >= 3, `pages=${pageCount(collective)}`);
 const collectiveText = pdfText(collective);
 ok("collective PDF has a summary section", collectiveText.includes("Grade distribution") && collectiveText.includes("Criterion performance"));
@@ -267,6 +334,10 @@ ok("collective PDF lists every student", many.every((result) => collectiveText.i
 ok("collective PDF includes class averages and completion", /AVERAGE/.test(collectiveText) && /COMPLETE/.test(collectiveText) && /Highest result/.test(collectiveText));
 ok("collective PDF explains incomplete grades", collectiveText.includes("not a zero"));
 ok("collective PDF numbers its pages", new RegExp(`Page ${pageCount(collective)} of ${pageCount(collective)}`).test(collectiveText));
+ok("the collective report repeats its criterion table on every student section",
+  (collectiveText.match(/Achievement/g) ?? []).length >= 3);
+ok("the collective report carries the same status key as the screen",
+  collectiveText.replace(/\s+/g, " ").includes("Criterion status key") && collectiveText.replace(/\s+/g, " ").includes("Marking data error"));
 
 const emptyCollective = await PDF.renderMypCollectivePdf({
   title: "MYP results — empty scope",
@@ -275,6 +346,27 @@ const emptyCollective = await PDF.renderMypCollectivePdf({
   analytics: M.summarizeMyp([]),
 });
 ok("an empty collective report is still a valid PDF", Buffer.from(emptyCollective).subarray(0, 5).toString() === "%PDF-");
+
+/* ── Nothing is drawn outside the printable area ────────────────────── */
+const individualPages = await textItems(individual);
+const skippedPages = await textItems(skippedPdf);
+const collectivePages = await textItems(collective);
+const longPages = await textItems(longPdf);
+for (const [label, pages] of [
+  ["individual", individualPages],
+  ["unfinished attempt", skippedPages],
+  ["collective", collectivePages],
+  ["long feedback", longPages],
+]) {
+  const violations = overflowingItems(pages);
+  ok(`${label} report keeps every text run inside the printable margins`, violations.length === 0, violations.slice(0, 3).join(" | "));
+}
+ok("a long student name is rendered in full inside the report",
+  longPages.some((page) => page.items.some((item) => item.text.includes("Amélie"))));
+ok("table headers repeat on a multi-page collective report", (() => {
+  const pagesWithHeader = collectivePages.filter((page) => page.items.some((item) => /Criterion|Student Name/.test(item.text)));
+  return pagesWithHeader.length >= 3;
+})(), `${collectivePages.length} pages`);
 ok("an empty report states that there are no results", pdfText(emptyCollective).includes("No results in this scope"));
 
 /* ── Excel workbook ──────────────────────────────────────────────────── */
@@ -287,50 +379,57 @@ const workbookBuffer = EXCEL.buildMypWorkbook(allResults, allAnalytics, {
 ok("workbook is a zip package", workbookBuffer.subarray(0, 2).toString("latin1") === "PK");
 
 const wb = XLSX.read(workbookBuffer, { type: "buffer" });
-ok("workbook has the four required worksheets",
-  JSON.stringify(wb.SheetNames) === JSON.stringify(["Student Results", "Criterion Breakdown", "Class Statistics", "Grading Configuration"]),
+ok("workbook has the four teacher-facing worksheets",
+  JSON.stringify(wb.SheetNames) === JSON.stringify(["Student Performance", "Detailed Criterion Results", "Class Analytics", "Grading Information"]),
   JSON.stringify(wb.SheetNames));
 
-const studentSheet = wb.Sheets["Student Results"];
+const studentSheet = wb.Sheets["Student Performance"];
 const studentRows = XLSX.utils.sheet_to_json(studentSheet, { header: 1, defval: null });
-const headerRow = studentRows.findIndex((row) => row.some((cell) => cell === "Student"));
+const headerRow = studentRows.findIndex((row) => row.some((cell) => cell === "Student Name"));
 const headers = studentRows[headerRow];
 ok("the student sheet has a title, subtitle and header row", headerRow >= 1 && String(studentRows[0][0]).includes("EVALORA"));
-ok("the student sheet header names the grade column", headers.includes("Overall MYP grade (1-7)"));
+ok("the student sheet header names the grade column", headers.includes("Overall MYP Grade (1-7)"));
+ok("the student sheet shows every criterion as marks, maximum and level",
+  ["Criterion A Marks", "Criterion A Maximum", "Criterion A Level", "Criterion D Marks", "Criterion D Maximum", "Criterion D Level"].every((label) => headers.includes(label)),
+  JSON.stringify(headers.filter((h) => String(h).startsWith("Criterion"))));
 ok("the student sheet contains every result", studentRows.length - headerRow - 1 === 16, `rows=${studentRows.length}`);
 const marksRow = studentRows[headerRow + 1];
-const marksColumn = headers.indexOf("Marks obtained");
+const marksColumn = headers.indexOf("Marks Obtained");
 ok("marks are stored as numbers, not text", typeof marksRow[marksColumn] === "number", typeof marksRow[marksColumn]);
 const percentColumn = headers.indexOf("Percentage");
 ok("percentages are stored as numbers", typeof marksRow[percentColumn] === "number");
-ok("the grade column holds a numeric grade or a status", typeof marksRow[headers.indexOf("Overall MYP grade (1-7)")] === "number" || typeof marksRow[headers.indexOf("Overall MYP grade (1-7)")] === "string");
-ok("the pending result is labelled as a status rather than a grade", studentRows.slice(headerRow + 1).some((row) => row[headers.indexOf("Grade status")] === "Incomplete" && row[headers.indexOf("Overall MYP grade (1-7)")] === null));
+ok("the grade column holds a numeric grade or a status", typeof marksRow[headers.indexOf("Overall MYP Grade (1-7)")] === "number" || typeof marksRow[headers.indexOf("Overall MYP Grade (1-7)")] === "string");
+ok("the pending result is labelled as a status rather than a grade", studentRows.slice(headerRow + 1).some((row) => row[headers.indexOf("Grade Status")] === "Incomplete" && row[headers.indexOf("Overall MYP Grade (1-7)")] === null));
+ok("a criterion mark and its maximum are separate numeric columns",
+  studentRows.slice(headerRow + 1).some((row) => typeof row[headers.indexOf("Criterion A Marks")] === "number" && typeof row[headers.indexOf("Criterion A Maximum")] === "number"));
 
-const criterionSheet = wb.Sheets["Criterion Breakdown"];
+const criterionSheet = wb.Sheets["Detailed Criterion Results"];
 const criterionRows = XLSX.utils.sheet_to_json(criterionSheet, { header: 1, defval: null });
-const criterionHeaderRow = criterionRows.findIndex((row) => row.some((cell) => cell === "Criterion"));
+const criterionHeaderRow = criterionRows.findIndex((row) => row.some((cell) => cell === "Criterion Identifier"));
 const criterionHeaders = criterionRows[criterionHeaderRow];
-ok("criterion breakdown has a row per criterion", criterionRows.length > criterionHeaderRow + 1 && criterionHeaders.includes("Achievement level (0-8)"));
+ok("detailed criterion results have a row per criterion", criterionRows.length > criterionHeaderRow + 1 && criterionHeaders.includes("Achievement Level (0-8)") && criterionHeaders.includes("Criterion Name"));
 ok("unmarked criteria leave the level cell blank rather than zero",
-  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Assessment status")] === "Pending marking" && row[criterionHeaders.indexOf("Achievement level (0-8)")] === null));
+  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Assessment Status")] === "Pending marking" && row[criterionHeaders.indexOf("Achievement Level (0-8)")] === null));
 ok("an assessed level 0 is written as a real zero",
-  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Achievement level (0-8)")] === 0 && row[criterionHeaders.indexOf("Assessment status")] === "Assessed"));
+  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Achievement Level (0-8)")] === 0 && row[criterionHeaders.indexOf("Assessment Status")] === "Assessed"));
 ok("a not-assessed criterion leaves both marks and level blank",
-  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Assessment status")] === "Not assessed" && row[criterionHeaders.indexOf("Marks obtained")] === null && row[criterionHeaders.indexOf("Maximum marks")] === null));
+  criterionRows.slice(criterionHeaderRow + 1).some((row) => row[criterionHeaders.indexOf("Assessment Status")] === "Not assessed" && row[criterionHeaders.indexOf("Marks Obtained")] === null && row[criterionHeaders.indexOf("Maximum Marks")] === null));
 
-const statsSheet = wb.Sheets["Class Statistics"];
+const statsSheet = wb.Sheets["Class Analytics"];
 const statsRows = XLSX.utils.sheet_to_json(statsSheet, { header: 1, defval: null });
 const statsHeaderRow = statsRows.findIndex((row) => row.some((cell) => cell === "Students"));
 const statsHeaders = statsRows[statsHeaderRow];
 ok("class statistics include criterion averages and grade distribution",
-  statsHeaders.includes("Criterion A avg %") && statsHeaders.includes("Grade 7") && statsHeaders.includes("Completion %"));
+  statsHeaders.includes("Criterion A Average %") && statsHeaders.includes("Grade 7") && statsHeaders.includes("Completion %"));
 ok("class statistics end with an all-results row", statsRows.some((row) => row[0] === "ALL RESULTS IN SCOPE"));
 
-const configSheet = wb.Sheets["Grading Configuration"];
+const configSheet = wb.Sheets["Grading Information"];
 const configRows = XLSX.utils.sheet_to_json(configSheet, { header: 1, defval: null });
 ok("grading configuration names the criteria and boundaries",
-  configRows.some((row) => String(row).includes("A — Knowing and understanding") && String(row).includes("28-32: 7")));
-ok("grading configuration states the boundary source", configRows.some((row) => String(row).includes("IB MYP published grade boundaries")));
+  configRows.some((row) => String(row).includes("A — Knowing and understanding") && String(row).includes("28-32 → 7")));
+ok("grading information states the boundary source", configRows.some((row) => String(row).includes("IB MYP published grade boundaries")));
+ok("grading information explains every criterion status",
+  ["Assessed", "Partially marked", "Not assessed", "Marking data error"].every((label) => configRows.some((row) => String(row).includes(label))));
 
 /* ── OOXML package checks (frozen header, formats) ──────────────────── */
 function unzip(buffer) {
@@ -368,8 +467,8 @@ ok("text is escaped safely", !/<t[^>]*>[^<]*&(?!amp;|lt;|gt;|quot;|apos;)/.test(
 const emptyWorkbook = EXCEL.buildMypWorkbook([], M.summarizeMyp([]), { fileTitle: "Empty", scope: "No results" });
 const emptyWb = XLSX.read(emptyWorkbook, { type: "buffer" });
 ok("an empty result set still produces a valid workbook", emptyWb.SheetNames.length === 4);
-const emptyRows = XLSX.utils.sheet_to_json(emptyWb.Sheets["Student Results"], { header: 1, defval: null });
-const emptyHeaderRow = emptyRows.findIndex((row) => row.some((cell) => cell === "Student"));
+const emptyRows = XLSX.utils.sheet_to_json(emptyWb.Sheets["Student Performance"], { header: 1, defval: null });
+const emptyHeaderRow = emptyRows.findIndex((row) => row.some((cell) => cell === "Student Name"));
 ok("an empty workbook has a header row and no data rows", emptyHeaderRow === emptyRows.length - 1, `rows=${emptyRows.length}`);
 
 /* ── An individual workbook ─────────────────────────────────────────── */
@@ -378,8 +477,8 @@ const singleWorkbook = EXCEL.buildMypWorkbook([strong], M.summarizeMyp([strong])
   scope: "Amina Diallo / MYP 2 Mathematics",
 });
 const single = XLSX.read(singleWorkbook, { type: "buffer" });
-const singleRows = XLSX.utils.sheet_to_json(single.Sheets["Student Results"], { header: 1, defval: null });
-const singleHeaderRow = singleRows.findIndex((row) => row.some((cell) => cell === "Student"));
+const singleRows = XLSX.utils.sheet_to_json(single.Sheets["Student Performance"], { header: 1, defval: null });
+const singleHeaderRow = singleRows.findIndex((row) => row.some((cell) => cell === "Student Name"));
 ok("an individual workbook has one student row", singleRows.length - singleHeaderRow - 1 === 1);
 
 console.log(`\n${passed} checks passed — MYP PDF and Excel reports`);

@@ -79,13 +79,14 @@ check("the workspace list refuses learners and empty org scopes", () => {
 });
 
 check("the workspace list offers both export formats with the active filters", () => {
-  assert.match(listPage, /\/api\/myp\/export\/pdf/);
-  assert.match(listPage, /\/api\/myp\/export\/xlsx/);
+  assert.match(listPage, /<MypExportButton[^>]*format="pdf"[^>]*scope="collective"/);
+  assert.match(listPage, /<MypExportButton[^>]*format="xlsx"[^>]*scope="collective"/);
+  assert.match(listPage, /query=\{params\}/);
   assert.match(listPage, /searchParams|searchParamsPromise/);
 });
 
 check("the detail page links the individual reports and archives snapshots", () => {
-  assert.match(detailPage, /scope=individual&attempt=/);
+  assert.match(detailPage, /<MypExportButton[^>]*scope="individual"[^>]*attemptId=\{result\.attemptId\}/);
   assert.match(detailPage, /recordMypSnapshot/);
   assert.match(detailPage, /loadMypHistory/);
 });
@@ -113,7 +114,7 @@ check("the Super Admin console requires the Super Admin role", () => {
 });
 
 check("the Super Admin console can export across organizations", () => {
-  assert.match(adminList, /\/api\/myp\/export\/pdf/);
+  assert.match(adminList, /<MypExportButton[^>]*format="pdf"[^>]*scope="collective"/);
   assert.match(adminList, /mypAccess\(\{ global: true \}\)/);
   assert.match(adminList, /organization|org=/);
 });
@@ -134,7 +135,7 @@ check("the learner page only shows the learner's own released result", () => {
 });
 
 check("the learner page can download the same individual report", () => {
-  assert.match(studentResult, /\/api\/myp\/export\/pdf\?scope=individual&attempt=/);
+  assert.match(studentResult, /<MypExportButton[^>]*format="pdf"[^>]*scope="individual"[^>]*attemptId=/);
 });
 
 /* ── Navigation and existing surfaces ────────────────────────────────── */
@@ -154,15 +155,68 @@ check("the Super Admin navigation exposes MYP Results & Reports", () => {
 
 check("the examination report links the MYP results and exports for its paper", () => {
   assert.match(examReport, /\/dashboard\/myp-results\?\$\{mypQuery\}/);
-  assert.match(examReport, /\/api\/myp\/export\/pdf\?scope=collective&\$\{mypQuery\}/);
-  assert.match(examReport, /\/api\/myp\/export\/xlsx\?scope=collective&\$\{mypQuery\}/);
+  assert.match(examReport, /<MypExportButton[^>]*format="pdf"[^>]*scope="collective"[^>]*query=\{mypQuery\}/);
+  assert.match(examReport, /<MypExportButton[^>]*format="xlsx"[^>]*scope="collective"[^>]*query=\{mypQuery\}/);
   assert.match(examReport, /hasCriteria/);
 });
 
 check("the Super Admin examination results link the MYP console and exports", () => {
   assert.match(adminResults, /\/admin\/myp-results\?exam=/);
-  assert.match(adminResults, /\/api\/myp\/export\/pdf\?scope=collective&exam=/);
-  assert.match(adminResults, /\/api\/myp\/export\/xlsx\?scope=collective&exam=/);
+  assert.match(adminResults, /<MypExportButton[^>]*format="pdf"[^>]*scope="collective"[^>]*query=\{\`exam=/);
+  assert.match(adminResults, /<MypExportButton[^>]*format="xlsx"[^>]*scope="collective"/);
+});
+
+/* ── Download behaviour ──────────────────────────────────────────────── */
+const exportButton = source("src/components/myp/MypExportButton.tsx");
+
+check("exports are a client button, never a link the router can fetch", () => {
+  assert.match(exportButton, /"use client"/);
+  assert.match(exportButton, /onClick=\{handleExport\}/);
+  assert.doesNotMatch(exportButton, /<Link/);
+  assert.doesNotMatch(exportButton, /next\/link/);
+});
+
+check("nothing downloads during render, mount or navigation", () => {
+  assert.doesNotMatch(exportButton, /useEffect/);
+  assert.doesNotMatch(exportButton, /useLayoutEffect/);
+  assert.doesNotMatch(exportButton, /router\./);
+  const fetchCount = (exportButton.match(/fetch\(/g) ?? []).length;
+  assert.equal(fetchCount, 1, "the only fetch must live inside the click handler");
+  const handlerIndex = exportButton.indexOf("async function handleExport");
+  assert.ok(handlerIndex > -1 && exportButton.indexOf("fetch(") > handlerIndex);
+});
+
+check("a click guards against duplicate downloads and can be repeated", () => {
+  assert.match(exportButton, /useRef/);
+  assert.match(exportButton, /if \(inFlight\.current\) return;/);
+  assert.match(exportButton, /inFlight\.current = false/);
+  assert.match(exportButton, /disabled=\{state === "working"\}/);
+});
+
+check("the download is an authenticated same-origin request with feedback", () => {
+  assert.match(exportButton, /credentials: "same-origin"/);
+  assert.match(exportButton, /cache: "no-store"/);
+  assert.match(exportButton, /role="status"/);
+  assert.match(exportButton, /aria-live="polite"/);
+  assert.match(exportButton, /Download started/);
+  assert.match(exportButton, /Preparing/);
+});
+
+check("no MYP surface still links directly to an export URL", () => {
+  for (const path of [
+    "src/app/dashboard/myp-results/page.tsx",
+    "src/app/dashboard/myp-results/[attemptId]/page.tsx",
+    "src/app/admin/myp-results/page.tsx",
+    "src/app/admin/myp-results/[attemptId]/page.tsx",
+    "src/app/student/results/[attemptId]/page.tsx",
+    "src/app/dashboard/reports/exam/[id]/page.tsx",
+    "src/app/admin/examinations/results/page.tsx",
+    "src/components/myp/MypResultsTable.tsx",
+  ]) {
+    const text = source(path);
+    assert.doesNotMatch(text, /href=\{[^}]*\/api\/myp\/export/, `${path} still renders an export as a link`);
+    assert.doesNotMatch(text, /<ButtonLink[^>]*\/api\/myp\/export/, `${path} still renders an export as a ButtonLink`);
+  }
 });
 
 check("the learner workspace links a released result only", () => {

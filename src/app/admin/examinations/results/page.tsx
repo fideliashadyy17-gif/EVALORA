@@ -10,6 +10,7 @@ import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
 import { setExamResultsPublishedAsAdmin } from "../actions";
+import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "Examination results" };
 export const dynamic = "force-dynamic";
@@ -161,8 +162,8 @@ export default async function ExaminationResultsPage({
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
             <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>
-            <a href={`/api/myp/export/pdf?scope=collective&exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Collective MYP PDF</a>
-            <a href={`/api/myp/export/xlsx?scope=collective&exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP Excel</a>
+            <MypExportButton format="pdf" scope="collective" query={`exam=${selected.id}`} label="Collective MYP PDF" compact />
+            <MypExportButton format="xlsx" scope="collective" query={`exam=${selected.id}`} label="MYP Excel" compact />
             <form action={enterOrgWorkspace}>
               <input type="hidden" name="organization_id" value={selected.organization_id} />
               <input type="hidden" name="next" value={`/dashboard/reports/exam/${selected.id}`} />
