@@ -7,8 +7,8 @@ theory (Q41–45, 50 marks). Criterion totals printed on the paper:
 A 32, B 18, C 26, D 24.
 """
 from summative_b_common import (
-    data_table, diagram, display, double_number_line, doc, para, q, shape_patterns,
-    stats_figure, stats_spec, venn,
+    data_table, diagram, display, double_number_line, doc, line_graph, para, q,
+    shape_patterns, stats_figure, stats_spec, venn,
 )
 
 SOURCE = "myp2-term1-summative-b-2026"
@@ -170,16 +170,21 @@ def build():
                opts=["0.3", "5", "64.8", "300"], ans="B",
                expl="18 km/h = 18 000 m in 3 600 s = 18 000 ÷ 3 600 = 5 m/s."))
 
+    # The source paper prints four small graphs, one per option. Each option
+    # carries its own figure, all drawn on the same 0–6 × 0–12 window so the
+    # shape is the only thing that differs.
     Q.append(q(21, sec="A", crit="B", marks=1, lvl="intermediate", topic="Direct proportion",
                subtopic="graph of direct proportion",
-               blocks=[para("Which graph shows that $y$ is directly proportional to $x$?"),
-                       stats_figure(stats_spec(
-                           "dot_plot", title="Option A",
-                           x_label="x", y_label="y", values=[]))],
+               blocks=[para("Which graph shows that $y$ is directly proportional to $x$?")],
                opts=["A straight line through the origin",
                      "A straight line that does not pass through the origin",
                      "A curve through the origin",
-                     "A horizontal straight line"], ans="A",
+                     "A horizontal straight line"],
+               opt_blocks=[line_graph("2x", title="Option A"),
+                           line_graph("2x + 3", title="Option B"),
+                           line_graph("x^2/3", title="Option C"),
+                           line_graph("4", title="Option D")],
+               ans="A",
                expl="Direct proportion always gives a straight-line graph passing through the origin (0, 0). "
                     "Option B is a straight line that misses the origin, C is a curve and D is constant."))
 

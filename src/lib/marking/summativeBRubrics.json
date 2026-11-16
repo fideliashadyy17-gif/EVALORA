@@ -1,0 +1,4233 @@
+{
+ "_readme": [
+  "Machine-readable marking rubrics for the constructed-response (Part B)",
+  "questions of the four MYP Mathematics Summative B papers.",
+  "",
+  "Every rubric is transcribed from the mark scheme the SOURCE paper prints:",
+  "  · MYP 2 / MYP 3 — the worked solution ('expl') authored with the paper;",
+  "  · MYP 4 / MYP 5 — computed from the data printed in the question stem and",
+  "    verified by scripts/verify-summative-b-rubrics.mjs.",
+  "No answer is invented: where the printed stem and the printed mark scheme",
+  "disagree (MYP 3 Q42) BOTH readings are accepted.",
+  "",
+  "Rule kinds: number | numbers | anyNumber | expr | anyExpr | words | allWords | ai",
+  "A part is capped at its own mark; the question is capped at its own mark.",
+  "An empty response is reported as needs_review, never recorded as zero."
+ ],
+ "c0700000-0000-4000-8000-000000001041": {
+  "version": 1,
+  "criterion": "A",
+  "total": 8,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Lists of P and T",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       2,
+       3,
+       5,
+       7,
+       11,
+       13
+      ],
+      "tol": 0,
+      "marks": 1,
+      "scale": false,
+      "grouped": true,
+      "note": "P = {2, 3, 5, 7, 11, 13}"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       3,
+       6,
+       9,
+       12,
+       15
+      ],
+      "tol": 0,
+      "marks": 1,
+      "scale": false,
+      "grouped": true,
+      "note": "T = {3, 6, 9, 12, 15}"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 3,
+    "focus": "Intersection and union",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 10,
+      "tol": 0,
+      "marks": 2,
+      "note": "n(P ∪ T) = 10"
+     },
+     {
+      "kind": "allWords",
+      "words": [
+       "intersection",
+       "union"
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 3,
+    "focus": "Probability of neither",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       5,
+       15
+      ],
+      "tol": 0,
+      "marks": 1,
+      "grouped": true,
+      "note": "15 − 10 = 5 in neither"
+     },
+     {
+      "kind": "number",
+      "value": 0.333333,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "P = 5/15 = 1/3"
+     },
+     {
+      "kind": "allWords",
+      "words": [
+       "probability",
+       "neither"
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0700000-0000-4000-8000-000000001042": {
+  "version": 1,
+  "criterion": "B",
+  "total": 12,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 3,
+    "focus": "Counts for the given sets",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       6,
+       4,
+       2,
+       8
+      ],
+      "tol": 0,
+      "marks": 3,
+      "note": "n(A)=6, n(B)=4, n(A∩B)=2, n(A∪B)=8"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Description and prediction",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 27,
+      "tol": 0,
+      "marks": 1,
+      "note": "20 + 15 − 8 = 27"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "add"
+       ],
+       [
+        "subtract",
+        "minus",
+        "take away"
+       ],
+       [
+        "overlap",
+        "intersection",
+        "counted twice"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 3,
+    "focus": "General rule and verification",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "n(A) + n(B) - n(A ∩ B)",
+       "n(A)+n(B)-n(A∩B)"
+      ],
+      "vars": [
+       "n",
+       "a",
+       "b"
+      ],
+      "marks": 2,
+      "note": "general rule"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "verify",
+        "check",
+        "substitute"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(d)",
+    "marks": 4,
+    "focus": "Applying the rule in reverse",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 6,
+      "tol": 0,
+      "marks": 2,
+      "note": "n(A ∩ B) = 18 + 11 − 23 = 6"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "impossible",
+        "not possible",
+        "cannot",
+        "no"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "union cannot exceed",
+        "greater than the sum",
+        "14",
+        "exceeds"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0700000-0000-4000-8000-000000001043": {
+  "version": 1,
+  "criterion": "C",
+  "total": 10,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Reading the graph",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       1800,
+       1200
+      ],
+      "tol": 0,
+      "marks": 2,
+      "note": "Shop A 1 800 FCFA, shop B 1 200 FCFA"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 3,
+    "focus": "Unit price and formula",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       150,
+       100
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "150 FCFA and 100 FCFA per photo"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "C = 150n",
+       "150n"
+      ],
+      "vars": [
+       "c",
+       "n"
+      ],
+      "marks": 1,
+      "note": "shop A formula"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "C = 100n",
+       "100n"
+      ],
+      "vars": [
+       "c",
+       "n"
+      ],
+      "marks": 1,
+      "note": "shop B formula"
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 2,
+    "focus": "Features of proportionality",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "straight line",
+        "linear"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "origin"
+       ],
+       [
+        "proportional",
+        "constant rate",
+        "constant gradient"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(d)",
+    "marks": 3,
+    "focus": "Comparison with reasoning",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       16,
+       24
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "16 photos at A, 24 at B"
+     },
+     {
+      "kind": "number",
+      "value": 8,
+      "tol": 0,
+      "marks": 1,
+      "note": "8 more photos"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       2400
+      ],
+      "tol": 0,
+      "marks": 0.5,
+      "note": "the 2 400 FCFA budget"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "more",
+        "difference",
+        "cheaper"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0700000-0000-4000-8000-000000001044": {
+  "version": 1,
+  "criterion": "C",
+  "total": 8,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Three representations",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.25,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "3/12 = 1/4 = 0.25"
+     },
+     {
+      "kind": "number",
+      "value": 25,
+      "tol": 0,
+      "marks": 1,
+      "note": "25 %"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Winning a prize and its complement",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.333333,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "P(prize) = 4/12 = 1/3"
+     },
+     {
+      "kind": "number",
+      "value": 0.666667,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "P(no prize) = 2/3"
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 4,
+    "focus": "Report using expected number",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       25,
+       75
+      ],
+      "tol": 0,
+      "marks": 2,
+      "note": "expected 25 star and 75 small prizes"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "expected number",
+        "expectation",
+        "expected"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "cannot be certain",
+        "not certain",
+        "chance",
+        "variation",
+        "uncertain",
+        "random"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "enough",
+        "sufficient",
+        "short",
+        "below",
+        "not enough"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "ai",
+      "marks": 4,
+      "focus": "Quality of the written report: conclusion, expected numbers, and an explanation of uncertainty."
+     }
+    ]
+   }
+  ]
+ },
+ "c0700000-0000-4000-8000-000000001045": {
+  "version": 1,
+  "criterion": "D",
+  "total": 12,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Total volume",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 13500,
+      "tol": 0,
+      "marks": 1,
+      "note": "54 × 250 mL"
+     },
+     {
+      "kind": "number",
+      "value": 13.5,
+      "tol": 0.01,
+      "marks": 1,
+      "note": "13.5 L"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 3,
+    "focus": "Ratio split",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 9,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "2 + 7 = 9 parts"
+     },
+     {
+      "kind": "number",
+      "value": 1.5,
+      "tol": 0.001,
+      "marks": 0.5,
+      "note": "one part = 1.5 L"
+     },
+     {
+      "kind": "number",
+      "value": 3,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "syrup = 3 L"
+     },
+     {
+      "kind": "number",
+      "value": 10.5,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "water = 10.5 L"
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 3,
+    "focus": "Best value and lowest cost",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 2400,
+      "tol": 0,
+      "marks": 1,
+      "note": "750 mL bottle = 2 400 FCFA per litre"
+     },
+     {
+      "kind": "number",
+      "value": 2200,
+      "tol": 0,
+      "marks": 1,
+      "note": "1.5 L bottle = 2 200 FCFA per litre"
+     },
+     {
+      "kind": "number",
+      "value": 6600,
+      "tol": 0,
+      "marks": 1,
+      "note": "2 × 3 300 = 6 600 FCFA"
+     }
+    ]
+   },
+   {
+    "label": "(d)",
+    "marks": 4,
+    "focus": "Budget check with an assumption",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 7,
+      "tol": 0,
+      "marks": 1,
+      "note": "7 water bottles"
+     },
+     {
+      "kind": "number",
+      "value": 2100,
+      "tol": 0,
+      "marks": 1,
+      "note": "water = 2 100 FCFA"
+     },
+     {
+      "kind": "number",
+      "value": 8700,
+      "tol": 0,
+      "marks": 1,
+      "note": "total 8 700 FCFA"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "assumption"
+       ],
+       [
+        "enough",
+        "within budget",
+        "yes"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001026": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Terminating decimal",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.875,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "7/8"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Recurring decimal",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.636364,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "63/99 = 7/11"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "100x"
+       ],
+       [
+        "99x"
+       ],
+       [
+        "subtract",
+        "minus"
+       ]
+      ],
+      "marks": 1,
+      "note": "algebraic subtraction"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001027": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Proof that 1.16 recurring = 7/6",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1.166667,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "105/90 = 7/6"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "10x"
+       ],
+       [
+        "100x"
+       ],
+       [
+        "90x",
+        "105"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Exact difference",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.886667,
+      "tol": 0.002,
+      "marks": 1.5,
+      "note": "133/150"
+     },
+     {
+      "kind": "number",
+      "value": 150,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "common denominator 150"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001028": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Quotient and product laws",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "3q^7/p^5",
+       "3*p^-5*q^7"
+      ],
+      "vars": [
+       "p",
+       "q"
+      ],
+      "marks": 2
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Power of a product and zero index",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "u^4/v^8",
+       "u^4*v^-8"
+      ],
+      "vars": [
+       "u",
+       "v"
+      ],
+      "marks": 2
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001029": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Subtraction",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 465000000,
+      "tol": 1000000,
+      "marks": 1,
+      "note": "4.65 × 10^8"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Addition",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.000534,
+      "tol": 1e-06,
+      "marks": 2,
+      "note": "5.34 × 10^-4"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001030": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Length of PR",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 25,
+      "tol": 0,
+      "marks": 2,
+      "note": "PR = sqrt(7^2 + 24^2) = 25"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Perimeter",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 20,
+      "tol": 0,
+      "marks": 1,
+      "note": "SR = sqrt(25^2 − 15^2) = 20"
+     },
+     {
+      "kind": "number",
+      "value": 66,
+      "tol": 0,
+      "marks": 1,
+      "note": "7 + 24 + 20 + 15 = 66"
+     },
+     {
+      "kind": "followThrough",
+      "derive": "7 + 24 + 15 + sqrt(prev^2 - 15^2)",
+      "min": 16,
+      "marks": 1,
+      "note": "perimeter consistent with their own PR"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001031": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Length AD",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 11.11,
+      "tol": 0.02,
+      "marks": 2,
+      "note": "AD = 10 / tan 42°"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Angle ABC",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 54.5,
+      "tol": 0.1,
+      "marks": 0.5,
+      "note": "angle DBC"
+     },
+     {
+      "kind": "number",
+      "value": 102.5,
+      "tol": 0.2,
+      "marks": 1.5,
+      "note": "angle ABC = 48° + 54.5°"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001032": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Decimal and digit sum",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.727273,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "8/11 = 0.72 recurring"
+     },
+     {
+      "kind": "number",
+      "value": 9,
+      "tol": 0,
+      "marks": 1,
+      "note": "the two repeating digits sum to 9"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Rule and application",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 3.818182,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "3.81 recurring = 42/11"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "99"
+       ],
+       [
+        "9n",
+        "nine times"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001033": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "First three terms and pattern",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       -1,
+       -2,
+       -3
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "3^-1, 3^-2, 3^-3"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "decreases",
+        "decrease",
+        "divided by 3",
+        "subtract 1",
+        "minus 1"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "General term and solving",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "3^-n",
+       "1/3^n",
+       "3^(-n)"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "number",
+      "value": 7,
+      "tol": 0,
+      "marks": 1,
+      "note": "1/2187 = 3^-7 → n = 7"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001034": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Three diagonals and the formula",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       2.828427,
+       4.472136,
+       6.324555
+      ],
+      "tol": 0.002,
+      "marks": 1,
+      "note": "2√2, 2√5, 2√10"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "2*sqrt(n^2+1)",
+       "2sqrt(n^2+1)",
+       "sqrt(4n^2+4)"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Irrationality proof",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "perfect square"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "between",
+        "strictly between",
+        "consecutive"
+       ],
+       [
+        "irrational"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001035": {
+  "version": 1,
+  "criterion": "B",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Ratio and the identity",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.533333,
+      "tol": 0.002,
+      "marks": 0.5,
+      "note": "sin/cos = 8/15"
+     },
+     {
+      "kind": "number",
+      "value": 1,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "sin² + cos² = 1"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Proof and application",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.8,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "cos θ = 4/5"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "pythagoras",
+        "pythagorean"
+       ],
+       [
+        "hypotenuse",
+        "a2 + b2 = c2",
+        "a^2 + b^2 = c^2"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001036": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Classification table",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "rational"
+       ],
+       [
+        "irrational"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       9,
+       0.583333,
+       -1.232323
+      ],
+      "tol": 0.002,
+      "marks": 0.75,
+      "note": "√81 = 9, 7/12, −122/99"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       -4.472136,
+       5.141593
+      ],
+      "tol": 0.002,
+      "marks": 0.75,
+      "note": "−√20, π + 2"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Counterexample",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "81",
+        "sqrt(81)"
+       ],
+       [
+        "rational",
+        "9/1",
+        "ratio of integers"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001037": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Two errors",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.7,
+      "tol": 0,
+      "marks": 1,
+      "note": "7.0 × 10^-4 = 0.7 × 10^-3, not 0.07"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "coefficient",
+        "mantissa",
+        "standard form",
+        "1 <= a < 10",
+        "between 1 and 10"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Correct value",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.0035,
+      "tol": 1e-05,
+      "marks": 1,
+      "note": "3.5 × 10^-3"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001038": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 3,
+    "focus": "Congruence proof",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "90",
+        "right angle"
+       ],
+       [
+        "common",
+        "shared"
+       ],
+       [
+        "7.5",
+        "ef = eh",
+        "fg = gh"
+       ]
+      ],
+      "marks": 2
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "rhs",
+        "sss",
+        "sas"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Bisector conclusion",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "corresponding"
+       ],
+       [
+        "bisect",
+        "bisector"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001039": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Similarity proof",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "90",
+        "perpendicular",
+        "right angle"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "vertically opposite"
+       ],
+       [
+        "similar",
+        "aa",
+        "equiangular"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Two lengths",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1.5,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "scale factor 12/8"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       9,
+       15
+      ],
+      "tol": 0,
+      "marks": 1.5,
+      "note": "ED = 9 cm, CE = 15 cm"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001040": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Right-angle test",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       18,
+       32,
+       50
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "18 + 32 = 50"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "converse",
+        "pythagoras"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "right angle",
+        "right-angled",
+        "lmn"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Exact perimeter and irrationality",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 16.970563,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "12√2 m"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "irrational"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001041": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Net mass",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1560000000,
+      "tol": 20000000,
+      "marks": 2,
+      "note": "1.56 × 10^9 kg"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Trip comparison",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1520000000,
+      "tol": 20000000,
+      "marks": 0.5,
+      "note": "1.52 × 10^9 kg"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "not",
+        "no",
+        "insufficient",
+        "short"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001042": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "_note": "The printed stem reads 26 × 10^3 KB while the printed mark scheme evaluates 2^6 × 10^3 KB. Both readings are accepted.",
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Total size",
+    "rules": [
+     {
+      "kind": "anyNumber",
+      "values": [
+       5120000,
+       2080000
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "5 120 000 KB (mark scheme) or 2 080 000 KB (literal stem)"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "scientific notation",
+        "standard form"
+       ],
+       [
+        "5120000",
+        "2080000"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Compressed size",
+    "rules": [
+     {
+      "kind": "anyNumber",
+      "values": [
+       1280000,
+       520000
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "1.28 × 10^6 KB or 5.2 × 10^5 KB"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001043": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Height of the baobab",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 12.25,
+      "tol": 0,
+      "marks": 1,
+      "note": "h = 7 × 1.75"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "similar"
+       ],
+       [
+        "7",
+        "scale factor"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Physical limitation",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "canopy"
+       ],
+       [
+        "level",
+        "sloping",
+        "uneven"
+       ],
+       [
+        "penumbra",
+        "blurred",
+        "fuzzy"
+       ],
+       [
+        "lean",
+        "leaning",
+        "not vertical"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001044": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Flight distance",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 24,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "vertical drop 32 − 8"
+     },
+     {
+      "kind": "number",
+      "value": 74,
+      "tol": 0,
+      "marks": 1.5,
+      "note": "sqrt(24^2 + 70^2) = 74 m"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Flight time",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 5.92,
+      "tol": 0.01,
+      "marks": 1,
+      "note": "74 / 12.5"
+     }
+    ]
+   }
+  ]
+ },
+ "c0800000-0000-4000-8000-000000001045": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Angle of tilt and compliance",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 13.5,
+      "tol": 0.1,
+      "marks": 1,
+      "note": "arcsin(0.42/1.80)"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "meets",
+        "within",
+        "complies",
+        "satisfies",
+        "yes"
+       ],
+       [
+        "12",
+        "15",
+        "range"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Horizontal width",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1.75,
+      "tol": 0.01,
+      "marks": 1,
+      "note": "sqrt(1.80^2 − 0.42^2)"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001026": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Blood group",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "qualitative"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Solar panels",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "discrete"
+       ],
+       [
+        "bar"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 1,
+    "focus": "Soil-sample mass",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "continuous"
+       ],
+       [
+        "histogram"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001027": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Mode, median, range",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       1,
+       2,
+       5
+      ],
+      "tol": 0,
+      "marks": 2,
+      "note": "mode 1, median 2, range 5"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Exact mean",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 2,
+      "tol": 0,
+      "marks": 1,
+      "note": "22 / 11 = 2"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001028": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Boundaries, modal and median class",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       19.5,
+       24.5
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "class boundaries of 20–24"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "modal"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "median"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Estimated mean",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 830,
+      "tol": 0,
+      "marks": 1,
+      "note": "Σfx = 830"
+     },
+     {
+      "kind": "number",
+      "value": 20.75,
+      "tol": 0.01,
+      "marks": 1,
+      "note": "830 / 40"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001029": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Mean and squared deviations",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 20,
+      "tol": 0,
+      "marks": 1,
+      "note": "μ = 100 / 5 = 20"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       16,
+       1,
+       0,
+       4,
+       9
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "(x − μ)² = 16, 1, 0, 4, 9"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Exact surd and 2 d.p.",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 2.44949,
+      "tol": 0.002,
+      "marks": 1,
+      "note": "σ = √(30/5) = √6"
+     },
+     {
+      "kind": "number",
+      "value": 2.45,
+      "tol": 0.005,
+      "marks": 1,
+      "note": "2.45 (2 d.p.)"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001030": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Quartiles and IQR",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       25,
+       35,
+       45
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "Q1 25, Q2 35, Q3 45 min"
+     },
+     {
+      "kind": "number",
+      "value": 20,
+      "tol": 0,
+      "marks": 1,
+      "note": "IQR = 45 − 25 = 20"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Count and percentage",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 8,
+      "tol": 0,
+      "marks": 1,
+      "note": "80 − 72 = 8 commuters"
+     },
+     {
+      "kind": "number",
+      "value": 10,
+      "tol": 0,
+      "marks": 1,
+      "note": "8 / 80 = 10 %"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001031": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Width and frequency density",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       8,
+       12,
+       16
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "class widths 8, 8, 12, 16"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       1.5,
+       3.5,
+       2,
+       0.5
+      ],
+      "tol": 0.001,
+      "marks": 1,
+      "note": "frequency densities"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Bar heights and count",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       7,
+       4,
+       1
+      ],
+      "tol": 0.001,
+      "marks": 1,
+      "note": "bar heights 3.0, 7.0, 4.0, 1.0 cm"
+     },
+     {
+      "kind": "number",
+      "value": 26,
+      "tol": 0.5,
+      "marks": 1,
+      "note": "14 + 12 = 26 bags in 12 ≤ m < 22"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001032": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Statistics with and without y",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       39,
+       35,
+       38
+      ],
+      "tol": 0,
+      "marks": 1.5,
+      "note": "6-mean 39; 7-mean 35, 7-median 38"
+     },
+     {
+      "kind": "anyNumber",
+      "values": [
+       6,
+       5,
+       8
+      ],
+      "tol": 0,
+      "marks": 0.5,
+      "note": "IQR: 6 (6 students), 8 (7 students)"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Explanation of invariance",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "(234+y)/7",
+       "(234 + y)/7"
+      ],
+      "vars": [
+       "y"
+      ],
+      "marks": 1,
+      "note": "7-student mean in terms of y"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "median"
+       ],
+       [
+        "iqr",
+        "interquartile"
+       ],
+       [
+        "below",
+        "less than",
+        "34",
+        "constant",
+        "unchanged"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001033": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Three standard deviations",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       1.414214,
+       2.828427,
+       4.242641
+      ],
+      "tol": 0.002,
+      "marks": 2,
+      "note": "√2, 2√2, 3√2"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "General proof",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "10d2",
+        "10d^2"
+       ],
+       [
+        "2d2",
+        "2d^2"
+       ],
+       [
+        "sigma",
+        "standard deviation"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "number",
+      "value": 6,
+      "tol": 0,
+      "marks": 1,
+      "note": "d = 6 when σ = 6√2"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001034": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Shared table and estimate",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 9,
+      "tol": 0.001,
+      "marks": 1,
+      "note": "shared estimated mean = 9.0 kg"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "same",
+        "shared",
+        "identical"
+       ],
+       [
+        "midpoint"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Explanation of the error",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 2,
+      "tol": 0,
+      "marks": 1,
+      "note": "P is overestimated by +2.0"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "cluster",
+        "clustering",
+        "skew"
+       ],
+       [
+        "below",
+        "lower",
+        "upper",
+        "midpoint"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001035": {
+  "version": 1,
+  "criterion": "B",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Five-number summary, IQR and skew",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       80,
+       110
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "Q3' = 80, Max' = 110"
+     },
+     {
+      "kind": "number",
+      "value": 45,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "IQR' = 80 − 35 = 45"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "positive skew",
+        "positively skewed",
+        "right skew",
+        "right-skewed"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Generalised ratio",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "k",
+       "15k/15",
+       "(50 + 15k - 50)/(50 - 35)"
+      ],
+      "vars": [
+       "k"
+      ],
+      "marks": 1,
+      "note": "ratio = k"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001036": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 3,
+    "focus": "Diagram with dual key",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       25,
+       28,
+       29,
+       30,
+       32,
+       34,
+       36,
+       41,
+       43
+      ],
+      "tol": 0,
+      "marks": 1,
+      "grouped": true,
+      "note": "term-start leaves"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       39,
+       42,
+       45,
+       46,
+       48,
+       51,
+       53,
+       54,
+       61
+      ],
+      "tol": 0,
+      "marks": 1,
+      "grouped": true,
+      "note": "term-end leaves"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "key"
+       ],
+       [
+        "stems"
+       ],
+       [
+        "ordered",
+        "ascending"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Comparison in context",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       33,
+       47
+      ],
+      "tol": 0,
+      "marks": 0.5,
+      "note": "medians 33 and 47 wpm"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "median",
+        "range"
+       ],
+       [
+        "faster",
+        "improved",
+        "higher",
+        "increased"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001037": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Grouped table",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       4,
+       7,
+       5,
+       4
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "frequencies 4, 7, 5, 4"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       85,
+       95,
+       105,
+       115
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "midpoints"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Boundary convention",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "90"
+       ],
+       [
+        "110"
+       ],
+       [
+        "double",
+        "twice",
+        "once",
+        "overlap",
+        "counted"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001038": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Two errors",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "frequency density"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "area"
+       ],
+       [
+        "axis",
+        "label",
+        "scale"
+       ],
+       [
+        "width",
+        "unequal"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Corrected histogram",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       1.6,
+       2.4,
+       1
+      ],
+      "tol": 0.001,
+      "marks": 1.5,
+      "note": "frequency densities 8/5, 12/5, 15/15"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "frequency density"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001039": {
+  "version": 1,
+  "criterion": "C",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Five-number summary and IQRs",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       4,
+       8,
+       14,
+       22,
+       32
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "North five-number summary"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       14,
+       6
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "IQR North 14, South 6"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Two comparisons",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "median",
+        "average",
+        "centre",
+        "central"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "iqr",
+        "range",
+        "spread",
+        "consist",
+        "variab",
+        "dispers"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "ai",
+      "marks": 2,
+      "focus": "Two evidenced contextual comparisons of average waiting time and consistency."
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001040": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Exact vs estimated mean",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "exact"
+       ],
+       [
+        "estimate",
+        "approximation"
+       ],
+       [
+        "midpoint",
+        "interval",
+        "grouped"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Formulas and units",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "variance"
+       ],
+       [
+        "standard deviation"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "cm2",
+        "cm^2",
+        "square",
+        "squared"
+       ],
+       [
+        "cm"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001041": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Estimated mean",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 516,
+      "tol": 0,
+      "marks": 1,
+      "note": "Σfx = 516"
+     },
+     {
+      "kind": "number",
+      "value": 17.2,
+      "tol": 0.01,
+      "marks": 1,
+      "note": "516 / 30"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Cap check and minimum",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 456,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "theoretical minimum 456 m³"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "exceed",
+        "over",
+        "greater",
+        "exceeds",
+        "not",
+        "breach",
+        "fail"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001042": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Mean and standard deviation",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 50,
+      "tol": 0,
+      "marks": 1,
+      "note": "μ = 400 / 8 = 50 kg"
+     },
+     {
+      "kind": "number",
+      "value": 1.224745,
+      "tol": 0.005,
+      "marks": 1,
+      "note": "σ = √(12/8) = 1.22 kg"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Compliance decision",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "pass",
+        "passes",
+        "meets",
+        "complies",
+        "within"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001043": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Quartiles and IQR",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       50,
+       60,
+       70
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "Q1 50, Q2 60, Q3 70"
+     },
+     {
+      "kind": "number",
+      "value": 20,
+      "tol": 0,
+      "marks": 1,
+      "note": "IQR = 20"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Cut-off and count",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 80,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "top 10 % cut-off = 80 marks"
+     },
+     {
+      "kind": "number",
+      "value": 18,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "18 scored 70 < s ≤ 80"
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001044": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Means and medians",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       120,
+       98
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "all 7: mean 120, median 98"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       95
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "6 flats: mean 95, median 95"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Advice with reasons",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "median"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "tax",
+        "all 7",
+        "every",
+        "complete",
+        "total"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0900000-0000-4000-8000-000000001045": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Comparison",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       14.2,
+       15,
+       0.8,
+       2.6,
+       0.5,
+       1.65
+      ],
+      "tol": 0.001,
+      "marks": 1,
+      "note": "the published statistics"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "higher",
+        "longer",
+        "greater",
+        "more"
+       ],
+       [
+        "consist",
+        "variab",
+        "spread",
+        "reliable"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Recommendation",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "solis"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "13"
+       ],
+       [
+        "consist",
+        "reliable",
+        "guarantee",
+        "minimum"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001026": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Three terms from an explicit rule",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       5,
+       25,
+       180
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "u1 = 5, u3 = 25, u8 = 180"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Three recursive steps",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       8,
+       9,
+       9.5
+      ],
+      "tol": 0,
+      "marks": 1.5,
+      "note": "v2 = 8, v3 = 9, v4 = 9.5"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "step",
+        "substitute",
+        "0.5",
+        "half"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001027": {
+  "version": 1,
+  "criterion": "A",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Explicit formula",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       46,
+       -7
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "u1 = 46, d = −7"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "53 - 7n",
+       "46 - 7(n-1)",
+       "46 + (n-1)*-7"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Term number and first negative term",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 14,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "u14 = −45"
+     },
+     {
+      "kind": "number",
+      "value": -3,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "u8 = −3 is the first negative term"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001028": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Simultaneous equations",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 5,
+      "tol": 0,
+      "marks": 1,
+      "note": "d = 5"
+     },
+     {
+      "kind": "number",
+      "value": 3,
+      "tol": 0,
+      "marks": 1,
+      "note": "u1 = 3"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Sum of 20 terms",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1010,
+      "tol": 0,
+      "marks": 2,
+      "note": "S20 = 10(6 + 95)"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001029": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Ratio, first term and formula",
+    "rules": [
+     {
+      "kind": "number",
+      "value": -2,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "r = −2"
+     },
+     {
+      "kind": "number",
+      "value": 12,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "u1 = 12"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "12(-2)^(n-1)",
+       "12*(-2)^(n-1)"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "u8 and membership test",
+    "rules": [
+     {
+      "kind": "number",
+      "value": -1536,
+      "tol": 0,
+      "marks": 1,
+      "note": "u8 = 12(−2)^7"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "no",
+        "not a term",
+        "does not",
+        "cannot"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001030": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Coefficients and formula",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       2,
+       -1,
+       3
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "a = 2, b = −1, c = 3"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "2n^2 - n + 3",
+       "2n^2-n+3"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "u12 and solving for n",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 279,
+      "tol": 0,
+      "marks": 1,
+      "note": "u12 = 2(144) − 12 + 3"
+     },
+     {
+      "kind": "number",
+      "value": 10,
+      "tol": 0,
+      "marks": 1,
+      "note": "u_n = 193 at n = 10"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001031": {
+  "version": 1,
+  "criterion": "A",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Arithmetic series",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 20,
+      "tol": 0,
+      "marks": 1,
+      "note": "n = 20 terms"
+     },
+     {
+      "kind": "number",
+      "value": 1240,
+      "tol": 0,
+      "marks": 1,
+      "note": "S20 = 10(5 + 119)"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Geometric series",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 7,
+      "tol": 0,
+      "marks": 1,
+      "note": "n = 7 terms"
+     },
+     {
+      "kind": "number",
+      "value": 635,
+      "tol": 0,
+      "marks": 1,
+      "note": "S7 = 635"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001032": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Stage 4 values",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       10,
+       20,
+       30
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "B4 = 10, C4 = 20, T4 = 30"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Classification and rules",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "2n + 2",
+       "2n+2"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "B_n"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "n^2 + 3n + 2",
+       "(n+1)(n+2)"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "T_n"
+     }
+    ]
+   },
+   {
+    "label": "(c)",
+    "marks": 1,
+    "focus": "Identity and solving for n",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 13,
+      "tol": 0,
+      "marks": 1,
+      "note": "T_n = 210 at n = 13"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001033": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Partial sums and terms",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       7,
+       20,
+       39,
+       64
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "S1..S4"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       7,
+       13,
+       19,
+       25
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "u1..u4"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Algebraic proof",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "6n + 1",
+       "6n+1"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "u_n"
+     },
+     {
+      "kind": "number",
+      "value": 6,
+      "tol": 0,
+      "marks": 1,
+      "note": "d = 6"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001034": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Terms and geometric differences",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       11,
+       29,
+       83
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "u2, u3, u4"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "geometric"
+       ],
+       [
+        "6",
+        "18",
+        "54"
+       ],
+       [
+        "ratio"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Proof and closed form",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "3^n + 2",
+       "3^n+2"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "3vn",
+        "v(n+1) = 3v(n)",
+        "v_{n+1} = 3v_n"
+       ],
+       [
+        "3",
+        "geometric"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001035": {
+  "version": 1,
+  "criterion": "B",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Four formulae",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "4n + 4",
+       "4n+4"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "P_n"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "8(1.5)^(n-1)",
+       "8*1.5^(n-1)"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "Q_n"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Table and explanation",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       8,
+       12,
+       16,
+       20,
+       24,
+       18,
+       27,
+       40.5
+      ],
+      "tol": 0.001,
+      "marks": 1,
+      "note": "both tables n = 1..5"
+     },
+     {
+      "kind": "number",
+      "value": 0.6875,
+      "tol": 0.002,
+      "marks": 0.5,
+      "note": "(Q5 − P5)/P5 = 16.5/24"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "geometric",
+        "exponential",
+        "multiplicative"
+       ],
+       [
+        "greater",
+        "faster",
+        "exceed",
+        "overtakes"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001036": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Explanation with examples",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "sequence"
+       ],
+       [
+        "series",
+        "sum"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "example",
+        "for example",
+        "such as"
+       ],
+       [
+        "common ratio",
+        "ratio"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "ai",
+      "marks": 2,
+      "focus": "Clarity of the sequence/series distinction with one symbolic example of each."
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Sigma notation",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 10,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "upper limit 10"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "sigma"
+       ],
+       [
+        "4n + 5",
+        "4i + 5"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001037": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Two forms",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "4n - 9",
+       "4n-9"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1,
+      "note": "explicit formula"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "u(n+1) = u(n) + 4",
+        "u_{n+1} = u_n + 4"
+       ],
+       [
+        "-5"
+       ]
+      ],
+      "marks": 1,
+      "note": "recursive definition"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Why u1 is needed",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "first term",
+        "initial term",
+        "u1",
+        "starting value"
+       ],
+       [
+        "unique",
+        "not unique",
+        "infinitely many",
+        "any starting"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001038": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "First difference",
+    "rules": [
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "2an + a + b",
+       "a(2n+1) + b",
+       "2an+a+b"
+      ],
+      "vars": [
+       "n",
+       "a",
+       "b"
+      ],
+      "marks": 2
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Second difference proof",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "2a"
+       ]
+      ],
+      "marks": 0.5
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "constant",
+        "independent",
+        "does not depend"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001039": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "The error and the bound",
+    "rules": [
+     {
+      "kind": "number",
+      "value": -0.5,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "r = −0.5, not 0.5"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "alternating",
+        "alternate",
+        "changes sign",
+        "negative"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Exact value of S6",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 65.625,
+      "tol": 0.005,
+      "marks": 1.5,
+      "note": "S6 = 525/8"
+     },
+     {
+      "kind": "number",
+      "value": -0.5,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "correct ratio used"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001040": {
+  "version": 1,
+  "criterion": "C",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Classification with justification",
+    "rules": [
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "geometric"
+       ],
+       [
+        "quadratic"
+       ],
+       [
+        "arithmetic",
+        "linear"
+       ]
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "common ratio",
+        "ratio"
+       ],
+       [
+        "second difference",
+        "differences"
+       ],
+       [
+        "first difference",
+        "common difference"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Fifth terms",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       3.555556,
+       33,
+       -6
+      ],
+      "tol": 0.001,
+      "marks": 1,
+      "note": "32/9, 33, −6"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001041": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Cost of the 20th metre",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 120500,
+      "tol": 0,
+      "marks": 1,
+      "note": "35 000 + 19 × 4 500"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Total cost and grant check",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1555000,
+      "tol": 0,
+      "marks": 1,
+      "note": "S20 = 10(35 000 + 120 500)"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "yes",
+        "suffices",
+        "sufficient",
+        "enough",
+        "within"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001042": {
+  "version": 1,
+  "criterion": "D",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Ratio, formula and V5",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 0.85,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "r = 0.85"
+     },
+     {
+      "kind": "anyExpr",
+      "exprs": [
+       "40000(0.85)^n",
+       "40000*0.85^n"
+      ],
+      "vars": [
+       "n"
+      ],
+      "marks": 1
+     },
+     {
+      "kind": "number",
+      "value": 17748.21,
+      "tol": 0.02,
+      "marks": 0.5,
+      "note": "V5"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Replacement year",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 8,
+      "tol": 0,
+      "marks": 1.5,
+      "note": "end of year 8"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "because",
+        "since",
+        "justify",
+        "below",
+        "12000"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001043": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 1,
+    "focus": "Verification and interpretation",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       8,
+       15,
+       24
+      ],
+      "tol": 0,
+      "marks": 0.5,
+      "note": "u1, u2, u3"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "2n + 5",
+        "difference"
+       ],
+       [
+        "layer",
+        "row",
+        "more pipes",
+        "extra"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Solving and explaining",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 10,
+      "tol": 0,
+      "marks": 1,
+      "note": "crate 10 holds 143 pipes"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "no integer",
+        "not an integer",
+        "no whole number",
+        "no crate",
+        "not a solution"
+       ],
+       [
+        "130"
+       ]
+      ],
+      "marks": 1
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001044": {
+  "version": 1,
+  "criterion": "D",
+  "total": 4,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Structure of the series",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 1.06,
+      "tol": 0,
+      "marks": 0.5,
+      "note": "r = 1.06"
+     },
+     {
+      "kind": "numbers",
+      "values": [
+       5300,
+       8
+      ],
+      "tol": 0,
+      "marks": 1,
+      "note": "u1 = 5 300, n = 8"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "geometric"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 2,
+    "focus": "Balance and interest",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 52456.58,
+      "tol": 0.05,
+      "marks": 1,
+      "note": "end-of-year-8 balance"
+     },
+     {
+      "kind": "number",
+      "value": 12456.58,
+      "tol": 0.05,
+      "marks": 1,
+      "note": "total interest earned"
+     }
+    ]
+   }
+  ]
+ },
+ "c0a00000-0000-4000-8000-000000001045": {
+  "version": 1,
+  "criterion": "D",
+  "total": 3,
+  "parts": [
+   {
+    "label": "(a)",
+    "marks": 2,
+    "focus": "Two 10-month totals",
+    "rules": [
+     {
+      "kind": "number",
+      "value": 2400000,
+      "tol": 0,
+      "marks": 1,
+      "note": "Contract X S10"
+     },
+     {
+      "kind": "number",
+      "value": 2595868,
+      "tol": 3,
+      "marks": 1,
+      "note": "Contract Y S10"
+     }
+    ]
+   },
+   {
+    "label": "(b)",
+    "marks": 1,
+    "focus": "Advice with figures",
+    "rules": [
+     {
+      "kind": "numbers",
+      "values": [
+       950000,
+       744160
+      ],
+      "tol": 1,
+      "marks": 0.5,
+      "note": "5-month totals X and Y"
+     },
+     {
+      "kind": "words",
+      "groups": [
+       [
+        "contract x",
+        "x for five",
+        "x for 5"
+       ],
+       [
+        "contract y",
+        "y for ten",
+        "y for 10"
+       ]
+      ],
+      "marks": 0.5
+     }
+    ]
+   }
+  ]
+ }
+}

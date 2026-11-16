@@ -1,9 +1,14 @@
 import type { AssessDiagramSpec } from "@/lib/assessDiagram";
+import { hasMathRun, renderMathText } from "@/lib/content";
 
 /**
  * Native SVG renderer for Assess Prep diagrams. Pure presentation from the
  * stored spec: labelled, gridlined where values must be read, and fluid-width
  * so it stays readable on a phone.
+ *
+ * Labels may mix prose with `$…$` mathematics — a table column headed
+ * `$10 \le V < 14$`, a Venn region holding `$2x - 1$` — which is rendered
+ * with KaTeX rather than printed as raw LaTeX.
  */
 export function AssessDiagram({ spec }: { spec: AssessDiagramSpec }) {
   return (
@@ -18,6 +23,68 @@ const ink = "#16241c";
 const grid = "#d8e2da";
 const accent = "#0a5c36";
 const gold = "#c9a227";
+
+/** HTML for a label that may contain $…$ mathematics. */
+function labelHtml(value: string): string {
+  return renderMathText(String(value ?? ""));
+}
+
+/** A label in an HTML context (a table cell, a figure caption). */
+function Label({ value, className }: { value: string; className?: string }) {
+  const text = String(value ?? "");
+  if (!hasMathRun(text)) return <>{text}</>;
+  return <span className={className} dangerouslySetInnerHTML={{ __html: labelHtml(text) }} />;
+}
+
+/**
+ * A label on the SVG itself. Plain text stays a real <text> node so the
+ * diagram keeps its crisp, scalable typography; mathematics is KaTeX output,
+ * which is HTML and therefore has to live inside a <foreignObject>. The box is
+ * sized generously because a browser clips a foreignObject to its bounds.
+ */
+function SvgLabel({
+  value, x, y, anchor = "start", size = 12, weight, fill = ink, rotate,
+}: {
+  value: string;
+  x: number;
+  y: number;
+  anchor?: "start" | "middle" | "end";
+  size?: number;
+  weight?: number;
+  fill?: string;
+  rotate?: string;
+}) {
+  const text = String(value ?? "");
+  if (!text) return null;
+  if (!hasMathRun(text)) {
+    return (
+      <text x={x} y={y} textAnchor={anchor} fontSize={size} fontWeight={weight} fill={fill} transform={rotate}>
+        {text}
+      </text>
+    );
+  }
+  const width = Math.max(30, Math.round(text.length * size * 0.62) + 18);
+  const height = Math.round(size * 2.2);
+  const left = anchor === "middle" ? x - width / 2 : anchor === "end" ? x - width : x;
+  return (
+    <foreignObject x={left} y={y - size * 1.2} width={width} height={height} transform={rotate}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "100%",
+          height: "100%",
+          fontSize: `${size}px`,
+          fontWeight: weight,
+          color: fill,
+          whiteSpace: "nowrap",
+        }}
+        dangerouslySetInnerHTML={{ __html: labelHtml(text) }}
+      />
+    </foreignObject>
+  );
+}
 
 function renderKind(spec: AssessDiagramSpec) {
   switch (spec.kind) {
@@ -42,13 +109,13 @@ function Tape({ spec }: { spec: AssessDiagramSpec }) {
         let x = 120;
         return (
           <g key={ri}>
-            <text x={4} y={ri * rowH + 30} fontSize={14} fontWeight={600} fill={ink}>{row.label}</text>
+            <SvgLabel value={row.label} x={4} y={ri * rowH + 30} size={14} weight={600} />
             {row.segments.map((seg, si) => {
               const w = (seg.span / total) * (width - 132);
               const el = (
                 <g key={si}>
                   <rect x={x} y={ri * rowH + 6} width={w} height={32} fill={seg.shade ? gold : "#e7efe9"} stroke={accent} strokeWidth={1.4} />
-                  <text x={x + w / 2} y={ri * rowH + 27} textAnchor="middle" fontSize={13} fontWeight={600} fill={ink}>{seg.label}</text>
+                  <SvgLabel value={seg.label} x={x + w / 2} y={ri * rowH + 27} anchor="middle" size={13} weight={600} />
                 </g>
               );
               x += w;
@@ -71,15 +138,15 @@ function DoubleLine({ spec }: { spec: AssessDiagramSpec }) {
         const sx = (at: number) => left + (at / (line.max || 1)) * (right - left);
         return (
           <g key={li}>
-            <text x={4} y={y + 4} fontSize={13} fontWeight={600} fill={ink}>{line.label}</text>
+            <SvgLabel value={line.label} x={4} y={y + 4} size={13} weight={600} />
             <line x1={left} y1={y} x2={right} y2={y} stroke={accent} strokeWidth={2} />
             {line.ticks.map((t, ti) => (
               <g key={ti}>
                 <line x1={sx(t.at)} y1={y - 7} x2={sx(t.at)} y2={y + 7} stroke={accent} strokeWidth={2} />
-                <text x={sx(t.at)} y={li === 0 ? y - 14 : y + 26} textAnchor="middle" fontSize={12.5} fill={ink}>{t.label}</text>
+                <SvgLabel value={t.label} x={sx(t.at)} y={li === 0 ? y - 14 : y + 26} anchor="middle" size={12.5} />
               </g>
             ))}
-            <text x={right} y={y - 16} textAnchor="end" fontSize={11.5} fill={ink}>{line.unit}</text>
+            <SvgLabel value={line.unit} x={right} y={y - 16} anchor="end" size={11.5} />
           </g>
         );
       })}
@@ -115,16 +182,16 @@ function Venn({ spec }: { spec: AssessDiagramSpec }) {
   return (
     <svg viewBox="0 0 460 300" className="mx-auto w-full max-w-[460px]" role="img">
       <rect x={8} y={8} width={444} height={284} fill="none" stroke={ink} strokeWidth={1.6} />
-      <text x={20} y={32} fontSize={14} fontWeight={700} fill={ink}>{v.universalLabel ?? "ξ"}</text>
+      <SvgLabel value={v.universalLabel ?? "ξ"} x={20} y={32} size={14} weight={700} />
       {shadedPath ? <path d={shadedPath} fill="#0a5c36" fillOpacity={0.22} /> : null}
       <circle cx={cx1} cy={cy0} r={rad} fill="#0a5c36" fillOpacity={v.shaded ? 0 : 0.13} stroke={accent} strokeWidth={2} />
       <circle cx={cx2} cy={cy0} r={rad} fill="#c9a227" fillOpacity={v.shaded ? 0 : 0.18} stroke="#8a6d14" strokeWidth={2} />
-      <text x={140} y={78} textAnchor="middle" fontSize={15} fontWeight={700} fill={accent}>{v.leftLabel}</text>
-      <text x={330} y={78} textAnchor="middle" fontSize={15} fontWeight={700} fill="#8a6d14">{v.rightLabel}</text>
-      <text x={150} y={162} textAnchor="middle" fontSize={17} fontWeight={700} fill={ink}>{v.leftOnly}</text>
-      <text x={235} y={162} textAnchor="middle" fontSize={17} fontWeight={700} fill={ink}>{v.both}</text>
-      <text x={320} y={162} textAnchor="middle" fontSize={17} fontWeight={700} fill={ink}>{v.rightOnly}</text>
-      <text x={428} y={278} textAnchor="end" fontSize={16} fontWeight={700} fill={ink}>{v.outside}</text>
+      <SvgLabel value={v.leftLabel} x={140} y={78} anchor="middle" size={15} weight={700} fill={accent} />
+      <SvgLabel value={v.rightLabel} x={330} y={78} anchor="middle" size={15} weight={700} fill="#8a6d14" />
+      <SvgLabel value={v.leftOnly} x={150} y={162} anchor="middle" size={17} weight={700} />
+      <SvgLabel value={v.both} x={235} y={162} anchor="middle" size={17} weight={700} />
+      <SvgLabel value={v.rightOnly} x={320} y={162} anchor="middle" size={17} weight={700} />
+      <SvgLabel value={v.outside} x={428} y={278} anchor="end" size={16} weight={700} />
     </svg>
   );
 }
@@ -137,10 +204,10 @@ function StemLeaf({ spec }: { spec: AssessDiagramSpec }) {
       <table className="mx-auto border-collapse text-center font-mono text-[15px] text-ink">
         <thead>
           <tr className="text-sm">
-            {backToBack && <th className="px-3 py-1 text-right font-sans font-semibold">{spec.leftTitle ?? ""}</th>}
+            {backToBack && <th className="px-3 py-1 text-right font-sans font-semibold"><Label value={spec.leftTitle ?? ""} /></th>}
             {backToBack && <th className="border-x-2 border-evergreen-800 px-3 py-1 font-sans font-semibold">Stem</th>}
             {!backToBack && <th className="border-r-2 border-evergreen-800 px-3 py-1" aria-label="stem" />}
-            <th className="px-3 py-1 text-left font-sans font-semibold">{backToBack ? (spec.rightTitle ?? "") : "Leaves"}</th>
+            <th className="px-3 py-1 text-left font-sans font-semibold">{backToBack ? <Label value={spec.rightTitle ?? ""} /> : "Leaves"}</th>
           </tr>
         </thead>
         <tbody>
@@ -153,7 +220,7 @@ function StemLeaf({ spec }: { spec: AssessDiagramSpec }) {
           ))}
         </tbody>
       </table>
-      {spec.stemKey ? <p className="mt-2 text-center text-sm text-ink-soft">Key: {spec.stemKey}</p> : null}
+      {spec.stemKey ? <p className="mt-2 text-center text-sm text-ink-soft">Key: <Label value={spec.stemKey} /></p> : null}
     </div>
   );
 }
@@ -166,11 +233,11 @@ function Table({ spec }: { spec: AssessDiagramSpec }) {
           phone rather than crushing every column into the screen width. */}
       <table className="w-full border-collapse text-sm text-ink" style={cols > 6 ? { minWidth: `${cols * 76}px` } : undefined}>
         <thead>
-          <tr>{(spec.columns ?? []).map((c, i) => <th key={i} className="border border-evergreen-900/25 bg-evergreen-50 px-3 py-2 text-left font-semibold">{c}</th>)}</tr>
+          <tr>{(spec.columns ?? []).map((c, i) => <th key={i} className="border border-evergreen-900/25 bg-evergreen-50 px-3 py-2 text-left font-semibold"><Label value={String(c ?? "")} /></th>)}</tr>
         </thead>
         <tbody>
           {(spec.rows ?? []).map((r, i) => (
-            <tr key={i}>{r.map((c, j) => <td key={j} className="border border-evergreen-900/20 px-3 py-1.5 tabular-nums">{c}</td>)}</tr>
+            <tr key={i}>{r.map((c, j) => <td key={j} className="border border-evergreen-900/20 px-3 py-1.5 tabular-nums"><Label value={String(c ?? "")} /></td>)}</tr>
           ))}
         </tbody>
       </table>
@@ -209,7 +276,7 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
                   )),
                 )}
               </svg>
-              <p className="mt-1 text-sm font-semibold text-ink">{p.label}</p>
+              <p className="mt-1 text-sm font-semibold text-ink"><Label value={p.label} /></p>
             </div>
           );
         }
@@ -238,7 +305,7 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
                 <circle key={`d${k}`} cx={8 + (k % dc) * cell} cy={8 + squaresH + Math.floor(k / dc) * cell} r={5} fill={gold} stroke="#8a6d14" />
               ))}
             </svg>
-            <p className="mt-1 text-sm font-semibold text-ink">{p.label}</p>
+            <p className="mt-1 text-sm font-semibold text-ink"><Label value={p.label} /></p>
           </div>
         );
       })}
@@ -282,7 +349,7 @@ function GridPattern({ spec }: { spec: AssessDiagramSpec }) {
                 );
               })}
             </svg>
-            <p className="mt-1 text-sm font-semibold text-ink">{g.label}</p>
+            <p className="mt-1 text-sm font-semibold text-ink"><Label value={g.label} /></p>
           </div>
         );
       })}
@@ -346,8 +413,16 @@ function Axes({ spec }: { spec: AssessDiagramSpec }) {
       ))}
       <line x1={L} y1={T + ph} x2={W - R} y2={T + ph} stroke={ink} strokeWidth={1.6} />
       <line x1={L} y1={T} x2={L} y2={T + ph} stroke={ink} strokeWidth={1.6} />
-      <text x={L + pw / 2} y={H - 4} textAnchor="middle" fontSize={12.5} fontWeight={600} fill={ink}>{spec.xLabel}</text>
-      <text x={15} y={T + ph / 2} textAnchor="middle" fontSize={12.5} fontWeight={600} fill={ink} transform={`rotate(-90 15 ${T + ph / 2})`}>{spec.yLabel}</text>
+      <SvgLabel value={spec.xLabel ?? ""} x={L + pw / 2} y={H - 4} anchor="middle" size={12.5} weight={600} />
+      <SvgLabel
+        value={spec.yLabel ?? ""}
+        x={15}
+        y={T + ph / 2}
+        anchor="middle"
+        size={12.5}
+        weight={600}
+        rotate={`rotate(-90 15 ${T + ph / 2})`}
+      />
 
       {spec.kind === "histogram" && (spec.bars ?? []).map((b, i) => (
         <rect key={i} x={sx(b.from)} y={sy(b.height)} width={Math.max(1, sx(b.to) - sx(b.from))} height={sy(0) - sy(b.height)} fill="#0a5c36" fillOpacity={0.75} stroke="#06351f" strokeWidth={1} />
@@ -369,7 +444,7 @@ function Axes({ spec }: { spec: AssessDiagramSpec }) {
             <line x1={sx(b.max)} y1={sy(cy - 0.22)} x2={sx(b.max)} y2={sy(cy + 0.22)} stroke={accent} strokeWidth={2.2} />
             <rect x={sx(b.q1)} y={sy(cy + 0.3)} width={Math.max(2, sx(b.q3) - sx(b.q1))} height={sy(cy - 0.3) - sy(cy + 0.3)} fill="#c9a227" fillOpacity={0.35} stroke={accent} strokeWidth={2} />
             <line x1={sx(b.median)} y1={sy(cy + 0.3)} x2={sx(b.median)} y2={sy(cy - 0.3)} stroke={accent} strokeWidth={2.6} />
-            <text x={L + 4} y={sy(cy + 0.48)} fontSize={12} fontWeight={700} fill={ink}>{b.label}</text>
+            <SvgLabel value={b.label} x={L + 4} y={sy(cy + 0.48)} size={12} weight={700} />
           </g>
         );
       })}

@@ -1,10 +1,6 @@
 // Tests real scoring and publish validation, without a DB or browser.
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import {Module} from 'node:module';
-import path from 'node:path';
-import ts from 'typescript';
-function compile(src,name,stubs={}){const file=path.resolve(name),m=new Module(file),old=Module._load;m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));Module._load=function(id,parent){if(parent?.filename===file&&id in stubs)return stubs[id];return old.apply(this,arguments)};try{m._compile(ts.transpileModule(readFileSync(src,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);return m.exports;}finally{Module._load=old;}}
+import {compile} from "./lib/loadTs.mjs";
 const assessParts=compile('src/lib/assessParts.ts','scripts/__assess_parts_integrity.cjs');
 const {scoreAnswer,ScoringError}=compile('src/lib/scoring.ts','scripts/__scoring_integrity.cjs',{'./assessParts':assessParts});
 const {questionPublishIssues}=compile('src/lib/questionValidation.ts','scripts/__validation_integrity.cjs');

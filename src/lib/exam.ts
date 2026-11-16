@@ -86,7 +86,7 @@ export async function gradeAttempt(
       score += humanPoints;
       continue;
     }
-    const scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
+    const scored = scoreAnswer({ id: q.id, type: q.type, points: q.points, config: q.config }, q.question_options,
       (saved.answer ?? {}) as Record<string, unknown>, row.points);
     updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
     score += scored.isCorrect === null ? 0 : scored.points;

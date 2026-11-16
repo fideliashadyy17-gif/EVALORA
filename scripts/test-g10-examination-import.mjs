@@ -3,33 +3,11 @@
 // publication rules (src/lib/questionValidation.ts) and scorer (src/lib/scoring.ts).
 // Database-level counts were rehearsed separately in PGlite (replay of 0001–0060).
 import assert from 'node:assert/strict';
-import {readFileSync, writeFileSync, mkdtempSync} from 'node:fs';
-import {tmpdir} from 'node:os';
-import path from 'node:path';
-import ts from 'typescript';
+import {readFileSync} from 'node:fs';
+import {loadTs} from './lib/loadTs.mjs';
 
-const load = (file) => {
-  const source = ts.transpileModule(readFileSync(file, 'utf8'), {
-    compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
-  }).outputText;
-  const dir = mkdtempSync(path.join(tmpdir(), 'g10-import-'));
-  const out = path.join(dir, path.basename(file, '.ts') + '.cjs');
-  writeFileSync(out, source);
-  return import(out);
-};
-const validation = await load('src/lib/questionValidation.ts');
-const scoring = await (async () => {
-  const dir = mkdtempSync(path.join(tmpdir(), 'g10-import-'));
-  for (const [f, out] of [['src/lib/assessParts.ts', 'assessParts.js'], ['src/lib/scoring.ts', 'scoring.cjs']]) {
-    const source = ts.transpileModule(readFileSync(f, 'utf8'), {
-      compilerOptions: {module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022},
-    }).outputText;
-    writeFileSync(path.join(dir, out), source);
-  }
-  return import(path.join(dir, 'scoring.cjs'));
-})();
-const {questionPublishIssues} = validation.default ?? validation;
-const {scoreAnswer} = scoring.default ?? scoring;
+const {questionPublishIssues} = loadTs('src/lib/questionValidation.ts');
+const {scoreAnswer} = loadTs('src/lib/scoring.ts');
 
 const sql = readFileSync('supabase/migrations/0060_g10_examination.sql', 'utf8');
 const match = sql.match(/v_items jsonb := \$zj\$([\s\S]*?)\$zj\$::jsonb/);

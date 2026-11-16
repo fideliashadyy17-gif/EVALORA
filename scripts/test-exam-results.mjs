@@ -65,7 +65,7 @@ ok("right: the correct option stays green, never red", JSON.stringify(optionMark
 
 /* ── Manual marking still pending ── */
 const pending = buildExamResult({ saved: { is_correct: null, points_awarded: null, answer: { text: "12" } }, correctOptionIds: [] });
-ok("pending: an unmarked answer says it awaits the examiner", resultLabel(pending, 4) === "Awaiting manual marking by your examiner.");
+ok("pending: an unmarked answer says it awaits the examiner", resultLabel(pending, 4) === "Awaiting review by your examiner.");
 ok("pending: an unmarked answer awards nothing yet", pending.points_awarded === null);
 
 /* ── Saved answer payload shapes ── */

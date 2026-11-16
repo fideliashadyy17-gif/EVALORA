@@ -186,3 +186,42 @@ export function renderLatex(latex: string, displayMode: boolean): string {
     return "";
   }
 }
+
+/** Un-escape the four entities `renderMathText` escapes, ready for KaTeX. */
+function unescapeForKatex(source: string): string {
+  return source
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"');
+}
+
+/**
+ * Render a label that mixes prose with inline `$…$` / display `$$…$$`
+ * mathematics, exactly as `MathText` does for a whole answer or explanation.
+ *
+ * This is the server-safe half: diagram renderers are server components, so
+ * they cannot use the hook in `MathText`. Authors legitimately write maths
+ * inside diagram labels — a table column headed `$10 \le V < 14$`, a Venn
+ * region holding `$2x - 1$` — and until it is rendered here the candidate
+ * sees the raw LaTeX instead of the notation.
+ */
+export function renderMathText(text: string): string {
+  const raw = String(text ?? "");
+  if (!raw) return "";
+  const escaped = raw
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return escaped
+    .replace(/\$\$([^$]+)\$\$/g, (_all, tex: string) =>
+      renderLatex(unescapeForKatex(tex), true))
+    .replace(/\$([^$\n]+)\$/g, (_all, tex: string) =>
+      renderLatex(unescapeForKatex(tex), false));
+}
+
+/** True when a label actually contains delimited mathematics to render. */
+export function hasMathRun(text: string): boolean {
+  return /\$[^$\n]+\$/.test(String(text ?? ""));
+}

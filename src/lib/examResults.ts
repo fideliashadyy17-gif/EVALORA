@@ -279,7 +279,7 @@ export type LabelSource = {
 
 /** Headline for the result panel. Never says "Incorrect" for a blank answer. */
 export function resultLabel(result: LabelSource, maxPoints: number): string {
-  if (result.is_correct === null) return "Awaiting manual marking by your examiner.";
+  if (result.is_correct === null) return "Awaiting review by your examiner.";
   const total = Number.isFinite(maxPoints) ? maxPoints : 0;
   if (result.answered === false) return `Not answered · 0 / ${points(total)}`;
   return `${result.is_correct ? "Correct" : "Incorrect"} · ${result.points_awarded ?? 0} / ${points(total)}`;

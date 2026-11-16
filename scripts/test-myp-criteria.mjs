@@ -10,39 +10,11 @@
  *
  * Run: node scripts/test-myp-criteria.mjs
  */
-import { execSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import path from "node:path";
-import ts from "typescript";
+import { readFileSync } from "node:fs";
+import { loadTs } from "./lib/loadTs.mjs";
 
-const outDir = "/tmp/evalora-myp-criteria-test";
-execSync(`rm -rf ${outDir} && mkdir -p ${outDir}`);
-execSync(`ln -sfn "$(pwd)/node_modules" ${outDir}/node_modules`);
-
-const built = new Set();
-function build(rel) {
-  if (built.has(rel)) return;
-  built.add(rel);
-  const emitted = ts.transpileModule(readFileSync(rel, "utf8"), {
-    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  const deps = [...emitted.matchAll(/require\("(\.[^"]+)"\)/g)].map((m) => m[1]);
-  const normalised = emitted.replace(
-    /require\("(\.[^"]+?)(\.ts)?"\)/g,
-    (_match, spec) => `require("${spec}.js")`,
-  );
-  const dest = path.join(outDir, rel.replace(/^src\//, "").replace(/\.ts$/, ".js"));
-  mkdirSync(path.dirname(dest), { recursive: true });
-  writeFileSync(dest, normalised);
-  for (const dep of deps) build(path.join(path.dirname(rel), `${dep.replace(/\.ts$/, "")}.ts`));
-}
-build("src/lib/examResults.ts");
-build("src/lib/examFeedback.ts");
-
-const require = createRequire(import.meta.url);
-const criteria = require(`${outDir}/lib/examResults.js`);
-const feedback = require(`${outDir}/lib/examFeedback.js`);
+const criteria = loadTs("src/lib/examResults.ts");
+const feedback = loadTs("src/lib/examFeedback.ts");
 
 let passed = 0;
 const ok = (name, condition) => {

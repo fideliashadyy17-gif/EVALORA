@@ -7,45 +7,15 @@
 //     manual, split into per-paper parts a–d so each file fits the SQL editor
 //   · the papers reuse the existing question model (no new question type)
 import assert from "node:assert/strict";
-import { readFileSync, writeFileSync, existsSync, mkdtempSync, symlinkSync, readdirSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { createRequire } from "node:module";
-import ts from "typescript";
+import { readFileSync, existsSync, readdirSync } from "node:fs";
+import { loadTs } from "./lib/loadTs.mjs";
 
 // The suites compile the TypeScript sources themselves (the repository has no
-// build step for tests), bundling the relative imports in one directory so
-// `./assessParts` resolves without the Next.js alias.
-const LIB_FILES = [
-  "content", "mathExpr", "graphSpec", "geometrySpec", "statsSpec", "dataTableSpec", "vennSpec", "probabilityTreeSpec", "stemLeafSpec",
-  "assessDiagram",
-  "assessParts", "scoring", "responseTools", "questionValidation",
-].map((name) => `src/lib/${name}.ts`);
-
-const compile = (files) => {
-  const dir = mkdtempSync(path.join(tmpdir(), "myp-mock-"));
-  for (const file of files) {
-    const source = ts.transpileModule(readFileSync(file, "utf8"), {
-      compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
-    }).outputText;
-    // `.js` so that the extensionless relative imports between the modules
-    // ("…/assessParts") resolve the way Node's CommonJS loader expects.
-    writeFileSync(path.join(dir, path.basename(file, ".ts") + ".js"), source);
-  }
-  // Link the repository's dependencies so the compiled modules can require
-  // `katex` (used by content.ts) from /tmp.
-  symlinkSync(process.cwd() + "/node_modules", path.join(dir, "node_modules"), "dir");
-  return dir;
-};
-const libDir = compile(LIB_FILES);
-const require = createRequire(import.meta.url);
-const assessParts = require(path.join(libDir, "assessParts.js"));
-const scoring = require(path.join(libDir, "scoring.js"));
-const responseTools = require(path.join(libDir, "responseTools.js"));
-const { publicAssessParts, scoreAssessParts, assessPartsFromConfig } = assessParts;
-const { scoreAnswer } = scoring;
-const { responseWorkspaceFor } = responseTools;
-const { questionPublishIssues } = require(path.join(libDir, "questionValidation.js"));
+// build step for tests); `loadTs` resolves their relative and `@/` imports.
+const { publicAssessParts, scoreAssessParts, assessPartsFromConfig } = loadTs("src/lib/assessParts.ts");
+const { scoreAnswer } = loadTs("src/lib/scoring.ts");
+const { responseWorkspaceFor } = loadTs("src/lib/responseTools.ts");
+const { questionPublishIssues } = loadTs("src/lib/questionValidation.ts");
 
 let checks = 0;
 const check = (name, fn) => { fn(); checks += 1; console.log(`✓ ${name}`); };
@@ -365,7 +335,7 @@ check("the authoring form can set up every workspace the papers use", () => {
 });
 
 check("construction workspace infrastructure persists probability trees and stem-and-leaf diagrams", () => {
-  const { normaliseProbabilityTreeSpec, probabilityTreeHasWork, probabilityTreePaths } = require(path.join(libDir, "probabilityTreeSpec.js"));
+  const { normaliseProbabilityTreeSpec, probabilityTreeHasWork, probabilityTreePaths } = loadTs("src/lib/probabilityTreeSpec.ts");
   const tree = normaliseProbabilityTreeSpec({ nodes: [
     { id: "root", parentId: null },
     { id: "r", parentId: "root", label: "Red", probability: "1/2" },
@@ -375,7 +345,7 @@ check("construction workspace infrastructure persists probability trees and stem
   assert.ok(probabilityTreeHasWork(tree));
   assert.equal(tree.nodes.length, 4);
   assert.equal(probabilityTreePaths(tree).find((route) => route.leafId === "rr").product, 1 / 6);
-  const { normaliseStemLeafSpec, stemLeafHasWork } = require(path.join(libDir, "stemLeafSpec.js"));
+  const { normaliseStemLeafSpec, stemLeafHasWork } = loadTs("src/lib/stemLeafSpec.ts");
   const stemLeaf = normaliseStemLeafSpec({ key: "4 | 7 means 47", rows: [{ id: "s4", stem: "4", leaves: "1 7" }] });
   assert.ok(stemLeafHasWork(stemLeaf));
   assert.equal(stemLeaf.rows[0].leaves, "1 7");

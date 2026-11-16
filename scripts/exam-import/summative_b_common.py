@@ -123,6 +123,27 @@ def graph_figure(spec):
     return {"type": "graphBlock", "attrs": {"spec": spec}}
 
 
+def line_graph(expression, *, title="", x_max=6, y_max=12, colour="#0a5c36", label=""):
+    """One function on a small shared window, so options can be compared.
+
+    Every graph in a set of options must use the SAME window: the question
+    asks which SHAPE shows direct proportion, and a different scale on each
+    option would let a candidate read the axes instead of the graph.
+    """
+    return graph_figure({
+        "version": 1,
+        "domain": {"xMin": 0, "xMax": x_max, "yMin": 0, "yMax": y_max, "gridStep": None,
+                   "showGrid": True, "showAxes": True, "showCoordinates": False,
+                   "showLegend": False, "showIntersections": False, "equalScale": False},
+        "functions": [
+            {"id": "f", "expression": expression, "color": colour, "style": "solid",
+             "width": 2, "label": label or expression, "from": 0, "to": x_max, "visible": True},
+        ],
+        "points": [], "segments": [], "annotations": [], "strokes": [], "regions": [],
+        "xLabel": "x", "yLabel": "y", "title": title,
+    })
+
+
 def venn(left_label, right_label, left_only, both, right_only, outside,
          universal="ξ", title=""):
     return diagram({
@@ -263,7 +284,8 @@ LETTERS = ["A", "B", "C", "D", "E", "F"]
 
 def q(n, *, sec, crit, marks, lvl, topic, blocks, qtype="single_choice",
       opts=None, ans=None, expl=None, tools=None, numeric=None, tol=None,
-      subtopic=None, parts=None, guidance=None, figure_note=None, labels=None, **kwargs):
+      subtopic=None, parts=None, guidance=None, figure_note=None, labels=None,
+      opt_blocks=None, **kwargs):
     """One question of the paper. `ans` is the printed correct letter."""
     assert crit in CRITERIA, f"question {n}: unknown criterion {crit!r}"
     assert lvl in LEVELS, f"question {n}: unknown level {lvl!r}"
@@ -312,8 +334,12 @@ def q(n, *, sec, crit, marks, lvl, topic, blocks, qtype="single_choice",
         assert opts, f"question {n}: {qtype} needs options"
         tags = labels or LETTERS
         assert len(tags) >= len(opts), f"question {n}: not enough labels"
+        # `opt_blocks` gives an option its own figure — a question that asks
+        # "which graph shows…" is unanswerable when the options are only words.
+        figures = list(opt_blocks) if opt_blocks else [None] * len(opts)
+        assert len(figures) == len(opts), f"question {n}: option figures do not match the options"
         record["options"] = [
-            {"label": tags[i], "body": o, "correct": (ans == tags[i])}
+            {"label": tags[i], "body": o, "figure": figures[i], "correct": (ans == tags[i])}
             for i, o in enumerate(opts)
         ]
         assert any(o["correct"] for o in record["options"]), f"question {n}: no correct option"
@@ -423,7 +449,8 @@ def build_migration(*, file_name: str, title: str, description: str,
             "l": o["label"],
             "c": o["correct"],
             "p": i,
-            "doc": {"type": "doc", "content": [para(o["body"])]},
+            "doc": {"type": "doc",
+                    "content": [para(o["body"])] + ([o["figure"]] if o.get("figure") else [])},
         }
         for r in questions
         if r.get("options")

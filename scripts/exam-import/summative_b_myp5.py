@@ -484,12 +484,15 @@ def build():
                tools=["rich_text", "math", "table"],
                guidance="State r and the formula, evaluate V5 to 2 d.p., then find the replacement year with "
                         "justification.",
+               # A stray $ before "40 000" swallowed a whole clause into a maths
+               # node: the candidate saw prose set as an equation. Only the
+               # value 34 000 is mathematics.
                blocks=[para("Medical scanner depreciation [4 marks] A clinic buys an ultrasound scanner for "
-                            "$40 000. Its value drops by 15 % per year ($V_1 = \\$34\\,000$ after 1 year)."),
+                            "40 000. Its value drops by 15 % per year ($V_1 = 34\\,000$ after 1 year)."),
                        para("(a) State $r$, write an explicit formula for $V_n$ (after $n$ years), and find $V_5$ "
                             "to 2 d.p. [2]"),
                        para("(b) Clinic policy replaces the unit at the end of the first year its value falls "
-                            "below $12 000. Find that year, justifying clearly. [2]")],
+                            "below 12 000. Find that year, justifying clearly. [2]")],
                parts=[("(a)", 2, "Ratio, formula and V5"), ("(b)", 2, "Replacement year")]))
 
     Q.append(q(43, number=18, sec="B", crit="D", marks=3, lvl="intermediate", topic="Applying mathematics",
@@ -508,7 +511,7 @@ def build():
                subtopic="annuity as a geometric series", qtype="open_ended",
                tools=["rich_text", "math", "table"],
                guidance="Explain the series and state u1, r and n, then calculate the balance and the interest.",
-               blocks=[para("Scholarship endowment annuity [4 marks] An alumni body invests $5 000 at the start "
+               blocks=[para("Scholarship endowment annuity [4 marks] An alumni body invests 5 000 at the start "
                             "of each year for 8 years at 6 % compound interest per annum."),
                        para("(a) Explain why the total at the end of Year 8 equals $5000(1.06) + 5000(1.06)^2 + "
                             "… + 5000(1.06)^8$, stating $u_1$, $r$ and $n$. [2]"),

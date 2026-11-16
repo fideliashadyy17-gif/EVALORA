@@ -16,6 +16,8 @@ import {
   criterionBand,
   type CriterionBand,
 } from "./examResults";
+import { normaliseRubric } from "./autoMark";
+import { SUMMATIVE_B_RUBRICS } from "./marking/summativeBRubrics";
 
 export const DEFAULT_PASS_PERCENT = 50;
 
@@ -120,6 +122,9 @@ export interface ResultSummary {
  */
 export interface ResultQuestion {
   type: string;
+  /** Question id and config, used to find a constructed-response rubric. */
+  id?: string;
+  config?: Record<string, unknown> | null;
   topic?: string | null;
   criterion?: string | null;
   points: number;
@@ -133,6 +138,31 @@ const OBJECTIVE_TYPES = new Set([
 
 /** Question types whose mark is decided by a human, not by the scorer. */
 export const isManualType = (type: string) => type === "open_ended";
+
+/**
+ * Whether THIS constructed-response question still needs a human.
+ *
+ * `open_ended` used to mean "manual, always", which left every constructed
+ * response on a summative paper unmarked at submission. A constructed response
+ * that carries a marking rubric is now marked automatically; only one without a
+ * rubric (or one the engine could not decide) is reported as pending.
+ */
+export function isManualQuestion(question: {
+  type: string;
+  id?: string;
+  config?: Record<string, unknown> | null;
+}): boolean {
+  return question.type === "open_ended" && !hasAutoMarkingRubric(question);
+}
+
+/** Cheap structural test: does the question carry a usable marking rubric? */
+export function hasAutoMarkingRubric(question: {
+  id?: string;
+  config?: Record<string, unknown> | null;
+}): boolean {
+  if (normaliseRubric(question.config?.auto_marking)) return true;
+  return Boolean(question.id && SUMMATIVE_B_RUBRICS[question.id]);
+}
 
 // The band and level rules now live with the criterion vocabulary they belong
 // to (src/lib/examResults.ts) so a report and a result screen can never
@@ -164,7 +194,9 @@ export function resultSummary(questions: ResultQuestion[], passPercent = DEFAULT
     const points = Number(question.points) || 0;
     const result = question.result;
     const isObjective = OBJECTIVE_TYPES.has(question.type);
-    const manualPending = isManualType(question.type) && (!result || result.points_awarded === null);
+    // A constructed response with a rubric is marked automatically; only one
+    // without a rubric (or one the engine could not decide) is pending.
+    const manualPending = isManualQuestion(question) && (!result || result.points_awarded === null);
     if (manualPending) { pendingCount += 1; continue; }
 
     const got = Math.max(0, Math.min(points, Number(result?.points_awarded ?? 0)));

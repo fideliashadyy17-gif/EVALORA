@@ -8,6 +8,8 @@ export interface ScorableOption {
 }
 
 export interface ScorableQuestion {
+  /** Present when the caller knows it; lets a built-in paper rubric be found. */
+  id?: string;
   type: string;
   points: number;
   config: Record<string, unknown> | null;
@@ -16,6 +18,8 @@ export interface ScorableQuestion {
 export interface ScoreResult {
   isCorrect: boolean | null; // null → manual / not scorable
   points: number;
+  /** Populated for automatically marked constructed responses. */
+  autoMark?: AutoMarkResult;
 }
 
 /** Invalid keys or stale/invalid answers must never silently become marks. */
@@ -24,6 +28,8 @@ export class ScoringError extends Error {
 }
 
 import { assessPartsFromConfig, canonicalExpression, scoreAssessParts } from "./assessParts";
+import { markConstructedResponse, type AutoMarkResult } from "./autoMark";
+import { rubricForQuestion } from "./marking/summativeBRubrics";
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 const validNumber = (v: unknown): number | null => {
@@ -108,9 +114,22 @@ export function scoreAnswer(
       const ratio = hits / cfg.pairs.length;
       return { isCorrect: ratio === 1, points: Math.round(ratio * max * 100) / 100 };
     }
+    case "open_ended": {
+      // A constructed response is marked by its rubric when the question
+      // carries one (`config.auto_marking`, or a built-in paper rubric). This
+      // is what lets a summative paper release results on submission instead of
+      // holding 260 of its 400 marks for a human. Without a rubric the answer
+      // stays unmarked, exactly as before — no existing behaviour changes.
+      const rubric = rubricForQuestion({ id: question.id, config: cfg });
+      if (!rubric) return { isCorrect: null, points: 0 };
+      const result = markConstructedResponse(rubric, answer, {
+        max,
+        aiAvailable: cfg.auto_marking_ai === true && process.env.AI_MARKING_ENABLED === "1",
+      });
+      return { isCorrect: result.isCorrect, points: result.marks, autoMark: result };
+    }
     case "poll":
     case "slide":
-    case "open_ended":
       return { isCorrect: null, points: 0 };
     default:
       // Unknown types are not safe to mark as a zero or manual by default.
