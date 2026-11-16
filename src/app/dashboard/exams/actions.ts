@@ -74,6 +74,9 @@ export async function createExam(formData: FormData) {
       pass_mark_percent: passMark,
       results_published: false,
       access_mode: "shared_link", identity_fields: [], eligible_class_ids: [], attempt_policy: "single_resume",
+      // A new paper starts as a single-sit examination; the access settings
+      // page is where an organizer chooses Limited or Unlimited Attempts.
+      attempt_mode: "limited", max_attempts: 1,
     },
     created_by: ctx.user.id,
   }).select("id, access_code, invite_token, access_link").single();

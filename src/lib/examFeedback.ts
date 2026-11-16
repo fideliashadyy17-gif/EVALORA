@@ -11,7 +11,16 @@
  *     does not assert mastery of a topic the candidate lost marks on, and a
  *     score below it never humiliates — it names the topics to revise.
  */
+import {
+  aggregateCriteria,
+  criterionBand,
+  type CriterionBand,
+} from "./examResults";
+
 export const DEFAULT_PASS_PERCENT = 50;
+
+export { criterionBand };
+export type { CriterionBand };
 
 export interface FeedbackInput {
   /** Topic as authored on the question. */
@@ -68,7 +77,12 @@ export interface TopicScore {
 }
 
 export interface CriterionScore {
+  /** Canonical criterion key (trimmed, upper-cased). */
   criterion: string;
+  /** "Criterion A" — the short form printed beside a question number. */
+  label: string | null;
+  /** The official MYP name, or null when the letter has no mapping. */
+  title: string | null;
   awarded: number;
   max: number;
   percent: number;
@@ -120,13 +134,10 @@ const OBJECTIVE_TYPES = new Set([
 /** Question types whose mark is decided by a human, not by the scorer. */
 export const isManualType = (type: string) => type === "open_ended";
 
-function band(percent: number): "Strong" | "Developing" | "Needs work" {
-  return percent >= 70 ? "Strong" : percent >= 40 ? "Developing" : "Needs work";
-}
-
-function levelBand(percent: number): string {
-  return percent >= 85 ? "7–8" : percent >= 65 ? "5–6" : percent >= 40 ? "3–4" : "1–2";
-}
+// The band and level rules now live with the criterion vocabulary they belong
+// to (src/lib/examResults.ts) so a report and a result screen can never
+// disagree about what "Level 5–6" means.
+const band = criterionBand;
 
 function pct(awarded: number, max: number): number {
   return max > 0 ? Math.round((awarded / max) * 1000) / 10 : 0;
@@ -145,7 +156,9 @@ export function resultSummary(questions: ResultQuestion[], passPercent = DEFAULT
   const objective = { awarded: 0, max: 0, count: 0 };
   const structured = { awarded: 0, max: 0, count: 0 };
   const topicMap = new Map<string, { awarded: number; max: number }>();
-  const criterionMap = new Map<string, { awarded: number; max: number }>();
+  // Criterion rows are collected here and aggregated by the shared helper, so
+  // the per-criterion maths is identical wherever it is reported.
+  const criterionRows: { criterion: string | null; points: number; awarded: number }[] = [];
 
   for (const question of questions) {
     const points = Number(question.points) || 0;
@@ -167,30 +180,23 @@ export function resultSummary(questions: ResultQuestion[], passPercent = DEFAULT
     const t = topicMap.get(topic) ?? { awarded: 0, max: 0 };
     t.awarded += got; t.max += points; topicMap.set(topic, t);
 
-    if (question.criterion) {
-      const key = String(question.criterion).toUpperCase();
-      const c = criterionMap.get(key) ?? { awarded: 0, max: 0 };
-      c.awarded += got; c.max += points; criterionMap.set(key, c);
-    }
+    criterionRows.push({ criterion: question.criterion ?? null, points, awarded: got });
   }
 
   const topics: TopicScore[] = [...topicMap.entries()]
     .map(([topic, value]) => ({ topic, awarded: round(value.awarded), max: round(value.max), percent: pct(value.awarded, value.max), band: band(pct(value.awarded, value.max)) }))
     .sort((a, b) => b.max - a.max || a.topic.localeCompare(b.topic));
 
-  const criteria: CriterionScore[] = [...criterionMap.entries()]
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([criterion, value]) => {
-      const percentage = pct(value.awarded, value.max);
-      return {
-        criterion,
-        awarded: round(value.awarded),
-        max: round(value.max),
-        percent: percentage,
-        band: band(percentage),
-        level: levelBand(percentage),
-      };
-    });
+  const criteria: CriterionScore[] = aggregateCriteria(criterionRows).map((row) => ({
+    criterion: row.criterion,
+    label: row.label,
+    title: row.title,
+    awarded: row.awarded,
+    max: row.max,
+    percent: row.percent,
+    band: row.band,
+    level: row.level,
+  }));
 
   const percent = pct(awarded, max);
   const passed = percent >= passPercent;

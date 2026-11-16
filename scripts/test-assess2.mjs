@@ -88,7 +88,13 @@ check("criterion + strand reach the candidate payload and feedback", () => {
   // computation serves the candidate screen, a teacher report and print.
   assert.ok(client.includes("Criterion {current.criterion}"));
   assert.ok(client.includes("resultSummary(") && client.includes("questionFeedback("));
-  assert.ok(readFileSync("src/lib/examFeedback.ts", "utf8").includes("levelBand("));
+  // The banding and the criterion names moved into the shared exam results
+  // module so the candidate screen, a teacher report and a print export cannot
+  // disagree about what "Criterion C" or "Level 5–6" means.
+  const results = readFileSync("src/lib/examResults.ts", "utf8");
+  assert.ok(results.includes("criterionLevelBand(") && results.includes("MYP_CRITERION_TITLES"));
+  assert.ok(readFileSync("src/lib/examFeedback.ts", "utf8").includes("aggregateCriteria("));
+  assert.ok(!/Knowing and understanding/.test(client), "criterion names are no longer inlined");
   const runner = readFileSync("src/components/QuestionRunner.tsx", "utf8");
   assert.ok(runner.includes("Criterion {part.strand}"));
 });

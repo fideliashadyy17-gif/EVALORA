@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { responseWorkspaceFor } from "./responseTools";
 import { assessPartsFromConfig, assessPartSummary, publicAssessParts } from "./assessParts";
+import { criterionTitle } from "./examResults";
 
 export type LivePhase =
   | "waiting"
@@ -121,6 +122,69 @@ export function questionDeadlineAt(
   return new Date(
     new Date(session.question_started_at).getTime() + questionDurationSeconds(row, quizSettings) * 1000,
   ).toISOString();
+}
+
+/* ── Per-participant extra time ─────────────────────────────────────────
+ * A shared countdown is right for the room, but a participant can lose time
+ * to a dropped connection, a slow device or an accessibility need. The host
+ * may grant that one participant a personal allowance (migration 0107) which
+ * extends only when THEY may still answer. The session deadline, the room's
+ * phase and every projected countdown are untouched, so nobody else's round
+ * changes and the speed scoring of other participants is unaffected.
+ */
+
+/** Upper bound on one participant's allowance: 30 minutes. */
+export const MAX_PARTICIPANT_EXTRA_TIME_MS = 30 * 60 * 1000;
+
+/** Clamp a requested allowance to 0..MAX. Unreadable values mean "no extra time". */
+export function normalizeExtraTimeMs(value: unknown): number {
+  const n = Math.floor(Number(value));
+  if (!Number.isFinite(n) || n <= 0) return 0;
+  return Math.min(MAX_PARTICIPANT_EXTRA_TIME_MS, n);
+}
+
+/**
+ * This participant's own deadline: the room's deadline plus their allowance.
+ * Null when the room has no open question, in which case extra time has
+ * nothing to extend.
+ */
+export function participantDeadlineAt(
+  session: LiveSessionTiming,
+  row: SessionQuestionRow | null | undefined,
+  quizSettings: Record<string, unknown> | null | undefined,
+  extraTimeMs: unknown = 0,
+): string | null {
+  const base = questionDeadlineAt(session, row, quizSettings);
+  if (!base) return null;
+  const extra = normalizeExtraTimeMs(extraTimeMs);
+  const ms = new Date(base).getTime();
+  if (!extra || !Number.isFinite(ms)) return base;
+  return new Date(ms + extra).toISOString();
+}
+
+/**
+ * Whether this participant may still submit an answer, honouring their own
+ * allowance.
+ *
+ * Deliberately narrow: it only reopens the window that has already closed for
+ * the room ("time_expired"). Every other phase rule is unchanged, so extra
+ * time never lets anyone answer a question that has not opened, that has been
+ * closed by the organizer, or that the room has moved past.
+ */
+export function answerWindowOpenFor(
+  session: LiveSessionTiming,
+  row: SessionQuestionRow | null | undefined,
+  quizSettings: Record<string, unknown> | null | undefined,
+  extraTimeMs: unknown = 0,
+  now = new Date(),
+): boolean {
+  const phase = effectivePhase(session, row, quizSettings, now);
+  if (phase === "question") return true;
+  if (phase !== "time_expired") return false;
+  const deadline = participantDeadlineAt(session, row, quizSettings, extraTimeMs);
+  if (!deadline) return false;
+  const ms = new Date(deadline).getTime();
+  return Number.isFinite(ms) && now.getTime() <= ms;
 }
 
 /**
@@ -258,7 +322,7 @@ export async function loadQuizQuestions(
  */
 export function publicQuestion(
   row: SessionQuestionRow,
-  opts: { randomizeOptions?: boolean; seed?: string } = {},
+  opts: { randomizeOptions?: boolean; seed?: string; calculatorByDefault?: boolean } = {},
 ) {
   const q = row.questions;
   const cfg = (q.config ?? {}) as Record<string, unknown>;
@@ -270,11 +334,15 @@ export function publicQuestion(
   const optionBackedTypes = ["single_choice", "multiple_select", "true_false", "poll", "ordering"];
   // The composition environment is derived from the question itself. Only the
   // tool description travels: never marking criteria, never an answer key.
-  const workspace = responseWorkspaceFor({ ...q, config: cfg });
+  const workspace = responseWorkspaceFor({ ...q, config: cfg }, { calculatorByDefault: opts.calculatorByDefault });
   const out: Record<string, unknown> = {
     quiz_question_id: row.id,
     question_id: q.id,
     type: q.type,
+    // A calculator rides along with every question that permits one,
+    // including objective questions with a native interface and no
+    // composition workspace at all.
+    calculator: workspace.calculator.enabled,
     prompt: q.prompt,
     prompt_doc: q.prompt_doc ?? null,
     points: Number(row.points ?? q.points),
@@ -312,6 +380,27 @@ export function publicQuestion(
   out.topic = q.topic ?? null;
   out.criterion = typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
   out.strand = typeof cfg.strand === "string" ? cfg.strand : null;
+  // The MYP criterion is part of the paper the candidate is answering, not
+  // hidden metadata: the source paper prints it beside every question number,
+  // so the candidate and the marker see the same label, level and mark value.
+  out.question_meta = {
+    question_number: typeof cfg.question_number === "number"
+      ? cfg.question_number
+      : Number.isFinite(Number(cfg.question_number)) ? Number(cfg.question_number) : null,
+    paper_section: typeof cfg.paper_section === "string" ? cfg.paper_section : null,
+    criterion: typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null,
+    criterion_label: typeof cfg.criterion_label === "string"
+      ? cfg.criterion_label
+      : (typeof cfg.myp_criterion === "string" ? `Criterion ${cfg.myp_criterion}` : null),
+    // The paper may name the criterion itself; when it does not, the shared
+    // MYP vocabulary supplies the official title so the screen, the printed
+    // paper and every report call the same criterion the same thing.
+    criterion_title: typeof cfg.criterion_title === "string"
+      ? cfg.criterion_title
+      : criterionTitle(typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null),
+    difficulty_level: typeof cfg.difficulty_level === "string" ? cfg.difficulty_level : null,
+    marks: Number.isFinite(Number(cfg.marks)) ? Number(cfg.marks) : Number(row.points ?? q.points),
+  };
   if (q.type === "assess_parts") {
     out.assess_parts = publicAssessParts(assessPartsFromConfig(cfg));
   }

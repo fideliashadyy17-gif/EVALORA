@@ -113,6 +113,7 @@ function publicState(
     submitted: state.submitted,
     can_request: state.canRequest,
     can_start: state.canStartAuthorizedRetake,
+    policy_allows_restart: state.policyAllowsRestart,
     message: state.message,
     pending: state.pending
       ? { id: state.pending.id, created_at: state.pending.created_at, reason: state.pending.reason ?? null }
@@ -130,9 +131,10 @@ function publicState(
     grant: state.grant
       ? {
           request_id: state.grant.request.id,
-          attempts_granted: state.grant.attemptsGranted,
+          attempts_granted: state.grant.unlimited ? null : state.grant.attemptsGranted,
           attempts_used: state.grant.attemptsUsed,
-          remaining: state.grant.remaining,
+          remaining: state.grant.unlimited ? null : (Number.isFinite(state.grant.remaining) ? state.grant.remaining : null),
+          unlimited: state.grant.unlimited,
           window_open: state.grant.windowOpen,
           access_expires_at: state.grant.accessExpiresAt,
         }
@@ -171,6 +173,7 @@ export async function GET(request: Request) {
     candidateId: candidate.id,
     attemptNumber: Number(attempt.attempt_number ?? 1),
     attemptStatus: attempt.status,
+    examSettings: exam.settings,
   });
 
   return NextResponse.json(
@@ -204,6 +207,7 @@ export async function POST(request: Request) {
     candidateId: candidate.id,
     attemptNumber: Number(attempt.attempt_number ?? 1),
     attemptStatus: attempt.status,
+    examSettings: exam.settings,
   });
 
   if (parsed.data.action === "start") {
@@ -223,14 +227,18 @@ export async function POST(request: Request) {
         { status: 403, headers },
       );
 
+    // Two ways to sit this paper again: a Super Admin approval, or the paper's
+    // own attempt policy (Unlimited Attempts, or a Limited Attempts bound the
+    // candidate has not reached). Both are decided on the server; the client
+    // only ever asks.
     const grant = await findUsableGrant(admin, exam.id, candidate.id);
-    if (!grant)
+    if (!grant && !state.policyAllowsRestart)
       return NextResponse.json(
         { error: "No approved retake authorizes a new attempt. Request a retake and wait for approval." },
         { status: 403, headers },
       );
 
-    const started = await startRetakeAttempt(admin, { exam, candidate, grant });
+    const started = await startRetakeAttempt(admin, { exam, candidate, grant: grant ?? null });
     if (!started.ok) return NextResponse.json({ error: started.error }, { status: 409, headers });
     const deadline = attemptDeadline(exam, started.attempt.started_at, Number((started.attempt as { extension_minutes?: number }).extension_minutes ?? 0));
     return NextResponse.json(
@@ -268,6 +276,7 @@ export async function POST(request: Request) {
       candidateId: candidate.id,
       attemptNumber: Number(attempt.attempt_number ?? 1),
       attemptStatus: attempt.status,
+      examSettings: exam.settings,
     });
     return NextResponse.json({ ok: true, ...publicState(next.state, next.requests) }, { headers });
   }
@@ -342,6 +351,7 @@ export async function POST(request: Request) {
       candidateId: candidate.id,
       attemptNumber: Number(attempt.attempt_number ?? 1),
       attemptStatus: attempt.status,
+      examSettings: exam.settings,
     });
     if (existing.state.pending)
       return NextResponse.json(
@@ -387,6 +397,7 @@ export async function POST(request: Request) {
     candidateId: candidate.id,
     attemptNumber: Number(attempt.attempt_number ?? 1),
     attemptStatus: attempt.status,
+    examSettings: exam.settings,
   });
   return NextResponse.json(
     {

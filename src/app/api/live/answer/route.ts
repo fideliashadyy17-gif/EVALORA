@@ -1,6 +1,8 @@
 import {
   effectivePhase,
   loadQuizQuestions,
+  normalizeExtraTimeMs,
+  participantDeadlineAt,
   questionDeadlineAt,
   questionDurationSeconds,
   seededShuffle,
@@ -82,19 +84,29 @@ export async function POST(request: Request) {
     const phase = effectivePhase(session, row, quizSettings, new Date(now));
     if (phase === "countdown")
       return NextResponse.json({ error: "This question has not opened yet." }, { status: 409 });
-    if (phase !== "question")
+    // A host-granted personal allowance reopens a window that has already
+    // closed FOR THE ROOM. Every other phase rule is unchanged, so extra time
+    // never lets anyone answer a question that has not opened or that the
+    // organizer has closed.
+    const extraTimeMs = normalizeExtraTimeMs(participant.extra_time_ms);
+    if (phase !== "question" && !(phase === "time_expired" && extraTimeMs > 0))
       return NextResponse.json({ error: "Answers are closed for this question." }, { status: 409 });
 
     const started = session.question_started_at ? new Date(session.question_started_at).getTime() : now;
     responseMs = now - started;
     if (responseMs < 0)
       return NextResponse.json({ error: "This question has not opened yet." }, { status: 409 });
-    const deadlineValue = questionDeadlineAt(session, row, quizSettings);
-    const deadline = deadlineValue ? new Date(deadlineValue).getTime() : started + timeLimit * 1000;
+    const roomDeadlineValue = questionDeadlineAt(session, row, quizSettings);
+    const roomDeadline = roomDeadlineValue ? new Date(roomDeadlineValue).getTime() : started + timeLimit * 1000;
+    const deadlineValue = participantDeadlineAt(session, row, quizSettings, extraTimeMs);
+    const deadline = deadlineValue ? new Date(deadlineValue).getTime() : roomDeadline + extraTimeMs;
     if (now > deadline + GRACE_MS)
       return NextResponse.json({ error: "Time expired for this question." }, { status: 409 });
     // Faster correct answers earn more: 100% → 50% of the points across the window.
-    speedFactor = 1 - 0.5 * Math.min(1, Math.max(0, responseMs / (timeLimit * 1000)));
+    // The allowance is not a penalty: time spent inside it cannot push the
+    // factor below the value it had when the room's own window closed.
+    const measured = Math.min(responseMs, Math.max(0, roomDeadline - started));
+    speedFactor = 1 - 0.5 * Math.min(1, Math.max(0, measured / (timeLimit * 1000)));
   }
 
   const q = row.questions;

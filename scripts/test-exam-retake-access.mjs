@@ -85,11 +85,27 @@ ok("two authorized attempts allow the second one",
   r.retakeAccessProblem({ ...approved, granted_attempts: 2 }, 1, now) === null);
 ok("two authorized attempts stop at the third",
   r.retakeAccessProblem({ ...approved, granted_attempts: 2 }, 2, now) === "consumed");
-// The column is constrained to 1..3; anything else is clamped rather than
-// trusted, so a corrupted row can never authorize an unbounded number of papers.
-ok("the granted attempt count is clamped to three",
-  r.retakeAccessProblem({ ...approved, granted_attempts: 99 }, 2, now) === null
-  && r.retakeAccessProblem({ ...approved, granted_attempts: 99 }, 3, now) === "consumed");
+// The column is constrained to 1..20 for Limited Attempts, or NULL for
+// Unlimited Attempts. A corrupted number is clamped to the schema bound rather
+// than trusted; NULL is the one deliberate way to authorize without a ceiling.
+ok("a corrupted granted count is clamped to the schema bound, never trusted",
+  r.retakeAccessProblem({ ...approved, granted_attempts: 99 }, 19, now) === null
+  && r.retakeAccessProblem({ ...approved, granted_attempts: 99 }, 20, now) === "consumed");
+ok("limited attempts stop exactly at the configured bound",
+  r.retakeAccessProblem({ ...approved, granted_attempts: 10 }, 9, now) === null
+  && r.retakeAccessProblem({ ...approved, granted_attempts: 10 }, 10, now) === "consumed");
+ok("unlimited attempts are never used up by counting",
+  r.retakeAccessProblem({ ...approved, granted_attempts: null }, 0, now) === null
+  && r.retakeAccessProblem({ ...approved, granted_attempts: null }, 3, now) === null
+  && r.retakeAccessProblem({ ...approved, granted_attempts: null }, 5000, now) === null);
+ok("an unlimited grant is reported as unlimited, not as a huge number",
+  r.grantCeiling(null).unlimited === true
+  && r.grantCeiling(undefined).unlimited === true
+  && r.grantCeiling(4).unlimited === false
+  && r.grantCeiling(4).granted === 4
+  && r.grantCeiling(99).granted === 20);
+ok("an unlimited retake code is never marked consumed by use",
+  r.retakeAccessProblem({ ...approved, granted_attempts: null, retake_code_consumed_at: null }, 2, now) === null);
 
 ok("every refusal has student-readable copy",
   ["not_approved", "rejected", "expired", "consumed", "no_code"].every(

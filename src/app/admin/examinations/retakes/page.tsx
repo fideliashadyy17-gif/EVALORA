@@ -12,6 +12,20 @@ import { approveRetakeAsAdmin, rejectRetakeAsAdmin } from "../retake-actions";
 export const metadata: Metadata = { title: "Retake requests" };
 export const dynamic = "force-dynamic";
 
+/**
+ * The value the approval form starts from: the paper's own attempt policy. A
+ * paper set to Unlimited Attempts preselects Unlimited; a Limited paper
+ * preselects its configured bound. Never a number the schema would reject.
+ */
+function grantDefaultFor(settings: Record<string, unknown> | null | undefined): string {
+  const raw = settings && typeof settings === "object" ? settings : {};
+  if (raw.attempt_mode === "unlimited") return "unlimited";
+  const n = Math.floor(Number(raw.max_attempts));
+  if (!Number.isFinite(n) || n < 1) return "1";
+  const clamped = Math.min(20, n);
+  return String([1, 2, 3, 4, 5, 10, 15, 20].includes(clamped) ? clamped : Math.max(1, clamped));
+}
+
 interface RetakeRow {
   id: string;
   exam_id: string;
@@ -25,7 +39,7 @@ interface RetakeRow {
   status: string;
   decided_at: string | null;
   decision_note: string | null;
-  granted_attempts: number;
+  granted_attempts: number | null;
   access_expires_at: string | null;
   retake_code: string | null;
   retake_code_consumed_at: string | null;
@@ -249,16 +263,31 @@ export default async function RetakeRequestsPage({
                     <p className="mt-1 whitespace-pre-wrap text-ink">{row.reason || "No reason provided."}</p>
                   </div>
 
+                  <p className="mt-2 text-xs text-ink-soft">
+                    This paper is configured for{" "}
+                    <strong>
+                      {grantDefaultFor(row.exams?.settings) === "unlimited"
+                        ? "Unlimited Attempts"
+                        : `Limited Attempts (${grantDefaultFor(row.exams?.settings)})`}
+                    </strong>
+                    .
+                  </p>
+
                   <div className="mt-4 grid gap-4 lg:grid-cols-2">
                     <form action={approveRetakeAsAdmin} className="space-y-3 rounded-xl border border-evergreen-600/30 bg-evergreen-50/50 p-4">
                       <input type="hidden" name="request_id" value={row.id} />
                       <input type="hidden" name="back" value="/admin/examinations/retakes" />
                       <p className="text-sm font-semibold text-evergreen-900">Approve retake</p>
-                      <Field label="Authorized new attempts" hint="One approval authorizes ONE new attempt unless you explicitly choose otherwise.">
-                        <Select name="granted_attempts" defaultValue="1">
-                          <option value="1">1 new attempt (default)</option>
-                          <option value="2">2 new attempts</option>
-                          <option value="3">3 new attempts</option>
+                      <Field
+                        label="Authorized new attempts"
+                        hint="“Limited Attempts” authorizes a fixed number of new attempts; “Unlimited Attempts” lets the candidate start as many as they need until the access window closes. One approval authorizes ONE new attempt unless you explicitly choose otherwise."
+                      >
+                        <Select name="granted_attempts" defaultValue={grantDefaultFor(row.exams?.settings)}>
+                          <option value="1">Limited — 1 new attempt (default)</option>
+                          {[2, 3, 4, 5, 10, 15, 20].map((n) => (
+                            <option key={n} value={n}>Limited — {n} new attempts</option>
+                          ))}
+                          <option value="unlimited">Unlimited Attempts</option>
                         </Select>
                       </Field>
                       <Field label="Access window" hint="How long the approval stays startable, even if the public link has expired or been disabled.">
@@ -344,7 +373,11 @@ export default async function RetakeRequestsPage({
                   {row.status === "approved" ? (
                     <>
                       <LocalTime iso={row.access_expires_at} fallback="—" />
-                      <span className="block text-xs text-ink-soft">{row.granted_attempts} attempt(s)</span>
+                      <span className="block text-xs text-ink-soft">
+                        {row.granted_attempts === null
+                          ? "Unlimited attempts"
+                          : `${row.granted_attempts} attempt${row.granted_attempts === 1 ? "" : "s"}`}
+                      </span>
                       {row.retake_code && (
                         <span className="mt-1 block font-mono text-[11px] tracking-[0.14em] text-evergreen-800">
                           code {row.retake_code}

@@ -1,4 +1,5 @@
 import {
+  grantCeiling,
   normalizeRetakeCode,
   retakeAccessProblem,
   retakeAccessProblemMessage,
@@ -155,14 +156,16 @@ export async function POST(request: Request) {
   if (!started.ok) return NextResponse.json({ error: started.error }, { status: 409 });
 
   const used = await countAttempts(admin, record.id);
-  const granted = Math.max(1, Math.min(3, Math.floor(Number(record.granted_attempts ?? 1))));
+  const { granted, unlimited } = grantCeiling(record.granted_attempts);
   await admin
     .from("exam_retake_requests")
     .update({
       retake_started_at: record.retake_started_at ?? new Date().toISOString(),
       // The code stops working the moment the authorization has no attempts
       // left, so it can never be replayed for another paper.
-      ...(used >= granted ? { retake_code_consumed_at: new Date().toISOString() } : {}),
+      // An unlimited approval is never consumed: the code keeps working until
+      // the Super Admin ends it or the access window closes.
+      ...(!unlimited && used >= granted ? { retake_code_consumed_at: new Date().toISOString() } : {}),
     })
     .eq("id", record.id);
 

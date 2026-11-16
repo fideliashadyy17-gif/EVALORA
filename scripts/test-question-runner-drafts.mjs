@@ -30,7 +30,7 @@ Module._load = function(request, parent) {
     if (request === './MathText') return { MathText: ({text}) => text };
     if (request === './RichContent') return { RichContent: ({text}) => text };
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };
-    if (request === '@/lib/responseTools') return { responseWorkspaceFor: () => ({ tools: ['rich_text', 'math'], graph: { enabled: false, title: 'Graph', instructions: '', allowFunctions: true, starter: null }, geometry: { enabled: false, title: 'Geometry', instructions: '', starter: null }, guidance: '', requirement: 'any', source: 'inferred' }) };
+    if (request === '@/lib/responseTools') return { responseWorkspaceFor: () => ({ tools: ['rich_text', 'math'], graph: { enabled: false, title: 'Graph', instructions: '', allowFunctions: true, starter: null }, geometry: { enabled: false, title: 'Geometry', instructions: '', starter: null }, guidance: '', requirement: 'any', source: 'inferred', calculator: { enabled: false, scientific: false } }) };
     if (request === '@/components/response/StructuredResponseEditor') {
       const StructuredResponseEditor = ({ initial, emit, onDirtyChange, onPayloadChange, disabled, submitLabel }) => {
         const [text, setText] = React.useState(typeof initial?.text === 'string' ? initial.text : '');
@@ -40,6 +40,10 @@ Module._load = function(request, parent) {
           React.createElement('button', { disabled: Boolean(disabled) || !dirty, onClick: () => { if (emit({ text }) !== false) { setDirty(false); onDirtyChange?.(false); } } }, submitLabel));
       };
       return { StructuredResponseEditor };
+    }
+    if (request === '@/components/Calculator') {
+      const CalculatorLauncher = () => React.createElement('button', { type: 'button', 'data-testid': 'calculator-launcher' }, 'Calculator');
+      return { CalculatorLauncher };
     }
     if (request === '@/lib/matchDnd') {
       const dndFile = path.resolve('scripts/__virtual_match_dnd.cjs');

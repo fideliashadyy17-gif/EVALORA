@@ -20,6 +20,7 @@ import {
   usableGrant,
   normalizeGrantedAttempts,
   resolveRetakeAccessWindow,
+  MAX_GRANTED_ATTEMPTS,
 } from "../src/lib/examRetake.ts";
 import { examAccessAvailability } from "../src/lib/exam-access.ts";
 
@@ -219,9 +220,38 @@ check("one approval authorizes ONE attempt unless explicitly widened", () => {
   assert.equal(used.canStartAuthorizedRetake, false);
   assert.equal(used.canRequest, true);
   assert.equal(usableGrant(approved, { attemptsUsed: 1, now })?.remaining, 0);
-  assert.equal(normalizeGrantedAttempts(99), 3);
+  // The bound is the schema's (1..20), not an arbitrary small number, so a
+  // paper configured for more than three attempts is not silently downgraded.
+  assert.equal(normalizeGrantedAttempts(99), MAX_GRANTED_ATTEMPTS);
   assert.equal(normalizeGrantedAttempts(0), 1);
   assert.equal(normalizeGrantedAttempts("abc"), 1);
+  assert.equal(normalizeGrantedAttempts(10), 10);
+  assert.equal(normalizeGrantedAttempts("unlimited"), null);
+  assert.equal(normalizeGrantedAttempts(null), 1);
+});
+
+check("an unlimited approval keeps authorizing attempts and never runs out", () => {
+  const approved = {
+    id: "r3u", status: "approved", created_at: "2026-11-09T10:00:00Z",
+    granted_attempts: null, access_expires_at: "2026-11-20T12:00:00Z",
+  };
+  const first = retakeState({ ...submitted, requests: [approved], attemptsUsedByRequest: { r3u: 0 }, now });
+  assert.equal(first.canStartAuthorizedRetake, true);
+  assert.equal(first.grant?.unlimited, true);
+  assert.equal(first.canRequest, false);
+  const afterMany = retakeState({ ...submitted, requests: [approved], attemptsUsedByRequest: { r3u: 9 }, now });
+  assert.equal(afterMany.canStartAuthorizedRetake, true);
+  assert.equal(afterMany.canRequest, false);
+});
+
+check("an unlimited approval is still bounded by its access window", () => {
+  const approved = {
+    id: "r3w", status: "approved", created_at: "2026-11-01T10:00:00Z",
+    granted_attempts: null, access_expires_at: "2026-11-05T12:00:00Z",
+  };
+  const state = retakeState({ ...submitted, requests: [approved], attemptsUsedByRequest: { r3w: 2 }, now });
+  assert.equal(state.canStartAuthorizedRetake, false);
+  assert.equal(state.canRequest, true);
 });
 
 check("an approval whose access window closed cannot start an attempt", () => {

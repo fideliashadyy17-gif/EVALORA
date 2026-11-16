@@ -10,7 +10,12 @@
  */
 
 import { audit, fint, FLASH_COOKIE, requireSuperAdmin } from "@/lib/admin";
-import { normalizeIdentityFields, normalizeUuidList } from "@/lib/exam-access";
+import {
+  normalizeAttemptMode,
+  normalizeIdentityFields,
+  normalizeMaxAttempts,
+  normalizeUuidList,
+} from "@/lib/exam-access";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -381,6 +386,10 @@ export async function updateExamInvitation(formData: FormData) {
     settings.access_mode = val(formData, "access_mode", 30) === "registered_students_only"
       ? "registered_students_only"
       : "shared_link";
+    // How many times one candidate may sit this paper. "unlimited" stores no
+    // numeric cap; "limited" stores a clamped 1..20 bound.
+    settings.attempt_mode = normalizeAttemptMode(val(formData, "attempt_mode", 20));
+    settings.max_attempts = normalizeMaxAttempts(formData.get("max_attempts"));
     const rawIdentity = val(formData, "identity_fields", 4000);
     let parsedIdentity: unknown = [];
     if (rawIdentity) {

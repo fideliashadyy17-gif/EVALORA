@@ -6,7 +6,12 @@ import { IntegrityMonitor } from "@/lib/integrityMonitor";
 import { useProtectedSurface } from "@/lib/useAssessmentLockdown";
 import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
-import { answerKeyLine, optionMarkings, resultLabel } from "@/lib/examResults";
+import {
+  answerKeyLine,
+  criterionTitle,
+  optionMarkings,
+  resultLabel,
+} from "@/lib/examResults";
 import { questionFeedback, resultSummary } from "@/lib/examFeedback";
 import { RichContent } from "@/components/RichContent";
 import type { RichDoc } from "@/lib/content";
@@ -1285,7 +1290,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                                   <span className="min-w-0 flex-1">
                                     <strong>Criterion {criterion.criterion}</strong>
                                     <span className="block text-xs text-ink-soft">
-                                      {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[criterion.criterion] ?? ""}
+                                      {criterion.title ?? ""}
                                     </span>
                                   </span>
                                   <span className="shrink-0 text-right text-ink-soft">
@@ -1334,8 +1339,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   <Badge tone="green">
                     Criterion {current.criterion}
                     {current.strand ? ` · ${current.strand}` : ""}
-                    {" — "}
-                    {{ A: "Knowing and understanding", B: "Investigating patterns", C: "Communicating", D: "Applying mathematics in real-life contexts" }[current.criterion] ?? ""}
+                    {criterionTitle(current.criterion) ? ` — ${criterionTitle(current.criterion)}` : ""}
                   </Badge>
                 ) : null}
                 {/* Inline, keyed by question: the hint can never belong to the

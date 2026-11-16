@@ -14,6 +14,7 @@ import {
 } from "./examTrack";
 import { loadQuizQuestions, seededShuffle } from "./live";
 import { retakeState, usableGrant, type RetakeRequestView, type RetakeState } from "./examRetake";
+import { parseExamAccessSettings } from "./exam-access.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export interface RetakeExamRow {
@@ -101,7 +102,14 @@ export async function findUsableGrant(
 /** Full retake state for one attempt (used by the student API and pages). */
 export async function loadRetakeStateForCandidate(
   admin: SupabaseClient,
-  params: { examId: string; candidateId: string; attemptNumber: number; attemptStatus: string },
+  params: {
+    examId: string;
+    candidateId: string;
+    attemptNumber: number;
+    attemptStatus: string;
+    /** The examination's settings: how many attempts the paper itself allows. */
+    examSettings?: Record<string, unknown> | null;
+  },
   now: Date = new Date(),
 ): Promise<{ state: RetakeState; requests: RetakeRequestView[] }> {
   const requests = await loadCandidateRetakeRequests(admin, params.examId, params.candidateId);
@@ -109,11 +117,14 @@ export async function loadRetakeStateForCandidate(
     admin,
     requests.filter((r) => r.status === "approved").map((r) => r.id),
   );
+  const access = parseExamAccessSettings(params.examSettings);
   const state = retakeState({
     attemptStatus: params.attemptStatus,
     attemptNumber: params.attemptNumber,
     requests,
     attemptsUsedByRequest: usage,
+    attemptMode: access.attemptMode,
+    maxAttempts: access.maxAttempts,
     now,
   });
   return { state, requests };
@@ -139,7 +150,12 @@ export async function startRetakeAttempt(
   params: {
     exam: RetakeExamRow;
     candidate: RetakeCandidateRow;
-    grant: { request: RetakeRequestView };
+    /**
+     * The Super Admin decision that authorized this attempt. NULL for a
+     * restart the paper itself allows (Unlimited Attempts, or a Limited
+     * Attempts bound the candidate has not reached yet).
+     */
+    grant?: { request: RetakeRequestView } | null;
     now?: Date;
   },
 ): Promise<StartRetakeResult | StartRetakeFailure> {
@@ -193,7 +209,7 @@ export async function startRetakeAttempt(
       question_order: ordered.map((r) => r.id),
       attempt_number: nextNumber,
       previous_attempt_id: previous?.id ?? null,
-      retake_request_id: grant.request.id,
+      retake_request_id: grant?.request.id ?? null,
       first_name: candidate.first_name ?? null,
       last_name: candidate.last_name ?? null,
       class_id: candidate.class_id ?? null,
@@ -210,15 +226,16 @@ export async function startRetakeAttempt(
 
   await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
   await recordRetakeAudit(admin, {
-    action: "exam.retake_attempt_started",
+    action: grant ? "exam.retake_attempt_started" : "exam.policy_attempt_started",
     organizationId: exam.organization_id,
-    requestId: grant.request.id,
+    requestId: grant?.request.id ?? null,
     metadata: {
       exam_id: exam.id,
       candidate_id: candidate.id,
       attempt_id: attempt.id,
       attempt_number: nextNumber,
       previous_attempt_id: previous?.id ?? null,
+      authorized_by: grant ? "retake_approval" : "exam_attempt_policy",
     },
   });
   return { ok: true, attempt: attempt as StartRetakeResult["attempt"], attemptNumber: nextNumber };
@@ -230,7 +247,8 @@ export async function recordRetakeAudit(
   input: {
     action: string;
     organizationId: string | null;
-    requestId: string;
+    /** NULL when the event is not tied to an approval (a policy restart). */
+    requestId?: string | null;
     actorId?: string | null;
     metadata?: Record<string, unknown>;
   },
@@ -240,7 +258,7 @@ export async function recordRetakeAudit(
     organization_id: input.organizationId ?? null,
     action: input.action,
     entity: "exam_retake_requests",
-    entity_id: input.requestId,
+    entity_id: input.requestId ?? null,
     metadata: input.metadata ?? {},
   });
 }
