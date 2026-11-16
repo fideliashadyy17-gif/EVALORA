@@ -282,6 +282,31 @@ ok("the organizer's choice is persisted onto the examination settings",
   /settings\.attempt_mode = normalizeAttemptMode/.test(eventOps)
   && /settings\.max_attempts = normalizeMaxAttempts/.test(eventOps));
 
+/* ── The paper's calculator default ────────────────────────────────── */
+ok("a paper offers no calculator until an organizer permits one",
+  access.parseExamAccessSettings({}).calculator === false
+  && access.parseExamAccessSettings({ calculator: true }).calculator === true);
+ok("a truthy-looking but non-boolean flag is never read as permission",
+  access.parseExamAccessSettings({ calculator: "yes" }).calculator === false
+  && access.parseExamAccessSettings({ calculator: 1 }).calculator === false);
+ok("the paper's default only decides questions that stay silent",
+  tools.calculatorEnabledFor({}, { allowByDefault: true }).enabled === true
+  && tools.calculatorEnabledFor({}, {}).enabled === false
+  && tools.calculatorEnabledFor(null, { allowByDefault: true }).enabled === true);
+ok("a question that forbids a calculator wins over a permissive paper",
+  tools.calculatorEnabledFor({ config: { calculator_policy: "not_permitted" } }, { allowByDefault: true }).enabled === false);
+ok("a question that requires a calculator is honoured on a strict paper",
+  tools.calculatorEnabledFor({ config: { calculator_policy: "required" } }, {}).enabled === true);
+ok("an explicit per-question switch beats both the policy and the paper default",
+  tools.calculatorEnabledFor({ config: { calculator: false, calculator_policy: "required" } }, { allowByDefault: true }).enabled === false
+  && tools.calculatorEnabledFor({ config: { calculator: true, calculator_policy: "not_permitted" } }, {}).enabled === true);
+ok("an organizer can permit or forbid a calculator for a whole paper",
+  /name="calculator"/.test(invitations) && /Permitted on every question/.test(invitations));
+ok("the organizer's calculator choice is persisted onto the examination settings",
+  /settings\.calculator = val\(formData, "calculator", 10\) === "1"/.test(eventOps));
+ok("the exam state route feeds the paper default into the question workspace",
+  /calculatorByDefault: settings\.calculator === true/.test(read("src/app/api/exam/state/route.ts")));
+
 const migration = read("supabase/migrations/0120_exam_attempt_policy.sql");
 ok("the migration widens the grant column instead of dropping rows or policies",
   /drop constraint if exists exam_retake_requests_granted_attempts_check/.test(migration)
@@ -291,4 +316,4 @@ ok("the migration keeps the student insert policy's ownership check",
   /requested_by = auth\.uid\(\)/.test(migration)
   && /s\.user_id = auth\.uid\(\)/.test(migration));
 
-console.log(`\n${passed} attempt-policy checks passed (real modules, no DB/browser).`);
+console.log(`\n${passed} checks passed (attempt policy: real modules, no DB/browser).`);

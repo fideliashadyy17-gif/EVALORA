@@ -29,6 +29,12 @@ export interface ExamAccessSettings {
   attemptMode: AttemptMode;
   /** Bound used when attemptMode is "limited". Always 1..20. */
   maxAttempts: number;
+  /**
+   * Paper-level calculator default. A question may still override it in
+   * either direction with its own `calculator` / `calculator_policy` config,
+   * so this decides only what an ordinary question of this paper offers.
+   */
+  calculator: boolean;
   proctoring: boolean;
 }
 
@@ -143,6 +149,7 @@ export function parseExamAccessSettings(
       : "single_resume",
     attemptMode: normalizeAttemptMode(raw.attempt_mode),
     maxAttempts: normalizeMaxAttempts(raw.max_attempts),
+    calculator: raw.calculator === true,
     proctoring: raw.proctoring === true,
   };
 }

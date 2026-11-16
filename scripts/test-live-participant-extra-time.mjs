@@ -206,4 +206,4 @@ check("the migration is additive and never weakens a policy",
   && /check \(extra_time_ms >= 0 and extra_time_ms <= 1800000\)/.test(migration)
   && !/drop policy|drop table|truncate|delete from/i.test(migration));
 
-console.log(`\n${checks} participant extra-time checks passed (real live module, no DB/browser).`);
+console.log(`\n${checks} checks passed (participant extra time: real live module, no DB/browser).`);
