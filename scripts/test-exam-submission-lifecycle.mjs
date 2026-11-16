@@ -338,6 +338,7 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
   // The deadline module is compiled from source; only the paper loader, the
   // context loader and the answer lookup are replaced. Everything that decides a
   // submission is the real implementation.
+  const messaging = load("src/lib/examMessaging.ts");
   const deadlineModule = load("src/lib/examDeadline.ts");
   const examModule = {
     loadAttemptContext: async (_admin, attemptId, token) => {
@@ -357,12 +358,23 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
       const saved = db.answers.get(attemptId) ?? {};
       let score = 0;
       let max = 0;
+      let autoScore = 0;
+      let autoMax = 0;
+      let pendingManual = 0;
       for (const row of rows) {
-        max += Number(row.points ?? 0);
+        const points = Number(row.points ?? 0);
+        max += points;
         const answer = saved[row.questions.id];
-        if (answer && answer.answer && answer.answer.text === "correct") score += Number(row.points ?? 0);
+        if (!answer || !messaging.hasAnswerContent(answer.answer)) continue;
+        // A written answer the machine will not judge waits for a teacher.
+        if (row.questions.type === "open_ended") { pendingManual += 1; continue; }
+        autoMax += points;
+        if (answer.answer.text === "correct") { score += points; autoScore += points; }
       }
-      return { score, max };
+      return {
+        score, max, autoScore, autoMax, pendingManual,
+        status: pendingManual === 0 ? "final" : "provisional",
+      };
     },
   };
 
@@ -710,6 +722,77 @@ console.log("\nIdempotency and duplicate events");
   assert.equal(raced.already_closed.length, 1, "it reported the existing closure instead");
   assert.equal(race.db.attempts.get(AID).status, "submitted", "the candidate's status survived");
   ok("the sweep never overwrites a submission that landed first");
+}
+
+console.log("\nSubmission records what the candidate's result page reads");
+
+// The result page is driven entirely by six columns written here. If they are
+// wrong, a candidate is shown a provisional result that is really final, or a
+// final result that still has unmarked work.
+{
+  // All objective: the result is final the moment the paper is submitted.
+  const { db, submission, admin } = build({ now: Date.parse("2026-11-08T12:00:00Z") });
+  db.answers.set(AID, {
+    q1: { answer: { text: "correct" } },
+    q2: { answer: { text: "correct" } },
+  });
+  const attempt = db.attempts.get(AID);
+  const outcome = await submission.applyDeadlineSubmission(admin, attempt, db.exams.get("e1"), {
+    reason: "candidate",
+    nowMs: Date.parse("2026-11-08T12:00:00Z"),
+  });
+  assert.equal(outcome.outcome, "closed");
+  assert.equal(attempt.score, 4, "both objective answers are marked");
+  assert.equal(attempt.max_score, 4);
+  assert.equal(attempt.auto_score, 4, "both are in the automatic pool");
+  assert.equal(attempt.auto_max_score, 4);
+  assert.equal(attempt.pending_manual_count, 0, "nothing is waiting for a teacher");
+  assert.equal(attempt.grading_status, "final", "a fully machine-marked paper is final at once");
+  ok("an all-objective paper is FINAL on submission, with its marks banked");
+
+  // A written answer is waiting: the result must be provisional, and must
+  // still show the marks that were earned.
+  const written = build({ now: Date.parse("2026-11-08T12:00:00Z") });
+  written.db.papers.set("quiz1", [
+    { id: "qq1", points: 2, questions: { id: "q1", type: "short_answer", points: 2, config: {}, question_options: [] } },
+    { id: "qq2", points: 3, questions: { id: "q2", type: "open_ended", points: 3, config: { manual_marking: true } } },
+  ]);
+  written.db.answers.set(AID, {
+    q1: { answer: { text: "correct" } },
+    q2: { answer: { text: "the base is 60 m so h = 3022 m" } },
+  });
+  const pending = written.db.attempts.get(AID);
+  await written.submission.applyDeadlineSubmission(written.admin, pending, written.db.exams.get("e1"), {
+    reason: "candidate",
+    nowMs: Date.parse("2026-11-08T12:00:00Z"),
+  });
+  assert.equal(pending.score, 2, "the objective mark is awarded immediately");
+  assert.equal(pending.max_score, 5, "the unmarked 3 is still in the total available");
+  assert.equal(pending.pending_manual_count, 1, "exactly one question awaits a teacher");
+  assert.equal(pending.grading_status, "provisional", "it is never dressed up as final");
+  assert.equal(pending.auto_max_score, 2, "only the objective question is in the automatic pool");
+  ok("a written answer makes the result PROVISIONAL, keeping the marks already earned");
+
+  // A blank written box is a zero, not a wait: the paper is still final.
+  const blank = build({ now: Date.parse("2026-11-08T12:00:00Z") });
+  blank.db.papers.set("quiz1", [
+    { id: "qq1", points: 2, questions: { id: "q1", type: "short_answer", points: 2, config: {}, question_options: [] } },
+    { id: "qq2", points: 3, questions: { id: "q2", type: "open_ended", points: 3, config: { manual_marking: true } } },
+  ]);
+  blank.db.answers.set(AID, {
+    q1: { answer: { text: "correct" } },
+    q2: { answer: { text: "   " } },
+  });
+  const empty = blank.db.attempts.get(AID);
+  await blank.submission.applyDeadlineSubmission(blank.admin, empty, blank.db.exams.get("e1"), {
+    reason: "candidate",
+    nowMs: Date.parse("2026-11-08T12:00:00Z"),
+  });
+  assert.equal(empty.pending_manual_count, 0, "an empty box is not something to wait for");
+  assert.equal(empty.grading_status, "final", "one untouched question cannot hold a result back");
+  assert.equal(empty.score, 2);
+  assert.equal(empty.max_score, 5);
+  ok("a blank written answer scores zero and leaves the result FINAL");
 }
 
 console.log("\nRefusals: nothing can force an early automatic submission");
