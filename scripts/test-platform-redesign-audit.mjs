@@ -30,11 +30,13 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 144 page.tsx routes (79 admin, 34 dashboard, 31 public/auth/student/portal)", () => {
+check("route inventory accounts for all 145 page.tsx routes (79 admin, 34 dashboard, 32 public/auth/student/portal)", () => {
   assert.equal(adminPages.length, 79, `expected 79 admin pages, found ${adminPages.length}`);
   assert.equal(dashboardPages.length, 34, `expected 34 dashboard pages, found ${dashboardPages.length}`);
-  assert.equal(otherPages.length, 31, `expected 31 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 144);
+  // 31 + /exam-result/[attemptId], the candidate result page added for the
+  // May 2025 MYP 5 Standard eAssessment.
+  assert.equal(otherPages.length, 32, `expected 32 public/student/portal pages, found ${otherPages.length}`);
+  assert.equal(allPages.length, 145);
 });
 
 for (const pagePath of adminPages) {

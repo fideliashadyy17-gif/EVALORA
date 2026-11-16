@@ -19,6 +19,8 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/integrityMonitor')return {IntegrityMonitor:class{start(){}stop(){}}};
  if(req==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
  if(req==='@/lib/examSaveQueue')return queue;
+ if(req==='@/components/FormulaBooklet')return {FormulaBooklet:()=>null,FormulaBookletButton:()=>null};
+ if(req==='@/lib/myp5Standard2025FormulaReference')return {FORMULA_REFERENCE:[],REFERENCE_QUESTIONS:[],REFERENCE_DISCLAIMER:''};
  if(req==='./ExamMessenger')return {ExamMessenger:()=>null};
  if(req==='./RetakePanel')return {RetakePanel:()=>null};
  if(req==='./HintPanel')return {HintPanel:()=>null};

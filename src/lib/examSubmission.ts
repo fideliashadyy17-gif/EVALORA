@@ -173,8 +173,18 @@ export async function applyDeadlineSubmission(
 
   let score: number;
   let max: number;
+  let autoScore = 0;
+  let autoMax = 0;
+  let pendingManual = 0;
+  let gradingStatus: "final" | "provisional" = "provisional";
   try {
-    ({ score, max } = await gradeAttempt(admin, attempt.id, rows));
+    const graded = await gradeAttempt(admin, attempt.id, rows);
+    score = graded.score;
+    max = graded.max;
+    autoScore = graded.autoScore;
+    autoMax = graded.autoMax;
+    pendingManual = graded.pendingManual;
+    gradingStatus = graded.status;
   } catch {
     return unfilled("grading_failed", window);
   }
@@ -192,7 +202,16 @@ export async function applyDeadlineSubmission(
   // ── Conditional write: the attempt must still be open. Idempotent. ───────
   const { data: closed, error } = await admin
     .from("exam_attempts")
-    .update({ status: finalStatus, submitted_at: submittedIso, score, max_score: max })
+    .update({
+      status: finalStatus,
+      submitted_at: submittedIso,
+      score,
+      max_score: max,
+      auto_score: autoScore,
+      auto_max_score: autoMax,
+      pending_manual_count: pendingManual,
+      grading_status: gradingStatus,
+    })
     .eq("id", attempt.id)
     .eq("status", "in_progress")
     .select("id")

@@ -204,10 +204,17 @@ export async function POST(request: Request) {
         id: attempt.id,
         question_order: attempt.question_order,
       });
-      const { score, max } = await gradeAttempt(admin, attempt.id, paperRows);
+      const graded = await gradeAttempt(admin, attempt.id, paperRows);
       await admin
         .from("exam_attempts")
-        .update({ score, max_score: max })
+        .update({
+          score: graded.score,
+          max_score: graded.max,
+          auto_score: graded.autoScore,
+          auto_max_score: graded.autoMax,
+          pending_manual_count: graded.pendingManual,
+          grading_status: graded.status,
+        })
         .eq("id", attempt.id)
         .eq("status", "auto_submitted");
     } catch {

@@ -25,6 +25,16 @@ writeFileSync(path.join(dir, 'connectionLost.js'), compile(readFileSync('src/lib
 writeFileSync(path.join(dir, 'examPause.ts'), readFileSync('src/lib/examPause.ts', 'utf8'));
 writeFileSync(path.join(dir, 'examSubmission.js'), compile(readFileSync('src/lib/examSubmission.ts', 'utf8')));
 writeFileSync(path.join(dir, 'expiredAttempts.js'), compile(readFileSync('src/lib/expiredAttempts.ts', 'utf8')));
+// Stub for the third module exam.ts imports from: the real one is UI-adjacent.
+writeFileSync(path.join(dir, 'examMessaging.js'), `exports.hasAnswerContent = (value) => {
+  if (value === null || value === undefined) return false;
+  if (typeof value === 'string') return value.trim().length > 0;
+  if (typeof value === 'number' || typeof value === 'boolean') return true;
+  if (Array.isArray(value)) return value.some(exports.hasAnswerContent);
+  if (typeof value === 'object') return Object.values(value).some(exports.hasAnswerContent);
+  return false;
+};`);
+
 // Stubs for the two modules exam.ts imports from. Grading rule for the fixture: a saved answer
 // {text:'ok'} is correct and earns the question's points; anything else earns nothing.
 writeFileSync(path.join(dir, 'live.js'), `exports.loadQuizQuestions = async (admin, quizId) => (admin.papers[quizId] ?? []);

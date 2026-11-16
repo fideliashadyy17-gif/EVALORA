@@ -35,12 +35,18 @@ import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
 import { PresenceRail } from "@/components/PresenceRail";
+import { FormulaBooklet, FormulaBookletButton } from "@/components/FormulaBooklet";
+import {
+  FORMULA_REFERENCE,
+  REFERENCE_DISCLAIMER,
+} from "@/lib/myp5Standard2025FormulaReference";
 import { answerStateFor } from "@/lib/hintAttention";
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null };
+  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null;
+    settings?: Record<string, unknown> | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -241,6 +247,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     if (!dirty) setDraftWarning(false);
   }, []);
   const [confirmSubmit, setConfirmSubmit] = useState(false);
+  // The formula reference is pure UI state. It is never persisted, never sent
+  // to the server and never read by the timer, the save queue or the question
+  // index — so opening it cannot move the student, lose an answer or touch the
+  // clock. That is a property of how little it is wired to, not of care taken
+  // elsewhere.
+  const [formulaOpen, setFormulaOpen] = useState(false);
   // One-page corrigé: every question of the paper, answered or left blank.
   const [corrigeAll, setCorrigeAll] = useState(false);
   // Integrity: the browser reports what it can observe (tab hidden, focus lost,
@@ -853,19 +865,17 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       }
       submitIdempotencyRef.current = null;
       setConfirmSubmit(false);
-      // Backend confirmed final submission: immediately close the candidate's
-      // active browser session so the next student on this device gets a clean
-      // entry screen even if this tab is closed or navigated away without
-      // clicking "Finish & return to examination entry".
-      entryHrefRef.current = finalizeSubmittedAttemptSession(
-        typeof localStorage !== "undefined" ? localStorage : null,
-        typeof sessionStorage !== "undefined" ? sessionStorage : null,
-        attemptId,
-        {
-          entryHref: state?.exam.entry_href ?? entryHrefRef.current,
-          preservePendingQueue: false,
-        },
-      );
+      // Backend confirmed final submission and grading. Go straight to the
+      // result — a student must never have to hunt for their mark, open
+      // another menu or wait on a teacher for the questions the machine could
+      // already mark. The candidate session stays open just long enough to read
+      // it; the result page closes it when the student taps "Finish & exit".
+      if (typeof window !== "undefined" && token) {
+        window.location.replace(
+          `/exam-result/${attemptId}?t=${encodeURIComponent(token)}`,
+        );
+        return;
+      }
       const reloaded = await load();
       if (!reloaded) {
         setState((prev) =>
@@ -961,6 +971,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   if (!state) return <Centered><p className="text-ink-soft">Loading your examination paper…</p></Centered>;
 
   const { exam, attempt, questions } = state;
+
+  // The formula reference is enabled per paper (settings.formula_reference).
+  // Reading it here — and only here — keeps the overlay a pure view: it gets a
+  // title, sections and a close callback, and nothing else.
+  const formulaConfig = (exam.settings ?? {}) as Record<string, unknown>;
+  const formulaRef = (formulaConfig.formula_reference ?? null) as Record<string, unknown> | null;
+  const formulaEnabled = formulaRef?.enabled === true;
+  const formulaLabel = typeof formulaRef?.label === "string" ? formulaRef.label : "FORMULA BOOKLET";
+  const formulaTitle =
+    typeof formulaRef?.title === "string" ? formulaRef.title : "Formula reference";
   const submitted = attempt.status !== "in_progress";
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
@@ -1050,6 +1070,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                       : savedIds.size > 0 ? "Saved to server" : "Ready to begin"}
               </div>
             </>
+          )}
+          {formulaEnabled && (
+            <FormulaBookletButton
+              open={formulaOpen}
+              label={formulaLabel}
+              onClick={() => setFormulaOpen((open) => !open)}
+            />
           )}
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
           {submitted && (
@@ -1467,6 +1494,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 </div>
               </Card>
             </div>
+          )}
+          {formulaEnabled && (
+            <FormulaBooklet
+              open={formulaOpen}
+              onClose={() => setFormulaOpen(false)}
+              title={formulaTitle}
+              sections={FORMULA_REFERENCE}
+              disclaimer={REFERENCE_DISCLAIMER}
+              buttonLabel={formulaLabel}
+            />
           )}
         </section>
       </main>

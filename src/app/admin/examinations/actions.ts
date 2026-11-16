@@ -586,9 +586,18 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
   if (answersError || !allAnswers) return reportPartial();
   const total = Math.round(allAnswers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
   const allMarked = allAnswers.length > 0 && allAnswers.every((a) => a.is_correct !== null);
+  // Keep the candidate-facing result in step with the marker's progress: while
+  // any answer still has no is_correct, their result stays PROVISIONAL, and it
+  // becomes FINAL on the mark that clears the last one.
+  const pendingCount = allAnswers.filter((a) => a.is_correct === null).length;
   const { data: updatedAttempt, error: totalError } = await admin
     .from("exam_attempts")
-    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) })
+    .update({
+      score: total,
+      pending_manual_count: pendingCount,
+      grading_status: pendingCount === 0 ? "final" : "provisional",
+      ...(allMarked ? { status: "marked" } : {}),
+    })
     .eq("id", attempt.id).eq("exam_id", attempt.exam_id).in("status", ["submitted", "auto_submitted", "marked"])
     .select("id").maybeSingle();
   if (totalError || !updatedAttempt) return reportPartial();

@@ -32,6 +32,8 @@ Module._load=function(request,parent) {
   if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
   if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
   if(request==='@/lib/examSaveQueue') return queue;
+  if(request==='@/components/FormulaBooklet') return {FormulaBooklet:()=>null,FormulaBookletButton:()=>null};
+  if(request==='@/lib/myp5Standard2025FormulaReference') return {FORMULA_REFERENCE:[],REFERENCE_QUESTIONS:[],REFERENCE_DISCLAIMER:''};
   if(request==='./ExamMessenger') return {ExamMessenger:()=>null};
   if(request==='./RetakePanel') return {RetakePanel:()=>null};
   if(request==='./HintPanel') return {HintPanel:()=>null};

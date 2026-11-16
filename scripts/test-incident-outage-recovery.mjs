@@ -232,6 +232,16 @@ const examMod = compile("src/lib/exam.ts", "scripts/__incident_exam.cjs", {
       points: ans?.text === "42" || ans === "42" ? 5 : 0,
     }),
   },
+  "./examMessaging": {
+    hasAnswerContent: (value) => {
+      if (value === null || value === undefined) return false;
+      if (typeof value === "string") return value.trim().length > 0;
+      if (typeof value === "number" || typeof value === "boolean") return true;
+      if (Array.isArray(value)) return value.some((v) => v !== null && v !== undefined);
+      if (typeof value === "object") return Object.keys(value).length > 0;
+      return false;
+    },
+  },
 });
 
 function createFakeExamDb({ status = "in_progress", pendingSaves = 2, rejectAutoSubmitEvent = false } = {}) {

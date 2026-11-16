@@ -1,6 +1,7 @@
 import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./live";
 import { scoreAnswer } from "./scoring";
 import { attemptDeadline } from "./examDeadline";
+import { hasAnswerContent } from "./examMessaging";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /**
@@ -57,17 +58,36 @@ export async function attemptRows(
   return exam.settings.randomize_questions ? seededShuffle(rows, attempt.id) : rows;
 }
 
+export interface AttemptGrading {
+  score: number;
+  max: number;
+  /** Marks awarded by the machine, and the marks those questions were worth. */
+  autoScore: number;
+  autoMax: number;
+  /**
+   * Questions still waiting for a human. Only a question that HAS an answer the
+   * machine could not judge counts: a blank response needs no judgement, so it
+   * scores zero and does not hold the result back.
+   */
+  pendingManual: number;
+  /** "final" when nothing is outstanding, otherwise "provisional". */
+  status: "final" | "provisional";
+}
+
 /** Grade every saved answer; returns totals. Manual items stay unmarked. */
 export async function gradeAttempt(
   admin: SupabaseClient,
   attemptId: string,
   rows: SessionQuestionRow[],
-) {
+): Promise<AttemptGrading> {
   const { data: answers, error: answerError } = await admin.from("exam_answers").select("*").eq("attempt_id", attemptId);
   if (answerError || !answers) throw new Error("Could not load examination answers for grading.");
   const byQuestion = new Map(answers.map((a) => [a.question_id, a]));
   let score = 0;
   let max = 0;
+  let autoScore = 0;
+  let autoMax = 0;
+  let pendingManual = 0;
 
   // Calculate every objective result before any writes. A stale option ID or
   // malformed marking key must not partially grade earlier answers.
@@ -78,6 +98,7 @@ export async function gradeAttempt(
     if (!Number.isFinite(maxPoints) || maxPoints < 0) throw new Error("Invalid examination question points.");
     max += maxPoints;
     const saved = byQuestion.get(q.id);
+    // No saved answer at all: nothing to mark, nothing to wait for.
     if (!saved) continue;
     if (saved.marked_by) {
       const humanPoints = Number(saved.points_awarded);
@@ -86,10 +107,27 @@ export async function gradeAttempt(
       score += humanPoints;
       continue;
     }
+    // An empty response is a zero, not something to wait for. Waiting on a blank
+    // would let one untouched box hold a whole result back as "provisional"
+    // when there is nothing for a teacher to read, so it is scored here.
+    if (!hasAnswerContent(saved.answer)) {
+      autoMax += maxPoints;
+      updates.push({ id: saved.id, is_correct: false, points_awarded: 0 });
+      continue;
+    }
     const scored = scoreAnswer({ id: q.id, type: q.type, points: q.points, config: q.config }, q.question_options,
       (saved.answer ?? {}) as Record<string, unknown>, row.points);
-    updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
-    score += scored.isCorrect === null ? 0 : scored.points;
+    if (scored.isCorrect === null) {
+      // The machine cannot judge this one, so a human has to. The result stays
+      // provisional until they do — we never dress a partial score up as final.
+      pendingManual += 1;
+      updates.push({ id: saved.id, is_correct: null, points_awarded: null });
+      continue;
+    }
+    autoScore += scored.points;
+    autoMax += maxPoints;
+    updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.points });
+    score += scored.points;
   }
   for (const update of updates) {
     const { data: updated, error: updateError } = await admin
@@ -102,7 +140,14 @@ export async function gradeAttempt(
     // Separate DB writes remain non-atomic if a later write fails.
     if (updateError || !updated) throw new Error("Could not persist examination grading.");
   }
-  return { score: Math.round(score * 100) / 100, max };
+  return {
+    score: Math.round(score * 100) / 100,
+    max: Math.round(max * 100) / 100,
+    autoScore: Math.round(autoScore * 100) / 100,
+    autoMax: Math.round(autoMax * 100) / 100,
+    pendingManual,
+    status: pendingManual === 0 ? "final" : "provisional",
+  };
 }
 
 export async function loadAttemptContext(admin: SupabaseClient, attemptId: string, token: string) {

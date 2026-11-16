@@ -437,6 +437,8 @@ try {
       submission_reason text,
       grading_status text not null default 'not_started',
       pending_manual_count integer not null default 0,
+      auto_score numeric,
+      auto_max_score numeric,
       started_at timestamptz not null default now(),
       submitted_at timestamptz,
       published_at timestamptz,
