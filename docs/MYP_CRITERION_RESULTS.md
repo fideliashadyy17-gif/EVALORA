@@ -128,6 +128,7 @@ examinations, attempts, answers or marks.
 | `scripts/test-myp-results-loader.mjs` | tenant isolation, student-only released reads, per-subject precedence, filters, degradation before migration |
 | `scripts/test-myp-reports.mjs` | PDF page tree and extracted text, long reports, encoding, four-sheet workbook opened and unzipped |
 | `scripts/test-myp-migration.mjs` | migration applied twice to PGlite, seeds, guards, append-only history, RLS for member/manager/teacher/other tenant/Super Admin |
+| `scripts/test-myp-export-controls.mjs` | every surface, navigation link and download control, and that no page duplicates the grading arithmetic |
 
 Run them with `node scripts/test-myp-grading-engine.mjs` (etc.) or the whole
 suite with `npm test`.
