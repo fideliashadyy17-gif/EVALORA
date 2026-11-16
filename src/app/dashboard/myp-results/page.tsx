@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "MYP results" };
 export const dynamic = "force-dynamic";
@@ -61,8 +62,8 @@ export default async function MypResultsPage({ searchParams }: { searchParams: S
             {access.canManage && (
               <ButtonLink href="/dashboard/myp-results/settings" variant="outline">Grading settings</ButtonLink>
             )}
-            <ButtonLink href={`/api/myp/export/xlsx?scope=collective&${params}`} variant="outline">⬇ Excel (.xlsx)</ButtonLink>
-            <ButtonLink href={`/api/myp/export/pdf?scope=collective&${params}`}>⬇ Collective PDF</ButtonLink>
+            <MypExportButton format="xlsx" scope="collective" query={params} label="⬇ Excel (.xlsx)" />
+            <MypExportButton format="pdf" scope="collective" query={params} label="⬇ Collective PDF" variant="primary" />
           </div>
         }
         meta={

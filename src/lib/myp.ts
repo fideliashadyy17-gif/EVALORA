@@ -267,14 +267,41 @@ export type MypCriterionStatus =
   | "assessed"
   | "partially_marked"
   | "pending_marking"
-  | "not_assessed";
+  | "not_assessed"
+  | "error";
 
 export const CRITERION_STATUS_LABEL: Record<MypCriterionStatus, string> = {
   assessed: "Assessed",
   partially_marked: "Partially marked",
   pending_marking: "Pending marking",
   not_assessed: "Not assessed",
+  error: "Marking data error",
 };
+
+/**
+ * What each status means, in the words a teacher needs. Every surface prints
+ * the label next to the colour, so status is never communicated by colour alone.
+ */
+export const CRITERION_STATUS_MEANING: Record<MypCriterionStatus, string> = {
+  assessed:
+    "Green: fully marked. The mark and achievement level are final — including a genuine 0, which is a real result.",
+  partially_marked:
+    "Amber: some questions in this criterion are marked and others still await marking. No achievement level is inferred yet.",
+  pending_marking:
+    "Amber: nothing in this criterion has been marked yet. This is not zero.",
+  not_assessed:
+    "Grey: this criterion has no questions on this paper (or the paper carries no criterion), so no level is awarded. It is never counted as zero.",
+  error:
+    "Red: the marking data for this criterion is invalid (for example a non-numeric mark). It needs a teacher's attention and is never converted to zero.",
+};
+
+/** Colour used for a status; always displayed together with its label. */
+export function criterionStatusTone(status: MypCriterionStatus): "green" | "amber" | "gray" | "red" {
+  if (status === "assessed") return "green";
+  if (status === "not_assessed") return "gray";
+  if (status === "error") return "red";
+  return "amber";
+}
 
 export type MypGradeStatus = "final" | "provisional" | "incomplete" | "not_applicable";
 
@@ -318,6 +345,13 @@ export interface MypPaperQuestion {
 export interface MypAnswer {
   questionId: string;
   pointsAwarded: number | null;
+  /**
+   * Whether the saved answer actually contains something the candidate entered.
+   * A blank saved answer is not evidence of pending marking once the attempt is
+   * final: it is a zero. `undefined` means "an answer row exists" (older callers
+   * and fixtures), which is treated as content-bearing.
+   */
+  hasContent?: boolean;
   isCorrect?: boolean | null;
   markerNote?: string | null;
   moderationStatus?: string | null;
@@ -379,6 +413,8 @@ export interface CriterionResult {
   level: number | null;
   /** True when the criterion is fully assessed and earned level 0. */
   assessedAtZero: boolean;
+  /** Questions the candidate left unanswered that were scored zero at the end of the attempt. */
+  zeroFilledCount: number;
   questionCount: number;
   markedCount: number;
   pendingCount: number;
@@ -429,6 +465,10 @@ export interface MypResult {
   gradeNote: string;
   pendingCriteria: string[];
   unassessedCriteria: string[];
+  /** Criteria whose marking data is invalid; always surfaced, never scored as zero. */
+  errorCriteria: string[];
+  /** Questions left unanswered at the end of the final attempt, scored zero. */
+  zeroFilledQuestions: number;
   teacherFeedback: string[];
   strengths: string[];
   improvements: string[];
@@ -486,35 +526,65 @@ export function buildMypResult(args: {
     let marksAwarded = 0;
     let markedCount = 0;
     let pendingCount = 0;
+    let zeroFilledCount = 0;
+    let errorCount = 0;
     const notes = new Set<string>();
     const topics = new Map<string, { awarded: number; max: number }>();
 
-    for (const question of questions) {
-      const answer = answerByQuestion.get(question.questionId);
-      const awarded = answer?.pointsAwarded;
-      const isMarked = awarded !== null && awarded !== undefined && Number.isFinite(Number(awarded));
-      if (isMarked) {
-        markedCount += 1;
-        const safe = Math.max(0, Math.min(Number(question.points), Number(awarded)));
-        marksAwarded += safe;
+    const credit = (question: MypPaperQuestion, awarded: number) => {
+      const safe = Math.max(0, Math.min(Number(question.points), awarded));
+      marksAwarded += safe;
+      if (safe > 0) {
         const topic = cleanText(question.topic) ?? "General";
         const row = topics.get(topic) ?? { awarded: 0, max: 0 };
         row.awarded += safe;
         row.max += Number(question.points);
         topics.set(topic, row);
-      } else {
-        pendingCount += 1;
       }
+    };
+
+    for (const question of questions) {
+      const answer = answerByQuestion.get(question.questionId);
+      const raw = answer?.pointsAwarded;
       const note = cleanText(answer?.markerNote);
       if (note) notes.add(note);
+
+      if (!answer) {
+        // No saved answer at all. Once the attempt is final this is a genuine
+        // zero: the question was part of the assessment and earned nothing.
+        // While the attempt is open it is simply not answered yet.
+        if (final) zeroFilledCount += 1;
+        else pendingCount += 1;
+        continue;
+      }
+
+      // A saved answer whose mark is not a finite number is a data error. It is
+      // never silently turned into zero, and never hidden as "pending".
+      if (raw !== null && raw !== undefined && !Number.isFinite(Number(raw))) {
+        errorCount += 1;
+        continue;
+      }
+
+      if (raw !== null && raw !== undefined) {
+        markedCount += 1;
+        credit(question, Number(raw));
+        continue;
+      }
+
+      // An answer row exists but carries no mark. A truly empty answer is worth
+      // zero once the attempt is final; an answer with content is awaiting a
+      // teacher and must stay pending.
+      if (final && answer.hasContent === false) zeroFilledCount += 1;
+      else pendingCount += 1;
     }
 
     marksAwarded = round(marksAwarded);
 
     let status: MypCriterionStatus;
     if (questions.length === 0) status = "not_assessed";
+    else if (errorCount > 0) status = "error";
     else if (final && pendingCount === 0) status = "assessed";
-    else if (markedCount > 0) status = "partially_marked";
+    else if (markedCount > 0 || zeroFilledCount > 0) status = "partially_marked";
     else status = "pending_marking";
 
     const percent = status === "not_assessed" ? null : pct(marksAwarded, marksMax);
@@ -559,6 +629,7 @@ export function buildMypResult(args: {
       percent,
       level,
       assessedAtZero: status === "assessed" && level === 0,
+      zeroFilledCount,
       questionCount: questions.length,
       markedCount,
       pendingCount,
@@ -580,6 +651,10 @@ export function buildMypResult(args: {
   const unassessedCriteria = requiredCriteria
     .filter((criterion) => criterion.status === "not_assessed")
     .map((criterion) => criterion.code);
+  const errorCriteria = requiredCriteria
+    .filter((criterion) => criterion.status === "error")
+    .map((criterion) => criterion.code);
+  const zeroFilledQuestions = criteria.reduce((sum, criterion) => sum + criterion.zeroFilledCount, 0);
 
   // The paper is the denominator. A question the candidate left blank counts as
   // zero out of its value once the attempt is final; a question whose answer is
@@ -604,7 +679,10 @@ export function buildMypResult(args: {
   const marksAwarded = round(marksAwardedRaw);
   const percent = pct(marksAwarded, marksMax);
 
-  const complete = requiredCriteria.length > 0 && assessed.length === requiredCriteria.length;
+  const complete =
+    requiredCriteria.length > 0 &&
+    errorCriteria.length === 0 &&
+    assessed.length === requiredCriteria.length;
   const totalLevels = assessed.length
     ? round(assessed.reduce((sum, criterion) => sum + (criterion.level ?? 0), 0), 0)
     : null;
@@ -642,7 +720,9 @@ export function buildMypResult(args: {
       : gradeStatus === "provisional"
         ? "Provisional: some criteria are not fully marked, and this organization's assessment rules allow aggregating the criteria that are marked."
         : gradeStatus === "incomplete"
-          ? "No overall grade is calculated yet: every required criterion must be marked before the criterion levels can be aggregated."
+          ? errorCriteria.length
+            ? `No overall grade: the marking data for ${errorCriteria.map((code) => `Criterion ${code}`).join(", ")} is invalid and needs a teacher's attention.`
+            : "No overall grade is calculated yet: every required criterion must be marked before the criterion levels can be aggregated."
           : "This paper is not criterion-mapped, so no overall MYP grade applies.";
 
   const teacherFeedback = uniqueStrings(
@@ -680,6 +760,8 @@ export function buildMypResult(args: {
     gradeNote,
     pendingCriteria,
     unassessedCriteria,
+    errorCriteria,
+    zeroFilledQuestions,
     teacherFeedback,
     strengths,
     improvements: submissionPending

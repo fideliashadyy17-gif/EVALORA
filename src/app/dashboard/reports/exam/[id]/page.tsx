@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "Examination report" };
 export const dynamic = "force-dynamic";
@@ -92,8 +93,8 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
             {hasCriteria && (
               <>
                 <ButtonLink href={`/dashboard/myp-results?${mypQuery}`} variant="outline">MYP criterion results</ButtonLink>
-                <ButtonLink href={`/api/myp/export/pdf?scope=collective&${mypQuery}`} variant="outline">MYP PDF</ButtonLink>
-                <ButtonLink href={`/api/myp/export/xlsx?scope=collective&${mypQuery}`} variant="outline">MYP Excel</ButtonLink>
+                <MypExportButton format="pdf" scope="collective" query={mypQuery} label="MYP PDF" />
+                <MypExportButton format="xlsx" scope="collective" query={mypQuery} label="MYP Excel" />
               </>
             )}
             <ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} />

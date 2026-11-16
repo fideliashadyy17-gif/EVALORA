@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { hasAnswerContent } from "./examMessaging";
 import {
   DEFAULT_GRADE_BOUNDARIES,
   DEFAULT_GRADE_SOURCE,
@@ -281,6 +282,8 @@ interface AttemptRow {
 interface AnswerRow {
   attempt_id: string;
   question_id: string;
+  /** Whether the candidate typed/saved anything. Blank answers score zero on a final attempt. */
+  answer?: unknown;
   points_awarded: number | string | null;
   is_correct: boolean | null;
   marker_note: string | null;
@@ -512,7 +515,7 @@ export async function loadMypResults(
       ...(await safeRows<AnswerRow>(
         supabase
           .from("exam_answers")
-          .select("attempt_id, question_id, points_awarded, is_correct, marker_note, moderation_status")
+          .select("attempt_id, question_id, answer, points_awarded, is_correct, marker_note, moderation_status")
           .in("attempt_id", group)
           .limit(8000),
       )),
@@ -628,6 +631,7 @@ export async function loadMypResults(
           answer.points_awarded === null || answer.points_awarded === undefined
             ? null
             : Number(answer.points_awarded),
+        hasContent: hasAnswerContent(answer.answer),
         isCorrect: answer.is_correct,
         markerNote: answer.marker_note,
         moderationStatus: answer.moderation_status,

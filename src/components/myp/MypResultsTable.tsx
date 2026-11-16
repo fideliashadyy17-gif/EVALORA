@@ -1,12 +1,55 @@
 import { Badge, DataTable, StatCard } from "@/components/ui";
-import type { MypAnalytics, MypResult } from "@/lib/myp";
+import { MypExportButton } from "./MypExportButton";
+import {
+  CRITERION_STATUS_LABEL,
+  CRITERION_STATUS_MEANING,
+  criterionStatusTone,
+  type MypAnalytics,
+  type MypResult,
+} from "@/lib/myp";
 
 /** Tone of the badge for a result, driven by grade status — never by a guess. */
 export function resultTone(result: MypResult): "green" | "gold" | "amber" | "gray" | "red" {
+  if (result.errorCriteria.length > 0) return "red";
   if (result.gradeStatus === "final") return result.overallGrade === null ? "gray" : "green";
   if (result.gradeStatus === "provisional") return "gold";
   if (result.gradeStatus === "incomplete") return "amber";
   return "gray";
+}
+
+const TONE_CLASS: Record<ReturnType<typeof criterionStatusTone>, string> = {
+  green: "bg-evergreen-100 text-evergreen-800",
+  amber: "bg-amber-100 text-amber-800",
+  gray: "bg-stone-200 text-stone-700",
+  red: "bg-red-100 text-red-800",
+};
+
+/**
+ * What the colours mean. Status is always spelled out next to the colour, so a
+ * teacher can read the page without relying on colour vision.
+ */
+export function MypStatusLegend({ compact = false }: { compact?: boolean }) {
+  const rows = (Object.keys(CRITERION_STATUS_LABEL) as (keyof typeof CRITERION_STATUS_LABEL)[]).map((status) => ({
+    status,
+    label: CRITERION_STATUS_LABEL[status],
+    tone: criterionStatusTone(status),
+    meaning: CRITERION_STATUS_MEANING[status],
+  }));
+  return (
+    <div className="rounded-xl border border-evergreen-900/15 bg-white p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">Criterion status key</p>
+      <ul className="mt-2 grid gap-1.5 sm:grid-cols-2">
+        {rows.map((row) => (
+          <li key={row.status} className="flex items-start gap-2 text-[11px] leading-snug text-ink-soft">
+            <span className={`mt-0.5 inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-[10px] font-semibold ${TONE_CLASS[row.tone]}`}>
+              {row.label}
+            </span>
+            {!compact && <span>{row.meaning.replace(/^(Green|Amber|Grey|Red): /, "")}</span>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
 
 export function MypAnalyticsCards({ analytics }: { analytics: MypAnalytics }) {
@@ -174,14 +217,8 @@ export function MypResultsTable({
                   .map((criterion) => (
                     <span
                       key={criterion.code}
-                      title={`${criterion.heading}: ${criterion.marksAwarded}/${criterion.marksMax} · ${criterion.statusLabel}`}
-                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                        criterion.level === null
-                          ? criterion.status === "not_assessed"
-                            ? "bg-stone-200 text-stone-700"
-                            : "bg-amber-100 text-amber-800"
-                          : "bg-evergreen-100 text-evergreen-800"
-                      }`}
+                      title={`${criterion.heading}: ${criterion.questionCount === 0 ? "not assessed" : `${criterion.marksAwarded}/${criterion.marksMax}`} · ${criterion.statusLabel}. ${CRITERION_STATUS_MEANING[criterion.status]}`}
+                      className={`rounded px-1.5 py-0.5 text-[10px] font-semibold ${TONE_CLASS[criterionStatusTone(criterion.status)]}`}
                     >
                       {criterion.code}
                       {criterion.level === null ? "…" : ` ${criterion.level}`}
@@ -208,21 +245,16 @@ export function MypResultsTable({
                 Pending: {result.pendingCriteria.join(", ")}
               </span>
             )}
+            {result.errorCriteria.length > 0 && (
+              <span className="mt-1 block text-[10px] font-semibold text-red-700">
+                Marking data error: {result.errorCriteria.join(", ")}
+              </span>
+            )}
           </td>
           <td className="whitespace-nowrap text-right">
-            <a
-              href={`/api/myp/export/pdf?scope=individual&attempt=${result.attemptId}`}
-              className="text-[11px] font-semibold text-evergreen-800 underline underline-offset-2"
-            >
-              PDF
-            </a>
+            <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="PDF" compact />
             <span className="mx-1 text-ink-soft">·</span>
-            <a
-              href={`/api/myp/export/xlsx?scope=individual&attempt=${result.attemptId}`}
-              className="text-[11px] font-semibold text-evergreen-800 underline underline-offset-2"
-            >
-              Excel
-            </a>
+            <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="Excel" compact />
           </td>
         </tr>
       ))}

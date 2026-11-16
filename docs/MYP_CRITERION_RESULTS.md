@@ -17,16 +17,30 @@ surfaces live, and how to configure a school's own criteria and boundaries.
    `myp_level_boundaries` and `myp_grade_boundaries`. A subject with no
    configuration still reports the criterion letters found on its paper, but it
    has no titles, and the report states that the subject is unconfigured.
-3. **Missing evidence is never a zero.** A criterion is only levelled when it
-   has at least one marked question and (for an assessed result) every one of
-   its questions is marked.
-   - `pending_marking` — an answer is awaiting a mark.
-   - `partially_marked` — some questions marked, some not.
-   - `not_assessed` — the criterion has no questions on this paper.
-   - `assessed` — fully marked; level `0` is only awarded when the candidate
-     genuinely earned no marks (`assessedAtZero`).
-   The overall grade is withheld (`incomplete`) unless the organization's
-   configuration allows provisional aggregation.
+3. **An unanswered question counts as zero; missing marking does not.**
+   When an attempt is final (`submitted`, `auto_submitted`, `graded`, `closed`,
+   `expired`, or it has a `submitted_at`), a question that was left unanswered —
+   no saved answer at all, or a saved but empty answer — scores zero out of its
+   marks. That is what lets a candidate who did not finish the paper still
+   receive a mark, a percentage and an achievement level for **every criterion**
+   the paper assesses. Unanswered questions are counted (`zeroFilledCount`,
+   `zeroFilledQuestions`) so the report can say how many were scored zero.
+   A saved answer that contains something but has no mark yet is different: it
+   is awaiting a teacher and stays pending.
+   - `assessed` (green) — every question in the criterion is resolved, either
+     marked or zeroed as unanswered. Level `0` is a real result
+     (`assessedAtZero`).
+   - `pending_marking` / `partially_marked` (amber) — marking is outstanding.
+     No level is inferred and the criterion is never shown as zero.
+   - `not_assessed` (grey) — the criterion has no questions on this paper.
+   - `error` (red) — a mark is not a valid number; it needs correction and is
+     neither zero nor pending. It withholds the overall grade.
+
+   Each criterion is resolved independently; an incomplete attempt does not
+   suppress the criteria that are already calculable. The overall grade is
+   withheld (`incomplete`) while any required criterion is pending, unassessed
+   or in error, unless the organization's configuration allows provisional
+   aggregation. The status label is always printed next to the colour.
 4. **Grades come from boundaries, not from the exam percentage.** Criterion
    levels come from the percentage of the criterion's own marks through the
    configured percentage→level table. The overall grade is the sum of the
@@ -56,32 +70,47 @@ surfaces live, and how to configure a school's own criteria and boundaries.
 | Entry points | `/dashboard/reports/exam/[id]`, `/admin/examinations/results`, `/student` | existing report surfaces now link here |
 
 Filters are URL state (`org`, `year`, `class`, `subject`, `exam`, `criterion`,
-`status`, `from`, `to`, `q`), and the export links carry the same query string,
-so a downloaded report always matches the screen it came from. The MYP year is
-resolved from the examination setting, then the class name/code, then
+`status`, `from`, `to`, `q`), and the export buttons carry the same query
+string, so a downloaded report always matches the screen it came from. The MYP
+year is resolved from the examination setting, then the class name/code, then
 `classes.grade_order` (6–10 → MYP 1–5).
+
+Exports are client buttons (`src/components/myp/MypExportButton.tsx`), not
+links. Opening, refreshing or navigating the module never starts a download;
+only pressing **Collective PDF**, **Collective Excel** or a row's **PDF /
+Excel** action does. A click fetches the authenticated export, shows a
+`Preparing…` state, prevents a duplicate in-flight request and reports success
+or the server's error next to the button. Pressing again downloads again.
 
 ## Reports
 
-* **Individual PDF** — EVALORA header, organization name/logo, student and
-  examination details, marks, per-criterion marks/percentage/level/status,
-  teacher feedback, strengths and improvement areas, the overall 1–7 grade (or
-  the explicit incomplete/provisional/not-applicable status), the boundary
-  sources, and a page footer with `Page n of m`. Long feedback spans pages.
-* **Collective PDF** — title and scope, average/highest/lowest, completion and
-  pending-marking counts, overall grade distribution, criterion averages, and a
-  per-student section. Empty scopes produce a valid report that says so.
-* **XLSX** — four worksheets with real numeric cells, frozen header rows,
-  autofilters and number formats:
-  1. *Student Results* — one row per result, with grade status and pending /
-     not-assessed criteria named.
-  2. *Criterion Breakdown* — one row per criterion per result; blank marks and
-     levels for unassessed or pending work, never `0`.
-  3. *Class Statistics* — per class/subject/examination averages, criterion
-     averages, 1–7 distribution, completion %, pending marking, released count,
-     plus an *all results in scope* row.
-  4. *Grading Configuration* — the criteria and boundaries actually used, with
-     their sources.
+* **Individual PDF (A4 portrait)** — EVALORA header, student information,
+  examination information, overall performance, a **detailed criterion table**
+  with one row per criterion (full criterion name, marks obtained, maximum
+  marks, percentage, achievement level 0–8, status), the overall 1–7 grade,
+  teacher feedback and improvement recommendations, and the assessment status
+  and reporting information. Every question that was left unanswered is scored
+  zero and the report says how many. Long feedback and long criterion names wrap
+  and span pages; no table column runs outside the printable area.
+* **Collective PDF (A4 landscape)** — title and scope, average/highest/lowest,
+  completion and pending-marking counts, overall grade distribution, criterion
+  averages, a results-by-student table, and a per-student criterion table with
+  the same columns as the individual report. Wide tables get the landscape page
+  they need; headers repeat after every page break and every page is numbered.
+* **XLSX** — four teacher-facing worksheets with real numeric cells, frozen
+  header rows, autofilters and number formats. Criterion columns are generated
+  from the subject's actual criteria, so another subject's letters work too:
+  1. *Student Performance* — one row per student, with `Criterion A Marks`,
+     `Criterion A Maximum`, `Criterion A Level` (and B, C, D …), total marks,
+     maximum, percentage, overall 1–7 grade and grade status.
+  2. *Detailed Criterion Results* — one row per student per criterion with the
+     criterion name, marks, maximum, percentage, level, status, questions
+     resolved, unanswered scored zero, feedback, strengths and improvements.
+  3. *Class Analytics* — class/subject/examination averages, per-criterion
+     percentages and levels, 1–7 distribution, highest/lowest, completion,
+     pending marking and released counts, plus an *all results in scope* row.
+  4. *Grading Information* — criteria, percentage→level and total→grade
+     boundaries actually applied, their sources, and the status key.
 
 ## Configuring a school
 
@@ -124,11 +153,11 @@ examinations, attempts, answers or marks.
 
 | Suite | Covers |
 | --- | --- |
-| `scripts/test-myp-grading-engine.mjs` | year resolution, configured criteria, boundaries, pending vs zero, provisional vs final, analytics |
+| `scripts/test-myp-grading-engine.mjs` | year resolution, configured criteria, boundaries, unanswered-as-zero, pending vs zero vs error, incomplete attempts, MYP 1–5, another subject, analytics |
 | `scripts/test-myp-results-loader.mjs` | tenant isolation, student-only released reads, per-subject precedence, filters, degradation before migration |
-| `scripts/test-myp-reports.mjs` | PDF page tree and extracted text, long reports, encoding, four-sheet workbook opened and unzipped |
+| `scripts/test-myp-reports.mjs` | PDF page tree, extracted text, A4 portrait/landscape, every text run inside the printable margins, long reports, encoding, four-sheet workbook opened and unzipped |
 | `scripts/test-myp-migration.mjs` | migration applied twice to PGlite, seeds, guards, append-only history, RLS for member/manager/teacher/other tenant/Super Admin |
-| `scripts/test-myp-export-controls.mjs` | every surface, navigation link and download control, and that no page duplicates the grading arithmetic |
+| `scripts/test-myp-export-controls.mjs` | every surface, navigation link and export button, no render-time download, duplicate-click guard, and that no page duplicates the grading arithmetic |
 
 Run them with `node scripts/test-myp-grading-engine.mjs` (etc.) or the whole
 suite with `npm test`.
