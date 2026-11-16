@@ -235,6 +235,15 @@ export default async function StudentWorkspace() {
                     </Link>
                   )}
                   {link && <span className="text-xs text-ink-soft">Link: {link.label}</span>}
+                  {Boolean(attempt.exams?.settings?.results_published) && attempt.score !== null && (
+                    <Link
+                      prefetch={false}
+                      className="font-semibold text-evergreen-800 underline underline-offset-2"
+                      href={`/student/results/${attempt.id}`}
+                    >
+                      View criterion results & MYP grade →
+                    </Link>
+                  )}
                 </div>
               </Card>
             );

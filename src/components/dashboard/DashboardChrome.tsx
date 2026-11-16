@@ -65,6 +65,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
       { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks, audience: "staff" },
       { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck, audience: "staff" },
       { href: "/dashboard/reports", label: "Results & Reports", icon: BarChart3, audience: "staff" },
+      { href: "/dashboard/myp-results", label: "MYP Results", icon: GraduationCap, audience: "staff" },
     ],
   },
   {

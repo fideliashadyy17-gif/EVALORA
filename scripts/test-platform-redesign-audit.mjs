@@ -1,5 +1,5 @@
 // Platform-wide route, table-accessibility, navigation, and bug-regression suite
-// covering all 144 Next.js App Router page.tsx routes across Super Admin (/admin),
+// covering all 150 Next.js App Router page.tsx routes across Super Admin (/admin),
 // Organization Workspace (/dashboard), Student & Candidate Assessment flows,
 // Multi-tenant Portals, Live Screens, and Public/Auth surfaces.
 
@@ -30,11 +30,11 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 144 page.tsx routes (79 admin, 34 dashboard, 31 public/auth/student/portal)", () => {
-  assert.equal(adminPages.length, 79, `expected 79 admin pages, found ${adminPages.length}`);
-  assert.equal(dashboardPages.length, 34, `expected 34 dashboard pages, found ${dashboardPages.length}`);
-  assert.equal(otherPages.length, 31, `expected 31 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 144);
+check("route inventory accounts for all 150 page.tsx routes (81 admin, 37 dashboard, 32 public/auth/student/portal)", () => {
+  assert.equal(adminPages.length, 81, `expected 81 admin pages, found ${adminPages.length}`);
+  assert.equal(dashboardPages.length, 37, `expected 37 dashboard pages, found ${dashboardPages.length}`);
+  assert.equal(otherPages.length, 32, `expected 32 public/student/portal pages, found ${otherPages.length}`);
+  assert.equal(allPages.length, 150);
 });
 
 for (const pagePath of adminPages) {
@@ -124,4 +124,4 @@ check("Student & candidate entry surfaces expose <main> landmarks and cross-link
   assert.ok(!pricingSrc.includes("<table"), "pricing/page.tsx should use <DataTable>");
 });
 
-console.log(`✓ platform redesign & 144-route audit — ${passed} checks passed`);
+console.log(`✓ platform redesign & 150-route audit — ${passed} checks passed`);

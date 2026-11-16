@@ -149,6 +149,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", icon: Activity },
       { href: "/admin/examinations/marking", label: "Marking & Grading", icon: ClipboardList },
       { href: "/admin/examinations/results", label: "Examination Results", icon: TrendingUp },
+      { href: "/admin/myp-results", label: "MYP Results & Reports", icon: GraduationCap },
       { href: "/admin/examinations/reports", label: "Reports & Exports", icon: ScrollText },
       { href: "/admin/proctoring", label: "Proctoring Oversight", icon: Video, badgeKey: "incidents" },
     ],
