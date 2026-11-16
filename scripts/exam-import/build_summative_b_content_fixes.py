@@ -74,22 +74,27 @@ PAPERS = {
     },
 }
 
-# (paper, question number) -> why it is repaired.
+# (paper, paper position) -> why it is repaired.
+#
+# The key is the POSITION in the paper, not the number printed on it: the MYP 5
+# paper restarts its printed numbering for Part B, so both question 17 of Part A
+# and the question printed 17 in Part B exist, and a repair aimed at the printed
+# number would silently rewrite the healthy one.
 REPAIRS = [
     ("myp2", 21, "the four option graphs were missing: the question asks which graph "
                  "shows direct proportion, so each option now carries its own figure"),
-    ("myp5", 17, "a stray $ set a whole clause as an equation, and a second one printed "
+    ("myp5", 42, "a stray $ set a whole clause as an equation, and a second one printed "
                  "as a currency symbol in part (b)"),
-    ("myp5", 19, "a stray $ printed as a currency symbol in the stem"),
+    ("myp5", 44, "a stray $ printed as a currency symbol in the stem"),
 ]
 
 
-def record(paper_key: str, number: int):
+def record(paper_key: str, position: int):
     module = PAPERS[paper_key]["module"]
     for item in module.build():
-        if item["cfg"].get("question_number", item["n"]) == number:
+        if item["n"] == position:
             return item
-    raise SystemExit(f"{paper_key}: no question numbered {number}")
+    raise SystemExit(f"{paper_key}: no question at position {position}")
 
 
 def question_id(paper_key: str, item: dict) -> str:
@@ -108,9 +113,10 @@ def main() -> None:
     add("-- in place, preserving every UUID, and fails closed rather than rewriting a")
     add("-- paper that has been attempted or an option set it does not recognise.")
     add("--")
-    for paper_key, number, why in REPAIRS:
-        item = record(paper_key, number)
-        add(f"--   {PAPERS[paper_key]['label']} question {number}: {why}")
+    for paper_key, position, why in REPAIRS:
+        item = record(paper_key, position)
+        printed = item["cfg"].get("question_number", item["n"])
+        add(f"--   {PAPERS[paper_key]['label']} position {position} (printed question {printed}): {why}")
     add("")
     add("begin;")
     add("set local lock_timeout = '5s';")
@@ -157,8 +163,12 @@ def main() -> None:
     add(") on commit drop;")
     add("")
     rows = []
-    for paper_key, number, _why in REPAIRS:
-        item = record(paper_key, number)
+    seen = set()
+    for paper_key, position, _why in REPAIRS:
+        item = record(paper_key, position)
+        if question_id(paper_key, item) in seen:
+            raise SystemExit(f"{paper_key}: position {position} resolves to a question already repaired")
+        seen.add(question_id(paper_key, item))
         rows.append({
             "q": question_id(paper_key, item),
             "p": plain(item["doc"]),
@@ -212,8 +222,8 @@ def main() -> None:
 
     # Option documents, including the graphs restored on MYP2 Q21.
     option_rows = []
-    for paper_key, number, _why in REPAIRS:
-        item = record(paper_key, number)
+    for paper_key, position_in_paper, _why in REPAIRS:
+        item = record(paper_key, position_in_paper)
         for position, option in enumerate(item.get("options") or []):
             option_rows.append({
                 "q": question_id(paper_key, item),

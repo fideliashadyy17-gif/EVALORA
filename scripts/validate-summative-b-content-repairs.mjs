@@ -123,6 +123,18 @@ const one = async (db, sql, args = []) => (await db.query(sql, args)).rows[0] ??
 
 /* ── The repair applies cleanly and does exactly what it says ───────────── */
 {
+  const sql = readFileSync(REPAIR, "utf8");
+  const named = [...new Set([...sql.matchAll(/"q":"([0-9a-f-]{36})"/g)].map((m) => m[1]))].sort();
+  check("the repair names exactly the three repaired questions",
+    JSON.stringify(named) === JSON.stringify([Q17, Q19, Q21].sort()), named.join(", "));
+  // MYP 5 prints two questions numbered 17 (Part A and Part B). The repair must
+  // address the Part B row, so the printed number is never a safe key.
+  check("the repair never targets a Part A row by its printed number",
+    !named.includes("c0a00000-0000-4000-8000-000000001017")
+    && !named.includes("c0a00000-0000-4000-8000-000000001019"));
+}
+
+{
   const db = await seeded();
   const before = {
     q21: await one(db, "select prompt_doc, explanation from questions where id = $1", [Q21]),
@@ -177,6 +189,20 @@ const one = async (db, sql, args = []) => (await db.query(sql, args)).rows[0] ??
   const q19 = await one(db, "select prompt_doc from questions where id = $1", [Q19]);
   check("MYP5 Q19 prints the investment without a stray $",
     JSON.stringify(q19.prompt_doc).includes("invests 5 000 at the start"));
+
+  // Corrupt the three repaired rows and re-apply: it is the only way to prove
+  // the migration writes to these questions rather than to namesakes.
+  await db.query("update questions set prompt_doc = '{\"type\":\"doc\",\"content\":[]}'::jsonb "
+    + "where id = any($1::uuid[])", [[Q21, Q17, Q19]]);
+  await db.exec(readFileSync(REPAIR, "utf8"));
+  const restored = (await db.query(
+    "select id, prompt_doc from questions where id = any($1::uuid[]) order by id",
+    [[Q21, Q17, Q19]])).rows;
+  check("the repair restores a damaged question rather than only matching a healthy one",
+    restored.every((row) => (row.prompt_doc?.content ?? []).length > 0));
+  check("the restored MYP2 Q21 carries its four option graphs again",
+    (await db.query("select content_doc from question_options where question_id = $1", [Q21]))
+      .rows.filter((row) => JSON.stringify(row.content_doc).includes("graphBlock")).length === 4);
 
   const untouched = await one(db,
     "select count(*)::int as n from questions where id <> all($1::uuid[]) and id in "
