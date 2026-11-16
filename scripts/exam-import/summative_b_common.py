@@ -388,8 +388,10 @@ def build_migration(*, file_name: str, title: str, description: str,
     add("select ('" + id_prefix + "' || lpad((1000 + (x->>'n')::int)::text, 12, '0'))::uuid,")
     add(f"       '{ORG_ID}', x->>'t', x->>'p', x->'d', x->>'e',")
     add("       (x->>'m')::numeric, x->>'df', x->>'tp', x->>'st',")
-    tags = json.dumps([f"MYP {myp}", "Mathematics", "summative", source, "criteria-a-d"])
-    add(f"       '{sql_escape(tags)}'::text[],")
+    # A Postgres text[] literal, not a JSON array: `questions.tags` is text[],
+    # and '["a", "b"]'::text[] is rejected as a malformed array literal.
+    tags = [f"MYP {myp}", "Mathematics", "summative", source, "criteria-a-d"]
+    add("       array[" + ", ".join(f"'{sql_escape(tag)}'" for tag in tags) + "]::text[],")
     add("       'published', x->'cfg',")
     add(f"       '{CREATED_BY}', 'MYP', 'MYP {myp} Mathematics', '{SUBJECT_ID}',")
     add("       'approved', 'manual', " + (f"'{myp_class_id}'" if myp_class_id else "null") + ",")

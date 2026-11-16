@@ -28,7 +28,7 @@ insert into questions (id, organization_id, type, prompt, prompt_doc, explanatio
 select ('c0800000-0000-4000-8000-' || lpad((1000 + (x->>'n')::int)::text, 12, '0'))::uuid,
        '0a400000-0000-4000-8000-000000000001', x->>'t', x->>'p', x->'d', x->>'e',
        (x->>'m')::numeric, x->>'df', x->>'tp', x->>'st',
-       '["MYP 3", "Mathematics", "summative", "myp3-term1-summative-b-2026", "criteria-a-d"]'::text[],
+       array['MYP 3', 'Mathematics', 'summative', 'myp3-term1-summative-b-2026', 'criteria-a-d']::text[],
        'published', x->'cfg',
        '3c3ed712-f409-4aa1-a645-816418e22ec4', 'MYP', 'MYP 3 Mathematics', '0a400000-0000-4000-8000-000000000030',
        'approved', 'manual', '0a400000-0000-4000-8000-000000000108',
