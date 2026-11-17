@@ -28,9 +28,9 @@ import {
   Users,
   X,
 } from "lucide-react";
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
 interface NavItem {
   href: string;
@@ -81,6 +81,23 @@ const navLink =
   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition";
 const navIdle = "text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900";
 
+/**
+ * Rendered inside a <Link>. `useLinkStatus` flips to pending as soon as the
+ * navigation starts, which gives the click immediate feedback while the server
+ * sends the destination shell. It is intentionally tiny: the real skeleton is
+ * the route-level loading.tsx boundary.
+ */
+function NavPendingIndicator() {
+  const { pending } = useLinkStatus();
+  if (!pending) return null;
+  return (
+    <span
+      aria-hidden
+      className="ml-auto h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent opacity-70"
+    />
+  );
+}
+
 export function DashboardChrome({
   orgName,
   orgSlug,
@@ -101,6 +118,19 @@ export function DashboardChrome({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  // Highlight the destination immediately on click instead of waiting for the
+  // server round-trip to change `pathname`. Cleared when the route settles (or
+  // after a short safety timeout if the navigation is cancelled).
+  const [optimisticHref, setOptimisticHref] = useState<string | null>(null);
+  useEffect(() => {
+    setOptimisticHref(null);
+  }, [pathname]);
+  useEffect(() => {
+    if (!optimisticHref) return;
+    const timer = setTimeout(() => setOptimisticHref(null), 5_000);
+    return () => clearTimeout(timer);
+  }, [optimisticHref]);
+  const activePath = optimisticHref ?? pathname;
 
   async function signOut() {
     const supabase = createClient();
@@ -126,16 +156,22 @@ export function DashboardChrome({
             </p>
           )}
           {section.items.map((n) => {
-            const active = n.exact ? pathname === n.href : pathname.startsWith(n.href);
+            const active = n.exact ? activePath === n.href : activePath.startsWith(n.href);
             return (
               <Link
                 key={n.href + n.label}
                 href={n.href}
-                onClick={() => setOpen(false)}
+                prefetch
+                aria-current={active ? "page" : undefined}
+                onClick={() => {
+                  setOptimisticHref(n.href);
+                  setOpen(false);
+                }}
                 className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
               >
                 <n.icon className="h-5 w-5 shrink-0" />
                 {n.label}
+                <NavPendingIndicator />
               </Link>
             );
           })}

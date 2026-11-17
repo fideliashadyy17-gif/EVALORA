@@ -68,7 +68,9 @@ async function resolveSessionContext(hdrs: Awaited<ReturnType<typeof headers>> |
   const [{ data: profile }, { data: memberships, error: membershipsError }] = await Promise.all([
     supabase
       .from("profiles")
-      .select("*")
+      // Only the fields the session context exposes. `select("*")` pulled
+      // every profile column on every protected render.
+      .select("id, email, full_name, platform_role, is_primary, status")
       .eq("id", user.id)
       .single(),
     supabase

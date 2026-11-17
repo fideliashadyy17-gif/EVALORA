@@ -40,19 +40,22 @@ export default async function QuestionsPage({
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.class) query = query.eq("class_id", sp.class);
   if (sp.curr) query = query.eq("curriculum", sp.curr);
-  const { data: questions, count: questionTotal } = await query.range((page - 1) * pageSize, page * pageSize - 1);
-  const { data: classList } = await supabase
-    .from("classes")
-    .select("id, name")
-    .eq("organization_id", org.id)
-    .order("grade_order")
-    .order("name");
-
+  // Every read below is independent of the others. Issuing them together
+  // removes two serialised Supabase round-trips from the module open path.
   const [
+    { data: questions, count: questionTotal },
+    { data: classList },
     { data: categories },
     { count: publishedCount },
     { count: reviewCount },
   ] = await Promise.all([
+    query.range((page - 1) * pageSize, page * pageSize - 1),
+    supabase
+      .from("classes")
+      .select("id, name")
+      .eq("organization_id", org.id)
+      .order("grade_order")
+      .order("name"),
     supabase.from("question_categories").select("*").eq("organization_id", org.id).order("name"),
     supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "published"),
     supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["pending_review", "draft"]),

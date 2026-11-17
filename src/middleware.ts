@@ -92,8 +92,14 @@ export async function middleware(request: NextRequest) {
 
   let budgetTimer: ReturnType<typeof setTimeout> | null = null;
   try {
+    // Verify the session JWT locally against the project's JWKS instead of
+    // calling GoTrue's /user endpoint on every navigation. With asymmetric
+    // signing keys this is a cached WebCrypto check (no auth round-trip); on a
+    // legacy symmetric secret supabase-js falls back to the same server-side
+    // verification getUser() performs, so security is unchanged. The layout and
+    // every server action still call getUser() for authoritative checks.
     const authResult = await Promise.race([
-      supabase.auth.getUser().then((res) => ({ kind: "done" as const, res })),
+      supabase.auth.getClaims().then((res) => ({ kind: "done" as const, res })),
       new Promise<{ kind: "timeout" }>((resolve) => {
         budgetTimer = setTimeout(() => resolve({ kind: "timeout" }), MIDDLEWARE_AUTH_BUDGET_MS);
       }),
@@ -102,7 +108,8 @@ export async function middleware(request: NextRequest) {
     if (authResult.kind === "timeout") {
       authUpstreamFailed = true;
     } else {
-      user = authResult.res.data?.user ?? null;
+      const claims = authResult.res.data?.claims as { sub?: string } | null;
+      user = claims?.sub ? { id: claims.sub } : null;
       const errStatus = (authResult.res.error as { status?: number; name?: string } | null)?.status;
       const errName = (authResult.res.error as { status?: number; name?: string } | null)?.name;
       if (!user && (errName === "AuthRetryableFetchError" || (typeof errStatus === "number" && (errStatus === 0 || errStatus >= 500)))) {

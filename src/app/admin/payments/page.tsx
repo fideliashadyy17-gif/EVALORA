@@ -7,7 +7,7 @@ import { fmtDateTime, money, toCsv } from "@/lib/utils";
 import { CircleDollarSign, Clock, TrendingUp } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { getProofUrl, reviewPayment } from "../actions";
+import { reviewPayment } from "../actions";
 import { StatusBadge, Table } from "../ui";
 
 export const metadata: Metadata = { title: "Payments" };
@@ -32,24 +32,34 @@ export default async function AdminPayments({
   if (sp.status) query = query.eq("status", sp.status);
   if (sp.source) query = query.eq("source", sp.source);
   if (sp.q) query = query.or(`transaction_ref.ilike.%${sp.q}%,payer_name.ilike.%${sp.q}%`);
+  // Revenue is independent of the listing and can be fetched at the same time.
+  const approvedPromise = admin
+    .from("payment_requests")
+    .select("amount_cents, currency, created_at")
+    .eq("status", "approved")
+    .limit(5000);
   const { data } = await query;
 
-  const withProof = await Promise.all(
-    (data ?? []).map(async (p) => ({
-      ...p,
-      proofSigned: p.proof_url ? await getProofUrl(p.proof_url) : null,
-    })),
+  // One batched signed-URL request instead of one Storage round-trip per row.
+  const proofPaths = [...new Set((data ?? []).map((p) => p.proof_url).filter((p): p is string => Boolean(p)))];
+  const { data: proofUrls } = proofPaths.length
+    ? await admin.storage.from("payment-proofs").createSignedUrls(proofPaths, 300)
+    : { data: [] as { path: string | null; signedUrl: string }[] };
+  const proofByPath = new Map(
+    (proofUrls ?? [])
+      .filter((item) => item.path && item.signedUrl)
+      .map((item) => [item.path as string, item.signedUrl]),
   );
+  const withProof = (data ?? []).map((p) => ({
+    ...p,
+    proofSigned: p.proof_url ? proofByPath.get(p.proof_url) ?? null : null,
+  }));
   const pending = withProof.filter((p) => p.status === "pending");
   const listed = sp.status ? withProof : withProof.filter((p) => p.status !== "pending");
   const pagedListed = listed.slice((page - 1) * pageSize, page * pageSize);
 
   // Verified revenue = approved records ONLY. Never count pending money.
-  const { data: approved } = await admin
-    .from("payment_requests")
-    .select("amount_cents, currency, created_at")
-    .eq("status", "approved")
-    .limit(5000);
+  const { data: approved } = await approvedPromise;
   const byCurrency = new Map<string, number>();
   const monthStart = new Date();
   monthStart.setDate(1);

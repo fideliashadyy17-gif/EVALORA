@@ -17,70 +17,94 @@ export default async function DashboardPage() {
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
 
-  let degradedMetrics = false;
-  const safeQuery = async <T,>(query: PromiseLike<T & { error?: unknown }>, fallback: T): Promise<T> => {
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const res = await Promise.race<T & { error?: unknown }>([
-        Promise.resolve(query),
-        new Promise<T & { error?: unknown }>((resolve) => {
-          timer = setTimeout(() => {
-            degradedMetrics = true;
-            resolve(fallback as T & { error?: unknown });
-          }, 5_500);
-        }),
-      ]);
-      if (res?.error) {
-        degradedMetrics = true;
-        return fallback;
-      }
-      return res;
-    } catch {
-      degradedMetrics = true;
-      return fallback;
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
+  type Overview = {
+    counts: { quizzes: number; questions: number; exams: number; members: number; sessions: number };
+    recentSessions: {
+      id: string; title: string | null; join_code: string; created_at: string; status: string;
+      quizzes: { title: string } | null;
+    }[];
+    recentExams: {
+      id: string; title: string; duration_minutes: number; access_code: string; status: string;
+    }[];
+    platform: {
+      slug: string; name: string; status: string; portal_enabled: boolean | null;
+      custom_domain: string | null; platform_domain_status: string | null;
+    } | null;
   };
 
-  const [quizzes, questions, exams, members, sessions, recentSessions, upcomingExams, platformRow] =
-    await Promise.all([
-      safeQuery<{ count: number | null }>(supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id), { count: 0 }),
-      safeQuery<{ count: number | null }>(supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]), { count: 0 }),
-      safeQuery<{ data: { id: string; title: string | null; join_code: string; created_at: string; status: string; quizzes: { title: string } | null }[] | null }>(supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
-      safeQuery<{ data: { id: string; title: string; duration_minutes: number; access_code: string; status: string }[] | null }>(supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5), { data: [] }),
-      safeQuery<{
-        data: {
-          slug: string;
-          name: string;
-          status: string;
-          portal_enabled: boolean | null;
-          custom_domain: string | null;
-          platform_domain_status: string | null;
-        } | null;
-      }>(
+  const emptyOverview: Overview = {
+    counts: { quizzes: 0, questions: 0, exams: 0, members: 0, sessions: 0 },
+    recentSessions: [],
+    recentExams: [],
+    platform: null,
+  };
+
+  // One SECURITY DEFINER RPC returns the whole dashboard payload (counts,
+  // recent sessions/exams, platform row). It validates the caller's active
+  // membership of `org.id` and scopes every aggregate to that organisation.
+  // The old path issued 8 parallel REST queries plus a ninth subscription
+  // query, and each exact count evaluated per-row RLS predicates.
+  let degradedMetrics = false;
+  const [overviewResult, entitlement] = await Promise.all([
+    supabase.rpc("workspace_overview", { p_org: org.id }),
+    getEntitlementFor(supabase, ctx, org.id).catch(() => ({
+      planName: "Standard",
+      status: "active" as const,
+      trialEndsAt: null,
+      currentPeriodEnd: null,
+    })),
+  ]);
+
+  let overview: Overview | null = overviewResult.error
+    ? null
+    : (overviewResult.data as Overview | null);
+
+  if (!overview) {
+    // Backward-compatible fallback: if the migration has not reached the
+    // database yet, render the same dashboard from direct, tenant-scoped reads
+    // rather than showing empty metrics.
+    degradedMetrics = true;
+    const [quizCount, questionCount, examCount, memberCount, sessionCount, recent, upcoming, platformRow] =
+      await Promise.all([
+        supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("organization_id", org.id).in("status", ["lobby", "live"]),
+        supabase.from("quiz_sessions").select("*, quizzes(title)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
+        supabase.from("exams").select("*").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(5),
         supabase
           .from("organizations")
           .select("slug, name, status, portal_enabled, custom_domain, platform_domain_status")
           .eq("id", org.id)
           .maybeSingle(),
-        { data: null },
-      ),
-    ]);
+      ]);
+    overview = {
+      counts: {
+        quizzes: quizCount.count ?? 0,
+        questions: questionCount.count ?? 0,
+        exams: examCount.count ?? 0,
+        members: memberCount.count ?? 0,
+        sessions: sessionCount.count ?? 0,
+      },
+      recentSessions: (recent.data ?? []) as Overview["recentSessions"],
+      recentExams: (upcoming.data ?? []) as Overview["recentExams"],
+      platform: (platformRow.data ?? null) as Overview["platform"],
+    };
+  }
+
+  const data = overview ?? emptyOverview;
+  const quizzes = { count: data.counts.quizzes };
+  const questions = { count: data.counts.questions };
+  const exams = { count: data.counts.exams };
+  const members = { count: data.counts.members };
+  const sessions = { count: data.counts.sessions };
+  const recentSessions = { data: data.recentSessions };
+  const upcomingExams = { data: data.recentExams };
 
   const platform = organizationPlatformAccess(
-    platformRow.data ?? { slug: org.slug, status: org.status },
+    data.platform ?? { slug: org.slug, status: org.status },
   );
-
-  const entitlement = await getEntitlementFor(supabase, ctx, org.id).catch(() => ({
-    planName: "Standard",
-    status: "active" as const,
-    trialEndsAt: null,
-    currentPeriodEnd: null,
-  }));
 
   return (
     <>

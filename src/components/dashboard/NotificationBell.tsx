@@ -104,10 +104,19 @@ export function NotificationBell({
     }
   }, []);
 
-  // Keep the badge honest across navigation, matching the previous behaviour.
+  // Load once, then refresh on a slow interval or when the tab regains focus.
+  // Refetching on every route change duplicated two Supabase requests per
+  // module click even though the unread count rarely changes.
   useEffect(() => {
     void load();
-  }, [load, pathname]);
+    const timer = window.setInterval(() => void load(), 60_000);
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [load]);
 
   // Relative timestamps stay fresh while the panel is open.
   useEffect(() => {

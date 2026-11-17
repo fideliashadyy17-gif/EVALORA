@@ -37,13 +37,78 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
 
-  const [{ data: years }, { data: levels }, { data: departments }, { data: classRows }, { data: members }] = await Promise.all([
+  // Start every independent read at once. The roster query depends only on the
+  // optional class filter, so it is chained off that one promise instead of
+  // serialising five separate waits. This page previously issued six
+  // sequential Supabase round-trips before it could render.
+  const classFilterPromise = sp.class
+    ? supabase
+        .from("student_enrollments")
+        .select("student_id")
+        .eq("organization_id", org.id)
+        .eq("class_id", sp.class)
+        .eq("status", "active")
+        .limit(2000)
+    : Promise.resolve({ data: null as { student_id: string }[] | null, error: null });
+
+  const rosterPromise = classFilterPromise.then(async (filtered) => {
+    const classStudentIds = sp.class ? (filtered.data ?? []).map((row) => row.student_id) : null;
+    if (classStudentIds && classStudentIds.length === 0) {
+      return { students: [] as { id: string }[], total: 0, enrollmentRows: [] as { student_id: string; class_id: string }[] };
+    }
+    let sq = supabase
+      .from("students")
+      .select("*", { count: "exact" })
+      .eq("organization_id", org.id)
+      .order("full_name");
+    if (sp.q?.trim()) sq = sq.or(`full_name.ilike.%${sp.q.trim()}%,email.ilike.%${sp.q.trim()}%,student_ref.ilike.%${sp.q.trim()}%`);
+    if (sp.status) sq = sq.eq("status", sp.status);
+    if (classStudentIds) sq = sq.in("id", classStudentIds);
+    const result = await sq.range((page - 1) * pageSize, page * pageSize - 1);
+    const rows = result.data ?? [];
+    const enrollmentRows = rows.length
+      ? ((await supabase
+          .from("student_enrollments")
+          .select("student_id, class_id")
+          .eq("organization_id", org.id)
+          .in("student_id", rows.map((student) => student.id))
+          .eq("status", "active")).data ?? [])
+      : [];
+    return { students: rows, total: result.count ?? 0, enrollmentRows };
+  });
+
+  const allStudentsPromise = supabase
+    .from("students")
+    .select("full_name, email, student_ref, date_of_birth, status, user_id")
+    .eq("organization_id", org.id)
+    .limit(20000);
+  const batchesPromise = supabase
+    .from("import_batches")
+    .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
+    .eq("organization_id", org.id)
+    .order("created_at", { ascending: false })
+    .limit(8);
+
+  const [
+    { data: years },
+    { data: levels },
+    { data: departments },
+    { data: classRows },
+    { data: members },
+    roster,
+    { data: allStudents },
+    { data: batches },
+  ] = await Promise.all([
     supabase.from("academic_years").select("id, name, is_current").eq("organization_id", org.id).order("created_at", { ascending: false }),
     supabase.from("education_levels").select("id, name").eq("organization_id", org.id).order("sort").order("name"),
     supabase.from("departments").select("id, name").eq("organization_id", org.id).order("sort").order("name"),
     supabase.from("classes").select("id, name, code, academic_year_id, level_id, status").eq("organization_id", org.id).order("name"),
     supabase.from("organization_members").select("user_id, role, profiles(full_name, email)").eq("organization_id", org.id).eq("status", "active"),
+    rosterPromise,
+    allStudentsPromise,
+    batchesPromise,
   ]);
+
   const classes = classRows ?? [];
   const activeClasses = classes.filter((c) => c.status === "active");
   const className = new Map(classes.map((c) => [c.id, c.name]));
@@ -52,37 +117,15 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
     return { id: m.user_id, name: p?.full_name || p?.email || "Member" };
   });
 
-  // Student list is tenant-scoped and server-paginated. Resolve a class filter
-  // to student ids first so search, status, count, and page boundaries all
-  // apply to the same roster without relying on a client-side partial slice.
-  const classStudentIds = sp.class
-    ? ((await supabase.from("student_enrollments").select("student_id").eq("organization_id", org.id).eq("class_id", sp.class).eq("status", "active").limit(2000)).data ?? []).map((row) => row.student_id)
-    : null;
-  let sq = supabase
-    .from("students")
-    .select("*", { count: "exact" })
-    .eq("organization_id", org.id)
-    .order("full_name");
-  if (sp.q?.trim()) sq = sq.or(`full_name.ilike.%${sp.q.trim()}%,email.ilike.%${sp.q.trim()}%,student_ref.ilike.%${sp.q.trim()}%`);
-  if (sp.status) sq = sq.eq("status", sp.status);
-  if (classStudentIds) sq = sq.in("id", classStudentIds);
-  const studentResult = classStudentIds?.length === 0
-    ? null
-    : await sq.range((page - 1) * pageSize, page * pageSize - 1);
-  const studentRows = studentResult?.data ?? [];
-  const studentTotal = studentResult?.count ?? 0;
-  const students = studentRows;
-
-  const studentIds = students.map((s) => s.id);
-  const { data: enrollmentRows } = studentIds.length
-    ? await supabase.from("student_enrollments").select("student_id, class_id").eq("organization_id", org.id).in("student_id", studentIds).eq("status", "active")
-    : { data: [] };
+  // Student list is tenant-scoped and server-paginated; a class filter is
+  // resolved to student ids first so search, status, count and page boundaries
+  // all apply to the same roster.
+  const students = roster.students;
+  const studentTotal = roster.total;
   const enrollmentByStudent = new Map<string, string>();
-  for (const e of enrollmentRows ?? []) if (!enrollmentByStudent.has(e.student_id)) enrollmentByStudent.set(e.student_id, e.class_id);
+  for (const e of roster.enrollmentRows) if (!enrollmentByStudent.has(e.student_id)) enrollmentByStudent.set(e.student_id, e.class_id);
 
   // Existing identities for import duplicate detection (this school only).
-  const { data: allStudents } = await supabase.from("students")
-    .select("full_name, email, student_ref, date_of_birth, status, user_id").eq("organization_id", org.id).limit(20000);
   const existing = {
     refs: (allStudents ?? []).map((s) => s.student_ref?.trim().toLowerCase()).filter(Boolean) as string[],
     emails: (allStudents ?? []).map((s) => s.email?.trim().toLowerCase()).filter(Boolean) as string[],
@@ -90,10 +133,6 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   };
   const totalActiveStudents = (allStudents ?? []).filter((s) => s.status === "active").length;
   const totalWithLogin = (allStudents ?? []).filter((s) => Boolean(s.user_id)).length;
-
-  const { data: batches } = await supabase.from("import_batches")
-    .select("id, file_name, file_type, status, total_rows, imported_count, updated_count, skipped_count, failed_count, created_at")
-    .eq("organization_id", org.id).order("created_at", { ascending: false }).limit(8);
 
   return (
     <>
