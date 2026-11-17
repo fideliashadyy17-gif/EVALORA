@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { renderLatex } from "@/lib/content";
 import { MATH_CATEGORIES, type MathKey } from "@/components/editor/mathKeyboard";
-import { NUMERIC_MATH_CATEGORY, plainInsertionForKey, type PlainMathInsertion } from "@/components/editor/plainMathKeyboard";
+import { NUMERIC_MATH_CATEGORY, matrixInsertion, plainInsertionForKey, type PlainMathInsertion } from "@/components/editor/plainMathKeyboard";
 
 /**
  * The shared mathematical keyboard, rendered as a reusable panel for ANY
@@ -38,6 +38,9 @@ export function MathKeyboardPanel({
 }) {
   const categories = variant === "numeric" ? [NUMERIC_MATH_CATEGORY] : MATH_CATEGORIES;
   const [categoryId, setCategoryId] = useState(categories[0].id);
+  const [rows, setRows] = useState(2);
+  const [columns, setColumns] = useState(2);
+  const [matrixStyle, setMatrixStyle] = useState<"paren" | "bracket" | "bar">("paren");
   const cat = categories.find((c) => c.id === categoryId) ?? categories[0];
 
   const press = (key: MathKey) => {
@@ -71,6 +74,60 @@ export function MathKeyboardPanel({
           ))}
         </div>
       )}
+      {variant === "full" && cat.id === "matrices" && (
+        <div
+          className="mb-2 flex flex-wrap items-end gap-2 rounded-lg border border-evergreen-900/15 bg-white/80 px-2.5 py-2"
+          data-testid="matrix-builder"
+          role="group"
+          aria-label="Matrix builder"
+        >
+          <label className="text-[11px] font-semibold text-evergreen-900">
+            Rows
+            <select
+              className="ml-1 rounded-md border border-evergreen-900/20 bg-white px-1.5 py-1 text-xs"
+              value={rows}
+              onChange={(e) => setRows(Number(e.target.value))}
+              aria-label="Matrix rows"
+            >
+              {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-semibold text-evergreen-900">
+            Columns
+            <select
+              className="ml-1 rounded-md border border-evergreen-900/20 bg-white px-1.5 py-1 text-xs"
+              value={columns}
+              onChange={(e) => setColumns(Number(e.target.value))}
+              aria-label="Matrix columns"
+            >
+              {[1, 2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+          </label>
+          <label className="text-[11px] font-semibold text-evergreen-900">
+            Brackets
+            <select
+              className="ml-1 rounded-md border border-evergreen-900/20 bg-white px-1.5 py-1 text-xs"
+              value={matrixStyle}
+              onChange={(e) => setMatrixStyle(e.target.value as "paren" | "bracket" | "bar")}
+              aria-label="Matrix bracket style"
+            >
+              <option value="paren">( )</option>
+              <option value="bracket">[ ]</option>
+              <option value="bar">| |</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="rounded-lg bg-evergreen-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-evergreen-800"
+            onMouseDown={(e) => e.preventDefault()}
+            onTouchStart={(e) => e.preventDefault()}
+            onClick={() => onInsert(matrixInsertion(rows, columns, matrixStyle))}
+          >
+            Insert {rows}×{columns} matrix
+          </button>
+          <span className="text-[11px] text-ink-soft">Each cell is editable; typing moves cell by cell.</span>
+        </div>
+      )}
       <div className="flex flex-wrap gap-1.5" aria-label={`${cat.label} symbols`}>
         {cat.keys.map((key) => (
           <button
@@ -88,7 +145,7 @@ export function MathKeyboardPanel({
         ))}
       </div>
       <p className="mt-2 text-[11px] text-ink-soft">
-        Symbols insert at the cursor in your answer. Brackets with a space — like √( ) or ( )/( ) — are slots: type straight over them.
+        Symbols insert at the cursor. Spaces inside structures — √( ), ( )/( ), Σ_( )^( ) ( ) and matrix cells — are editable slots: type straight over them and the cursor moves to the next slot.
       </p>
     </div>
   );

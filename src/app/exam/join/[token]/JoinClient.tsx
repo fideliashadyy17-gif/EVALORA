@@ -1,8 +1,10 @@
 "use client";
 
+import { ExamLanguageShield } from "@/components/ExamLanguageShield";
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import type { AccessMode, IdentityField } from "@/lib/exam-access";
+import type { PaperLanguage } from "@/lib/examLanguage";
 import {
   ensureBrowserGuestKey,
   readActiveCandidatePointer,
@@ -29,6 +31,8 @@ export function ExamJoinClient({
   accessMode,
   identityFields,
   requiresAccount,
+  language,
+  languageLock,
 }: {
   token: string;
   title: string;
@@ -42,6 +46,8 @@ export function ExamJoinClient({
   accessMode: AccessMode;
   identityFields: IdentityField[];
   requiresAccount: boolean;
+  language: PaperLanguage;
+  languageLock: boolean;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -146,7 +152,8 @@ export function ExamJoinClient({
     requiresAccount || (accessMode === "registered_students_only" && ignoreAuthSession);
 
   return (
-    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+    <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12" lang={language}>
+      <ExamLanguageShield language={language} enabled={languageLock} />
       <div className="mx-auto w-full max-w-2xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Logo />
@@ -155,11 +162,17 @@ export function ExamJoinClient({
         <Card className="exam-entry-card overflow-hidden">
           <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
             <p className="exam-entry-kicker">Shared examination invitation</p>
-            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
-            {description && <p className="mt-2 text-sm leading-6 text-emerald-50/80">{description}</p>}
+            <div lang={language} translate={languageLock ? "no" : undefined} className={languageLock ? "notranslate" : undefined}>
+              <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
+              {description && <p className="mt-2 text-sm leading-6 text-emerald-50/80">{description}</p>}
+            </div>
           </div>
           <div className="p-6 sm:p-9">
-            {instructions && <div className="mt-3 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{instructions}</div>}
+            {instructions && (
+              <div lang={language} translate={languageLock ? "no" : undefined} className={`notranslate mt-3 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900`}>
+                {instructions}
+              </div>
+            )}
             <p className="mt-3 text-sm text-ink-soft">
               {accessMode === "shared_link"
                 ? "No EVALORA account is required. Shared classroom browsers are supported: each student enters their own name and access code for a separate timed paper."

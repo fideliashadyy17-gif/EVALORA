@@ -24,6 +24,7 @@ export type CapabilityKey =
   | "central_asset_management"
   | "multi_class_operations"
   | "future_modules"
+  | "premium_exam_experience"
   | "unrestricted_owner_access";
 
 export type CapabilitySet = Record<CapabilityKey, boolean>;
@@ -43,6 +44,7 @@ export const CAPABILITY_KEYS: CapabilityKey[] = [
   "central_asset_management",
   "multi_class_operations",
   "future_modules",
+  "premium_exam_experience",
   "unrestricted_owner_access",
 ];
 
@@ -87,6 +89,7 @@ export function resolveCapabilities(input: CapabilityInput): CapabilitySet {
     central_asset_management: institutional || limits.central_asset_management === true,
     multi_class_operations: institutional || limits.multi_class_operations === true,
     future_modules: false,
+    premium_exam_experience: limits.premium_exam_experience === true,
     unrestricted_owner_access: false,
   };
 }
@@ -106,5 +109,6 @@ export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
   central_asset_management: "Centralized Resource Management",
   multi_class_operations: "Multi-class / Multi-user Operations",
   future_modules: "Future Modules",
+  premium_exam_experience: "Premium Examination Experience",
   unrestricted_owner_access: "Unrestricted Platform Owner Access",
 };

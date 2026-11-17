@@ -16,6 +16,7 @@ import {
   normalizeMaxAttempts,
   normalizeUuidList,
 } from "@/lib/exam-access";
+import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -393,6 +394,9 @@ export async function updateExamInvitation(formData: FormData) {
     // The paper's calculator default. A question keeps the last word: its own
     // `calculator` or `calculator_policy` config overrides this either way.
     settings.calculator = val(formData, "calculator", 10) === "1";
+    // Preserve the paper's authored language on every candidate screen. An
+    // explicit "auto" leaves detection to the paper content.
+    settings.language = normalizeExamLanguage(val(formData, "language", 20)) ?? "auto";
     const rawIdentity = val(formData, "identity_fields", 4000);
     let parsedIdentity: unknown = [];
     if (rawIdentity) {

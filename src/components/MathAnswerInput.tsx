@@ -21,8 +21,9 @@ import type { PlainMathInsertion } from "@/components/editor/plainMathKeyboard";
 interface PendingSlot {
   /** Offset (from the field start) the insertion began at. */
   base: number;
-  slot: { start: number; end: number };
-  next?: { start: number; end: number };
+  /** Ordered editable cells; the selected one is `slots[index]`. */
+  slots: { start: number; end: number }[];
+  index: number;
   text: string;
 }
 
@@ -38,6 +39,7 @@ export function MathAnswerInput({
   inputMode = "text",
   variant = "full",
   unit,
+  floatingKeyboard = false,
 }: {
   value: string;
   /** New full field value after every edit or keyboard insertion. */
@@ -52,6 +54,12 @@ export function MathAnswerInput({
   variant?: "full" | "numeric";
   /** Optional unit rendered after the field (Assess Prep parts). */
   unit?: string | null;
+  /**
+   * Premium examination presentation: a compact popover above the page flow
+   * instead of an inline panel that pushes the question downward. The field
+   * remains the source of truth and keeps focus/caret while tapping keys.
+   */
+  floatingKeyboard?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pendingRef = useRef<PendingSlot | null>(null);
@@ -77,9 +85,15 @@ export function MathAnswerInput({
       const end = el && typeof el.selectionEnd === "number" ? el.selectionEnd : value.length;
       const next = value.slice(0, start) + ins.text + value.slice(end);
       onChange(next);
-      if (ins.slot) {
-        pendingRef.current = { base: start, slot: ins.slot, next: ins.next, text: ins.text };
-        placeCaret(start + ins.slot.start, start + ins.slot.end);
+      const slots =
+        ins.slots && ins.slots.length
+          ? ins.slots
+          : ins.slot
+            ? [ins.slot, ...(ins.next ? [ins.next] : [])]
+            : null;
+      if (slots) {
+        pendingRef.current = { base: start, slots, index: 0, text: ins.text };
+        placeCaret(start + slots[0].start, start + slots[0].end);
       } else {
         pendingRef.current = null;
         placeCaret(start + ins.caret);
@@ -105,27 +119,33 @@ export function MathAnswerInput({
       return;
     }
     const pending = pendingRef.current;
+    if (!pending) return;
     const el = e.currentTarget;
+    const current = pending.slots[pending.index];
     const fillsSlot =
-      pending !== null &&
+      current !== undefined &&
       e.key.length === 1 &&
       !e.ctrlKey && !e.metaKey && !e.altKey &&
-      el.selectionStart === pending.base + pending.slot.start &&
-      el.selectionEnd === pending.base + pending.slot.end;
-    if (!fillsSlot || !pending) return;
+      el.selectionStart === pending.base + current.start &&
+      el.selectionEnd === pending.base + current.end;
+    if (!fillsSlot) return;
 
     e.preventDefault();
-    const s = pending.base + pending.slot.start;
-    const en = pending.base + pending.slot.end;
+    const s = pending.base + current.start;
+    const en = pending.base + current.end;
     const nextValue = value.slice(0, s) + e.key + value.slice(en);
     onChange(nextValue);
 
     const shift = e.key.length - (en - s); // usually 0: slots are one char wide
-    if (pending.next) {
-      const ns = pending.base + pending.next.start + shift;
-      const ne = pending.base + pending.next.end + shift;
-      pendingRef.current = { base: pending.base, slot: pending.next, next: undefined, text: pending.text };
-      placeCaret(ns, ne);
+    // Every later slot moves by the same delta (e.g. a two-digit numerator).
+    const adjusted = pending.slots.map((slot, i) =>
+      i >= pending.index ? { start: slot.start + shift, end: slot.end + shift } : slot,
+    );
+    const nextIndex = pending.index + 1;
+    if (nextIndex < adjusted.length) {
+      const next = adjusted[nextIndex];
+      pendingRef.current = { base: pending.base, slots: adjusted, index: nextIndex, text: pending.text };
+      placeCaret(pending.base + next.start, pending.base + next.end);
       return;
     }
     pendingRef.current = null;
@@ -135,7 +155,7 @@ export function MathAnswerInput({
   };
 
   return (
-    <div className="w-full">
+    <div className="relative w-full">
       <div className="flex w-full gap-2">
         <div className="relative min-w-0 flex-1">
           <Input
@@ -152,10 +172,12 @@ export function MathAnswerInput({
               // Any manual caret move abandons the pending slot chain.
               const pending = pendingRef.current;
               const el = e.currentTarget;
+              const current = pending ? pending.slots[pending.index] : undefined;
               if (
                 pending &&
-                (el.selectionStart !== pending.base + pending.slot.start ||
-                  el.selectionEnd !== pending.base + pending.slot.end)
+                (!current ||
+                  el.selectionStart !== pending.base + current.start ||
+                  el.selectionEnd !== pending.base + current.end)
               ) {
                 pendingRef.current = null;
               }
@@ -183,9 +205,21 @@ export function MathAnswerInput({
           ∑
         </button>
       </div>
-      <div hidden={!showKeyboard || disabled}>
-        <MathKeyboardPanel onInsert={applyInsertion} variant={variant} label={ariaLabel ? `Mathematical symbols for ${ariaLabel}` : "Mathematical symbols"} />
-      </div>
+      {floatingKeyboard ? (
+        <div
+          hidden={!showKeyboard || disabled}
+          className="absolute right-0 top-full z-30 mt-2 w-[min(92vw,26rem)] max-w-full rounded-2xl border border-evergreen-900/20 bg-white p-1.5 shadow-2xl"
+          data-testid="math-keyboard-popover"
+        >
+          <div className="max-h-[45vh] overflow-y-auto">
+            <MathKeyboardPanel onInsert={applyInsertion} variant={variant} label={ariaLabel ? `Mathematical symbols for ${ariaLabel}` : "Mathematical symbols"} />
+          </div>
+        </div>
+      ) : (
+        <div hidden={!showKeyboard || disabled}>
+          <MathKeyboardPanel onInsert={applyInsertion} variant={variant} label={ariaLabel ? `Mathematical symbols for ${ariaLabel}` : "Mathematical symbols"} />
+        </div>
+      )}
     </div>
   );
 }

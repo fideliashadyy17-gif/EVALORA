@@ -357,23 +357,43 @@ const SCIENTIFIC_KEYS: Key[] = [
 
 // ──────────────────────────────────────────────────────────────── component
 
+export interface CalculatorSnapshot {
+  expression: string;
+  result: string;
+  error: string | null;
+  lastAnswer: number;
+  history: { expr: string; value: string }[];
+  showScientific: boolean;
+}
+
 export function Calculator({
   scientific = true,
   onClose,
+  onMinimize,
   className,
+  chrome = true,
+  initial = null,
+  onSnapshot,
 }: {
   scientific?: boolean;
   onClose?: () => void;
+  onMinimize?: () => void;
   className?: string;
+  /** The launcher supplies its own drag bar; direct callers keep the card header. */
+  chrome?: boolean;
+  initial?: CalculatorSnapshot | null;
+  onSnapshot?: (snapshot: CalculatorSnapshot) => void;
 }) {
-  const [expression, setExpression] = useState("");
-  const [result, setResult] = useState<string>("0");
-  const [error, setError] = useState<string | null>(null);
-  const [showScientific, setShowScientific] = useState(scientific);
-  const lastAnswer = useRef(0);
-  const history = useRef<{ expr: string; value: string }[]>([]);
+  const [expression, setExpression] = useState(initial?.expression ?? "");
+  const [result, setResult] = useState<string>(initial?.result ?? "0");
+  const [error, setError] = useState<string | null>(initial?.error ?? null);
+  const [showScientific, setShowScientific] = useState(initial?.showScientific ?? scientific);
+  const lastAnswer = useRef(initial?.lastAnswer ?? 0);
+  const history = useRef<{ expr: string; value: string }[]>(initial?.history ? [...initial.history] : []);
   const [historyVersion, setHistoryVersion] = useState(0);
   const displayRef = useRef<HTMLInputElement>(null);
+  const snapshotRef = useRef(onSnapshot);
+  snapshotRef.current = onSnapshot;
 
   const insert = useCallback((text: string) => {
     setError(null);
@@ -440,33 +460,69 @@ export function Calculator({
       } else if (key === "Backspace") {
         event.preventDefault();
         backspace();
-      } else if (key === "Escape") {
-        event.preventDefault();
-        clear();
       } else if (/^[0-9.+\-*/^%()]$/.test(key)) {
         event.preventDefault();
         insert(key === "*" ? "*" : key);
       }
     },
-    [backspace, clear, equals, insert],
+    [backspace, equals, insert],
   );
 
   useEffect(() => {
     displayRef.current?.focus();
   }, []);
 
+  // The launcher closes and reopens this component without losing a
+  // calculation: every meaningful change is handed back as a restorable
+  // snapshot. The expression is not an examination answer and is never saved
+  // to the server.
+  useEffect(() => {
+    snapshotRef.current?.({
+      expression,
+      result,
+      error,
+      lastAnswer: lastAnswer.current,
+      history: history.current,
+      showScientific,
+    });
+  }, [expression, result, error, historyVersion, showScientific]);
+
   const keys = useMemo(() => (showScientific ? [...SCIENTIFIC_KEYS, ...BASIC_KEYS] : BASIC_KEYS), [showScientific]);
 
   return (
     <div
-      className={cn("w-full max-w-[19rem] rounded-2xl border border-evergreen-900/20 bg-white shadow-lg", className)}
+      className={cn("flex h-full w-full flex-col overflow-y-auto rounded-2xl border border-evergreen-900/20 bg-white shadow-lg", className)}
       onKeyDown={onKeyDown}
       role="group"
       aria-label="Calculator"
+      translate="no"
     >
-      <div className="flex items-center justify-between gap-2 border-b border-evergreen-900/10 px-3 py-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-evergreen-800">Calculator</p>
-        <div className="flex items-center gap-1">
+      {chrome ? (
+        <div className="flex items-center justify-between gap-2 border-b border-evergreen-900/10 px-3 py-2">
+          <p className="text-xs font-semibold uppercase tracking-wide text-evergreen-800">Calculator</p>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowScientific((v) => !v)}
+              className="rounded-md px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50"
+              aria-pressed={showScientific}
+            >
+              {showScientific ? "Scientific" : "Basic"}
+            </button>
+            {onMinimize ? (
+              <button type="button" onClick={onMinimize} className="rounded-md px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50" aria-label="Minimize the calculator">
+                —
+              </button>
+            ) : null}
+            {onClose ? (
+              <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50" aria-label="Hide calculator">
+                Hide
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-end border-b border-evergreen-900/10 px-3 py-1.5">
           <button
             type="button"
             onClick={() => setShowScientific((v) => !v)}
@@ -475,18 +531,8 @@ export function Calculator({
           >
             {showScientific ? "Scientific" : "Basic"}
           </button>
-          {onClose ? (
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-md px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50"
-              aria-label="Hide calculator"
-            >
-              Hide
-            </button>
-          ) : null}
         </div>
-      </div>
+      )}
 
       <div className="px-3 pt-3">
         <input
@@ -568,22 +614,112 @@ export function Calculator({
   );
 }
 
-/**
- * The calculator's door. `inline` sits in the exam header (sticky, so it is on
- * screen for the whole composition); `floating` is for pages without a header.
- * The panel itself is a viewport-fixed dialog rather than an absolutely
- * positioned dropdown: a long question can never clip it, and on a phone it
- * becomes a bottom sheet that stays inside the visible area.
- */
+// ─────────────────────────────────────────────────────── draggable launcher
+
+type PanelRect = { x: number; y: number; w: number; h: number };
+type ResizeEdge = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+const MIN_W = 272;
+const MIN_H = 330;
+const MAX_W = 580;
+const MAX_H = 760;
+const EDGE = 8;
+
+function viewportSize() {
+  if (typeof window === "undefined") return { w: 1280, h: 800 };
+  return { w: window.innerWidth, h: window.innerHeight };
+}
+
+function clampRect(rect: PanelRect): PanelRect {
+  const vp = viewportSize();
+  const maxW = Math.max(MIN_W, Math.min(MAX_W, vp.w - EDGE * 2));
+  const maxH = Math.max(MIN_H, Math.min(MAX_H, vp.h - EDGE * 2));
+  const w = Math.min(maxW, Math.max(MIN_W, rect.w));
+  const h = Math.min(maxH, Math.max(MIN_H, rect.h));
+  const x = Math.min(Math.max(EDGE, rect.x), Math.max(EDGE, vp.w - w - EDGE));
+  const y = Math.min(Math.max(EDGE, rect.y), Math.max(EDGE, vp.h - h - EDGE));
+  return { x, y, w, h };
+}
+
+function defaultRect(): PanelRect {
+  const vp = viewportSize();
+  const mobile = vp.w < 640;
+  const w = mobile ? Math.max(MIN_W, vp.w - 16) : 336;
+  const h = mobile ? Math.min(MAX_H, Math.max(MIN_H, vp.h - 24)) : 520;
+  return clampRect({ x: vp.w - w - 20, y: vp.h - h - 20, w, h });
+}
+
+interface StoredPanel {
+  rect?: Partial<PanelRect>;
+  open?: boolean;
+  minimized?: boolean;
+  snapshot?: CalculatorSnapshot | null;
+}
+
 export function CalculatorLauncher({
   className,
   variant = "inline",
+  draggable = true,
+  storageKey = "evalora-calculator",
 }: {
   className?: string;
   variant?: "inline" | "floating";
+  /** Premium capability. When false the calculator still works, but stays put. */
+  draggable?: boolean;
+  storageKey?: string;
 }) {
   const [open, setOpen] = useState(false);
+  const [minimized, setMinimized] = useState(false);
+  const [rect, setRect] = useState<PanelRect>(() => defaultRect());
+  const [snapshot, setSnapshot] = useState<CalculatorSnapshot | null>(null);
+  const [interacting, setInteracting] = useState(false);
+  const interaction = useRef<{
+    mode: "drag" | "resize";
+    edge?: ResizeEdge;
+    startX: number;
+    startY: number;
+    rect: PanelRect;
+  } | null>(null);
+
   const close = useCallback(() => setOpen(false), []);
+  const minimize = useCallback(() => {
+    setOpen(false);
+    setMinimized(true);
+  }, []);
+
+  // Restore the panel's session geometry and last calculation. SessionStorage
+  // is per-tab, so a second examination tab cannot inherit another candidate's
+  // calculator, and nothing is sent to the server.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.sessionStorage.getItem(storageKey);
+      if (!raw) return;
+      const stored = JSON.parse(raw) as StoredPanel;
+      if (stored.rect) {
+        setRect(clampRect({
+          x: Number(stored.rect.x ?? 0),
+          y: Number(stored.rect.y ?? 0),
+          w: Number(stored.rect.w ?? 336),
+          h: Number(stored.rect.h ?? 520),
+        }));
+      }
+      if (stored.snapshot) setSnapshot(stored.snapshot);
+      setOpen(Boolean(stored.open));
+      setMinimized(Boolean(stored.minimized));
+    } catch {
+      // A corrupt or blocked session store must never stop the calculator.
+    }
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      window.sessionStorage.setItem(storageKey, JSON.stringify({ rect, open, minimized, snapshot } satisfies StoredPanel));
+    } catch {
+      // Storage quota/privacy mode: the calculator keeps working in memory.
+    }
+  }, [rect, open, minimized, snapshot, storageKey]);
 
   useEffect(() => {
     if (!open) return;
@@ -594,14 +730,97 @@ export function CalculatorLauncher({
     return () => document.removeEventListener("keydown", onKey);
   }, [open, close]);
 
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const onResize = () => setRect((current) => clampRect(current));
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [open]);
+
+  useEffect(() => {
+    if (!interacting) return;
+    const move = (event: PointerEvent) => {
+      const current = interaction.current;
+      if (!current) return;
+      if (current.mode === "drag") {
+        setRect(clampRect({
+          ...current.rect,
+          x: current.rect.x + (event.clientX - current.startX),
+          y: current.rect.y + (event.clientY - current.startY),
+        }));
+        return;
+      }
+      const dx = event.clientX - current.startX;
+      const dy = event.clientY - current.startY;
+      const edge = current.edge ?? "se";
+      let { x, y, w, h } = current.rect;
+      if (edge.includes("e")) w = current.rect.w + dx;
+      if (edge.includes("s")) h = current.rect.h + dy;
+      if (edge.includes("w")) {
+        w = current.rect.w - dx;
+        x = current.rect.x + dx;
+      }
+      if (edge.includes("n")) {
+        h = current.rect.h - dy;
+        y = current.rect.y + dy;
+      }
+      const vp = viewportSize();
+      const maxW = Math.max(MIN_W, Math.min(MAX_W, vp.w - EDGE * 2));
+      const maxH = Math.max(MIN_H, Math.min(MAX_H, vp.h - EDGE * 2));
+      w = Math.min(maxW, Math.max(MIN_W, w));
+      h = Math.min(maxH, Math.max(MIN_H, h));
+      if (edge.includes("w")) x = current.rect.x + current.rect.w - w;
+      if (edge.includes("n")) y = current.rect.y + current.rect.h - h;
+      setRect(clampRect({ x, y, w, h }));
+    };
+    const up = () => {
+      interaction.current = null;
+      setInteracting(false);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [interacting]);
+
+  const beginInteraction = useCallback((
+    mode: "drag" | "resize",
+    event: React.PointerEvent<HTMLElement>,
+    edge?: ResizeEdge,
+  ) => {
+    if (!draggable) return;
+    event.preventDefault();
+    interaction.current = {
+      mode,
+      edge,
+      startX: event.clientX,
+      startY: event.clientY,
+      rect,
+    };
+    setInteracting(true);
+  }, [draggable, rect]);
+
+  const panelVisible = open && !minimized;
+  const launcherLabel = open ? "Close the calculator" : "Open the calculator";
+
   return (
     <div className={cn(variant === "floating" && "fixed bottom-4 right-4 z-50 print:hidden", className)}>
       <button
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => {
+          if (open) close();
+          else {
+            setOpen(true);
+            setMinimized(false);
+          }
+        }}
         aria-expanded={open}
         aria-haspopup="dialog"
-        aria-label={open ? "Hide the calculator" : "Open the calculator"}
+        aria-label={launcherLabel}
         data-testid="calculator-launcher"
         className={cn(
           "inline-flex items-center gap-2 rounded-full border border-evergreen-900/20 bg-white font-semibold text-evergreen-900 shadow-sm transition hover:bg-evergreen-50",
@@ -612,24 +831,99 @@ export function CalculatorLauncher({
         Calculator
         <span aria-hidden className="text-[10px] text-evergreen-700">{open ? "▾" : "▸"}</span>
       </button>
-      {open ? (
-        <>
-          <button
-            type="button"
-            aria-label="Close the calculator"
-            onClick={close}
-            className="fixed inset-0 z-40 cursor-default bg-evergreen-950/25"
-          />
+
+      {panelVisible ? (
+        <div
+          role="dialog"
+          aria-modal="false"
+          aria-label="Calculator"
+          data-testid="calculator-panel"
+          data-draggable={draggable ? "true" : "false"}
+          className={cn(
+            "fixed z-[70] flex flex-col overflow-hidden rounded-2xl border border-evergreen-900/20 bg-white shadow-2xl",
+            !draggable && "sm:right-6 sm:top-24",
+          )}
+          style={draggable ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined}
+        >
           <div
-            role="dialog"
-            aria-modal="true"
-            aria-label="Calculator"
-            data-testid="calculator-panel"
-            className="fixed inset-x-2 bottom-2 z-50 mx-auto max-h-[calc(100dvh-1rem)] w-auto max-w-[22rem] overflow-y-auto rounded-2xl shadow-2xl sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-24 sm:mx-0"
+            onPointerDown={(event) => {
+              if ((event.target as HTMLElement).closest("button")) return;
+              beginInteraction("drag", event);
+            }}
+            className={cn(
+              "flex shrink-0 items-center justify-between gap-2 border-b border-evergreen-900/10 bg-cream/70 px-3 py-2",
+              draggable ? "cursor-move touch-none select-none" : "cursor-default",
+            )}
+            data-testid="calculator-drag-handle"
+            aria-label={draggable ? "Drag to move the calculator" : "Calculator panel"}
           >
-            <Calculator onClose={close} />
+            <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-evergreen-800">
+              <span aria-hidden className="text-evergreen-600">⠿</span> Calculator
+            </p>
+            <div className="flex items-center gap-1" onPointerDown={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={minimize}
+                aria-label="Minimize the calculator"
+                className="rounded-md border border-evergreen-900/15 bg-white px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50"
+              >
+                —
+              </button>
+              <button
+                type="button"
+                onClick={close}
+                aria-label="Close the calculator"
+                className="rounded-md border border-evergreen-900/15 bg-white px-2 py-1 text-[11px] font-semibold text-evergreen-800 hover:bg-evergreen-50"
+              >
+                ✕
+              </button>
+            </div>
           </div>
-        </>
+
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <Calculator
+              chrome={false}
+              className="h-full rounded-none border-0 shadow-none"
+              initial={snapshot}
+              onSnapshot={setSnapshot}
+            />
+          </div>
+
+          {draggable ? (
+            <>
+              {(["n", "s", "e", "w", "ne", "nw", "se", "sw"] as ResizeEdge[]).map((edge) => (
+                <span
+                  key={edge}
+                  role="presentation"
+                  data-testid={`calculator-resize-${edge}`}
+                  onPointerDown={(event) => beginInteraction("resize", event, edge)}
+                  className={cn(
+                    "absolute touch-none",
+                    edge === "n" && "left-2 right-2 top-0 h-1.5 cursor-ns-resize",
+                    edge === "s" && "bottom-0 left-2 right-2 h-1.5 cursor-s-resize",
+                    edge === "e" && "bottom-2 right-0 top-2 w-1.5 cursor-ew-resize",
+                    edge === "w" && "bottom-2 left-0 top-2 w-1.5 cursor-ew-resize",
+                    edge === "ne" && "right-0 top-0 h-3 w-3 cursor-nesw-resize",
+                    edge === "nw" && "left-0 top-0 h-3 w-3 cursor-nwse-resize",
+                    edge === "se" && "bottom-0 right-0 h-3 w-3 cursor-nwse-resize",
+                    edge === "sw" && "bottom-0 left-0 h-3 w-3 cursor-nesw-resize",
+                  )}
+                />
+              ))}
+              <span aria-hidden className="pointer-events-none absolute bottom-0.5 right-0.5 text-[10px] leading-none text-evergreen-700/60">◢</span>
+            </>
+          ) : null}
+        </div>
+      ) : null}
+      {minimized && !open ? (
+        <button
+          type="button"
+          onClick={() => { setOpen(true); setMinimized(false); }}
+          className="ml-2 rounded-full border border-evergreen-900/20 bg-cream px-2 py-1 text-[10px] font-semibold text-evergreen-800 hover:bg-evergreen-50"
+          aria-label="Restore the calculator"
+        >
+          Restore calculator
+        </button>
       ) : null}
     </div>
   );

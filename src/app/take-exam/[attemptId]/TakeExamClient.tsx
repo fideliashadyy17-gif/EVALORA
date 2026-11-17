@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { ExamLanguageShield } from "@/components/ExamLanguageShield";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
 import { useProtectedSurface } from "@/lib/useAssessmentLockdown";
@@ -38,12 +39,14 @@ import { HintPanel, type CandidateHint } from "./HintPanel";
 import { FormulaPanel } from "./FormulaPanel";
 import type { FormulaSheet } from "@/lib/examFormulas";
 import { PresenceRail } from "@/components/PresenceRail";
+import { DEFAULT_EXAM_EXPERIENCE, type ExamExperience } from "@/lib/examExperience";
+import type { PaperLanguage } from "@/lib/examLanguage";
 import { answerStateFor } from "@/lib/hintAttention";
 import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from "@/lib/presence";
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; formula_sheet?: FormulaSheet | null };
+  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -51,6 +54,7 @@ interface ExamState {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */
     hints?: CandidateHint[] | null;
     saved_answer: Record<string, unknown> | null;
+    premium_tools_limited?: boolean | null;
     topic?: string | null;
     criterion?: string | null;
     /** Marks this question contributes to each criterion when it spans more than one. */
@@ -970,6 +974,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   if (!state) return <Centered><p className="text-ink-soft">Loading your examination paper…</p></Centered>;
 
   const { exam, attempt, questions } = state;
+  const experience = exam.experience ?? DEFAULT_EXAM_EXPERIENCE;
+  const paperLanguage: PaperLanguage = exam.language ?? "en";
   const submitted = attempt.status !== "in_progress";
   const current = questions[index];
   const currentMarkings = optionMarkings(current?.result ?? null);
@@ -981,7 +987,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const pct = attempt.score !== null && attempt.max_score ? (attempt.score / attempt.max_score) * 100 : null;
 
   const examBody = (
-    <div className="exam-workspace min-h-screen bg-cream">
+    <div
+      lang={paperLanguage}
+      translate={experience.languageLock ? "no" : undefined}
+      className={`exam-workspace min-h-screen bg-cream ${experience.languageLock ? "notranslate" : ""}`}
+    >
+      <ExamLanguageShield language={paperLanguage} enabled={experience.languageLock} />
       <a href="#exam-main" className="skip-link">Skip to examination questions</a>
       {manualPause.paused && !submitted && (
         <div role="status" aria-live="polite" className="border-b border-sky-300 bg-sky-100 px-4 py-3 text-center text-sm font-semibold text-sky-950 print:hidden">
@@ -1025,7 +1036,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               {/* The calculator lives in the sticky exam header, so it is on
                   screen for the whole composition — not only beside one
                   question, and never scrolled away on a long paper. */}
-              {questions.some((question) => question.calculator) && <CalculatorLauncher />}
+              {questions.some((question) => question.calculator) && (
+                <CalculatorLauncher
+                  draggable={experience.floatingCalculator}
+                  storageKey={`evalora-calculator-${attemptId}`}
+                />
+              )}
               {exam.formula_sheet && (
                 <Button
                   variant="outline"
@@ -1425,6 +1441,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 }}
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
+                experience={experience}
               />
 
               {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}

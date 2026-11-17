@@ -43,6 +43,7 @@ export async function SubscriptionTab({
     ["Participants / session", String(ent.limits.max_participants_per_session)],
     ["Proctoring", ent.limits.proctoring ? "Included" : "Not included"],
     ["Advanced reports", ent.limits.advanced_reports ? "Included" : "Not included"],
+    ["Premium exam experience", ent.limits.premium_exam_experience ? "Included" : "Not included"],
   ];
 
   // This is the customer's entitlement, not the owner's. It is resolved from
@@ -62,6 +63,7 @@ export async function SubscriptionTab({
     "imports_exports",
     "reports_analytics",
     "proctoring",
+    "premium_exam_experience",
   ] as const;
 
   return (
@@ -97,7 +99,7 @@ export async function SubscriptionTab({
           </div>
           <StatusBadge status={ent.status} />
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
           {limitRows.map(([label, value]) => (
             <div key={label} className="rounded-xl border border-evergreen-900/10 bg-cream p-3 text-center">
               <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</p>

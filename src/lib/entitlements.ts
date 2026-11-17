@@ -29,6 +29,18 @@ export interface PlanLimits {
   multi_class_operations: boolean;
   central_asset_management: boolean;
   configurable_limits: boolean;
+  /**
+   * Premium examination experience. The umbrella gates five independently
+   * configurable capabilities (see src/lib/examExperience.ts); explicit
+   * granular values let the Super Admin tailor a plan without a new plan
+   * system or a second entitlement source.
+   */
+  premium_exam_experience: boolean;
+  exam_duplicate_protection: boolean;
+  exam_language_lock: boolean;
+  floating_calculator: boolean;
+  interactive_math_tools: boolean;
+  premium_math_interface: boolean;
 }
 
 export const FREE_LIMITS: PlanLimits = {
@@ -46,6 +58,12 @@ export const FREE_LIMITS: PlanLimits = {
   multi_class_operations: true,
   central_asset_management: false,
   configurable_limits: false,
+  premium_exam_experience: false,
+  exam_duplicate_protection: false,
+  exam_language_lock: false,
+  floating_calculator: false,
+  interactive_math_tools: false,
+  premium_math_interface: false,
 };
 
 export interface Entitlement {
@@ -78,6 +96,12 @@ export const UNLIMITED_LIMITS: PlanLimits = {
   multi_class_operations: true,
   central_asset_management: true,
   configurable_limits: true,
+  premium_exam_experience: true,
+  exam_duplicate_protection: true,
+  exam_language_lock: true,
+  floating_calculator: true,
+  interactive_math_tools: true,
+  premium_math_interface: true,
 };
 
 /**

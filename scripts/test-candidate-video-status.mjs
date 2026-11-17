@@ -14,6 +14,9 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/components/Calculator')return {CalculatorLauncher:()=>null};
  if(req==='@/components/Logo'||req==='@/components/RichContent')return {Logo:()=>null,RichContent:()=>null};
  if(req==='@/components/ExamCorrige')return {ExamCorrige:()=>null};
+ if(req==='@/components/ExamLanguageShield')return {ExamLanguageShield:()=>null};
+ if(req==='@/lib/examExperience')return {DEFAULT_EXAM_EXPERIENCE:{premium:true,duplicateProtection:true,languageLock:true,floatingCalculator:true,interactiveMathTools:true,premiumMathInterface:true},examExperienceFromLimits:()=>({premium:true,duplicateProtection:true,languageLock:true,floatingCalculator:true,interactiveMathTools:true,premiumMathInterface:true})};
+ if(req==='@/lib/examLanguage')return {detectExamLanguage:()=> 'en'};
  if(req==='@/lib/examResults')return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>''};
  if(req==='@/lib/examFeedback')return {questionFeedback:()=>({assessed:null,scheme:null,improve:null,any:false}),resultSummary:(questions,pass)=>({awarded:0,max:0,percent:0,passPercent:pass,passed:false,objective:{awarded:0,max:0,percent:0,count:0},structured:{awarded:0,max:0,percent:0,count:0},topics:[],criteria:[],strongTopics:[],weakTopics:[],pendingManual:false,pendingCount:0,message:'summary'})};
  if(req==='@/lib/integrity')return {parseIntegrityPolicy:raw=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};

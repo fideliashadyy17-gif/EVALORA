@@ -24,6 +24,12 @@ export interface PlainMathInsertion {
   /** Optional slot to select (offsets within the inserted text) so typing replaces it. */
   slot?: { start: number; end: number };
   /**
+   * Optional ordered slot queue for structures with more than two editable
+   * cells (matrices, limits, multiple integrals). The host selects the first
+   * slot, then chains the caret through the rest as each is filled.
+   */
+  slots?: { start: number; end: number }[];
+  /**
    * Where the caret should jump once the selected slot has been filled — the
    * second slot of a two-slot template (e.g. a fraction's denominator).
    * Offsets are within the inserted text and assume each slot is filled with
@@ -180,7 +186,7 @@ export function plainInsertionForKey(key: MathKey): PlainMathInsertion {
   // Fences: caret lands inside.
   if (i === "\\left(#0\\right)") return { text: "()", caret: 1 };
   if (i === "\\left[#0\\right]") return { text: "[]", caret: 1 };
-  if (i === "\\left\\{#0\\right\\}") return { text: "{}", caret: 1 };
+  if (i === "\\left\\{#0\\right\\}") return { text: "{ }", caret: 1, slot: { start: 1, end: 2 } };
   if (i === "\\left|#0\\right|") return { text: "|  |", caret: 1, slot: { start: 1, end: 2 } };
   if (i === "\\left|\\mathbf{#0}\\right|") return { text: "|  |", caret: 1, slot: { start: 1, end: 2 } };
 
@@ -293,7 +299,13 @@ export function plainInsertionForKey(key: MathKey): PlainMathInsertion {
   if (i === "f''\\left(#0\\right)") return { text: "f″( )", caret: 3, slot: { start: 3, end: 4 } };
   if (i === "\\dot{#0}") return { text: "ẋ", caret: 2 };
   if (i === "\\ddot{#0}") return { text: "ẍ", caret: 2 };
-  if (i === "\\int_{#0}^{#1}#2\\,dx") return { text: "∫[ , ] dx", caret: 2, slot: { start: 2, end: 3 }, next: { start: 5, end: 6 } };
+  if (i === "\\int_{#0}^{#1}#2\\,dx") return {
+    text: "∫_( )^( ) ( ) dx",
+    caret: 3,
+    slot: { start: 3, end: 4 },
+    next: { start: 7, end: 8 },
+    slots: [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }],
+  };
   if (i === "\\int #0\\,dx") return { text: "∫ dx", caret: 2 };
   if (i === "\\iint #0\\,dA") return { text: "∬ dA", caret: 4 };
   if (i === "\\iiint #0\\,dV") return { text: "∭ dV", caret: 4 };
@@ -301,11 +313,26 @@ export function plainInsertionForKey(key: MathKey): PlainMathInsertion {
   if (i === "\\left[#0\\right]_{#1}^{#2}") return { text: "[ ]|ₐᵇ", caret: 1, slot: { start: 1, end: 2 } };
 
   // Sums & products.
-  if (i === "\\sum_{#0}^{#1}#2") return { text: "Σ( ) ", caret: 2, slot: { start: 2, end: 3 } };
-  if (i === "\\prod_{#0}^{#1}#2") return { text: "∏( ) ", caret: 2, slot: { start: 2, end: 3 } };
-  if (i === "\\sum_{#0}^{\\infty}#1") return { text: "Σ( →∞) ", caret: 2, slot: { start: 2, end: 3 } };
-  if (i === "\\bigcup_{#0}^{#1}#2") return { text: "⋃( ) ", caret: 2, slot: { start: 2, end: 3 } };
-  if (i === "\\bigcap_{#0}^{#1}#2") return { text: "⋂( ) ", caret: 2, slot: { start: 2, end: 3 } };
+  if (i === "\\sum_{#0}^{#1}#2") return {
+    text: "Σ_( )^( ) ( )", caret: 3, slot: { start: 3, end: 4 }, next: { start: 7, end: 8 },
+    slots: [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }],
+  };
+  if (i === "\\prod_{#0}^{#1}#2") return {
+    text: "∏_( )^( ) ( )", caret: 3, slot: { start: 3, end: 4 }, next: { start: 7, end: 8 },
+    slots: [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }],
+  };
+  if (i === "\\sum_{#0}^{\\infty}#1") return {
+    text: "Σ_( )^(∞) ( )", caret: 3, slot: { start: 3, end: 4 }, next: { start: 10, end: 11 },
+    slots: [{ start: 3, end: 4 }, { start: 10, end: 11 }],
+  };
+  if (i === "\\bigcup_{#0}^{#1}#2") return {
+    text: "⋃_( )^( ) ( )", caret: 3, slot: { start: 3, end: 4 }, next: { start: 7, end: 8 },
+    slots: [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }],
+  };
+  if (i === "\\bigcap_{#0}^{#1}#2") return {
+    text: "⋂_( )^( ) ( )", caret: 3, slot: { start: 3, end: 4 }, next: { start: 7, end: 8 },
+    slots: [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }],
+  };
 
   // Quadratic-formula shape.
   if (i === "\\frac{-#0\\pm\\sqrt{#1}}{#2}") return { text: "(− ± √ )/( )", caret: 1, slot: { start: 1, end: 2 }, next: { start: 6, end: 7 } };
@@ -324,6 +351,34 @@ export function plainInsertionForKey(key: MathKey): PlainMathInsertion {
   // reaches a plain-text answer field.
   const fallback = i.replace(/#\d/g, "").replace(/\\left|\\right/g, "").replace(/\\/g, "");
   return { text: fallback || key.t, caret: (fallback || key.t).length };
+}
+
+/**
+ * Build an editable matrix of the requested size. Each cell is a real
+ * one-character slot, so typing fills it and the caret advances cell by cell
+ * through the whole matrix. The stored answer stays plain text:
+ * `(1, 2; 3, 4)` — readable by teachers and by the existing marking tools.
+ */
+export function matrixInsertion(
+  rows: number,
+  columns: number,
+  style: "paren" | "bracket" | "bar" = "paren",
+	): PlainMathInsertion {
+  const r = Math.max(1, Math.min(4, Math.round(rows)));
+  const c = Math.max(1, Math.min(4, Math.round(columns)));
+  const [open, close] = style === "bracket" ? ["[", "]"] : style === "bar" ? ["|", "|"] : ["(", ")"];
+  let text = open;
+  const slots: { start: number; end: number }[] = [];
+  for (let row = 0; row < r; row += 1) {
+    if (row > 0) text += ";";
+    for (let col = 0; col < c; col += 1) {
+      if (col > 0) text += ",";
+      slots.push({ start: text.length, end: text.length + 1 });
+      text += " ";
+    }
+  }
+  text += close;
+  return { text, caret: slots[0].start, slot: slots[0], next: slots[1], slots };
 }
 
 /**

@@ -422,6 +422,9 @@ const stateRoute = compile("src/app/api/exam/state/route.ts", "scripts/__inciden
   "@/lib/integrity": { parseIntegrityPolicy: () => ({ mode: "off" }) },
   "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
   "@/lib/examFormulas": { parseFormulaSheet: () => null },
+  "@/lib/entitlements": { getEntitlement: async () => ({ limits: { premium_exam_experience: true, exam_duplicate_protection: true, exam_language_lock: true, floating_calculator: true, interactive_math_tools: true, premium_math_interface: true } }) },
+  "@/lib/examExperience": { examExperienceFromLimits: () => ({ premium: true, duplicateProtection: true, languageLock: true, floatingCalculator: true, interactiveMathTools: true, premiumMathInterface: true }) },
+  "@/lib/examLanguage": { detectExamLanguage: () => "en" },
   "@/lib/supabase/server": { createAdminClient: () => activeDb },
 });
 

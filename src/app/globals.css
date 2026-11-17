@@ -621,6 +621,19 @@ html.assessment-protected img {
 }
 .structured-tab.is-active { background: var(--color-evergreen-700, #0a5c36); border-color: var(--color-evergreen-700, #0a5c36); color: #fff; }
 .structured-pane { padding: 0.65rem; }
+/* Premium examination presentation: the tool rail stays visible while the
+   student works, so the question remains reachable above a compact pane. */
+.structured-response.is-premium .structured-tabs {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  backdrop-filter: blur(6px);
+  background: rgb(250 247 240 / 0.96);
+}
+.structured-response.is-premium .structured-pane { max-height: 72vh; overflow: auto; overscroll-behavior: contain; }
+@media (max-width: 640px) {
+  .structured-response.is-premium .structured-pane { max-height: 62vh; }
+}
 .structured-hint { margin: 0 0 0.5rem; font-size: 0.78rem; color: var(--color-ink-soft, #4b5a52); }
 .structured-guidance {
   margin: 0;
