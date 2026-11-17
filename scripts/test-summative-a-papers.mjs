@@ -124,6 +124,9 @@ for (const paper of PAPERS) {
   try {
     await db.exec(SCHEMA);
     await db.exec(readFileSync(paper.file, "utf8"));
+    // The forward title correction runs after the original upload; replaying it
+    // must be harmless on a freshly built paper.
+    await db.exec(readFileSync("supabase/migrations/20261117120000_summative_a_source_titles.sql", "utf8"));
 
     const questions = (await db.query(`
       select qq.position, q.type, q.points, q.config, q.prompt_doc::text as doc, q.explanation,
