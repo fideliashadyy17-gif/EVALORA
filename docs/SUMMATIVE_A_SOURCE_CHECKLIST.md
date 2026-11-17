@@ -14,7 +14,7 @@ Platform records:
 
 This checklist records what was compared, page by page, and the independent
 re-solve of every question. The automated checks are in
-`scripts/test-summative-a-papers.mjs` (110 checks) and
+`scripts/test-summative-a-papers.mjs` (112 checks) and
 `scripts/test-summative-a-grading.mjs` (22 checks).
 
 ## 1. Page-by-page checklist
@@ -193,7 +193,7 @@ marking scheme. “Key” is the platform's stored objective answer.
 ## 6. Reproduce the checks
 
 ```bash
-node scripts/test-summative-a-papers.mjs    # 110 paper/key/figure checks
+node scripts/test-summative-a-papers.mjs    # 112 paper/key/figure checks
 node scripts/test-summative-a-grading.mjs   # 22 criterion-level grading checks
 node scripts/validate-summative-a-migrations.mjs  # 36 migration invariants
 ```

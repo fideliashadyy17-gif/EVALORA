@@ -212,5 +212,11 @@ for (const paper of PAPERS) {
   }
 }
 
+const examUi = readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf8");
+check("the exam UI prints the paper's own question number",
+  /current\.question_meta\?\.question_number \?\? index \+ 1/.test(examUi));
+check("the exam UI scopes 'of N' to the current part",
+  /questions\.filter\(\(q\) => q\.question_meta\?\.paper_section/.test(examUi));
+
 console.log(`\n${passed} summative-paper checks passed${failed ? `, ${failed} failed` : ""}.`);
 process.exit(failed === 0 ? 0 : 1);
