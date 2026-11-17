@@ -266,6 +266,7 @@ export async function GET(request: Request) {
           const rawTools = Array.isArray(workspace.tools) ? workspace.tools.filter((tool): tool is string => typeof tool === "string") : [];
           const kept = rawTools.filter((tool) => !premiumTools.has(tool) || tool === required);
           const keptSet = new Set(kept);
+          const withheld = kept.length < rawTools.length;
           pub.response_workspace = {
             ...workspace,
             tools: kept,
@@ -277,7 +278,7 @@ export async function GET(request: Request) {
             probabilityTree: { ...(workspace.probabilityTree as Record<string, unknown> | null), enabled: keptSet.has("probability_tree") },
             stemLeaf: { ...(workspace.stemLeaf as Record<string, unknown> | null), enabled: keptSet.has("stem_leaf") },
           };
-          pub.premium_tools_limited = true;
+          pub.premium_tools_limited = withheld;
         }
       }
       const s = savedByQ.get(row.questions.id);
