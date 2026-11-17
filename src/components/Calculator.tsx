@@ -841,7 +841,7 @@ export function CalculatorLauncher({
           data-draggable={draggable ? "true" : "false"}
           className={cn(
             "fixed z-[70] flex flex-col overflow-hidden rounded-2xl border border-evergreen-900/20 bg-white shadow-2xl",
-            !draggable && "sm:right-6 sm:top-24",
+            !draggable && "bottom-2 left-2 right-2 top-auto max-h-[80vh] sm:bottom-auto sm:left-auto sm:right-6 sm:top-24 sm:max-h-[min(80vh,34rem)]",
           )}
           style={draggable ? { left: rect.x, top: rect.y, width: rect.w, height: rect.h } : undefined}
         >

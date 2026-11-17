@@ -44,6 +44,11 @@ export async function SubscriptionTab({
     ["Proctoring", ent.limits.proctoring ? "Included" : "Not included"],
     ["Advanced reports", ent.limits.advanced_reports ? "Included" : "Not included"],
     ["Premium exam experience", ent.limits.premium_exam_experience ? "Included" : "Not included"],
+    ["Duplicate-name guard", ent.limits.exam_duplicate_protection ? "Included" : "Not included"],
+    ["Language protection", ent.limits.exam_language_lock ? "Included" : "Not included"],
+    ["Floating calculator", ent.limits.floating_calculator ? "Included" : "Not included"],
+    ["Contextual math tools", ent.limits.interactive_math_tools ? "Included" : "Not included"],
+    ["Premium math interface", ent.limits.premium_math_interface ? "Included" : "Not included"],
   ];
 
   // This is the customer's entitlement, not the owner's. It is resolved from

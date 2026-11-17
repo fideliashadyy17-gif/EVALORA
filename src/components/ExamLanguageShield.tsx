@@ -27,11 +27,20 @@ export function ExamLanguageShield({
       lang: html.getAttribute("lang"),
       translate: html.getAttribute("translate"),
       noTranslate: html.classList.contains("notranslate"),
+      googleMeta: document.querySelector('meta[name="google"]')?.getAttribute("content") ?? null,
+      googleMetaPresent: Boolean(document.querySelector('meta[name="google"]')),
     };
     html.setAttribute("lang", language);
+    let meta: HTMLMetaElement | null = null;
     if (enabled) {
       html.setAttribute("translate", "no");
       html.classList.add("notranslate");
+      // Google Translate's own opt-out uses a meta tag as well as the
+      // attribute; some engines and extensions only read this one.
+      meta = document.createElement("meta");
+      meta.name = "google";
+      meta.content = "notranslate";
+      document.head.appendChild(meta);
     }
     return () => {
       if (previous.lang === null) html.removeAttribute("lang");
@@ -39,6 +48,12 @@ export function ExamLanguageShield({
       if (previous.translate === null) html.removeAttribute("translate");
       else html.setAttribute("translate", previous.translate);
       if (!previous.noTranslate) html.classList.remove("notranslate");
+      if (meta) meta.remove();
+      else if (!previous.googleMetaPresent) return;
+      if (previous.googleMeta !== null && previous.googleMetaPresent) {
+        const restored = document.querySelector('meta[name="google"]');
+        if (restored) restored.setAttribute("content", previous.googleMeta);
+      }
     };
   }, [language, enabled]);
 
