@@ -35,6 +35,27 @@ paper's own number and scopes the “of N” count to the current part (“Part 
 Question 1 of 16”), not the global platform position. The two source papers were
 not modified, and no older examination or question was replaced.
 
+### Post-delivery corrections (16 November 2026)
+
+- **Plain-text matching bank.** MYP 4 Q15–Q18 ask candidates to match a
+  definition to a term printed in a six-cell table (P–U). The table renders as
+  plain text, so the LaTeX fraction used for the term *frequency density*
+  appeared literally, backslashes and dollar signs included; the answer
+  buttons carried the same notation.
+  Every bank cell and every answer button is now ordinary readable text
+  (“Frequency density = Frequency ÷ Class width”, “Standard deviation
+  σ = √(Σ(x − μ)² ÷ N)”, etc.). The answer keys (Q15 T, Q16 P, Q17 Q, Q18 R)
+  and marks are unchanged. Applied forward in
+  `20261117081726_summative_a_plain_formula_bank.sql`; the source module uses
+  the same wording, so a rebuild cannot reintroduce it.
+- **Calculator always on the exam page.** Every one of the 80 questions stores
+  `calculator: true` and both examinations permit a calculator. The launcher
+  now sits in the sticky exam header for the whole composition, in addition to
+  the per-question launcher, and opens a viewport-fixed dialog (a bottom sheet
+  on phones) that cannot be clipped by a long question. The safe scientific
+  engine is unchanged: no `eval`, no `new Function`, and it never writes to an
+  answer. Covered by 13 new checks in `scripts/test-calculator.mjs`.
+
 ## 2. Assessment and marking
 
 - **Objective answers are marked automatically**: 25 MYP 4 questions (30 marks)
@@ -59,9 +80,9 @@ not modified, and no older examination or question was replaced.
   forward: the 36 printed Part B titles that the first import had dropped are
   now the first line of each constructed-response prompt. No mark, key,
   criterion, answer, attempt or published result changed.
-- Automated evidence: 112 paper/key/figure checks, 22 criterion-grading checks,
+- Automated evidence: 120 paper/key/figure checks, 13 calculator checks, 22 criterion-grading checks,
   36 migration invariants, and the existing MYP grading/report suites
-  (`npm test`: 134 suites passed, 0 failed, 8 browser-only suites skipped).
+  (`npm test`: 135 suites passed, 0 failed, 8 browser-only suites skipped).
 
 ## 3. Disconnection detection and recovery
 
@@ -142,8 +163,9 @@ added. The report/export suites pass (79 checks plus 28 surface/control checks).
 | New migrations | `20261117110000_myp4_grade9_first_term_summative.sql` (45 Q, 100 marks) |
 | | `20261117110100_myp5_grade10_sequences_version_b.sql` (35 Q, 100 marks) |
 | Forward correction | `20261117120000_summative_a_source_titles.sql` (36 printed titles) |
+| Forward correction | `20261117081726_summative_a_plain_formula_bank.sql` (plain-text matching bank, no LaTeX) |
 | Database | Supabase `nqxqisjtbfsratgztmch`; all three migrations applied; migration history updated |
-| Verification | `scripts/validate-summative-a-migrations.mjs` 36/36; `scripts/test-summative-a-papers.mjs` 112; `scripts/test-summative-a-grading.mjs` 22; `npm test` 134 suites passed, 0 failed |
+| Verification | `scripts/validate-summative-a-migrations.mjs` 36/36; `scripts/test-summative-a-papers.mjs` 120; `scripts/test-calculator.mjs` 13; `scripts/test-summative-a-grading.mjs` 22; `npm test` 135 suites passed, 0 failed |
 | Build | `npx tsc --noEmit`, `npm run lint`, `npm run build` all green |
 | Deployment | Vercel project `evalora`; production alias `evalora-six.vercel.app`; branch commit deployed to production after merge |
 | Docs | `docs/SUMMATIVE_A_SOURCE_CHECKLIST.md`, `docs/SUMMATIVE_A_CAPACITY.md` |

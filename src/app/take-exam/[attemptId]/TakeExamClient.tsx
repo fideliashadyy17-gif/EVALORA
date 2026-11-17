@@ -6,6 +6,7 @@ import { IntegrityMonitor } from "@/lib/integrityMonitor";
 import { useProtectedSurface } from "@/lib/useAssessmentLockdown";
 import { parseIntegrityPolicy, type IntegrityPolicy, type IntegrityWarning } from "@/lib/integrity";
 import { QuestionRunner, type PublicQuestion } from "@/components/QuestionRunner";
+import { CalculatorLauncher } from "@/components/Calculator";
 import {
   answerKeyLine,
   criterionTitle,
@@ -1019,6 +1020,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           </div>
           {!submitted && (
             <>
+              {/* The calculator lives in the sticky exam header, so it is on
+                  screen for the whole composition — not only beside one
+                  question, and never scrolled away on a long paper. */}
+              {questions.some((question) => question.calculator) && <CalculatorLauncher />}
               {exam.formula_sheet && (
                 <Button
                   variant="outline"
