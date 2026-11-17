@@ -53,6 +53,8 @@ interface ExamState {
     saved_answer: Record<string, unknown> | null;
     topic?: string | null;
     criterion?: string | null;
+    /** Marks this question contributes to each criterion when it spans more than one. */
+    criterion_shares?: { criterion: string; points: number }[] | null;
     strand?: string | null;
     result: {
       is_correct: boolean | null;
@@ -1132,14 +1134,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
-                  aria-label={`Question ${q.question_meta?.question_number ?? i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+                  aria-label={`Question ${q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
                   aria-current={i === index ? "step" : undefined}
                   className={cn(
-                    "relative flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition",
+                    "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
                     i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
                   )}
                 >
-                  {i + 1}
+                  {q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}
                   {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
                   {q.result && (
                     <span
@@ -1253,6 +1255,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                         type: q.type,
                         topic: q.topic ?? null,
                         criterion: q.criterion ?? null,
+                        criterionShares: q.criterion_shares ?? null,
                         points: q.points,
                         result: q.result ? { is_correct: q.result.is_correct, points_awarded: q.result.points_awarded } : null,
                       })),
@@ -1359,10 +1362,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">
                   {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
-                  Question {current.question_meta?.question_number ?? index + 1} of{" "}
-                  {current.question_meta?.paper_section
-                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section).length
-                    : questions.length}
+                  {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
+                  {current.question_meta?.question_label ?? current.question_meta?.question_number ?? index + 1} of{" "}
+                  {(current.question_meta?.paper_section
+                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section)
+                    : questions
+                  ).reduce((sum, q) => sum + (q.question_meta?.question_span ?? 1), 0)}
                 </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (

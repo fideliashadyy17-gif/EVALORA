@@ -9,7 +9,8 @@ const responseTools={responseWorkspaceFor:()=>({tools:[],graph:{enabled:false,ti
 const liveFile=path.resolve('scripts/__print_live.cjs');const liveOld=Module._load;
 const assessParts=compile('src/lib/assessParts.ts','scripts/__print_assess_parts.cjs');
 const examResults=compile('src/lib/examResults.ts','scripts/__print_exam_results.cjs');
-Module._load=function(req,parent){if(parent?.filename===liveFile && req==='./responseTools')return responseTools;if(parent?.filename===liveFile && req==='./assessParts')return assessParts;if(parent?.filename===liveFile && req==='./examResults')return examResults;return liveOld.apply(this,arguments);};
+const criterionShares=compile('src/lib/criterionShares.ts','scripts/__print_criterion_shares.cjs');
+Module._load=function(req,parent){if(parent?.filename===liveFile && req==='./responseTools')return responseTools;if(parent?.filename===liveFile && req==='./assessParts')return assessParts;if(parent?.filename===liveFile && req==='./examResults')return examResults;if(parent?.filename===liveFile && req==='./criterionShares')return criterionShares;return liveOld.apply(this,arguments);};
 let live;try{live=compile('src/lib/live.ts','scripts/__print_live.cjs');}finally{Module._load=liveOld;}
 const paperFile=path.resolve('scripts/__print_paper.cjs');const orig=Module._load;
 Module._load=function(req,parent){if(parent?.filename===paperFile && req==='./live')return live;return orig.apply(this,arguments);};

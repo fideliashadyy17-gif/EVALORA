@@ -125,6 +125,56 @@ await test('valid previously saved answers are restored without a warning', asyn
     await act(()=>tree.unmount());
   }
 });
+await test('typed-letter matching: one box per definition, P–U only, saved in one answer', async () => {
+  const definitions = [
+    'Diagram showing distribution shape while retaining every exact raw data value',
+    'Formula for frequency density when constructing an unequal-width histogram',
+    'Exact formula for the population standard deviation σ of N values',
+    'Graph used to estimate median, quartiles and percentiles of grouped continuous data',
+  ];
+  const letters = {0:'T',1:'P',2:'Q',3:'R'};
+  const answers = [];
+  const letterQuestion = {
+    ...question('matching'),
+    points: 4,
+    match_mode: 'letters',
+    matching_lefts: definitions,
+    matching_rights: [],
+    matching_rows: definitions.map((left, i) => ({ label: String(15 + i), criterion: i === 0 || i === 3 ? 'C' : 'A', left })),
+  };
+  let tree;
+  await act(() => { tree = TestRenderer.create(React.createElement(QuestionRunner, {
+    question: letterQuestion,
+    initial: { pairs: [{ left: definitions[0], right: 't' }] },
+    onAnswer: (answer) => { answers.push(answer); return true; },
+  })); });
+  const boxes = tree.root.findAll((node) => node.type === 'input' && String(node.props['aria-label'] ?? '').startsWith('Letter for question'));
+  assert.equal(boxes.length, 4);
+  assert.equal(boxes[0].props.value, 'T', 'a saved lower-case letter is shown in capitals');
+  assert.equal(boxes[0].props.maxLength, 1);
+  assert.equal(boxes[0].props['aria-describedby'], boxes[0].props.id + '-prompt');
+  // Typing a lower-case letter stores the normalised capital.
+  await act(() => boxes[1].props.onChange({ target: { value: 'p' } }));
+  assert.deepEqual(answers.at(-1), { pairs: [{ left: definitions[0], right: 'T' }, { left: definitions[1], right: 'P' }] });
+  assert.equal(tree.root.findAll((node) => node.type === 'input')[1].props.value, 'P');
+  // A letter outside P–U is blocked and leaves the saved field untouched.
+  const before = answers.length;
+  await act(() => tree.root.findAll((node) => node.type === 'input')[1].props.onChange({ target: { value: 'A' } }));
+  assert.equal(answers.length, before);
+  assert.equal(tree.root.findAll((node) => node.type === 'input')[1].props.value, 'P');
+  // All four fields can be entered and travel in one `pairs` payload.
+  for (let i = 0; i < 4; i++) {
+    await act(() => tree.root.findAll((node) => node.type === 'input')[i].props.onChange({ target: { value: letters[i].toLowerCase() } }));
+  }
+  const saved = answers.at(-1).pairs;
+  assert.equal(saved.length, 4);
+  assert.deepEqual(saved.map((pair) => pair.right), ['T','P','Q','R']);
+  assert.equal(new Set(saved.map((pair) => pair.left)).size, 4);
+  // A rejected character never clears an existing answer.
+  await act(() => tree.root.findAll((node) => node.type === 'input')[0].props.onChange({ target: { value: 'Z' } }));
+  assert.equal(tree.root.findAll((node) => node.type === 'input')[0].props.value, 'T');
+  await act(() => tree.unmount());
+});
 await test('typed assess-parts submit carries the newest per-part construction before its own save', async () => {
   const answers=[];
   const assessQuestion={

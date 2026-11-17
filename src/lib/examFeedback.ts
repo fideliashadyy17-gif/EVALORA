@@ -16,6 +16,7 @@ import {
   criterionBand,
   type CriterionBand,
 } from "./examResults";
+import { normaliseCriterionShares } from "./criterionShares";
 
 export const DEFAULT_PASS_PERCENT = 50;
 
@@ -122,6 +123,8 @@ export interface ResultQuestion {
   type: string;
   topic?: string | null;
   criterion?: string | null;
+  /** Set when one question carries marks in more than one criterion. */
+  criterionShares?: { criterion: string; points: number }[] | null;
   points: number;
   result: { points_awarded?: number | null; is_correct?: boolean | null } | null;
 }
@@ -180,7 +183,22 @@ export function resultSummary(questions: ResultQuestion[], passPercent = DEFAULT
     const t = topicMap.get(topic) ?? { awarded: 0, max: 0 };
     t.awarded += got; t.max += points; topicMap.set(topic, t);
 
-    criterionRows.push({ criterion: question.criterion ?? null, points, awarded: got });
+    const shares = normaliseCriterionShares(question.criterionShares, points);
+    if (shares) {
+      // A split question contributes its own share of the marks to each
+      // criterion. The award is split in the same proportion, so the criterion
+      // percentages cannot exceed their printed maxima and the paper total is
+      // still counted exactly once.
+      for (const share of shares) {
+        criterionRows.push({
+          criterion: share.criterion,
+          points: share.points,
+          awarded: round(got * (share.points / points)),
+        });
+      }
+    } else {
+      criterionRows.push({ criterion: question.criterion ?? null, points, awarded: got });
+    }
   }
 
   const topics: TopicScore[] = [...topicMap.entries()]

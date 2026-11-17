@@ -166,6 +166,30 @@ ok("the report names the boundary sources", complete.gradeSource === "test grade
 ok("teacher feedback is carried from the marker notes", complete.criteria[1].feedback?.includes("general rule"));
 ok("strengths and improvements are derived per criterion", complete.criteria[1].strengths.length > 0);
 
+/* ── One question spanning two criteria (the printed matching exercise) ── */
+const splitPaper = [
+  {
+    questionId: "split-1",
+    points: 4,
+    criterion: "C",
+    criterionShares: [{ criterion: "C", points: 2 }, { criterion: "A", points: 2 }],
+  },
+];
+const split = M.buildMypResult({
+  attempt: attemptBase,
+  paper: splitPaper,
+  answers: [{ questionId: "split-1", pointsAwarded: 3 }],
+  rules,
+});
+ok("a split question keeps each criterion's printed maximum",
+  split.criteria.find((criterion) => criterion.code === "A")?.marksMax === 2 &&
+  split.criteria.find((criterion) => criterion.code === "C")?.marksMax === 2);
+ok("a split award is divided in proportion to the criterion shares",
+  split.criteria.find((criterion) => criterion.code === "A")?.marksAwarded === 1.5 &&
+  split.criteria.find((criterion) => criterion.code === "C")?.marksAwarded === 1.5);
+ok("a split question is still counted once in the paper total",
+  split.marksAwarded === 3 && split.marksMax === 4);
+
 /* ── Same percentage, different criterion distribution ──────────────── */
 const unevenPaper = [
   { questionId: "u1", points: 30, criterion: "A" },

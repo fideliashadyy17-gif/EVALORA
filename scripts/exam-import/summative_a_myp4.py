@@ -334,21 +334,52 @@ def build():
                     "IQR is unchanged."))
 
     # ── Matching · Q15–18 ────────────────────────────────────────────────────
+    # The source paper prints ONE matching exercise: a single formula bank and
+    # four numbered definitions, each with one small box for a letter P–U.
+    # EVALORA therefore stores it as ONE parent question worth four marks, with
+    # four typed letter fields — not as four independent multiple-choice items.
+    # Each row keeps its printed criterion (15 C, 16 A, 17 A, 18 C), and the
+    # split tells the results engine the exercise carries 2 A + 2 C marks.
     _bank = data_table(["P", "Q", "R", "S", "T", "U"], [_BANK_OPTS])
-    for n, stem, answer, reason, crit in [
-        (15, "Diagram showing distribution shape while retaining every exact raw data value", "T",
-         "A stem-and-leaf diagram keeps every individual digit, so all raw values can be recovered.", "C"),
-        (16, "Formula for frequency density when constructing an unequal-width histogram", "P",
-         "Frequency density = Frequency ÷ Class width.", "A"),
-        (17, "Exact formula for the population standard deviation σ of N values", "Q",
-         "Population standard deviation σ = √(Σ(x − μ)² ÷ N).", "A"),
-        (18, "Graph used to estimate median, quartiles and percentiles of grouped continuous data", "R",
-         "A cumulative frequency curve (ogive) is read at ¼N, ½N and ¾N.", "C"),
-    ]:
-        Q.append(q(n, sec="A", crit=crit, marks=1, lvl="intermediate",
-                   topic="Statistical vocabulary", subtopic="matching a definition to its term",
-                   blocks=[para(stem), _bank], opts=list(_BANK_OPTS),
-                   labels=["P", "Q", "R", "S", "T", "U"], ans=answer, expl=reason))
+    _matching_rows = [
+        (15, "Diagram showing distribution shape while retaining every exact raw data value", "T", "C",
+         "A stem-and-leaf diagram keeps every individual digit, so all raw values can be recovered."),
+        (16, "Formula for frequency density when constructing an unequal-width histogram", "P", "A",
+         "Frequency density = Frequency ÷ Class width."),
+        (17, "Exact formula for the population standard deviation σ of N values", "Q", "A",
+         "Population standard deviation σ = √(Σ(x − μ)² ÷ N)."),
+        (18, "Graph used to estimate median, quartiles and percentiles of grouped continuous data", "R", "C",
+         "A cumulative frequency curve (ogive) is read at ¼N, ½N and ¾N."),
+    ]
+    _matching = q(15, sec="A", crit="C", marks=4, lvl="intermediate",
+                  topic="Statistical vocabulary", subtopic="matching a definition to its term",
+                  qtype="matching",
+                  blocks=[para("MATCHING Q15–18 · write one letter, P to U, in each box · 1 mark each"),
+                          _bank],
+                  opts=list(_BANK_OPTS), labels=["P", "Q", "R", "S", "T", "U"], ans="T",
+                  expl=" ".join(f"{n} → {answer}. {reason}" for n, _, answer, _, reason in _matching_rows))
+    # A typed-letter matching question has no option list of its own: the six
+    # formulas live in the printed bank, and the key is the pair list. Keeping
+    # options here would let an editor or an older renderer turn the exercise
+    # back into six choices per definition.
+    _matching.pop("options", None)
+    _matching["cfg"].update({
+        "marks": 4,
+        "question_label": "15–18",
+        "question_span": 4,
+        "criterion_label": "Criteria A and C",
+        "criterion_title": "Knowing and understanding; Communicating",
+        "criterion_shares": [{"criterion": "C", "points": 2}, {"criterion": "A", "points": 2}],
+        "match_mode": "letters",
+        "letter_choices": ["P", "Q", "R", "S", "T", "U"],
+        "instructions": "Write one letter, P to U, in each box. 1 mark each.",
+        "pairs": [{"left": stem, "right": answer} for _, stem, answer, _, _ in _matching_rows],
+        "rows": [{"number": n, "criterion": crit, "left": stem}
+                 for n, stem, _, crit, _ in _matching_rows],
+        "marking_breakdown": [{"label": str(n), "marks": 1, "focus": f"Criterion {crit}"}
+                              for n, _, _, crit, _ in _matching_rows],
+    })
+    Q.append(_matching)
 
     # ── Short response · Q19–20 ──────────────────────────────────────────────
     Q.append(q(19, sec="A", crit="D", marks=1, lvl="intermediate", topic="Estimated mean",
