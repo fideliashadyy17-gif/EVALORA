@@ -8,7 +8,8 @@ function compile(src,name,deps={}){const file=path.resolve(name),m=new Module(fi
 const responseTools={responseWorkspaceFor:()=>({tools:[],graph:{enabled:false,title:'Graph',instructions:'',allowFunctions:true,starter:null},geometry:{enabled:false,title:'Geometry',instructions:'',starter:null},guidance:'',requirement:'any',source:'native'})};
 const assessParts=compile('src/lib/assessParts.ts','scripts/__virtual_assess_parts_grading.cjs');
 const examResults=compile('src/lib/examResults.ts','scripts/__virtual_exam_results_grading.cjs');
-const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs',{'./responseTools':responseTools,'./assessParts':assessParts,'./examResults':examResults});
+const criterionShares=compile('src/lib/criterionShares.ts','scripts/__virtual_criterion_shares_grading.cjs');
+const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs',{'./responseTools':responseTools,'./assessParts':assessParts,'./examResults':examResults,'./criterionShares':criterionShares});
 const scoring=compile('src/lib/scoring.ts','scripts/__virtual_scoring_grading.cjs',{'./assessParts':assessParts});
 const examDeadline=compile('src/lib/examDeadline.ts','scripts/__virtual_exam_deadline_grading.cjs');
 const {attemptRows,gradeAttempt}=compile('src/lib/exam.ts','scripts/__virtual_exam_grading.cjs',{'./live':live,'./scoring':scoring,'./examDeadline':examDeadline});

@@ -182,6 +182,22 @@ ok("a question awaiting a human mark is excluded from the criterion totals",
     { type: "single_choice", criterion: "A", points: 10, result: { points_awarded: 5, is_correct: false } },
   ], 50).criteria[0].max === 10);
 
+const splitSummary = feedback.resultSummary([
+  {
+    type: "matching", criterion: "C", points: 4,
+    criterionShares: [{ criterion: "C", points: 2 }, { criterion: "A", points: 2 }],
+    result: { points_awarded: 3, is_correct: false },
+  },
+], 50);
+ok("a split question keeps both printed criterion maxima in the feedback summary",
+  splitSummary.criteria.find((c) => c.criterion === "A")?.max === 2
+  && splitSummary.criteria.find((c) => c.criterion === "C")?.max === 2);
+ok("a split award is divided in the same proportion in the feedback summary",
+  splitSummary.criteria.find((c) => c.criterion === "A")?.awarded === 1.5
+  && splitSummary.criteria.find((c) => c.criterion === "C")?.awarded === 1.5);
+ok("a split question is counted once in the feedback totals",
+  splitSummary.awarded === 3 && splitSummary.max === 4);
+
 /* ── The labels live in exactly one place ───────────────────────────── */
 const runner = readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf8");
 const live = readFileSync("src/lib/live.ts", "utf8");

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { responseWorkspaceFor } from "./responseTools";
 import { assessPartsFromConfig, assessPartSummary, publicAssessParts } from "./assessParts";
+import { normaliseCriterionShares } from "./criterionShares";
 import { criterionTitle } from "./examResults";
 
 export type LivePhase =
@@ -378,7 +379,15 @@ export function publicQuestion(
   // Topic + MYP criterion power the formative feedback summary; they are
   // curriculum metadata, never answer information.
   out.topic = q.topic ?? null;
-  out.criterion = typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
+  // A question may span criteria (the printed matching exercise carries two
+  // Criterion A and two Criterion C marks). Send the split so the result
+  // engine can keep the paper's totals exact; when there is no valid split the
+  // single printed criterion is used exactly as before.
+  const criterionShares = normaliseCriterionShares(cfg.criterion_shares, Number(row.points ?? q.points));
+  out.criterion_shares = criterionShares;
+  out.criterion = criterionShares
+    ? null
+    : typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null;
   out.strand = typeof cfg.strand === "string" ? cfg.strand : null;
   // The MYP criterion is part of the paper the candidate is answering, not
   // hidden metadata: the source paper prints it beside every question number,
@@ -387,8 +396,16 @@ export function publicQuestion(
     question_number: typeof cfg.question_number === "number"
       ? cfg.question_number
       : Number.isFinite(Number(cfg.question_number)) ? Number(cfg.question_number) : null,
+    // One record may stand for a printed group such as Q15–18. The label and
+    // span keep the paper numbering intact in the navigator and the "of N".
+    question_label: typeof cfg.question_label === "string" && cfg.question_label.trim()
+      ? cfg.question_label.trim()
+      : null,
+    question_span: Number.isFinite(Number(cfg.question_span)) && Number(cfg.question_span) > 0
+      ? Math.min(20, Math.floor(Number(cfg.question_span)))
+      : null,
     paper_section: typeof cfg.paper_section === "string" ? cfg.paper_section : null,
-    criterion: typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null,
+    criterion: criterionShares ? null : typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null,
     criterion_label: typeof cfg.criterion_label === "string"
       ? cfg.criterion_label
       : (typeof cfg.myp_criterion === "string" ? `Criterion ${cfg.myp_criterion}` : null),
@@ -409,12 +426,36 @@ export function publicQuestion(
   }
   if (q.type === "matching") {
     const pairs = (cfg.pairs as { left: string; right: string }[]) ?? [];
-    const mode = cfg.match_mode === "sort" ? "sort" : "match";
+    const mode = cfg.match_mode === "sort"
+      ? "sort"
+      : cfg.match_mode === "letters" ? "letters" : "match";
     out.match_mode = mode;
     if (mode === "sort") {
       // Tiles are dragged into categories: shuffle the tiles, list each category once.
       out.matching_lefts = seededShuffle(pairs.map((p) => p.left), `${opts.seed ?? ""}:${q.id}:tiles`);
       out.matching_rights = [...new Set(pairs.map((p) => p.right))];
+    } else if (mode === "letters") {
+      // The formula bank is in prompt_doc; only the rows the candidate must
+      // label travel here. `right` never leaves the server.
+      const storedRows = Array.isArray(cfg.rows) ? (cfg.rows as Record<string, unknown>[]) : [];
+      const metaByLeft = new Map(
+        storedRows
+          .filter((row) => typeof row.left === "string")
+          .map((row) => [String(row.left), row]),
+      );
+      out.matching_lefts = pairs.map((p) => p.left);
+      out.matching_rights = [];
+      out.matching_rows = pairs.map((pair, index) => {
+        const meta = metaByLeft.get(pair.left) ?? {};
+        const printed = Number(meta.number);
+        return {
+          label: Number.isFinite(printed) ? String(printed) : String(index + 15),
+          criterion: typeof meta.criterion === "string" && meta.criterion.trim()
+            ? meta.criterion.trim().toUpperCase().slice(0, 2)
+            : null,
+          left: pair.left,
+        };
+      });
     } else {
       out.matching_lefts = pairs.map((p) => p.left);
       out.matching_rights = seededShuffle(pairs.map((p) => p.right), `${opts.seed ?? ""}:${q.id}:mat`);

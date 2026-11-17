@@ -51,6 +51,7 @@ const live = compile("src/lib/live.ts", "scripts/__extra_time_live.cjs", {
   "./responseTools": { responseWorkspaceFor: () => ({ tools: [], calculator: { enabled: false, scientific: false } }) },
   "./assessParts": { assessPartsFromConfig: () => [] },
   "./examResults": compile("src/lib/examResults.ts", "scripts/__extra_time_results.cjs"),
+  "./criterionShares": compile("src/lib/criterionShares.ts", "scripts/__extra_time_criterion_shares.cjs"),
 });
 
 const START = "2026-11-10T12:00:00.000Z";

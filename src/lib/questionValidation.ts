@@ -94,6 +94,21 @@ export function questionPublishIssues(question: PublishableQuestion): string[] {
       if (complete.length < 2 || complete.length !== pairs.length) issues.push("at least two complete matching pairs are required");
       const lefts = complete.map((pair) => String((pair as Record<string, unknown>).left).trim().toLowerCase().replace(/\s+/g, " "));
       if (new Set(lefts).size !== lefts.length) issues.push("matching prompts must be unique");
+      // Typed-letter matching accepts exactly one letter from the printed bank.
+      if (config.match_mode === "letters") {
+        const bank = Array.isArray(config.letter_choices) && config.letter_choices.length
+          ? config.letter_choices.filter((letter): letter is string => typeof letter === "string")
+            .map((letter) => letter.trim().toUpperCase()).filter(Boolean)
+          : ["P", "Q", "R", "S", "T", "U"];
+        if (bank.length < 2 || new Set(bank).size !== bank.length) {
+          issues.push("the letter bank must contain at least two unique letters");
+        }
+        const invalid = complete.some((pair) => {
+          const right = String((pair as Record<string, unknown>).right ?? "").trim().toUpperCase();
+          return !bank.includes(right);
+        });
+        if (invalid) issues.push("every letter answer must come from the printed letter bank");
+      }
       break;
     }
     case "assess_parts": {

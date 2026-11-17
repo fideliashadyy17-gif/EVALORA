@@ -30,8 +30,17 @@ export interface PublicQuestion {
   options: { id: string; label: string; content_doc?: RichDoc | null }[];
   matching_lefts?: string[];
   matching_rights?: string[];
-  /** "match": one choice per row. "sort": tiles dropped into categories. */
-  match_mode?: "match" | "sort";
+  /**
+   * "match": one choice per row. "sort": tiles dropped into categories.
+   * "letters": a typed P–U letter in a box printed before each definition.
+   */
+  match_mode?: "match" | "sort" | "letters";
+  /**
+   * Candidate-safe row metadata for the typed-letter layout. `left` is the
+   * definition and is also the key used in the stored `pairs` answer; no
+   * answer letter is present.
+   */
+  matching_rows?: { label: string; criterion: string | null; left: string }[];
   reveal?: {
     correct_option_ids: string[];
     accepted_answers: string[];
@@ -57,6 +66,8 @@ export interface PublicQuestion {
   assess_parts?: PublicAssessPart[] | null;
   topic?: string | null;
   criterion?: string | null;
+  /** Marks per criterion when this one question spans more than one. */
+  criterion_shares?: { criterion: string; points: number }[] | null;
   strand?: string | null;
   /** Criterion, level, marks and printed question number as the paper shows them. */
   question_meta?: QuestionMeta | null;
@@ -65,6 +76,10 @@ export interface PublicQuestion {
 /** The paper's own metadata for a question, shown to candidates and markers. */
 export interface QuestionMeta {
   question_number: number | null;
+  /** The number the paper prints, e.g. "15–18" for one grouped exercise. */
+  question_label?: string | null;
+  /** How many printed question numbers this record represents (default 1). */
+  question_span?: number | null;
   paper_section: string | null;
   criterion: string | null;
   criterion_label: string | null;
@@ -257,7 +272,7 @@ export function QuestionRunner({
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {meta.question_number !== null ? (
               <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-evergreen-700 px-1.5 text-xs font-bold text-white">
-                {meta.question_number}
+                {meta.question_label ?? meta.question_number}
               </span>
             ) : null}
             {bits.map((bit) => (
@@ -415,6 +430,74 @@ export function QuestionRunner({
         )}
 
         {t === "matching" && (() => {
+          if (question.match_mode === "letters") {
+            // One parent matching exercise: the formula bank is part of the
+            // prompt, and every definition owns one small typed letter box.
+            // The stored answer is still the same `{ left, right }` pair list,
+            // so the existing server scorer and saved-answer format apply.
+            const rows = (question.matching_rows?.length
+              ? question.matching_rows
+              : (question.matching_lefts ?? []).map((left, index) => ({ label: String(index + 1), criterion: null, left })));
+            const setLetter = (left: string, raw: string) => {
+              const letter = String(raw ?? "").toUpperCase().replace(/[^P-U]/g, "").slice(0, 1);
+              // A rejected character never clears an answer the candidate
+              // already gave: only an empty box may be cleared.
+              if (!letter && String(raw ?? "").trim()) return;
+              if ((pairs[left] ?? "").toUpperCase() === letter) return;
+              // Normalise every saved letter as well, so an older lower-case
+              // draft is upgraded the first time the candidate edits a box.
+              const next = Object.fromEntries(
+                Object.entries(pairs).map(([key, value]) => [key, String(value).toUpperCase()]),
+              );
+              if (letter) next[left] = letter;
+              else delete next[left];
+              changed();
+              setPairs(next);
+              emit({ pairs: toPairs(next) });
+            };
+            return (
+              <div className="space-y-3" role="group" aria-label="Matching answers, one letter P to U per statement">
+                <p className="text-sm text-ink-soft">
+                  Tap a box and type one letter, P to U. Capitals and small letters are both accepted.
+                </p>
+                {rows.map((row, index) => {
+                  const fieldId = `match-letter-${question.quiz_question_id}-${index}`;
+                  const promptId = `${fieldId}-prompt`;
+                  return (
+                    <div key={`${row.label}-${index}`} className="flex items-start gap-3 rounded-xl border border-evergreen-900/20 bg-white p-3 sm:p-4">
+                      <span className="w-7 shrink-0 pt-2 text-right text-sm font-bold text-evergreen-900">{row.label}</span>
+                      <input
+                        id={fieldId}
+                        value={(pairs[row.left] ?? "").toUpperCase()}
+                        disabled={disabled}
+                        maxLength={1}
+                        inputMode="text"
+                        autoCapitalize="characters"
+                        autoComplete="off"
+                        spellCheck={false}
+                        pattern="[P-U]"
+                        aria-label={`Letter for question ${row.label}`}
+                        aria-describedby={promptId}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) => setLetter(row.left, event.target.value)}
+                        className="mt-0.5 h-11 w-11 shrink-0 rounded-lg border-2 border-evergreen-900/35 bg-white text-center text-lg font-bold uppercase text-evergreen-950 outline-none transition focus:border-evergreen-700 focus:ring-2 focus:ring-evergreen-600/30 disabled:opacity-60"
+                      />
+                      <div className="min-w-0 flex-1 pt-1">
+                        <p id={promptId} className="text-base font-medium leading-relaxed text-ink">
+                          <MathText text={row.left} />
+                        </p>
+                        {row.criterion ? (
+                          <span className="mt-1 inline-block rounded-md bg-evergreen-700/10 px-2 py-0.5 text-[11px] font-bold text-evergreen-900">
+                            Criterion {row.criterion}
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          }
           const mode = normaliseMatchMode(question.match_mode);
           const chips = mode === "sort" ? (question.matching_lefts ?? []) : (question.matching_rights ?? []);
           const zones = mode === "sort" ? (question.matching_rights ?? []) : (question.matching_lefts ?? []);

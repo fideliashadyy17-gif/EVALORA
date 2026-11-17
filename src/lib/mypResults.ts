@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { normaliseCriterionShares } from "./criterionShares";
 import { hasAnswerContent } from "./examMessaging";
 import {
   DEFAULT_GRADE_BOUNDARIES,
@@ -475,10 +476,12 @@ export async function loadMypResults(
     const question = row.questions;
     if (!question) continue;
     const list = paperByQuiz.get(row.quiz_id) ?? [];
+    const points = Number(question.points ?? 0);
     list.push({
       questionId: question.id,
-      points: Number(question.points ?? 0),
+      points,
       criterion: readCriterion(question.config),
+      criterionShares: normaliseCriterionShares(question.config?.criterion_shares, points),
       topic: question.topic,
       type: question.type,
       subjectId: question.subject_id,

@@ -1,3 +1,5 @@
+import { criterionSharePoints, type CriterionShare } from "./criterionShares";
+
 /**
  * MYP criterion results and the overall 1–7 grade — one authoritative engine.
  *
@@ -335,6 +337,12 @@ export interface MypPaperQuestion {
   questionId: string;
   points: number;
   criterion: string | null;
+  /**
+   * Marks carried in each criterion when one question spans more than one.
+   * The shares add up to `points`; when absent the whole question belongs to
+   * `criterion`, exactly as before.
+   */
+  criterionShares?: CriterionShare[] | null;
   topic?: string | null;
   type?: string | null;
   subjectId?: string | null;
@@ -514,15 +522,32 @@ export function buildMypResult(args: {
   for (const answer of args.answers ?? []) answerByQuestion.set(answer.questionId, answer);
 
   const paper = (args.paper ?? []).filter((question) => Number(question.points) > 0);
+  // A question may carry marks in more than one criterion (one printed matching
+  // exercise with two Criterion A and two Criterion C marks). Its split is the
+  // authority for the criterion totals; a question without a split belongs
+  // wholly to `criterion`, exactly as before.
+  const sharesFor = (question: MypPaperQuestion): CriterionShare[] | null =>
+    Array.isArray(question.criterionShares) && question.criterionShares.length
+      ? question.criterionShares
+      : null;
+  const criterionMarks = (question: MypPaperQuestion, code: string): number => {
+    const shares = sharesFor(question);
+    if (!shares) return normalizeCriterion(question.criterion) === code ? Number(question.points) : 0;
+    return criterionSharePoints(shares, code);
+  };
   const paperCodes = paper
-    .map((question) => normalizeCriterion(question.criterion))
+    .flatMap((question) => {
+      const shares = sharesFor(question);
+      if (shares) return shares.map((share) => normalizeCriterion(share.criterion));
+      return [normalizeCriterion(question.criterion)];
+    })
     .filter((code): code is string => Boolean(code));
 
   const criteriaConfig = criteriaForPaper(rules.criteria ?? [], paperCodes);
 
   const criteria: CriterionResult[] = criteriaConfig.map((config) => {
-    const questions = paper.filter((question) => normalizeCriterion(question.criterion) === config.code);
-    const marksMax = round(questions.reduce((sum, question) => sum + Number(question.points), 0));
+    const questions = paper.filter((question) => criterionMarks(question, config.code) > 0);
+    const marksMax = round(questions.reduce((sum, question) => sum + criterionMarks(question, config.code), 0));
     let marksAwarded = 0;
     let markedCount = 0;
     let pendingCount = 0;
@@ -532,13 +557,19 @@ export function buildMypResult(args: {
     const topics = new Map<string, { awarded: number; max: number }>();
 
     const credit = (question: MypPaperQuestion, awarded: number) => {
-      const safe = Math.max(0, Math.min(Number(question.points), awarded));
+      const maxForCriterion = criterionMarks(question, config.code);
+      const whole = Number(question.points);
+      // When a question is split, the candidate's award is divided in the same
+      // proportion as the marks belong to each criterion. It is capped by the
+      // criterion's own maximum, so a split can never exceed the paper.
+      const share = whole > 0 ? maxForCriterion / whole : 0;
+      const safe = Math.max(0, Math.min(maxForCriterion, awarded * share));
       marksAwarded += safe;
       if (safe > 0) {
         const topic = cleanText(question.topic) ?? "General";
         const row = topics.get(topic) ?? { awarded: 0, max: 0 };
         row.awarded += safe;
-        row.max += Number(question.points);
+        row.max += maxForCriterion;
         topics.set(topic, row);
       }
     };
@@ -548,13 +579,17 @@ export function buildMypResult(args: {
       const raw = answer?.pointsAwarded;
       const note = cleanText(answer?.markerNote);
       if (note) notes.add(note);
+      // A split question is visited once per criterion. The "questions counted
+      // as zero" narrative is about the paper's questions, so it is credited to
+      // the first criterion only; the award itself is split above.
+      const countsZero = !sharesFor(question) || sharesFor(question)?.[0]?.criterion === config.code;
 
       if (!answer) {
         // No saved answer at all. Once the attempt is final this is a genuine
         // zero: the question was part of the assessment and earned nothing.
         // While the attempt is open it is simply not answered yet.
-        if (final) zeroFilledCount += 1;
-        else pendingCount += 1;
+        if (final && countsZero) zeroFilledCount += 1;
+        else if (!final) pendingCount += 1;
         continue;
       }
 
@@ -574,8 +609,9 @@ export function buildMypResult(args: {
       // An answer row exists but carries no mark. A truly empty answer is worth
       // zero once the attempt is final; an answer with content is awaiting a
       // teacher and must stay pending.
-      if (final && answer.hasContent === false) zeroFilledCount += 1;
-      else pendingCount += 1;
+      if (final && answer.hasContent === false) {
+        if (countsZero) zeroFilledCount += 1;
+      } else pendingCount += 1;
     }
 
     marksAwarded = round(marksAwarded);
