@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import {
   assessPartsFromConfig, canonicalExpression, parseStudentNumber,
-  publicAssessParts, scoreAssessParts,
+  publicAssessParts, scoreAssessParts, textAnswersMatch,
 } from "../src/lib/assessParts.ts";
 import { normaliseAssessDiagram } from "../src/lib/assessDiagram.ts";
 import { questionPublishIssues } from "../src/lib/questionValidation.ts";
@@ -29,22 +29,42 @@ check("assess_parts awards per-part partial credit", () => {
 });
 
 check("equivalent algebraic forms mark equal", () => {
-  for (const form of ["4n+3", "4n + 3", "a_n=4n+3", "3+4n", "aₙ = 4n+3"]) {
+  for (const form of ["4n+3", "4n + 3", "a_n=4n+3", "3+4n", "aₙ = 4n+3", "Mn=4n+3"]) {
     assert.equal(canonicalExpression(form), canonicalExpression("4n+3"), form);
   }
+  assert.equal(canonicalExpression("tn=n²"), canonicalExpression("T=n^2"));
+  assert.notEqual(canonicalExpression("13-3n"), canonicalExpression("1^3-3n"));
   assert.notEqual(canonicalExpression("4n+2"), canonicalExpression("4n+3"));
   const viaParts = scoreAssessParts(PARTS, { parts: { a: 30, b: "3 + 4n", c: "continuous" } }, 4);
   assert.deepEqual({ isCorrect: viaParts.isCorrect, points: viaParts.points }, { isCorrect: true, points: 4 });
   assert.ok(readFileSync("src/lib/scoring.ts", "utf8").includes('case "assess_parts"'), "server scoring handles assess_parts");
 });
 
-check("numeric parts tolerate units, fractions and stated tolerance", () => {
+check("numeric parts tolerate units, fractions, comma decimals and working", () => {
   assert.equal(parseStudentNumber("6.67 litres"), 6.67);
   assert.equal(parseStudentNumber("3/4"), 0.75);
   assert.equal(parseStudentNumber("1,250"), 1250);
+  assert.equal(parseStudentNumber("8,75"), 8.75); // decimal comma
+  assert.equal(parseStudentNumber("$13.5"), 13.5); // currency prefix
+  assert.equal(parseStudentNumber("mean= 21"), 21); // work label
+  assert.equal(parseStudentNumber("18+6=24"), 24); // final line wins
+  assert.equal(parseStudentNumber("M25=4(25)+1=101"), 101);
+  assert.equal(parseStudentNumber("20-30"), null); // a range is not a number
   const tol = [{ ...PARTS[0], answer: 25, tolerance: 2 }];
   assert.equal(scoreAssessParts(tol, { parts: { a: "24" } }).points, 1);
   assert.equal(scoreAssessParts(tol, { parts: { a: "29" } }).points, 0);
+});
+
+check("written answers tolerate labels, equivalents, lists and one typo", () => {
+  assert.ok(textAnswersMatch("modal class= 20-30", "20-30"));
+  assert.ok(textAnswersMatch("1/2, 0.5, 4/8, 50%", "0.5"));
+  assert.ok(textAnswersMatch("solvant", "solvent"));
+  assert.ok(textAnswersMatch("quantitative discrite", "quantitative discrete"));
+  assert.ok(!textAnswersMatch("qualitative descret", "quantitative discrete"));
+  assert.ok(!textAnswersMatch("qualitative", "quantitative discrete"));
+  const KEY = [{ id: "a", label: "(a)", prompt: "Mode?", kind: "text", points: 2,
+    accepted: ["20-30", "20–30"], hints: ["Look for the tallest bar.", "Use the class, not its midpoint."] }];
+  assert.equal(scoreAssessParts(KEY, { parts: { a: "modal class= 20-30" } }).points, 2);
 });
 
 check("the candidate projection contains no answer key", () => {
@@ -96,6 +116,15 @@ check("the three papers are typed-only, 25 questions, 50 marks, fully hinted", (
   }
   const infra = readFileSync("supabase/migrations/0084_assess_prep_infrastructure.sql", "utf8");
   assert.ok(infra.includes("exam_hint_usage") && infra.includes("record_exam_hint_use") && infra.includes("'assess_parts'"));
+});
+
+check("response workspaces and live formula sheets are recorded as a migration", () => {
+  const sql = readFileSync("supabase/migrations/20261117130000_response_tools_and_formula_sheets.sql", "utf8");
+  assert.ok(sql.includes("response_requirement") && sql.includes('"geometry"'));
+  assert.ok(sql.includes("cb000000-0000-4000-8000-000000000002") && sql.includes("c0900000-0000-4000-8000-000000000002"));
+  assert.ok(sql.includes("{formula_sheet}") && sql.includes("jsonb_build_object('exam_id'"));
+  const regrade = readFileSync("supabase/migrations/20261117130500_regrade_answers_with_equivalent_forms.sql", "utf8");
+  assert.ok(regrade.includes("grade_change_log") && regrade.includes("is_correct"));
 });
 
 check("hint usage is wired from the student page to the teacher report", () => {

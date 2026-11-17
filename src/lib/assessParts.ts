@@ -178,14 +178,20 @@ export function canonicalExpression(raw: string): string {
     .replace(/[−–—]/g, "-")
     .replace(/×/g, "*")
     .replace(/÷/g, "/")
+    .replace(/⁻/g, "-")
+    .replace(/⁰/g, "^0").replace(/¹/g, "^1").replace(/²/g, "^2").replace(/³/g, "^3")
+    .replace(/⁴/g, "^4").replace(/⁵/g, "^5").replace(/⁶/g, "^6").replace(/⁷/g, "^7")
+    .replace(/⁸/g, "^8").replace(/⁹/g, "^9")
     .replace(/ₙ/g, "n").replace(/ₓ/g, "x")
     .replace(/₀/g, "0").replace(/₁/g, "1").replace(/₂/g, "2").replace(/₃/g, "3")
     .replace(/₄/g, "4").replace(/₅/g, "5").replace(/₆/g, "6")
     .replace(/\s+/g, "")
     .replace(/\$/g, "")
     .replace(/\\/g, "");
-  // Drop a leading "an=", "un=", "tn=", "a(n)=" style left-hand side.
-  s = s.replace(/^[a-z](?:_?\{?n\}?|\(n\))=/, "");
+  // Drop a leading "an=", "un=", "tn=", "a(n)=" or "Mn=" style left-hand side.
+  // A multi-letter label is as harmless as a single-letter one: the value to
+  // the right of "=" is the candidate's answer.
+  s = s.replace(/^[a-z][a-z0-9_]*=/, "");
   s = s.replace(/^\((\d+)\)/, "$1"); // "(3)" → "3"
   // Implicit multiplication: number followed by a letter or "(".
   s = s.replace(/(\d)([a-z(])/g, "$1*$2");
@@ -214,13 +220,89 @@ export function canonicalExpression(raw: string): string {
   return s;
 }
 
-/** Numeric text a student typed, tolerating units, commas, fractions, %. */
+/**
+ * A candidate's arithmetic working, evaluated without `eval`: numbers,
+ * brackets and the four operations (plus integer powers). Returns null when
+ * the text is not a self-contained expression.
+ */
+function evaluateArithmetic(expression: string): number | null {
+  const tokens = expression.match(/\d+(?:\.\d+)?|[()+\-*/^]/g);
+  if (!tokens || tokens.join("") !== expression.replace(/\s+/g, "")) return null;
+  let index = 0;
+  const peek = () => tokens[index];
+  const take = () => tokens[index++];
+  const primary = (): number | null => {
+    const token = take();
+    if (token === undefined) return null;
+    if (token === "(") {
+      const value = sum();
+      return take() === ")" ? value : null;
+    }
+    if (token === "+") return primary();
+    if (token === "-") { const value = primary(); return value === null ? null : -value; }
+    const value = Number(token);
+    return Number.isFinite(value) ? value : null;
+  };
+  const power = (): number | null => {
+    const base = primary();
+    if (base === null) return null;
+    if (peek() !== "^") return base;
+    take();
+    const exponent = power();
+    return exponent === null ? null : Math.pow(base, exponent);
+  };
+  const product = (): number | null => {
+    let value = power();
+    while (value !== null && (peek() === "*" || peek() === "/")) {
+      const op = take();
+      const right = power();
+      if (right === null) return null;
+      if (op === "/" && right === 0) return null;
+      value = op === "*" ? value * right : value / right;
+    }
+    return value;
+  };
+  const sum = (): number | null => {
+    let value = product();
+    while (value !== null && (peek() === "+" || peek() === "-")) {
+      const op = take();
+      const right = product();
+      if (right === null) return null;
+      value = op === "+" ? value + right : value - right;
+    }
+    return value;
+  };
+  const result = sum();
+  return index === tokens.length && result !== null && Number.isFinite(result) ? result : null;
+}
+
+/**
+ * Numeric text a student typed, tolerating currency, units, comma decimals,
+ * thousands separators, fractions, percentages, a leading label ("mean=21")
+ * and worked arithmetic ("18+6=24" → 24). A value to the right of the last
+ * "=" wins: the final line of working is the candidate's answer.
+ */
 export function parseStudentNumber(raw: unknown): number | null {
   if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
   if (typeof raw !== "string") return null;
-  let s = raw.trim().toLowerCase().replace(/,/g, "").replace(/\s+/g, "");
+  let s = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[−–—]/g, "-")
+    .replace(/[\u00a0\u202f\s]+/g, "")
+    .replace(/[$£€]/g, "");
   if (!s) return null;
+  const equals = s.lastIndexOf("=");
+  if (equals >= 0) {
+    s = s.slice(equals + 1);
+    if (!s) return null;
+  }
   s = s.replace(/%$/, "");
+  if (!s) return null;
+  // A single comma followed by one or two digits is a decimal comma (8,75),
+  // not a thousands separator (1,250).
+  if (/^-?\d+,\d{1,2}$/.test(s)) s = s.replace(",", ".");
+  else s = s.replace(/,/g, "");
   const frac = /^(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/.exec(s);
   if (frac) {
     const den = Number(frac[2]);
@@ -228,8 +310,87 @@ export function parseStudentNumber(raw: unknown): number | null {
   }
   // Strip a trailing unit made of letters (km/h, cm, students…) — keep digits.
   s = s.replace(/[a-z/]+$/g, "");
-  const n = Number(s);
-  return Number.isFinite(n) ? n : null;
+  const direct = Number(s);
+  if (Number.isFinite(direct) && s !== "") return direct;
+  // Worked working such as "18+6" or "4(25)+1". Ranges ("20-30") stay text.
+  if (/[+*/^]/.test(s)) return evaluateArithmetic(s);
+  return null;
+}
+
+const normAnswerText = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
+/** Drop a leading "modal class =", "mean =" or "[label] =" from an answer. */
+const stripAnswerLabel = (s: string): string => {
+  const match = /^[^=]{1,40}=\s*(.+)$/.exec(s.trim());
+  return match ? match[1].trim() : s.trim();
+};
+
+const editDistanceAtMostOne = (a: string, b: string): boolean => {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1 || Math.min(a.length, b.length) < 6) return false;
+  let i = 0, j = 0, edits = 0;
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i++; j++; continue; }
+    if (++edits > 1) return false;
+    if (a.length > b.length) i++;
+    else if (b.length > a.length) j++;
+    else { i++; j++; }
+  }
+  return edits + (a.length - i) + (b.length - j) <= 1;
+};
+
+/** True when a written answer is the same word up to one typo. */
+export function spellingMatches(given: string, accepted: string): boolean {
+  const a = normAnswerText(given).replace(/[.!]$/, "");
+  const b = normAnswerText(accepted).replace(/[.!]$/, "");
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const aw = a.split(/[^a-z0-9%./:-]+/).filter(Boolean);
+  const bw = b.split(/[^a-z0-9%./:-]+/).filter(Boolean);
+  if (aw.length !== bw.length || aw.length === 0) return false;
+  let differences = 0;
+  for (let i = 0; i < aw.length; i++) {
+    if (aw[i] === bw[i]) continue;
+    if (!editDistanceAtMostOne(aw[i], bw[i])) return false;
+    differences++;
+  }
+  // "quantitative discrite" still names both required words.
+  return differences === 1;
+}
+
+/**
+ * Written-answer equivalence used by every text-bearing question type:
+ * case/spacing-insensitive exact match, a label-stripped variant
+ * ("modal class = 20-30"), numeric equivalence (1/2 = 0.5 = 50%), algebraic
+ * equivalence where enabled, a single typo in a word answer, and a
+ * comma-separated list that contains an accepted value.
+ */
+export function textAnswersMatch(given: string, accepted: string, options: { expression?: boolean } = {}): boolean {
+  if (typeof given !== "string" || typeof accepted !== "string") return false;
+  const g = normAnswerText(given);
+  const a = normAnswerText(accepted);
+  if (!g || !a) return false;
+  if (g === a) return true;
+  const gStripped = normAnswerText(stripAnswerLabel(g));
+  const aStripped = normAnswerText(stripAnswerLabel(a));
+  if (gStripped === aStripped) return true;
+  const gNumber = parseStudentNumber(gStripped);
+  const aNumber = parseStudentNumber(aStripped);
+  if (gNumber !== null && aNumber !== null && Math.abs(gNumber - aNumber) < 1e-9) return true;
+  // A percentage is the same quantity as its decimal (50% = 0.5), but only
+  // when the *other* side is written as a decimal, not as the number 50.
+  if (gNumber !== null && aNumber !== null) {
+    if (/%$/.test(gStripped) && !/%$/.test(aStripped) && Math.abs(gNumber / 100 - aNumber) < 1e-9) return true;
+    if (/%$/.test(aStripped) && !/%$/.test(gStripped) && Math.abs(aNumber / 100 - gNumber) < 1e-9) return true;
+  }
+  if (options.expression && canonicalExpression(g) === canonicalExpression(a)) return true;
+  if (spellingMatches(gStripped, aStripped)) return true;
+  // "1/2, 0.5, 4/8, 50%" is a list of equivalent values, not one value.
+  if (/[,;]/.test(g)) {
+    const parts = g.split(/[,;]/).map((part) => part.trim()).filter(Boolean);
+    if (parts.length > 1 && parts.some((part) => textAnswersMatch(part, accepted, options))) return true;
+  }
+  return false;
 }
 
 export interface AssessPartScore {
@@ -255,16 +416,17 @@ export function scoreAssessParts(parts: AssessPart[], answer: unknown, maxOverri
       const got = typeof given === "string" ? canonicalExpression(given) : "";
       correct = got.length > 0 && (part.accepted ?? []).some((a) => canonicalExpression(a) === got);
     } else if (part.keywords?.length) {
-      // Keyword rubric: credit an exact accepted variant, or when enough
-      // concept groups are present, so a correct justification in the
-      // student's own words still scores.
+      // Keyword rubric: credit an accepted variant (or a single typo), or when
+      // enough concept groups are present, so a correct justification in the
+      // student's own words still scores. The raw text is used for keywords:
+      // stripping "yes … =" would throw away a legitimate reason.
       const got = typeof given === "string" ? normText(given) : "";
-      const exact = got.length > 0 && (part.accepted ?? []).some((a) => normText(a) === got);
+      const exact = got.length > 0 && (part.accepted ?? []).some((a) => textAnswersMatch(got, a));
       const matched = part.keywords.filter((group) => group.some((w) => got.includes(normText(w)))).length;
       correct = exact || (got.length > 0 && matched >= (part.minKeywordGroups ?? part.keywords.length));
     } else {
       const got = typeof given === "string" ? normText(given) : "";
-      correct = got.length > 0 && (part.accepted ?? []).some((a) => normText(a) === got);
+      correct = got.length > 0 && (part.accepted ?? []).some((a) => textAnswersMatch(got, a));
     }
     return { id: part.id, earned: correct ? part.points : 0, max: part.points, correct };
   });
