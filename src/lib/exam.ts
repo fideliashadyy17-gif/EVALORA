@@ -1,5 +1,5 @@
 import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./live";
-import { scoreAnswer } from "./scoring";
+import { scoreAnswer, ScoringError } from "./scoring";
 import { attemptDeadline } from "./examDeadline";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -86,8 +86,19 @@ export async function gradeAttempt(
       score += humanPoints;
       continue;
     }
-    const scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
-      (saved.answer ?? {}) as Record<string, unknown>, row.points);
+    let scored: ReturnType<typeof scoreAnswer>;
+    try {
+      scored = scoreAnswer({ type: q.type, points: q.points, config: q.config }, q.question_options,
+        (saved.answer ?? {}) as Record<string, unknown>, row.points);
+    } catch (error) {
+      // A stale option, a malformed marking key or an unsupported payload is
+      // not a candidate zero. Leave that answer pending for a human marker and
+      // keep grading the rest of the paper; the submission itself must still
+      // close. Unexpected failures are re-thrown so a real outage is visible.
+      if (!(error instanceof ScoringError)) throw error;
+      updates.push({ id: saved.id, is_correct: null, points_awarded: null });
+      continue;
+    }
     updates.push({ id: saved.id, is_correct: scored.isCorrect, points_awarded: scored.isCorrect === null ? null : scored.points });
     score += scored.isCorrect === null ? 0 : scored.points;
   }

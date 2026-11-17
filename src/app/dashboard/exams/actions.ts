@@ -280,14 +280,10 @@ export async function markAnswer(formData: FormData) {
     .eq("id", answerId).eq("attempt_id", attempt.id).select("id").maybeSingle();
   if (updateError || !updated) return fail("failed");
 
-  const { data: answers, error: answersError } = await supabase.from("exam_answers").select("points_awarded, is_correct").eq("attempt_id", attempt.id);
-  if (answersError || !answers) return fail("partial");
-  const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
-  const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
-  const { data: updatedAttempt, error: totalError } = await supabase.from("exam_attempts")
-    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) }).eq("id", attempt.id).eq("exam_id", exam.id)
-    .in("status", ["submitted", "auto_submitted", "marked"]).select("id").maybeSingle();
-  if (totalError || !updatedAttempt) return fail("partial");
+  // One recomputation path for every marking surface. The answer update above
+  // fires `grade_change_recorder`, which appends the previous and new marks to
+  // `grade_change_log`; this call only reconciles the attempt total.
+  if ((await recomputeAttempt(supabase, attempt.id, exam.id)) === null) return fail("partial");
   revalidatePath(back);
   redirect(`${back}?mark_ok=1`);
 }

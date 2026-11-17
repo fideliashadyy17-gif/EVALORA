@@ -23,7 +23,7 @@ export class ScoringError extends Error {
   constructor() { super("The answer or marking key cannot be verified."); this.name = "ScoringError"; }
 }
 
-import { assessPartsFromConfig, canonicalExpression, scoreAssessParts } from "./assessParts";
+import { assessPartsFromConfig, canonicalExpression, parseStudentNumber, scoreAssessParts, textAnswersMatch } from "./assessParts";
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 const validNumber = (v: unknown): number | null => {
@@ -68,10 +68,13 @@ export function scoreAnswer(
       const accepted = options.filter((o) => o.is_correct && typeof o.label === "string" && norm(o.label)).map((o) => norm(o.label));
       if (!accepted.length || typeof answer.text !== "string") throw new ScoringError();
       // Expression questions accept equivalent algebraic forms (4n-1, 4n - 1,
-      // a_n = 4n - 1); plain word answers keep the exact normalisation above.
-      const ok = cfg.normalize_expression === true
-        ? accepted.some((a) => canonicalExpression(a) === canonicalExpression(answer.text as string))
-        : accepted.includes(norm(answer.text));
+      // a_n = 4n - 1). Every written answer also tolerates numeric equivalence
+      // (1/2 = 0.5 = 50%), a leading label, a listed equivalent, and one typo
+      // in a single-word answer ("solvant" for "solvent").
+      const expression = cfg.normalize_expression === true;
+      const ok = accepted.some((a) => expression
+        ? canonicalExpression(a) === canonicalExpression(answer.text as string)
+        : textAnswersMatch(answer.text as string, a, { expression }));
       return { isCorrect: ok, points: ok ? max : 0 };
     }
     case "assess_parts": {
@@ -81,9 +84,11 @@ export function scoreAnswer(
       return { isCorrect: scored.isCorrect, points: scored.points };
     }
     case "numeric": {
-      const expected = validNumber(cfg.numeric_answer);
+      // Numeric entry accepts currency/unit text, comma decimals, fractions,
+      // percentages and a final line of worked arithmetic ("18+6=24").
+      const expected = parseStudentNumber(cfg.numeric_answer);
       const tolerance = cfg.tolerance == null || cfg.tolerance === "" ? 0 : validNumber(cfg.tolerance);
-      const got = validNumber(answer.value);
+      const got = parseStudentNumber(answer.value);
       if (expected === null || tolerance === null || tolerance < 0 || got === null) throw new ScoringError();
       const ok = Math.abs(got - expected) <= tolerance;
       return { isCorrect: ok, points: ok ? max : 0 };
