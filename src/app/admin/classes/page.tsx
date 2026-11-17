@@ -29,23 +29,39 @@ export default async function AdminClassesPage({ searchParams }: { searchParams:
   const status = sp.status === "archived" ? "archived" : sp.status === "all" ? "all" : "active";
   if (status !== "all") query = query.eq("status", status);
   if (sp.q) query = query.or(`name.ilike.%${sp.q}%,code.ilike.%${sp.q}%`);
-  const { data: classes } = await query;
-  const classIds = (classes ?? []).map((c) => c.id);
-  // Exact HEAD counts avoid the PostgREST row cap; unknown counts remain visibly unknown.
-  const classCounts = await Promise.all(classIds.map(async (id) => {
-    const [students, questions] = await Promise.all([
-      admin.from("student_enrollments").select("id", { count: "exact", head: true }).eq("class_id", id).eq("status", "active"),
-      admin.from("questions").select("id", { count: "exact", head: true }).eq("class_id", id),
-    ]);
-    return { id, students: students.count, questions: questions.count };
-  }));
-  const counts = new Map(classCounts.map((c) => [c.id, c.students]));
-  const qCounts = new Map(classCounts.map((c) => [c.id, c.questions]));
+  // Classes, the org-scoped lookup lists and members are independent once the
+  // organisation filter is known — run them together instead of serially.
+  const scoped = (table: string) => orgId
+    ? admin.from(table).select("id, name").eq("organization_id", orgId).order("name")
+    : Promise.resolve({ data: [], error: null });
+  const [{ data: classes }, yearsResult, levelsResult, departmentsResult, membersResult] = await Promise.all([
+    query,
+    scoped("academic_years"),
+    scoped("education_levels"),
+    scoped("departments"),
+    orgId
+      ? admin.from("organization_members").select("user_id, role, profiles(full_name, email)").eq("organization_id", orgId).eq("status", "active")
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const years = yearsResult.data ?? [];
+  const levels = levelsResult.data ?? [];
+  const departments = departmentsResult.data ?? [];
+  const members = membersResult.data;
 
-  const scoped = async (table: string) => orgId
-    ? (await admin.from(table).select("id, name").eq("organization_id", orgId).order("name")).data ?? []
-    : [];
-  const [years, levels, departments] = await Promise.all([scoped("academic_years"), scoped("education_levels"), scoped("departments")]);
+  const classIds = (classes ?? []).map((c) => c.id);
+  // Two grouped reads replace two HEAD requests per class (up to 1 000 REST
+  // calls on a full page of 500 classes).
+  const [enrollmentRows, questionRows] = classIds.length
+    ? await Promise.all([
+        admin.from("student_enrollments").select("class_id").in("class_id", classIds).eq("status", "active"),
+        admin.from("questions").select("class_id").in("class_id", classIds),
+      ])
+    : [{ data: [] as { class_id: string }[] }, { data: [] as { class_id: string }[] }];
+  const counts = new Map<string, number>();
+  for (const row of enrollmentRows.data ?? []) counts.set(row.class_id, (counts.get(row.class_id) ?? 0) + 1);
+  const qCounts = new Map<string, number>();
+  for (const row of questionRows.data ?? []) qCounts.set(row.class_id, (qCounts.get(row.class_id) ?? 0) + 1);
+
   const yearName = new Map<string, string>();
   if (!orgId && classIds.length) {
     const { data: allYears } = await admin.from("academic_years").select("id, name");
@@ -53,9 +69,6 @@ export default async function AdminClassesPage({ searchParams }: { searchParams:
   } else {
     for (const y of years) yearName.set(y.id, y.name);
   }
-  const { data: members } = orgId
-    ? await admin.from("organization_members").select("user_id, role, profiles(full_name, email)").eq("organization_id", orgId).eq("status", "active")
-    : { data: [] };
   const teachers = (members ?? []).filter((m) => ["owner", "admin", "teacher", "organizer"].includes(m.role)).map((m) => {
     const p = m.profiles as unknown as { full_name: string | null; email: string } | null;
     return { id: m.user_id, name: p?.full_name || p?.email || "Member" };

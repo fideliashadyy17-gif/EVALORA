@@ -2,7 +2,17 @@
 import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
 const file=path.resolve('scripts/__routing_middleware.cjs');let signedIn=false,refresh=false,seenHeaders;
 const response=(type,url,opts)=>({type,url:url?String(url):null,opts,cookies:{values:[],set(...args){this.values.push(args)},getAll(){return this.values.map(a=>typeof a[0]==='object'?a[0]:{name:a[0],value:a[1],...a[2]})}}});
-const old=Module._load;Module._load=function(req,parent){if(parent?.filename===file){if(req==='@supabase/ssr')return {createServerClient:(_u,_k,opts)=>({auth:{getUser:async()=>{if(refresh)opts.cookies.setAll([{name:'refreshed',value:'yes',options:{httpOnly:true}}]);return {data:{user:signedIn?{id:'user'}:null}}}}})};if(req==='next/server')return {NextResponse:{next:opts=>{seenHeaders=opts.request.headers;return response('next',null,opts)},redirect:url=>response('redirect',url),rewrite:(url,opts)=>response('rewrite',url,opts)}};if(req==='@/lib/tenant')return {getTenantSlugFromHost:h=>h==='oak.localhost'?'oak':null};}return old.apply(this,arguments)};
+const old=Module._load;Module._load=function(req,parent){
+  if(parent?.filename===file){
+    if(req==='@supabase/ssr')return {createServerClient:(_u,_k,opts)=>({auth:{
+      getClaims:async()=>{if(refresh)opts.cookies.setAll([{name:'refreshed',value:'yes',options:{httpOnly:true}}]);return {data:signedIn?{claims:{sub:'user'}}:null,error:null}},
+      getUser:async()=>({data:{user:signedIn?{id:'user'}:null}})
+    }})};
+    if(req==='next/server')return {NextResponse:{next:opts=>{seenHeaders=opts.request.headers;return response('next',null,opts)},redirect:url=>response('redirect',url),rewrite:(url,opts)=>response('rewrite',url,opts)}};
+    if(req==='@/lib/tenant')return {getTenantSlugFromHost:h=>h==='oak.localhost'?'oak':null};
+  }
+  return old.apply(this,arguments)
+};
 const m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync('src/middleware.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);Module._load=old;
 function request(path,host='example.test'){const url=new URL('https://'+host+path);url.clone=()=>{const v=new URL(url);v.clone=url.clone;return v};return {headers:new Headers({host,'x-evalora-tenant-slug':'forged'}),nextUrl:url,cookies:{getAll:()=>[],set:()=>{}}};}
 let r=await m.exports.middleware(request('/admin/users?tab=all'));assert.equal(r.type,'redirect');let u=new URL(r.url);assert.equal(u.pathname,'/login');assert.equal(u.searchParams.get('next'),'/admin/users?tab=all');assert.equal(seenHeaders.get('x-evalora-tenant-slug'),null);

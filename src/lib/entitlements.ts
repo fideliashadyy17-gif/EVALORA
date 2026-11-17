@@ -109,14 +109,20 @@ export async function getEntitlement(
     };
   }
   const now = new Date().toISOString();
-  const { data: sub } = await supabase
-    .from("subscriptions")
-    .select("*, plans(*)")
-    .eq("organization_id", organizationId)
-    .in("status", ["active", "trialing"])
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  // Both reads are independent and both may be needed, so run them in one
+  // network round-trip. Previously a free workspace paid two sequential
+  // Supabase round-trips to discover it had no subscription.
+  const [{ data: sub }, { data: free }] = await Promise.all([
+    supabase
+      .from("subscriptions")
+      .select("*, plans(*)")
+      .eq("organization_id", organizationId)
+      .in("status", ["active", "trialing"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase.from("plans").select("*").eq("slug", "free").maybeSingle(),
+  ]);
 
   if (sub) {
     const end =
@@ -138,12 +144,6 @@ export async function getEntitlement(
       };
     }
   }
-
-  const { data: free } = await supabase
-    .from("plans")
-    .select("*")
-    .eq("slug", "free")
-    .maybeSingle();
 
   return {
     planName: free?.name ?? "Free",

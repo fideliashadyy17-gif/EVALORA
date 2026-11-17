@@ -30,12 +30,25 @@ export default async function BillingPage({
     supabase.from("payment_requests").select("*, plans(name)").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(10),
     supabase.from("platform_settings").select("value").eq("key", "payment_instructions").maybeSingle(),
     getEntitlementFor(supabase, ctx, org.id),
-    Promise.all([
-      supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-      supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
-    ]),
+    (async (): Promise<Record<string, number>> => {
+      // Same single-round-trip aggregate used by the workspace dashboard.
+      // Falls back to direct counts if the database function is not present.
+      const overview = await supabase.rpc("workspace_overview", { p_org: org.id });
+      const counts = (overview.data as { counts?: Record<string, number> } | null)?.counts;
+      if (!overview.error && counts) return counts;
+      const [q, qu, e, m] = await Promise.all([
+        supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+        supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id),
+      ]);
+      return {
+        quizzes: q.count ?? 0,
+        questions: qu.count ?? 0,
+        exams: e.count ?? 0,
+        members: m.count ?? 0,
+      };
+    })(),
   ]);
 
   const instructions = (setting?.value ?? {}) as { methods?: { name: string; details: string }[]; note?: string };
@@ -43,10 +56,10 @@ export default async function BillingPage({
   const selectedPlanId = sp.plan ?? paidPlans[0]?.id;
 
   const usageRows = [
-    ["Quizzes", usage[0].count ?? 0, ent.limits.max_quizzes],
-    ["Questions", usage[1].count ?? 0, ent.limits.max_questions],
-    ["Examinations", usage[2].count ?? 0, ent.limits.max_exams],
-    ["Team members", usage[3].count ?? 0, ent.limits.max_members],
+    ["Quizzes", usage.quizzes ?? 0, ent.limits.max_quizzes],
+    ["Questions", usage.questions ?? 0, ent.limits.max_questions],
+    ["Examinations", usage.exams ?? 0, ent.limits.max_exams],
+    ["Team members", usage.members ?? 0, ent.limits.max_members],
   ] as const;
 
   return (
