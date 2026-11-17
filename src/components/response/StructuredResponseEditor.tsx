@@ -44,6 +44,7 @@ export function StructuredResponseEditor({
   disabled = false,
   autosave = false,
   submitLabel = "Save answer",
+  premium = false,
   emit,
   onDirtyChange,
   onPayloadChange,
@@ -53,6 +54,8 @@ export function StructuredResponseEditor({
   disabled?: boolean;
   autosave?: boolean;
   submitLabel?: string;
+  /** Premium presentation: compact in-flow tools with a sticky tool rail. */
+  premium?: boolean;
   emit: (payload: Record<string, unknown>) => boolean | void;
   onDirtyChange?: (dirty: boolean) => void;
   /** Receives the latest local construction before it has been saved. */
@@ -214,7 +217,7 @@ export function StructuredResponseEditor({
   useEffect(() => { payloadChangeRef.current?.(payload()); }, [payload]);
 
   return (
-    <div className="structured-response" data-testid="structured-response">
+    <div className={cn("structured-response", premium && "is-premium")} data-testid="structured-response">
       <div className="structured-tabs" role="tablist" aria-label="Answer tools">
         {workspace.tools.includes("rich_text") && (
           <button type="button" role="tab" aria-selected={tab === "written"} className={cn("structured-tab", tab === "written" && "is-active")} onClick={() => setTab("written")}>
@@ -304,6 +307,7 @@ export function StructuredResponseEditor({
           )}
           <GraphEditor
             initial={graph}
+            compact={premium}
             onChange={(next) => { setGraph(next); markDirty(); }}
             readOnly={disabled}
             allowFunctions={workspace.graph.allowFunctions}
@@ -333,6 +337,7 @@ export function StructuredResponseEditor({
           </p>
           <GeometryEditor
             initial={geometry}
+            compact={premium}
             onChange={(next) => { setGeometry(next); markDirty(); }}
             readOnly={disabled}
             title={workspace.geometry.title || "Your construction"}

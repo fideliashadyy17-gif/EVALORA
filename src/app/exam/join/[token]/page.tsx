@@ -7,6 +7,9 @@ import {
   parseExamAccessSettings,
   validUuid,
 } from "@/lib/exam-access";
+import { getEntitlement } from "@/lib/entitlements";
+import { examExperienceFromLimits } from "@/lib/examExperience";
+import { detectExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { ExamJoinClient } from "./JoinClient";
@@ -39,6 +42,12 @@ export default async function SharedExamJoinPage({
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const access = parseExamAccessSettings(examSettings);
+  const entitlement = await getEntitlement(admin, exam.organization_id);
+  const experience = examExperienceFromLimits(entitlement.limits);
+  const language = detectExamLanguage(
+    examSettings.language,
+    [exam.title, exam.description, exam.instructions].filter(Boolean).join("\n"),
+  );
   const availability = examAccessAvailability({
     status: exam.status,
     starts_at: exam.starts_at,
@@ -136,6 +145,8 @@ export default async function SharedExamJoinPage({
       accessMode={access.accessMode}
       identityFields={access.identityFields}
       requiresAccount={requiresAccount}
+      language={language}
+      languageLock={experience.languageLock}
     />
   );
 }

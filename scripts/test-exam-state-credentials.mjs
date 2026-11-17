@@ -14,6 +14,9 @@ Module._load=function(request,parent){
  if(parent?.filename===file){
   if(request==='@/lib/exam') return {loadAttemptContext:async(_db,id,token)=>{observed.push({id,token});return token==='right'?structuredClone(context):null;},attemptDeadline:()=>new Date(Date.now()+600000),attemptRows:async()=>[],gradeAttempt:async()=>({score:0,max:0})};
   if(request==='@/lib/live') return {publicQuestion:()=>({})};
+  if(request==='@/lib/entitlements') return {getEntitlement:async()=>({limits:{premium_exam_experience:true,exam_duplicate_protection:true,exam_language_lock:true,floating_calculator:true,interactive_math_tools:true,premium_math_interface:true}})};
+  if(request==='@/lib/examExperience') return {examExperienceFromLimits:()=>({premium:true,duplicateProtection:true,languageLock:true,floatingCalculator:true,interactiveMathTools:true,premiumMathInterface:true})};
+  if(request==='@/lib/examLanguage') return {detectExamLanguage:()=> 'en'};
   if(request==='@/lib/examResults') return {buildExamResult:()=>({})};
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:()=>({enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   // The deadline and submission rules live in their own modules so that no route

@@ -4,6 +4,7 @@ import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib
 import { isEmail, parseCsv } from "@/lib/csv";
 import { attemptDeadline } from "@/lib/exam";
 import { isFeatureEnabledFor } from "@/lib/platform";
+import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -108,6 +109,7 @@ export async function createExamAsAdmin(formData: FormData) {
       status,
       settings: {
         proctoring,
+        language: normalizeExamLanguage(formData.get("language")) ?? "auto",
         require_screen_share: proctoring && formData.get("require_screen_share") === "on",
         randomize_questions: formData.get("randomize_questions") === "on",
         randomize_options: formData.get("randomize_options") === "on",

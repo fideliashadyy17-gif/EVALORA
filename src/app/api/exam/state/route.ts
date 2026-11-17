@@ -8,6 +8,9 @@ import { buildExamResult } from "@/lib/examResults";
 import { parseFormulaSheet } from "@/lib/examFormulas";
 import { parseIntegrityPolicy } from "@/lib/integrity";
 import { loadPublishedHints } from "@/lib/examHintsServer";
+import { getEntitlement } from "@/lib/entitlements";
+import { examExperienceFromLimits } from "@/lib/examExperience";
+import { detectExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -104,6 +107,10 @@ export async function GET(request: Request) {
   // instant, which the client renders as "no countdown" rather than as an expiry.
   const deadlineIso = window.deadline ?? new Date(8.64e15).toISOString();
 
+  // Resolve the premium examination entitlement in parallel with the paper.
+  // A failure degrades to the conservative defaults in examExperienceFromLimits
+  // rather than making the examination unavailable.
+  const entitlementPromise = getEntitlement(admin, exam.organization_id).catch(() => null);
   let rows: Awaited<ReturnType<typeof attemptRows>>;
   try {
     rows = await attemptRows(admin, exam, attempt);
@@ -175,6 +182,14 @@ export async function GET(request: Request) {
       (candidate as { invite_token?: string }).invite_token) ||
     null;
   const entryHref = rawInviteToken ? `/exam/join/${rawInviteToken}` : "/exam-access";
+  const entitlement = await entitlementPromise;
+  const experience = examExperienceFromLimits(entitlement?.limits);
+  const language = detectExamLanguage(
+    settings.language,
+    [exam.title, exam.instructions, ...rows.map((row) => row.questions.prompt ?? "")]
+      .filter(Boolean)
+      .join("\n"),
+  );
 
   return NextResponse.json({
     server_now: new Date(nowMs).toISOString(),
@@ -195,6 +210,11 @@ export async function GET(request: Request) {
       // which browser events to report and when to warn. Only thresholds and
       // switches travel here — never an answer, never another candidate.
       integrity: parseIntegrityPolicy(settings.integrity),
+      // The paper's authored language and the premium capability set travel
+      // together so the shell can protect the paper and present only tools the
+      // organization is entitled to use.
+      language,
+      experience,
     },
     candidate: {
       name: candidate.full_name,
@@ -232,6 +252,34 @@ export async function GET(request: Request) {
         // unless the question itself opts out with config.calculator = false.
         calculatorByDefault: settings.calculator === true,
       });
+      // Free plans keep the answer fields and any tool a question genuinely
+      // requires, so a paper is never impossible to answer. Optional premium
+      // workspaces are withheld with a clear notice instead of appearing as a
+      // broken control.
+      if (!experience.interactiveMathTools) {
+        const workspace = pub.response_workspace as Record<string, unknown> | null | undefined;
+        if (workspace) {
+          const required = typeof workspace.requirement === "string" && workspace.requirement !== "any"
+            ? workspace.requirement
+            : null;
+          const premiumTools = new Set(["graph", "geometry", "statistics", "data_table", "venn", "probability_tree", "stem_leaf"]);
+          const rawTools = Array.isArray(workspace.tools) ? workspace.tools.filter((tool): tool is string => typeof tool === "string") : [];
+          const kept = rawTools.filter((tool) => !premiumTools.has(tool) || tool === required);
+          const keptSet = new Set(kept);
+          pub.response_workspace = {
+            ...workspace,
+            tools: kept,
+            graph: { ...(workspace.graph as Record<string, unknown> | null), enabled: keptSet.has("graph") },
+            geometry: { ...(workspace.geometry as Record<string, unknown> | null), enabled: keptSet.has("geometry") },
+            statistics: { ...(workspace.statistics as Record<string, unknown> | null), enabled: keptSet.has("statistics") },
+            dataTable: { ...(workspace.dataTable as Record<string, unknown> | null), enabled: keptSet.has("data_table") },
+            venn: { ...(workspace.venn as Record<string, unknown> | null), enabled: keptSet.has("venn") },
+            probabilityTree: { ...(workspace.probabilityTree as Record<string, unknown> | null), enabled: keptSet.has("probability_tree") },
+            stemLeaf: { ...(workspace.stemLeaf as Record<string, unknown> | null), enabled: keptSet.has("stem_leaf") },
+          };
+          pub.premium_tools_limited = true;
+        }
+      }
       const s = savedByQ.get(row.questions.id);
       // Correctness is only revealed after submission AND publication. Once it
       // is, the paper is marked in full: every question carries its result and

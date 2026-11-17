@@ -12,6 +12,7 @@ import type { PublicAssessPart } from "@/lib/assessParts";
 import { StructuredResponseEditor } from "@/components/response/StructuredResponseEditor";
 import { MathAnswerInput } from "@/components/MathAnswerInput";
 import { CalculatorLauncher } from "@/components/Calculator";
+import { DEFAULT_EXAM_EXPERIENCE, type ExamExperience } from "@/lib/examExperience";
 
 const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
 const isPairs = (value: unknown): value is { left: string; right: string }[] => Array.isArray(value)
@@ -62,6 +63,8 @@ export interface PublicQuestion {
    * the response workspace: a multiple-choice question permits one too.
    */
   calculator?: boolean;
+  /** Set by the server when optional premium workspaces were withheld. */
+  premium_tools_limited?: boolean | null;
   /** Assess Prep typed parts (keys never included) + curriculum metadata. */
   assess_parts?: PublicAssessPart[] | null;
   topic?: string | null;
@@ -104,6 +107,7 @@ export function QuestionRunner({
   markings,
   autosave = false,
   onHintUse,
+  experience = DEFAULT_EXAM_EXPERIENCE,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -118,6 +122,8 @@ export function QuestionRunner({
   autosave?: boolean;
   /** Records that a per-part hint was opened at a level (examinations only). */
   onHintUse?: (partId: string, level: number) => void;
+  /** Premium capability set for this examination. */
+  experience?: ExamExperience;
 }) {
   /** Marked options win over the neutral/selected styling after submission. */
   const optionClass = (id: string, idle: string, picked: string) => {
@@ -256,6 +262,13 @@ export function QuestionRunner({
         <div className="question-prompt text-lg font-medium leading-relaxed text-ink sm:text-xl">
           <RichContent doc={question.prompt_doc ?? null} text={question.prompt} />
         </div>
+        {question.premium_tools_limited ? (
+          <p role="note" className="mt-3 rounded-lg border border-evergreen-900/15 bg-cream px-3 py-2 text-xs leading-relaxed text-ink-soft">
+            Optional premium workspaces (for example a graph or statistics canvas) are not included in this
+            institution&apos;s plan. Every answer field and any workspace this question genuinely requires stays
+            available; ask your institution if you need the optional tools enabled.
+          </p>
+        ) : null}
       </div>}
 
       {question.question_meta ? (() => {
@@ -295,7 +308,7 @@ export function QuestionRunner({
           sibling of the answer controls and never writes to them. */}
       {question.calculator ? (
         <div className="mt-3 flex justify-end">
-          <CalculatorLauncher />
+          <CalculatorLauncher draggable={experience.floatingCalculator} storageKey="evalora-calculator-question" />
         </div>
       ) : null}
 
@@ -369,6 +382,7 @@ export function QuestionRunner({
                 disabled={disabled}
                 placeholder="Type your answer… (tap ∑ for math symbols)"
                 ariaLabel="Short answer"
+                floatingKeyboard={experience.premiumMathInterface}
                 onChange={(next) => { changed(); setText(next); }}
                 onCommit={() => text.trim() && emit({ text })}
               />
@@ -390,6 +404,7 @@ export function QuestionRunner({
                 inputMode="decimal"
                 placeholder="Enter a number… (tap ∑ for π, √, fractions)"
                 ariaLabel="Numeric answer"
+                floatingKeyboard={experience.premiumMathInterface}
                 onChange={(next) => { changed(); setNum(next); }}
                 onCommit={() => num.trim() && Number.isFinite(parseFloat(num)) && emit({ value: parseFloat(num) })}
               />
@@ -657,6 +672,7 @@ export function QuestionRunner({
                       placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2, or tap ∑)" : "Type your answer…")}
                       ariaLabel={`Answer for part ${part.label}`}
                       unit={part.unit}
+                      floatingKeyboard={experience.premiumMathInterface}
                       onChange={(next) => { changed(); setPartValues((v) => ({ ...v, [part.id]: next })); }}
                       onCommit={() => emit(hasWorkingWorkspace ? { parts: partValues, working: workingPartsRef.current } : { parts: partValues })}
                     />
@@ -668,6 +684,7 @@ export function QuestionRunner({
                       </p>
                       <StructuredResponseEditor
                         workspace={workingWorkspace}
+                        premium={experience.premiumMathInterface}
                         initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
                         disabled={disabled}
                         autosave={autosave}
@@ -715,6 +732,7 @@ export function QuestionRunner({
         {t === "open_ended" && (
           <StructuredResponseEditor
             workspace={question.response_workspace ?? responseWorkspaceFor(question)}
+            premium={experience.premiumMathInterface}
             initial={initial ?? null}
             disabled={disabled}
             autosave={autosave}

@@ -12,6 +12,7 @@ const db={from(table){const filters=[];let patch=null;const q={select(){return q
 const original=Module._load;Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/admin')return {requireSuperAdmin:async()=>{if(!authorized)throw Error('denied');return {user:{id:'admin'}}},audit:async(...args)=>audits.push(args),fstr:(fd,key,max)=>String(fd.get(key)??'').trim().slice(0,max)||null};
  if(request==='@/lib/csv'||request==='@/lib/exam'||request==='@/lib/platform'||request==='@/lib/utils')return {};
+ if(request==='@/lib/examLanguage')return {normalizeExamLanguage:(v)=>v==='fr'?'fr':v==='en'?'en':null};
  if(request==='@/lib/supabase/server')return {createAdminClient:()=>db};
  if(request==='next/cache')return {revalidatePath:()=>{}};
  if(request==='next/headers')return {};

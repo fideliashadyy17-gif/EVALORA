@@ -30,6 +30,7 @@ Module._load = function(request, parent) {
     if (request === './MathText') return { MathText: ({text}) => text };
     if (request === './RichContent') return { RichContent: ({text}) => text };
     if (request === '@/lib/utils') return { cn: (...args) => args.filter(Boolean).join(' ') };
+    if (request === '@/lib/examExperience') return { DEFAULT_EXAM_EXPERIENCE: { premium: true, duplicateProtection: true, languageLock: true, floatingCalculator: true, interactiveMathTools: true, premiumMathInterface: true }, examExperienceFromLimits: () => ({ premium: true, duplicateProtection: true, languageLock: true, floatingCalculator: true, interactiveMathTools: true, premiumMathInterface: true }) };
     if (request === '@/lib/responseTools') return { responseWorkspaceFor: () => ({ tools: ['rich_text', 'math'], graph: { enabled: false, title: 'Graph', instructions: '', allowFunctions: true, starter: null }, geometry: { enabled: false, title: 'Geometry', instructions: '', starter: null }, guidance: '', requirement: 'any', source: 'inferred', calculator: { enabled: false, scientific: false } }) };
     if (request === '@/components/response/StructuredResponseEditor') {
       const StructuredResponseEditor = ({ initial, emit, onDirtyChange, onPayloadChange, disabled, submitLabel }) => {

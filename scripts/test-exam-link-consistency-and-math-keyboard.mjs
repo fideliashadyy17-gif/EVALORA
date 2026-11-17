@@ -19,6 +19,7 @@ import { examAccessAvailability } from "../src/lib/exam-access.ts";
 import { MATH_CATEGORIES } from "../src/components/editor/mathKeyboard.ts";
 import {
   NUMERIC_MATH_CATEGORY,
+  matrixInsertion,
   plainInsertionForKey,
 } from "../src/components/editor/plainMathKeyboard.ts";
 
@@ -141,6 +142,44 @@ check("spec-required symbols are all reachable from the keyboard", () => {
   assert.equal(squared.text, "^2");
   const nthRoot = plainInsertionForKey(allKeys.find((k) => k.t === "n-th root"));
   assert.match(nthRoot.text, /^√\[ \]\( \)$/);
+});
+
+
+check("set braces select their interior so the student types straight into the set", () => {
+  const braces = plainInsertionForKey(allKeys.find((k) => k.t === "Braces"));
+  assert.equal(braces.text, "{ }");
+  assert.deepEqual(braces.slot, { start: 1, end: 2 });
+});
+
+check("Σ/Π expose editable lower and upper limits plus the body", () => {
+  for (const title of ["Summation", "Product"]) {
+    const ins = plainInsertionForKey(allKeys.find((k) => k.t === title));
+    assert.equal(ins.slots?.length, 3, `${title}: expected lower limit, upper limit and body`);
+    assert.deepEqual(ins.slots?.[0], ins.slot);
+    const text = ins.text;
+    for (const slot of ins.slots ?? []) {
+      assert.equal(text.slice(slot.start, slot.end), " ", `${title}: slot must be a fillable space`);
+    }
+    assert.match(text, /^[Σ∏]_\( \)\^\( \) \( \)$/);
+  }
+});
+
+check("definite integrals expose both limits and the integrand", () => {
+  const ins = plainInsertionForKey(allKeys.find((k) => k.t === "Definite integral"));
+  assert.equal(ins.slots?.length, 3);
+  assert.equal(ins.text, "∫_( )^( ) ( ) dx");
+  assert.deepEqual(ins.slots, [{ start: 3, end: 4 }, { start: 7, end: 8 }, { start: 11, end: 12 }]);
+});
+
+check("matrix builder supports row/column choice and every cell is an editable slot", () => {
+  const m = matrixInsertion(3, 2, "paren");
+  assert.equal(m.text, "( , ; , ; , )");
+  assert.equal(m.slots?.length, 6);
+  assert.deepEqual(m.slots?.[0], m.slot);
+  for (const slot of m.slots ?? []) assert.equal(m.text.slice(slot.start, slot.end), " ");
+  assert.equal(matrixInsertion(2, 2, "bracket").text, "[ , ; , ]");
+  assert.equal(matrixInsertion(2, 2, "bar").text, "| , ; , |");
+  assert.equal(matrixInsertion(99, 99).slots?.length, 16, "matrix size is clamped to 4×4");
 });
 
 check("cursor-preserving insertion composes real expressions", () => {

@@ -21,6 +21,9 @@ Module._load=function(request,parent) {
   if(request==='@/components/Logo') return {Logo:()=>null};
   if(request==='@/components/RichContent') return {RichContent:()=>null};
   if(request==='@/components/ExamCorrige') return {ExamCorrige:()=>null};
+  if(request==='@/components/ExamLanguageShield') return {ExamLanguageShield:()=>null};
+  if(request==='@/lib/examExperience') return {DEFAULT_EXAM_EXPERIENCE:{premium:true,duplicateProtection:true,languageLock:true,floatingCalculator:true,interactiveMathTools:true,premiumMathInterface:true},examExperienceFromLimits:()=>({premium:true,duplicateProtection:true,languageLock:true,floatingCalculator:true,interactiveMathTools:true,premiumMathInterface:true})};
+  if(request==='@/lib/examLanguage') return {detectExamLanguage:()=> 'en'};
   if(request==='@/lib/examResults') return {answerKeyLine:()=>null,optionMarkings:()=>[],resultLabel:()=>'',
     // the client only reads presentation helpers; keep them inert here
     parseIntegrityPolicy:undefined};

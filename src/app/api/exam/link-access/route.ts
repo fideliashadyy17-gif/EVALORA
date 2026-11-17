@@ -1,4 +1,8 @@
 import { attemptDeadline } from "@/lib/exam";
+import {
+  candidateNamesMatch,
+  DUPLICATE_EXAM_CANDIDATE_MESSAGE,
+} from "@/lib/candidateIdentity";
 import { canonicalIdentityFingerprint } from "@/lib/examSaveQueue";
 import { manualPauseMs } from "@/lib/examPause";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
@@ -348,6 +352,69 @@ export async function POST(request: Request) {
       null;
 
     candidateRow = exactMatch;
+
+    // Cross-device duplicate protection. A browser with no matching candidate
+    // record must not create a second participation under a name that already
+    // exists for THIS examination. A stronger identifier may still adopt the
+    // original record: a verified student account (student_id) or the matching
+    // organizer-defined identity fields (e.g. student ID / matricule / email).
+    if (!candidateRow) {
+      const { data: examCandidates } = await admin
+        .from("exam_candidates")
+        .select("*")
+        .eq("exam_id", exam.id);
+      const rowsForExam = (examCandidates ?? []) as Record<string, unknown>[];
+      const byStudent = studentId
+        ? rowsForExam.find((row) => String(row.student_id ?? "") === studentId) ?? null
+        : null;
+      const namedRows = rowsForExam.filter((row) =>
+        candidateNamesMatch(
+          { first_name: row.first_name, last_name: row.last_name, full_name: row.full_name },
+          { first_name, last_name },
+        ),
+      );
+      const namedWithIdentity = namedRows.find((row) => {
+        if (row.class_id && String(row.class_id) !== selectedClassId) return false;
+        const stored = (row.identity_data ?? {}) as Record<string, unknown>;
+        return Object.keys(stored).length > 0 && identityDataEqual(stored, identityData);
+      }) ?? null;
+
+      if (byStudent) {
+        if (!candidateNamesMatch(
+          { first_name: byStudent.first_name, last_name: byStudent.last_name, full_name: byStudent.full_name },
+          { first_name, last_name },
+        )) {
+          return NextResponse.json(
+            {
+              error: "This student account has already joined this examination under a different name. Ask your institution to correct the candidate record before starting a new participation.",
+            },
+            { status: 409 },
+          );
+        }
+        candidateRow = byStudent;
+      } else if (namedWithIdentity) {
+        candidateRow = namedWithIdentity;
+      } else if (namedRows.length > 0) {
+        // Organizer-defined identification fields disambiguate genuine
+        // homonyms: two students with the same printed name but different
+        // student numbers are different people. Only allow the new row when
+        // EVERY existing same-name row has a non-empty identity and the new
+        // identity differs from all of them. A name-only retry (or a retry
+        // carrying the same identity) still resumes/refuses the original.
+        const hasNewIdentity = Object.keys(identityData).length > 0;
+        const allExistingDistinct = namedRows.every((row) => {
+          const stored = (row.identity_data ?? {}) as Record<string, unknown>;
+          return (
+            Object.keys(stored).length > 0 &&
+            !identityDataEqual(stored, identityData)
+          );
+        });
+        if (!hasNewIdentity || !allExistingDistinct) {
+          return NextResponse.json({ error: DUPLICATE_EXAM_CANDIDATE_MESSAGE }, { status: 409 });
+        }
+      }
+    }
+
     if (candidateRow) {
       const storedIdentity = (candidateRow.identity_data ?? {}) as Record<string, unknown>;
       if (!identityDataEqual(storedIdentity, identityData) && Object.keys(storedIdentity).length === 0) {
@@ -379,6 +446,12 @@ export async function POST(request: Request) {
         .select("*")
         .single();
       if (error || !data) {
+        // The database trigger is the race-safe backstop: another tab/device
+        // inserted this name between our lookup and this insert. Never turn
+        // that into an infrastructure error or a second attempt.
+        if (`${error?.message ?? ""} ${error?.details ?? ""}`.includes("EXAM_CANDIDATE_DUPLICATE_NAME")) {
+          return NextResponse.json({ error: DUPLICATE_EXAM_CANDIDATE_MESSAGE }, { status: 409 });
+        }
         const { data: raced } = await admin
           .from("exam_candidates")
           .select("*")

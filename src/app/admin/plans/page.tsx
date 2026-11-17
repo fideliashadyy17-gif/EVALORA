@@ -22,7 +22,13 @@ const LIMIT_HINT = `{
   "max_students": -1,
   "multi_class_operations": true,
   "central_asset_management": false,
-  "configurable_limits": false
+  "configurable_limits": false,
+  "premium_exam_experience": true,
+  "exam_duplicate_protection": true,
+  "exam_language_lock": true,
+  "floating_calculator": true,
+  "interactive_math_tools": true,
+  "premium_math_interface": true
 }`;
 
 export default async function AdminPlans() {
@@ -46,7 +52,7 @@ export default async function AdminPlans() {
 
       {(plans ?? []).length > 0 && (
         <div className="mb-6">
-          <Table head={["Plan", "Slug", "Monthly / Yearly", "Trial", "Active tenants", "Proctoring", "Reports", "Visibility"]}>
+          <Table head={["Plan", "Slug", "Monthly / Yearly", "Trial", "Active tenants", "Proctoring", "Reports", "Premium exam", "Visibility"]}>
             {(plans ?? []).map((p) => {
               const lim = (p.limits as Record<string, unknown> | null) ?? {};
               return (
@@ -60,6 +66,7 @@ export default async function AdminPlans() {
                   <td className="font-semibold tabular-nums">{subCounts.get(p.id) ?? 0}</td>
                   <td><Badge tone={lim.proctoring ? "green" : "gray"}>{lim.proctoring ? "Included" : "Off"}</Badge></td>
                   <td><Badge tone={lim.advanced_reports ? "green" : "gray"}>{lim.advanced_reports ? "Included" : "Basic"}</Badge></td>
+                  <td><Badge tone={lim.premium_exam_experience ? "green" : "gray"}>{lim.premium_exam_experience ? "Included" : "Off"}</Badge></td>
                   <td><Badge tone={p.is_active ? "gold" : "gray"}>{p.is_active ? "Public" : "Hidden"}</Badge></td>
                 </tr>
               );

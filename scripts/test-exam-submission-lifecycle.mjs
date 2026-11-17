@@ -441,6 +441,9 @@ function loadRoutes({ admin, examModule, submission, deadline, examPause, connec
     "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
     "@/lib/examFormulas": { parseFormulaSheet: () => null },
     "@/lib/live": { publicQuestion: (row) => ({ question_id: row.questions.id, quiz_question_id: row.id }), answerReveal: () => null },
+    "@/lib/entitlements": { getEntitlement: async () => ({ limits: { premium_exam_experience: true, exam_duplicate_protection: true, exam_language_lock: true, floating_calculator: true, interactive_math_tools: true, premium_math_interface: true } }) },
+    "@/lib/examExperience": { examExperienceFromLimits: () => ({ premium: true, duplicateProtection: true, languageLock: true, floatingCalculator: true, interactiveMathTools: true, premiumMathInterface: true }) },
+    "@/lib/examLanguage": { detectExamLanguage: () => "en" },
     "@/lib/examResults": { buildExamResult: () => null },
     "@/lib/integrity": {
       parseIntegrityPolicy: () => ({ enabled: true, tabSwitch: true, focusLoss: true, fullscreen: true, clipboard: true, sound: true, warnAfter: 3, reviewAfter: 5 }),

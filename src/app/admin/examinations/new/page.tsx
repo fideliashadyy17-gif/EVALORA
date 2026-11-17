@@ -146,6 +146,13 @@ export default async function CreateExaminationPage({
                 <Field label="Instructions and rules">
                   <Textarea name="instructions" rows={4} maxLength={6000} placeholder="Permitted materials, integrity rules, calculator policy, submission instructions…" />
                 </Field>
+                <Field label="Question-paper language" hint="Candidates keep the paper in the language it was authored in. Automatic browser translation is blocked on the examination screens.">
+                  <Select name="language" defaultValue="auto">
+                    <option value="auto">Detect from the paper (recommended)</option>
+                    <option value="en">English</option>
+                    <option value="fr">French</option>
+                  </Select>
+                </Field>
 
                 <div className="grid gap-3 rounded-2xl bg-cream p-4 sm:grid-cols-2">
                   <label className="flex items-start gap-2 text-sm font-medium text-evergreen-900">
