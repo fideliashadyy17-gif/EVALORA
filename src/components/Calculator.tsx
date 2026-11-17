@@ -568,26 +568,68 @@ export function Calculator({
   );
 }
 
-/** Floating launcher: keeps the calculator one tap away on every question. */
-export function CalculatorLauncher({ className }: { className?: string }) {
+/**
+ * The calculator's door. `inline` sits in the exam header (sticky, so it is on
+ * screen for the whole composition); `floating` is for pages without a header.
+ * The panel itself is a viewport-fixed dialog rather than an absolutely
+ * positioned dropdown: a long question can never clip it, and on a phone it
+ * becomes a bottom sheet that stays inside the visible area.
+ */
+export function CalculatorLauncher({
+  className,
+  variant = "inline",
+}: {
+  className?: string;
+  variant?: "inline" | "floating";
+}) {
   const [open, setOpen] = useState(false);
+  const close = useCallback(() => setOpen(false), []);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open, close]);
+
   return (
-    <div className={cn("relative", className)}>
+    <div className={cn(variant === "floating" && "fixed bottom-4 right-4 z-50 print:hidden", className)}>
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
+        aria-haspopup="dialog"
         aria-label={open ? "Hide the calculator" : "Open the calculator"}
-        className="inline-flex items-center gap-2 rounded-full border border-evergreen-900/20 bg-white px-3 py-1.5 text-xs font-semibold text-evergreen-900 shadow-sm transition hover:bg-evergreen-50"
+        data-testid="calculator-launcher"
+        className={cn(
+          "inline-flex items-center gap-2 rounded-full border border-evergreen-900/20 bg-white font-semibold text-evergreen-900 shadow-sm transition hover:bg-evergreen-50",
+          variant === "floating" ? "px-4 py-3 text-sm shadow-lg" : "px-3 py-1.5 text-xs",
+        )}
       >
         <span aria-hidden className="grid h-5 w-5 place-items-center rounded border border-evergreen-800/40 text-[10px]">▤</span>
         Calculator
         <span aria-hidden className="text-[10px] text-evergreen-700">{open ? "▾" : "▸"}</span>
       </button>
       {open ? (
-        <div className="absolute right-0 z-30 mt-2 sm:right-0">
-          <Calculator onClose={() => setOpen(false)} />
-        </div>
+        <>
+          <button
+            type="button"
+            aria-label="Close the calculator"
+            onClick={close}
+            className="fixed inset-0 z-40 cursor-default bg-evergreen-950/25"
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Calculator"
+            data-testid="calculator-panel"
+            className="fixed inset-x-2 bottom-2 z-50 mx-auto max-h-[calc(100dvh-1rem)] w-auto max-w-[22rem] overflow-y-auto rounded-2xl shadow-2xl sm:inset-x-auto sm:bottom-auto sm:right-6 sm:top-24 sm:mx-0"
+          >
+            <Calculator onClose={close} />
+          </div>
+        </>
       ) : null}
     </div>
   );

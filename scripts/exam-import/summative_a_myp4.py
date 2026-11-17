@@ -40,13 +40,17 @@ SECTIONS = [
 
 CRITERION_TOTALS = {"A": 32, "B": 20, "C": 24, "D": 24}
 
+# The matching bank is printed inside a data-table diagram, whose cells render
+# as plain text rather than mathematics. Keep every entry in ordinary words and
+# symbols, so a candidate never sees raw LaTeX such as
+# a raw LaTeX fraction on the paper.
 _BANK_OPTS = [
-    r"$\dfrac{\text{Frequency}}{\text{Class width}}$",
-    r"$\sqrt{\dfrac{\Sigma (x-\mu)^2}{N}}$",
-    "Cum. freq. curve",
-    r"$\dfrac{\Sigma fx}{\Sigma f}$",
-    "Stem-and-leaf",
-    r"$Q_3-Q_1$",
+    "Frequency density = Frequency ÷ Class width",
+    "Standard deviation σ = √(Σ(x − μ)² ÷ N)",
+    "Cumulative frequency curve",
+    "Mean = Σfx ÷ Σf",
+    "Stem-and-leaf diagram",
+    "Interquartile range = Q₃ − Q₁",
 ]
 
 
@@ -335,9 +339,9 @@ def build():
         (15, "Diagram showing distribution shape while retaining every exact raw data value", "T",
          "A stem-and-leaf diagram keeps every individual digit, so all raw values can be recovered.", "C"),
         (16, "Formula for frequency density when constructing an unequal-width histogram", "P",
-         r"Frequency density is $\frac{\text{frequency}}{\text{class width}}$.", "A"),
+         "Frequency density = Frequency ÷ Class width.", "A"),
         (17, "Exact formula for the population standard deviation σ of N values", "Q",
-         r"Population $\sigma=\sqrt{\frac{\Sigma(x-\mu)^2}{N}}$.", "A"),
+         "Population standard deviation σ = √(Σ(x − μ)² ÷ N).", "A"),
         (18, "Graph used to estimate median, quartiles and percentiles of grouped continuous data", "R",
          "A cumulative frequency curve (ogive) is read at ¼N, ½N and ¾N.", "C"),
     ]:

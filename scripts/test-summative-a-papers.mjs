@@ -124,13 +124,15 @@ for (const paper of PAPERS) {
   try {
     await db.exec(SCHEMA);
     await db.exec(readFileSync(paper.file, "utf8"));
-    // The forward title correction runs after the original upload; replaying it
-    // must be harmless on a freshly built paper.
+    // Forward corrections run after the original uploads; replaying them must
+    // be harmless on a freshly built paper.
     await db.exec(readFileSync("supabase/migrations/20261117120000_summative_a_source_titles.sql", "utf8"));
+    await db.exec(readFileSync("supabase/migrations/20261117081726_summative_a_plain_formula_bank.sql", "utf8"));
 
     const questions = (await db.query(`
       select qq.position, q.type, q.points, q.config, q.prompt_doc::text as doc, q.explanation,
-             coalesce(json_agg(json_build_object('label', o.label, 'correct', o.is_correct)
+             coalesce(json_agg(json_build_object('label', o.label, 'correct', o.is_correct,
+                                                 'doc', o.content_doc)
                                order by o.position) filter (where o.id is not null), '[]') as options
         from quiz_questions qq join questions q on q.id = qq.question_id
         left join question_options o on o.question_id = q.id
@@ -191,6 +193,33 @@ for (const paper of PAPERS) {
     check("no question leaks a marking-scheme answer in its prompt",
       questions.every((row) => !/scheme answer|answer:\s/i.test(row.doc ?? "")));
 
+    // The MYP 4 matching bank is shown in a data-table cell, which prints plain
+    // text. LaTeX there reached candidates literally, backslashes and dollars
+    // visible. MYP 5 has no such bank, so those rows are checked only for the
+    // rejected formula itself.
+    if (paper.key === "MYP4") {
+      const matchingRows = questions.slice(14, 18);
+      check("the matching bank is plain readable text, never raw LaTeX",
+        matchingRows.every((row) => {
+          const doc = typeof row.doc === "string" ? JSON.parse(row.doc) : row.doc;
+          const bank = doc.content.find((node) => node.type === "assessDiagramBlock");
+          const cells = bank?.attrs?.spec?.rows?.flat() ?? [];
+          return cells.length === 6 && cells.every((cell) =>
+            typeof cell === "string" && !/[$\\]/.test(cell) && !/\\?dfrac|\\?text\{/.test(cell));
+        }));
+      check("matching answer buttons are plain text too",
+        matchingRows.every((row) => row.options.length === 6 && row.options.every((option) => {
+          const doc = typeof option.doc === "string" ? JSON.parse(option.doc) : option.doc;
+          return doc?.content?.every((node) => node.type === "paragraph" &&
+            node.content?.every((child) => child.type === "text" && !/[$\\]/.test(child.text ?? "")));
+        })));
+    }
+    check("the rejected frequency-density formula appears nowhere in the paper",
+      questions.every((row) => !/text\{Frequency\}|text\{Class width\}|text\{frequency\}|text\{class width\}/i.test(
+        `${row.doc ?? ""} ${row.explanation ?? ""} ${JSON.stringify(row.options)}`)));
+    check("every question permits the candidate calculator",
+      questions.every((row) => row.config.calculator === true));
+
     check("figures are structured blocks, not raw drawing instructions",
       questions.every((row) => !/(draw an? |sketch an? )?(line|circle) from \(\d/i.test(row.doc ?? "")));
 
@@ -204,6 +233,7 @@ for (const paper of PAPERS) {
     check("exam is draft and reports all four criteria",
       exam.status === "draft" && exam.settings.criterion_reporting === true &&
       Object.keys(exam.settings.criterion_totals).sort().join("") === "ABCD");
+    check("the exam itself permits a calculator", exam.settings.calculator === true);
   } catch (error) {
     failed += 1;
     console.log(`  ✗ ${paper.key} failed: ${String(error?.message ?? error)}`);
