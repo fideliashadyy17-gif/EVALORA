@@ -1127,7 +1127,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
-                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+                  aria-label={`Question ${q.question_meta?.question_number ?? i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
                   aria-current={i === index ? "step" : undefined}
                   className={cn(
                     "relative flex h-9 w-9 items-center justify-center rounded-lg text-sm font-medium transition",
@@ -1352,7 +1352,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           {current && !corrigeAll && (
             <Card className={`exam-question-card ${submitted ? "mt-5" : ""} p-6 sm:p-7`}>
               <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
-                <Badge tone="green">Question {index + 1} of {questions.length}</Badge>
+                <Badge tone="green">
+                  {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
+                  Question {current.question_meta?.question_number ?? index + 1} of{" "}
+                  {current.question_meta?.paper_section
+                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section).length
+                    : questions.length}
+                </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (
                   <Badge tone="green">
@@ -1504,7 +1510,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           attemptId={attemptId}
           token={token}
           active={!submitted}
-          questionNumber={index + 1}
+          questionNumber={current?.question_meta?.question_number ?? index + 1}
           totalQuestions={questions.length}
           savedCount={savedIds.size}
           pendingSaves={queueState.pending}

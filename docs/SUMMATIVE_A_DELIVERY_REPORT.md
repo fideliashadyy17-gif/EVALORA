@@ -30,7 +30,9 @@ organisation and are linked to the correct Grade 9 / Grade 10 classes.
 
 Each question stores its printed number (MYP 5 Part B keeps both its printed
 number 1–16 and its platform position 20–35), its criterion, marks, difficulty,
-calculator permission, source key and marking model. The two source papers were
+calculator permission, source key and marking model. The exam screen shows the
+paper's own number and scopes the “of N” count to the current part (“Part B ·
+Question 1 of 16”), not the global platform position. The two source papers were
 not modified, and no older examination or question was replaced.
 
 ## 2. Assessment and marking
@@ -57,7 +59,7 @@ not modified, and no older examination or question was replaced.
   forward: the 36 printed Part B titles that the first import had dropped are
   now the first line of each constructed-response prompt. No mark, key,
   criterion, answer, attempt or published result changed.
-- Automated evidence: 110 paper/key/figure checks, 22 criterion-grading checks,
+- Automated evidence: 112 paper/key/figure checks, 22 criterion-grading checks,
   36 migration invariants, and the existing MYP grading/report suites
   (`npm test`: 134 suites passed, 0 failed, 8 browser-only suites skipped).
 
@@ -141,7 +143,7 @@ added. The report/export suites pass (79 checks plus 28 surface/control checks).
 | | `20261117110100_myp5_grade10_sequences_version_b.sql` (35 Q, 100 marks) |
 | Forward correction | `20261117120000_summative_a_source_titles.sql` (36 printed titles) |
 | Database | Supabase `nqxqisjtbfsratgztmch`; all three migrations applied; migration history updated |
-| Verification | `scripts/validate-summative-a-migrations.mjs` 36/36; `scripts/test-summative-a-papers.mjs` 110; `scripts/test-summative-a-grading.mjs` 22; `npm test` 134 suites passed, 0 failed |
+| Verification | `scripts/validate-summative-a-migrations.mjs` 36/36; `scripts/test-summative-a-papers.mjs` 112; `scripts/test-summative-a-grading.mjs` 22; `npm test` 134 suites passed, 0 failed |
 | Build | `npx tsc --noEmit`, `npm run lint`, `npm run build` all green |
 | Deployment | Vercel project `evalora`; production alias `evalora-six.vercel.app`; branch commit deployed to production after merge |
 | Docs | `docs/SUMMATIVE_A_SOURCE_CHECKLIST.md`, `docs/SUMMATIVE_A_CAPACITY.md` |
