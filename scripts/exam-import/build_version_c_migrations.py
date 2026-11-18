@@ -27,7 +27,7 @@ GENERATOR = "scripts/exam-import/build_version_c_migrations.py"
 
 PAPERS = [
     {
-        "file": "20261118090001_myp4_grade9_statistics_version_c.sql",
+        "file": "20261118054730_myp4_grade9_statistics_version_c.sql",
         "module": g9,
         "quiz_id": "cd000000-0000-4000-8000-000000000001",
         "exam_id": "cd000000-0000-4000-8000-000000000002",
@@ -43,7 +43,7 @@ PAPERS = [
         ],
     },
     {
-        "file": "20261118090002_myp5_grade10_sequences_version_c.sql",
+        "file": "20261118054739_myp5_grade10_sequences_version_c.sql",
         "module": g10,
         "quiz_id": "ce000000-0000-4000-8000-000000000001",
         "exam_id": "ce000000-0000-4000-8000-000000000002",

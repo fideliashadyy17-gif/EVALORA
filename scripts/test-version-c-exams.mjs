@@ -141,8 +141,8 @@ test('new top/bottom tile-grid style is accepted and rendered as a grid', () => 
 });
 
 for (const [label, file, prefix] of [
-  ['Grade 9 Version C', 'supabase/migrations/20261118090001_myp4_grade9_statistics_version_c.sql', 'cd000000-0000-4000-8000-'],
-  ['Grade 10 Version C', 'supabase/migrations/20261118090002_myp5_grade10_sequences_version_c.sql', 'ce000000-0000-4000-8000-'],
+  ['Grade 9 Version C', 'supabase/migrations/20261118054730_myp4_grade9_statistics_version_c.sql', 'cd000000-0000-4000-8000-'],
+  ['Grade 10 Version C', 'supabase/migrations/20261118054739_myp5_grade10_sequences_version_c.sql', 'ce000000-0000-4000-8000-'],
 ]) {
   test(`${label}: 34 questions, 100 marks and untouched existing papers`, () => {
     const sql = readFileSync(file, 'utf8');
