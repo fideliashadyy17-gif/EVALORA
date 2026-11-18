@@ -352,6 +352,10 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
     attemptDeadline: (exam, startedAt, ext) => deadlineModule.attemptDeadline(exam, startedAt, ext),
     attemptRows: async (_admin, exam) => db.papers.get(exam.quiz_id) ?? [],
     gradeAttempt: async (_admin, attemptId, rows) => {
+      const summary = await examModule.gradeAttemptDetailed(_admin, attemptId, rows);
+      return { score: summary.score, max: summary.max };
+    },
+    gradeAttemptDetailed: async (_admin, attemptId, rows) => {
       if (db.fail.grading) throw new Error("grading failed");
       db.gradeWrites += 1;
       const saved = db.answers.get(attemptId) ?? {};
@@ -362,7 +366,20 @@ function build({ db = makeDb(), now = Date.parse("2026-11-08T11:00:00Z") } = {})
         const answer = saved[row.questions.id];
         if (answer && answer.answer && answer.answer.text === "correct") score += Number(row.points ?? 0);
       }
-      return { score, max };
+      return {
+        score,
+        max,
+        autoScore: score,
+        autoMax: max,
+        gradedMax: max,
+        resolvedMax: max,
+        ungradedMax: 0,
+        gradedCount: rows.length,
+        humanCount: 0,
+        ungradedCount: 0,
+        unansweredCount: 0,
+        failedCount: 0,
+      };
     },
   };
 

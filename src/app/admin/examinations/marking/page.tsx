@@ -28,6 +28,7 @@ interface QueueRow {
   id: string;
   answer: Record<string, unknown> | null;
   updated_at: string;
+  grading_status: string | null;
   quiz_questions: { id: string; quiz_id: string; question_id: string; points: number | null } | null;
   questions: {
     id: string;
@@ -61,7 +62,7 @@ export default async function ExaminationMarkingPage({
   const [{ data: rawQueue }, { data: exams }, { data: orgs }, { count: markedCount }] = await Promise.all([
     admin
       .from("exam_answers")
-      .select("id, answer, updated_at, quiz_questions(id, quiz_id, question_id, points), questions(id, prompt, prompt_doc, explanation, explanation_doc, points, type, config), exam_attempts!inner(id, status, started_at, submitted_at, exam_candidates(full_name, candidate_ref), exams!inner(id, title, organization_id, quiz_id, organizations(name)))")
+      .select("id, answer, updated_at, grading_status, quiz_questions(id, quiz_id, question_id, points), questions(id, prompt, prompt_doc, explanation, explanation_doc, points, type, config), exam_attempts!inner(id, status, started_at, submitted_at, exam_candidates(full_name, candidate_ref), exams!inner(id, title, organization_id, quiz_id, organizations(name)))")
       .is("is_correct", null)
       .order("updated_at", { ascending: true })
       .limit(1000),
@@ -71,7 +72,9 @@ export default async function ExaminationMarkingPage({
   ]);
 
   const queue = ((rawQueue ?? []) as unknown as QueueRow[]).filter((row) => {
-    if (row.questions?.type !== "open_ended") return false;
+    const needsMarker = row.questions?.type === "open_ended" ||
+      row.grading_status === "not_graded" || row.grading_status === "grading_failed";
+    if (!needsMarker) return false;
     if (!row.exam_attempts || row.exam_attempts.status === "in_progress") return false;
     if (sp.exam && row.exam_attempts.exams?.id !== sp.exam) return false;
     if (sp.org && row.exam_attempts.exams?.organization_id !== sp.org) return false;
@@ -95,7 +98,7 @@ export default async function ExaminationMarkingPage({
       <PageTitle
         eyebrow="Examinations · Constructed-Response Marking Queue"
         title="Marking & grading"
-        subtitle="Objective questions and typed multi-part answers are scored by the server at submission. This queue is for open constructed responses requiring an authorized first marker; assess-parts working is reviewed and, if needed, adjusted through the audited examination moderation workspace."
+        subtitle="Objective questions and typed multi-part answers are scored by the server at submission. This queue lists open constructed responses requiring a first marker and every answer the server could not grade (not graded or grading failed), so nothing is hidden as a silent zero. A failed answer shows its exact reason in the complete script."
       />
 
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />
@@ -147,7 +150,10 @@ export default async function ExaminationMarkingPage({
                       {attempt.submitted_at ? ` · submitted ${fmtDateTime(attempt.submitted_at)}` : ""}
                     </p>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Badge tone={row.grading_status === "grading_failed" ? "red" : row.grading_status === "not_graded" ? "gold" : "gray"}>
+                      {row.grading_status === "grading_failed" ? "Grading failed" : row.grading_status === "not_graded" ? "Not graded" : "Awaiting marker"}
+                    </Badge>
                     <Badge tone="gold">{maximum === null ? "Maximum verified on save" : `Maximum ${maximum} marks`}</Badge>
                     <Link href={`/admin/questions/${q.id}`} className="text-sm font-medium text-evergreen-700 hover:underline">Question editor →</Link>
                   </div>

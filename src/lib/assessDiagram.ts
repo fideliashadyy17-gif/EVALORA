@@ -50,7 +50,7 @@ export interface AssessDiagramSpec {
   // shape_pattern — either squares/dots counts, or explicit dot columns.
   patterns?: { label: string; squares: number; dots?: number; columns?: { count: number; shade?: boolean }[] }[];
   // grid_pattern
-  gridPatterns?: { label: string; cols: number; rows: number; style: "core_border" | "solid" }[];
+  gridPatterns?: { label: string; cols: number; rows: number; style: "core_border" | "top_bottom_border" | "solid" }[];
   // table
   columns?: string[];
   rows?: string[][];
@@ -177,7 +177,9 @@ export function normaliseAssessDiagram(raw: unknown): AssessDiagramSpec | null {
         label: s(g.label),
         cols: Math.max(1, Math.min(24, Math.floor(cols))),
         rows: Math.max(1, Math.min(24, Math.floor(rows))),
-        style: g.style === "solid" ? "solid" as const : "core_border" as const,
+        style: g.style === "solid" ? "solid" as const
+          : g.style === "top_bottom_border" ? "top_bottom_border" as const
+            : "core_border" as const,
       }];
     });
   }

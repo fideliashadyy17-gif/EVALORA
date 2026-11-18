@@ -547,11 +547,14 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
     exams: { organization_id: string; quiz_id: string | null } | null;
   };
   const question = answer!.questions as unknown as { organization_id: string; points: number; type: string } | null;
+  const gradingStatus = String((answer as Record<string, unknown>).grading_status ?? "");
   // This first-mark path is deliberately reserved for genuinely manual
   // constructed responses. Typed assess-parts answers are auto-scored (with
   // partial credit) and can only be changed through the audited moderation
   // workflow, preserving the server-scored result as the starting evidence.
-  if (!attempt || !attempt.exams?.quiz_id || !question || question.organization_id !== attempt.exams.organization_id || question.type !== "open_ended") go(back, "e=answer");
+  const manualEligible = question?.type === "open_ended" ||
+    gradingStatus === "not_graded" || gradingStatus === "grading_failed";
+  if (!attempt || !attempt.exams?.quiz_id || !question || question.organization_id !== attempt.exams.organization_id || !manualEligible) go(back, "e=answer");
   if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) go(back, "e=in_progress");
   const { data: paperQuestion, error: paperError } = await admin.from("quiz_questions").select("id, points")
     .eq("quiz_id", attempt.exams!.quiz_id!).eq("question_id", answer!.question_id).maybeSingle();
@@ -569,6 +572,8 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
       is_correct: points > 0,
       marked_by: ctx.user.id,
       marker_note: note,
+      grading_status: "human_graded",
+      grading_note: note || null,
       updated_at: new Date().toISOString(),
     })
     .eq("id", answerId).eq("attempt_id", attempt.id).select("id").maybeSingle();
@@ -583,14 +588,20 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
   };
   const { data: allAnswers, error: answersError } = await admin
     .from("exam_answers")
-    .select("points_awarded, is_correct")
+    .select("points_awarded, is_correct, grading_status")
     .eq("attempt_id", attempt.id);
   if (answersError || !allAnswers) return reportPartial();
   const total = Math.round(allAnswers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
-  const allMarked = allAnswers.length > 0 && allAnswers.every((a) => a.is_correct !== null);
+  // An unanswered question is resolved evidence (a confirmed zero), not work
+  // waiting for a marker. It must not keep the attempt unmarked forever.
+  const unresolved = allAnswers.filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
+  const allMarked = allAnswers.length > 0 && unresolved === 0;
   const { data: updatedAttempt, error: totalError } = await admin
     .from("exam_attempts")
-    .update({ score: total, ...(allMarked ? { status: "marked" } : {}) })
+    .update({
+      score: total,
+      ...(allMarked ? { status: "marked", grading_status: "graded", pending_manual_count: 0 } : { pending_manual_count: unresolved }),
+    })
     .eq("id", attempt.id).eq("exam_id", attempt.exam_id).in("status", ["submitted", "auto_submitted", "marked"])
     .select("id").maybeSingle();
   if (totalError || !updatedAttempt) return reportPartial();

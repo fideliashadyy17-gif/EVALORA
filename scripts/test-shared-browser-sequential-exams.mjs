@@ -436,6 +436,9 @@ try {
       status text not null default 'in_progress' check (status in ('in_progress','submitted','auto_submitted','marked')),
       submission_reason text,
       grading_status text not null default 'not_started',
+      grading_error text,
+      auto_score numeric,
+      auto_max_score numeric,
       pending_manual_count integer not null default 0,
       started_at timestamptz not null default now(),
       submitted_at timestamptz,
@@ -479,6 +482,9 @@ try {
       is_correct boolean,
       points_awarded numeric,
       marked_by uuid,
+      grading_status text not null default 'not_graded',
+      grading_note text,
+      part_scores jsonb not null default '{}'::jsonb,
       updated_at timestamptz not null default now(),
       unique (attempt_id, question_id)
     );

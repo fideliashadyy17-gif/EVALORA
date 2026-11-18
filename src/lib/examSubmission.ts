@@ -42,7 +42,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { attemptDeadlineInstant, deadlineReached, submissionWindow, type SubmissionWindow } from "./examDeadline";
 import { manualPauseMs } from "./examPause";
-import { attemptRows, gradeAttempt, type AttemptContext } from "./exam";
+import { attemptRows, gradeAttemptDetailed, type AttemptContext, type AttemptGradingSummary } from "./exam";
 
 /** Why an attempt is being closed. Two values only: the candidate, or the clock. */
 export type SubmissionReason = "candidate" | "deadline";
@@ -171,13 +171,13 @@ export async function applyDeadlineSubmission(
     return unfilled("paper_unavailable", window);
   }
 
-  let score: number;
-  let max: number;
+  let summary: AttemptGradingSummary;
   try {
-    ({ score, max } = await gradeAttempt(admin, attempt.id, rows));
+    summary = await gradeAttemptDetailed(admin, attempt.id, rows);
   } catch {
     return unfilled("grading_failed", window);
   }
+  const { score, max } = summary;
 
   // The instant written to the record. A candidate's own confirmation is stamped
   // with the moment it happened; an automatic closure is stamped with the
@@ -190,9 +190,27 @@ export async function applyDeadlineSubmission(
   const finalStatus = isDeadline ? "auto_submitted" : "submitted";
 
   // ── Conditional write: the attempt must still be open. Idempotent. ───────
+  const gradingStatus = summary.failedCount > 0
+    ? "grading_failed"
+    : summary.ungradedCount > 0
+      ? "awaiting_manual_grading"
+      : "graded";
+  const gradingError = summary.failedCount > 0
+    ? `${summary.failedCount} question${summary.failedCount === 1 ? "" : "s"} could not be graded automatically. Open the script review for the exact question and reason.`
+    : null;
   const { data: closed, error } = await admin
     .from("exam_attempts")
-    .update({ status: finalStatus, submitted_at: submittedIso, score, max_score: max })
+    .update({
+      status: finalStatus,
+      submitted_at: submittedIso,
+      score,
+      max_score: max,
+      grading_status: gradingStatus,
+      grading_error: gradingError,
+      auto_score: summary.autoScore,
+      auto_max_score: summary.autoMax,
+      pending_manual_count: summary.ungradedCount + summary.failedCount,
+    })
     .eq("id", attempt.id)
     .eq("status", "in_progress")
     .select("id")

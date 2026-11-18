@@ -271,7 +271,8 @@ function Shapes({ spec }: { spec: AssessDiagramSpec }) {
 
 /**
  * Rectangular grids of tiles or pipes. `core_border` draws a pale outer ring
- * around a green core (a courtyard-tile pattern); `solid` draws a uniform
+ * around a green core; `top_bottom_border` draws pale rows only above and below
+ * the green core (a courtyard with top/bottom paving); `solid` draws a uniform
  * grid (a stacked crate of pipes).
  */
 function GridPattern({ spec }: { spec: AssessDiagramSpec }) {
@@ -288,7 +289,9 @@ function GridPattern({ spec }: { spec: AssessDiagramSpec }) {
               {Array.from({ length: g.rows * g.cols }, (_, k) => {
                 const c = k % g.cols;
                 const r = Math.floor(k / g.cols);
-                const onEdge = g.style === "core_border" && (c === 0 || c === g.cols - 1 || r === 0 || r === g.rows - 1);
+                const onEdge = g.style === "core_border"
+                  ? (c === 0 || c === g.cols - 1 || r === 0 || r === g.rows - 1)
+                  : g.style === "top_bottom_border" && (r === 0 || r === g.rows - 1);
                 return (
                   <rect
                     key={k}

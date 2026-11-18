@@ -32,6 +32,7 @@ export default async function AdminMypResultPage({ params }: { params: Promise<{
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/admin/myp-results" variant="outline">← All MYP results</ButtonLink>
+            <ButtonLink href={`/admin/examinations/attempts/${result.attemptId}/script`} variant="outline">Complete script</ButtonLink>
             <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ PDF report" variant="primary" />
             <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="⬇ Excel" />
           </div>
