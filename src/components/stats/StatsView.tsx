@@ -166,7 +166,9 @@ export function StatsView({
     ? clean.categories.filter((category) => category.label.trim() || category.value).length === 0
     : grouped
       ? !(clean.groups ?? []).some((group) => group.frequency > 0) || (clean.groups ?? []).length === 0
-      : clean.values.length === 0;
+      : clean.chart === "box_plot"
+        ? clean.values.length === 0 && clean.fiveNumberSummary == null
+        : clean.values.length === 0;
   const computed = clean.chart === "bar_chart" ? null : statsSummary(clean.values);
 
   return (
