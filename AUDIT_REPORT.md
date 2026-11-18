@@ -270,3 +270,38 @@ Every examination across MYP MYP2-MYP5, Summative, Formative, Mock, First Term, 
 - **Remaining ~228 open_ended questions** still missing `structured_marks` — need to parse `marking_scheme` text or add structured marks config before auto-grading can work for them
 - Load test (50/100/200 concurrent students) not yet run — sandbox cannot reach production over HTTPS
 - All changes committed and pushed to `arena/bd4172b5-evalora`; production deployment READY/PROMOTED
+
+---
+
+## ADDENDUM — MYP5 Version C Question 33 Panel I Graph Line Fix (Post-Session Correction)
+
+**Date:** 2026-11-16 (continued work)
+**Question:** Q33 / Task 3 · Criterion C — Communicating, Panel I (P_n)
+**Question ID:** `ce000000-0000-4000-8000-000000001033`
+**Database:** Supabase project `nqxqisjtbfsratgztmch` — row-data update only, no schema change
+
+### Defect
+Panel I (P_n) displayed **isolated points only** — no connecting line between the sequence points (-24, 12, -6, 3, -1.5). The stored function `-24*(-0.5)^(x-1)` cannot be sampled as a continuous curve because raising a negative base (-0.5) to non-integer exponents (e.g., x=1.5) produces `NaN`, breaking the graph sampling. The source PDF `GRade 10 version C.pdf` shows points connected by a line.
+
+### Correction Applied
+Added a `strokes` entry to Panel I's graphBlock spec connecting all 5 points in sequence with a visible line:
+
+| Field | Value |
+|-------|-------|
+| `spec.strokes[0].id` | `stroke-1` |
+| `spec.strokes[0].points` | (1,-24) → (2,12) → (3,-6) → (4,3) → (5,-1.5) |
+| `spec.strokes[0].color` | `#0a5c36` (matches point color) |
+| `spec.strokes[0].width` | 2 |
+| `spec.strokes[0].visible` | `true` |
+
+### Files Changed
+- **Supabase:** `public.questions.prompt_doc` updated via `jsonb_set` on `{content,2,attrs,spec,strokes}` — verified by re-query
+- **Migration:** `supabase/migrations/20261118054739_myp5_grade10_sequences_version_c.sql` updated to include both the functions (`-24*(-0.5)^(x-1)`) and strokes for Panel I, and functions (`(x-4)^2`) for Panel II — for Git consistency
+- **Documentation:** This addendum
+
+### Verification
+- Database re-query confirmed `strokes` array present in Panel I spec
+- GraphView renders `spec.strokes` as SVG `<polyline>` with `strokeLinecap="round" strokeLinejoin="round"`
+- Panel II (R_n) uses function `(x-4)^2` which samples correctly as a smooth parabola — no fix needed
+- No question wording, marks, or structure changed
+- No student data affected (attempt_count = 0)
