@@ -12,7 +12,7 @@ const criterionShares=compile('src/lib/criterionShares.ts','scripts/__virtual_cr
 const live=compile('src/lib/live.ts','scripts/__virtual_live_grading.cjs',{'./responseTools':responseTools,'./assessParts':assessParts,'./examResults':examResults,'./criterionShares':criterionShares});
 const scoring=compile('src/lib/scoring.ts','scripts/__virtual_scoring_grading.cjs',{'./assessParts':assessParts});
 const examDeadline=compile('src/lib/examDeadline.ts','scripts/__virtual_exam_deadline_grading.cjs');
-const {attemptRows,gradeAttempt}=compile('src/lib/exam.ts','scripts/__virtual_exam_grading.cjs',{'./live':live,'./scoring':scoring,'./examDeadline':examDeadline});
+const {attemptRows,gradeAttempt,gradeAttemptDetailed}=compile('src/lib/exam.ts','scripts/__virtual_exam_grading.cjs',{'./live':live,'./scoring':scoring,'./examDeadline':examDeadline});
 const q=(id)=>({id:'qq'+id,question_id:id,quiz_id:'quiz',position:1,points:2,questions:{id,type:'single_choice',points:3,config:{},question_options:[{id:'correct',label:'yes',is_correct:true,position:0}]}});
 let tables,fail,gradeWrites;
 function setup(){tables={quiz_questions:[q('q')],exam_answers:[{id:'answer',attempt_id:'attempt',question_id:'q',answer:{option_id:'correct'},marked_by:null}]};fail={};gradeWrites=[]}
@@ -31,4 +31,31 @@ await test('legitimate unanswered question contributes max but not score',async(
 await test('invalid paper point allocation fails',async()=>{tables.quiz_questions[0].points=-1;const rows=await attemptRows(db,exam,attempt);await assert.rejects(()=>gradeAttempt(db,'attempt',rows),/Invalid examination question points/)});
 await test('malformed marking key leaves that answer pending, not the paper unsubmitted',async()=>{tables.quiz_questions[0].questions.question_options=[];const rows=await attemptRows(db,exam,attempt);const result=await gradeAttempt(db,'attempt',rows);assert.deepEqual(result,{score:0,max:2});assert.equal(gradeWrites.length,1);assert.equal(gradeWrites[0].is_correct,null);assert.equal(gradeWrites[0].points_awarded,null)});
 await test('stale option is left pending while the rest of the paper grades',async()=>{tables.quiz_questions.push(q('other'));tables.exam_answers.push({id:'other-answer',attempt_id:'attempt',question_id:'other',answer:{option_id:'removed-option'},marked_by:null});const rows=await attemptRows(db,exam,{...attempt,question_order:['qqq','qqother']});const result=await gradeAttempt(db,'attempt',rows);assert.deepEqual(result,{score:2,max:4});assert.equal(gradeWrites.length,2);const pending=gradeWrites.find((w)=>w.is_correct===null);assert.ok(pending&&pending.points_awarded===null)});
+await test('detailed summary separates auto, manual, failed and unanswered marks',async()=>{
+  const row=(id,type,options=[],points=2,config={})=>({id:'qq'+id,question_id:id,quiz_id:'quiz',position:1,points,questions:{id,type,points,config,question_options:options}});
+  tables.quiz_questions=[
+    row('ok','single_choice',[{id:'correct',label:'yes',is_correct:true,position:0}]),
+    row('manual','open_ended'),
+    row('bad','single_choice',[{id:'no',label:'no',is_correct:false,position:0}]),
+    row('blank','single_choice',[{id:'correct2',label:'yes',is_correct:true,position:0}]),
+  ];
+  tables.exam_answers=[
+    {id:'a-ok',attempt_id:'attempt',question_id:'ok',answer:{option_id:'correct'},marked_by:null},
+    {id:'a-manual',attempt_id:'attempt',question_id:'manual',answer:{text:'A reasoned response'},marked_by:null},
+    {id:'a-bad',attempt_id:'attempt',question_id:'bad',answer:{option_id:'no'},marked_by:null},
+    {id:'a-blank',attempt_id:'attempt',question_id:'blank',answer:{},marked_by:null},
+  ];
+  const summary=await gradeAttemptDetailed(db,'attempt',tables.quiz_questions);
+  assert.deepEqual(summary,{
+    score:2,max:8,autoScore:2,autoMax:2,gradedMax:2,resolvedMax:4,ungradedMax:4,
+    gradedCount:1,humanCount:0,ungradedCount:1,unansweredCount:1,failedCount:1,
+  });
+  const byId=Object.fromEntries(gradeWrites.map((w)=>[w.id,w]));
+  assert.equal(byId['a-ok'].grading_status,'auto_graded');
+  assert.equal(byId['a-manual'].grading_status,'not_graded');
+  assert.equal(byId['a-bad'].grading_status,'grading_failed');
+  assert.equal(byId['a-blank'].grading_status,'unanswered');
+  assert.deepEqual(await gradeAttempt(db,'attempt',tables.quiz_questions),{score:2,max:8},'legacy totals stay backward compatible');
+});
+
 console.log(`\n${count} exam grading checks passed (real grading logic; mocked DB).`);

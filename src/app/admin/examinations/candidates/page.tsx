@@ -165,7 +165,7 @@ export default async function ExaminationCandidatesPage({
                 <td className="font-mono font-bold tracking-wider">{c.access_code}</td>
                 <td>
                   {attempt ? (
-                    <>{attempt.attempt_number && attempt.attempt_number > 1 ? `Attempt ${attempt.attempt_number} · ` : ""}{attempt.status.replace(/_/g, " ")}<span className="block text-xs text-ink-soft">Started {fmtDateTime(attempt.started_at)}{attempt.score != null ? ` · ${attempt.score}/${attempt.max_score ?? "?"}` : ""}</span></>
+                    <>{attempt.attempt_number && attempt.attempt_number > 1 ? `Attempt ${attempt.attempt_number} · ` : ""}{attempt.status.replace(/_/g, " ")}<span className="block text-xs text-ink-soft">Started {fmtDateTime(attempt.started_at)}{attempt.score != null ? ` · ${attempt.score}/${attempt.max_score ?? "?"}` : ""}</span><Link href={`/admin/examinations/attempts/${attempt.id}/script`} className="mt-1 inline-block text-xs font-semibold text-evergreen-700 hover:underline">Open complete script →</Link></>
                   ) : "Not started"}
                 </td>
                 <td>{attempt?.extension_minutes ? <Badge tone="gold">+{attempt.extension_minutes} min</Badge> : "—"}</td>
