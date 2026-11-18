@@ -162,7 +162,7 @@ export function assessPartSummary(parts: AssessPart[]): string[] {
 
 /* ─── Answer normalisation ─────────────────────────────────────────────── */
 
-const normText = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+export const normText = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 /**
  * Canonical form for algebraic answers, so equivalent forms mark equal:

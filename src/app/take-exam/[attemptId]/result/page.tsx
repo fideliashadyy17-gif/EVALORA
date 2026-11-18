@@ -33,7 +33,7 @@ export default async function ResultPage({
   params: Promise<{ attemptId: string }>;
 }) {
   const { attemptId } = await params;
-  const ctx = await requireUser();
+  await requireUser();
 
   const admin = createAdminClient();
 

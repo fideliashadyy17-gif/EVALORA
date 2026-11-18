@@ -23,7 +23,7 @@ export class ScoringError extends Error {
   constructor() { super("The answer or marking key cannot be verified."); this.name = "ScoringError"; }
 }
 
-import { assessPartsFromConfig, canonicalExpression, parseStudentNumber, scoreAssessParts, textAnswersMatch } from "./assessParts";
+import { assessPartsFromConfig, canonicalExpression, normText, parseStudentNumber, scoreAssessParts, textAnswersMatch } from "./assessParts";
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 const validNumber = (v: unknown): number | null => {
