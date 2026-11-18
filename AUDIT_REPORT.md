@@ -158,6 +158,66 @@ No known content defects remain in either examination after the corrections abov
 
 ---
 
+## ADDENDUM — MYP5 Version C & Grade 9 Version C Graph Completion Audit
+
+**Branch:** `arena/bd4172b5-evalora` @ commit `9b4cfa1`
+**Database:** Supabase project `nqxqisjtbfsratgztmch` — row-data updates only, no schema changes
+**Production deployment:** `dpl_7iNz8W9pcq1ea99LtcCg96YSXo7P` — READY / PROMOTED on `https://evalora-six.vercel.app`
+
+### MYP5 Version C — Graph Fixes Applied
+
+All graphBlock specs in the MYP5 Version C examination (`ce000000-0000-4000-8000-000000000002`, quiz `ce000000-0000-4000-8000-000000000001`) were audited against the source PDF `GRade 10 version C.pdf`. Three graphBlock specs had `functions: []` (isolated points only, no line/curve drawn). All eight graphBlock specs now include proper function lines:
+
+| Position | Printed QN | Figure | Fix Applied | Function Expression |
+|----------|-----------|--------|-------------|---------------------|
+| 4 | 4 | First five terms of a linear sequence | Already had function | `4x - 1` ✓ |
+| 10 | 10 | First four terms of a geometric sequence | Already had function | `64*(3/4)^(x-1)` ✓ |
+| 16 | 16 | Linear and quadratic sequences | Already had functions | `3x + 3`, `x^2 - x + 6` ✓ |
+| **18** | **18** | **Cumulative flour bags used** | **Added missing function** | **`2x^2 + 16x`** (quadratic, S_n) |
+| 24 | 24 | First differences of a sequence | Already had function | `4x + 1` ✓ |
+| 30 | 30 | Monthly filtration volume | Already had function | `400*0.9^(x-1)` ✓ |
+| **33 Panel I** | **3** | **Panel I (P_n)** | **Added missing function** | **`-24*(-0.5)^(x-1)`** (geometric) |
+| **33 Panel II** | **3** | **Panel II (R_n)** | **Added missing function** | **`(x-4)^2`** (quadratic/parabola) |
+
+**Questions fixed:**
+- **Q18** (position 18): Cumulative flour bags graph now draws the quadratic curve S_n = 2x² + 16x through points (1,18), (2,40), (3,66), (4,96). Previously showed isolated points only.
+- **Q33** (position 33): Panel I now draws the geometric curve P_n = -24(-0.5)^(x-1) through points (-24, 12, -6, 3, -1.5). Panel II now draws the parabola R_n = (x-4)² through points (9, 4, 1, 0, 1). Previously showed isolated points only.
+
+### Grade 9 Version C — Complete Visual Audit
+
+All visual blocks in the Grade 9 Version C examination (`cd000000-0000-4000-8000-000000000002`, quiz `cd000000-0000-4000-8000-000000000001`) were audited against source PDFs `GRADE 9 version C.pdf` and `Grade_9_MYP_4_Mathematics_Summative_Assessment.pdf`. All eight visual blocks are present and properly configured:
+
+| Position | Printed QN | Visual Block Type | Status |
+|----------|-----------|-------------------|--------|
+| 2 | 2 | assessDiagramBlock (stem_leaf) | ✓ Complete with stem rows |
+| 5 | 5 | statsBlock (histogram) | ✓ Complete with frequency groups |
+| 7 | 7 | statsBlock (box_plot) | ✓ Complete with fiveNumberSummary |
+| 18 | 21 | graphBlock (ogive) | ✓ Complete with segments |
+| 19 | 22 | statsBlock (histogram, unequal-width) | ✓ Complete with frequency groups |
+| 26 | 29 | assessDiagramBlock (parallel box plots) | ✓ Complete with Fast + Express |
+| 28 | 1 | graphBlock (cumulative frequency curve) | ✓ Complete with segments |
+| 30 | 3 | statsBlock (bar_chart) | ✓ Complete with categories |
+
+No fixes were required for Grade 9 — all graphs, charts, plots, and diagrams are correctly rendered.
+
+### Technical Implementation
+
+- **Graph rendering:** The `GraphView` component (`src/components/graph/GraphView.tsx`) reads `spec.functions` from each graphBlock and renders SVG line/curve elements. No code changes were required — the renderer already supports function plotting.
+- **Database updates:** `prompt_doc` JSONB updated via `jsonb_set` on `public.questions` for question IDs `ce000000-0000-4000-8000-000000001018` (Q18) and `ce000000-0000-4000-8000-000000001033` (Q33).
+- **Backward compatible:** No schema changes, no RLS changes, no existing data modified except the targeted graph function additions.
+- **Automatic grading:** Graphs are display-only (student response captured via assess_parts numeric/text fields). Grading remains unchanged and functional.
+
+### Verification Checklist
+
+1. ✅ MYP5 Version C Q18: Graph displays quadratic curve S_n = 2x² + 16x, not just isolated points
+2. ✅ MYP5 Version C Q33 Panel I: Graph displays geometric curve P_n = -24(-0.5)^(x-1)
+3. ✅ MYP5 Version C Q33 Panel II: Graph displays parabola R_n = (x-4)²
+4. ✅ All other MYP5 graphBlock specs verified with functions
+5. ✅ All Grade 9 visual blocks verified present and complete
+6. ✅ Graphs render via SVG on desktop, tablet, and mobile (GraphView is server-component safe)
+7. ✅ Automatic grading unaffected — graph display is separate from answer capture
+8. ✅ Production deployment READY/PROMOTED on evalora-six.vercel.app
+
 ## ADDENDUM — Automatic Grading System Overhaul (all examinations)
 
 **Branch:** `arena/bd4172b5-evalora` @ commit `f46a672000c8bb5e1df4ba1da4ad49b6f44066ed`
