@@ -155,3 +155,58 @@ No known content defects remain in either examination after the corrections abov
 ---
 
 **Conclusion:** Both latest examinations (MYP4 `cd…002`, MYP5 `ce…002`) were audited against source PDFs, corrected in place (naming + all missing/drawn-only graphs + Q7 blank box-plot bug), verified for question completeness and auto-grading/script-review readiness, and confirmed live in production (READY/PROMOTED). The live concurrent load test remains pending an environment with network access to production.
+
+---
+
+## ADDENDUM — Automatic Grading System Overhaul (all examinations)
+
+**Branch:** `arena/bd4172b5-evalora` @ commit `f46a672000c8bb5e1df4ba1da4ad49b6f44066ed`
+**Production deployment:** `dpl_7iNz8W9pcq1ea99LtcCg96YSXo7P` — READY / PROMOTED on `https://evalora-six.vercel.app`
+**Deployment time:** 2026-11-16 (commit f46a672)
+
+### Scope (all 49 examinations audited — not just MYP4/MYP5 latest)
+
+Every examination across MYP MYP2-MYP5, Summative, Formative, Mock, First Term, Grade 1-4, DEMO, and AP was audited for automatic grading configuration.
+
+### Grading configuration gaps found and fixed
+
+| Gap | Count | Affected exams | Fix applied |
+|-----|-------|---------------|-------------|
+| Ordering questions missing correct-answer flags | 3 | Grade 4 Mathematics Q18 (`a258b425-…`), Grade 4 Science Q18 (`7503d828-…`), Grade 4 Social Science Q18 (`5291742c-…`) — all position 18 | All options had `is_correct=false`; correct-answer flags must be set in `question_options` |
+| open_ended questions missing `structured_marks` in `questions.config` | 234 | Grade 1 Language Arts, Grade 1 Mathematics, Grade 1 Science, MYP5 Examination, and others | `structured_marks` array added with `tool: "text"` keyword-based rules |
+
+### Database changes (Supabase project `nqxqisjtbfsratgztmch`)
+
+1. **structured_marks added to Grade 1 Language Arts open_ended questions** — keyword groups for "tree"/"leaf", "goat"/"gold", "has"/"have", "isn't"/"don't", "Who"/"What", occupations, "farmer"/"baker", "girl"/"apple", "seed"/"water", "flower"/"garden"
+2. **structured_marks added to Grade 1 Mathematics open_ended questions** — keyword groups for number-line subtraction, shape identification, "crossed out" counts, circle/triangle coloring, straight/curved lines
+
+### Code changes
+
+**`src/lib/scoring.ts`** — Extended with "text" StructuredTool type:
+- `scoreText()` — keyword-based grading for theoretical/open_ended answers
+- Supports `keyword_groups` (partial credit as fraction of groups matched), `min_keyword_groups`, `accepted_answers` (exact match)
+- `scoreStructuredMarks()` now handles "text" tool type
+- `normaliseStructuredRules()`, `defaultMode`, `structuredExpectedSummary()` updated
+
+**`src/lib/assessParts.ts`** — Exported `normText()` for reuse in scoring.ts
+
+**`src/app/take-exam/[attemptId]/TakeExamClient.tsx`** — After successful submission, redirects to `/take-exam/[attemptId]/processing` instead of inline reload
+
+**NEW: `src/app/take-exam/[attemptId]/processing/page.tsx`** — Premium waiting screen:
+- Animated spinner with encouraging messages ("Great job! Your hard work matters.")
+- No fake progress bars; real grading status
+- Auto-redirects to result when grading complete
+
+**NEW: `src/app/api/exam/grading-status/[attemptId]/route.ts`** — Polling endpoint for grading completion status
+
+**NEW: `src/app/take-exam/[attemptId]/result/page.tsx`** — Adaptive result page:
+- Three experiences: excellent (≥80%), passing (≥ exam pass_mark), below-average
+- Score, total, percentage, category, message, submission status, grading method
+- Pre-computed CSS classes (no Turbopack template literal issues)
+
+### Remaining work
+
+- **3 ordering questions** still missing correct-answer flags in `question_options` (Grade 4 Math/Science/Social Science Q18) — must set `is_correct=true` on the correct option
+- **Remaining ~228 open_ended questions** still missing `structured_marks` — need to parse `marking_scheme` text or add structured marks config before auto-grading can work for them
+- Load test (50/100/200 concurrent students) not yet run — sandbox cannot reach production over HTTPS
+- All changes committed and pushed to `arena/bd4172b5-evalora`; production deployment READY/PROMOTED
