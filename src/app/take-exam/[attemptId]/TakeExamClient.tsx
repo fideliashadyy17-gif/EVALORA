@@ -879,19 +879,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           preservePendingQueue: false,
         },
       );
-      const reloaded = await load();
-      if (!reloaded) {
-        setState((prev) =>
-          prev
-            ? {
-                ...prev,
-                attempt: {
-                  ...prev.attempt,
-                  status: payload.status ?? "submitted",
-                },
-              }
-            : prev,
-        );
+      // Grading is complete server-side. Hand off to the premium processing
+      // screen, which will then show the result.
+      if (typeof window !== "undefined") {
+        window.location.href = `/take-exam/${attemptId}/processing`;
       }
     } catch {
       setSubmitError("Could not connect. Submission was not confirmed; your answers are preserved — reconnect and retry.");

@@ -178,7 +178,7 @@ export function scoreAnswerDetailed(
   return { ...result, perPart, structured };
 }
 
-export type StructuredTool = "graph" | "statistics" | "stem_leaf" | "data_table";
+export type StructuredTool = "graph" | "statistics" | "stem_leaf" | "data_table" | "text";
 
 export interface StructuredMarkRule {
   id: string;
@@ -224,7 +224,7 @@ export function normaliseStructuredRules(raw: unknown): StructuredMarkRule[] {
     const id = typeof entry.id === "string" ? entry.id.trim().slice(0, 60) : "";
     const tool = entry.tool;
     const points = finite(entry.points);
-    if (!id || !["graph", "statistics", "stem_leaf", "data_table"].includes(String(tool))) continue;
+    if (!id || !["graph", "statistics", "stem_leaf", "data_table", "text"].includes(String(tool))) continue;
     if (points === null || points <= 0) continue;
     if (!isRecord(entry.expected)) continue;
     out.push({
@@ -245,6 +245,7 @@ function defaultMode(tool: StructuredTool): string {
   if (tool === "graph") return "graph_points";
   if (tool === "statistics") return "statistics";
   if (tool === "stem_leaf") return "stem_leaf";
+  if (tool === "text") return "keyword_match";
   return "data_table";
 }
 
@@ -447,6 +448,47 @@ function scoreDataTable(expected: Record<string, unknown>, payload: Record<strin
   };
 }
 
+/** Keyword-based scoring for written/theoretical answers. */
+function scoreText(expected: Record<string, unknown>, payload: Record<string, unknown>) {
+  let raw = "";
+  if (typeof payload.text === "string") raw = payload.text;
+  else if (typeof payload.answer === "string") raw = payload.answer;
+  else if (payload.value && typeof payload.value === "string") raw = payload.value;
+  const normalized = normText(raw);
+  const groups = Array.isArray(expected.keyword_groups)
+    ? expected.keyword_groups.filter((g): g is string[] => Array.isArray(g)).map((g) => g.map(String).map(normText))
+    : [];
+  const minGroups = typeof expected.min_keyword_groups === "number" ? expected.min_keyword_groups : groups.length;
+  const accepted = Array.isArray(expected.accepted_answers)
+    ? expected.accepted_answers.filter((a): a is string => typeof a === "string").map((a) => normText(a))
+    : [];
+
+  let matchedGroups = 0;
+  const matchedGroupNotes: string[] = [];
+  for (const group of groups) {
+    const hit = group.some((kw) => normalized.includes(kw));
+    if (hit) matchedGroups++;
+    else matchedGroupNotes.push(`Missing keyword group: ${group.join(", ")}.`);
+  }
+
+  const exactMatch = accepted.length > 0 && normalized.length > 0 && accepted.some((a) => textAnswersMatch(normalized, a));
+  const keywordMatch = groups.length > 0 && matchedGroups >= minGroups;
+  // Partial credit: fraction of keyword groups matched (capped at 1).
+  const matched = groups.length > 0 ? matchedGroups / groups.length : (exactMatch || keywordMatch ? 1 : 0);
+  const checks = 1;
+
+  let detail = "";
+  if (exactMatch) detail = "Answer matches an accepted response.";
+  else if (groups.length > 0) detail = `Matched ${matchedGroups} of ${groups.length} required concept group(s).`;
+  else if (groups.length === 0 && accepted.length === 0) detail = "No text grading criteria were configured.";
+  else {
+    const missing = matchedGroupNotes.slice(0, 3).join(" ");
+    detail = `Answer did not match the required concepts. ${missing}`;
+  }
+
+  return { checks, matched, detail };
+}
+
 /** Score every configured structured construction. Missing work scores zero, never full marks. */
 export function scoreStructuredMarks(
   rawRules: unknown,
@@ -477,7 +519,9 @@ export function scoreStructuredMarks(
           ? scoreStatistics(rule.expected, source)
           : rule.tool === "stem_leaf"
             ? scoreStemLeaf(rule.expected, source)
-            : scoreDataTable(rule.expected, source);
+            : rule.tool === "text"
+              ? scoreText(rule.expected, source)
+              : scoreDataTable(rule.expected, source);
     const ratio = checked.checks > 0 ? checked.matched / checked.checks : 0;
     const earned = round(rule.points * Math.max(0, Math.min(1, ratio)));
     return {
@@ -515,5 +559,15 @@ export function structuredExpectedSummary(rule: StructuredMarkRule): string {
       .join("; ");
   }
   if (rule.tool === "data_table") return rule.label;
+  if (rule.tool === "text") {
+    const parts: string[] = [];
+    if (Array.isArray(rule.expected.keyword_groups)) {
+      parts.push("Keywords: " + rule.expected.keyword_groups.map((g: unknown) => Array.isArray(g) ? g.join(" / ") : String(g)).join("; "));
+    }
+    if (Array.isArray(rule.expected.accepted_answers)) {
+      parts.push("Accepted: " + rule.expected.accepted_answers.join(" / "));
+    }
+    return parts.length ? parts.join(" | ") : rule.label;
+  }
   return rule.label;
 }
