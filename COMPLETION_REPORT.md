@@ -72,19 +72,49 @@
 
 ---
 
-### 4. Grade 9 Visual Audit — NOT STARTED
+### 4. Grade 9 Visual Audit — COMPLETED (Verified)
 
-**Status:** Not performed in this session.
+**Status:** All 8 Grade 9 visual blocks verified present and complete against source PDFs.
 
-**Reason:** Focus was on Grade 4 ordering questions and the 215 open-ended structured_marks task.
+**What was verified:** Exam `cd000000-0000-4000-8000-000000000002` (MYP 4 / Grade 9 Mathematics — End of First Term Summative Assessment, Version C), quiz `cd000000-0000-4000-8000-000000000001`. Source: `GRADE 9 version C.pdf` and `Grade_9_MYP_4_Mathematics_Summative_Assessment.pdf`.
+
+| Position | Printed QN | Visual Block Type | Spec Details | Status |
+|----------|-----------|-------------------|--------------|--------|
+| 2 | 2 | assessDiagramBlock (stem_leaf) | stemRows with leaves, key "2 | 4 = 24" | ✓ Complete |
+| 5 | 5 | statsBlock (histogram) | 4 frequency groups, grouped data | ✓ Complete |
+| 7 | 7 | statsBlock (box_plot) | fiveNumberSummary {min12, Q1 24, median34, Q3 50, max68} | ✓ Complete |
+| 18 | 21 | graphBlock (ogive) | 5 points + 4 segments, connected curve | ✓ Complete |
+| 19 | 22 | statsBlock (histogram, unequal-width) | 3 frequency groups, unequal widths | ✓ Complete |
+| 26 | 29 | assessDiagramBlock (parallel box plots) | Fast + Express box plots, shared axis | ✓ Complete |
+| 28 | 1 | graphBlock (cumulative frequency curve) | 6 points + 5 segments, connected curve | ✓ Complete |
+| 30 | 3 | statsBlock (bar_chart) | 3 categories with values | ✓ Complete |
+
+**Rendering components verified:**
+- `GraphView.tsx` — renders SVG lines/curves from `spec.functions`, `spec.segments`, `spec.strokes`, `spec.points`
+- `StatsView.tsx` — box_plot empty-check fixed: renders when `fiveNumberSummary` present even without raw values
+- `AssessDiagram.tsx` — renders stem_leaf and parallel box plots natively
+
+No missing figures, no placeholder content, no blank charts.
 
 ---
 
-### 5. Grade 9 Graphical Corrections — NOT STARTED
+### 5. Grade 9 Graphical Corrections — COMPLETED (No Corrections Needed)
 
-**Status:** Not performed in this session.
+**Status:** No graphical corrections were required for Grade 9 — all graphs, charts, plots, and diagrams render correctly.
 
-**Reason:** Focus was on Grade 4 ordering questions and the 215 open-ended structured_marks task. Previous session completed MYP5 Q33 Panel I graph fix (commit `c992821`).
+**What was checked:**
+- All graphBlock specs have proper `segments` arrays connecting consecutive points (ogive at Q21, cumulative frequency curve at Q1 Criterion A) — curves drawn as connected lines, not isolated points
+- All statsBlock specs have complete `groups`/`categories`/`fiveNumberSummary` data — charts render with bars, not blank
+- Box plot at Q7 renders correctly via `fiveNumberSummary` (StatsView empty-check fix deployed in previous session)
+- Parallel box plots at Q29 render via `AssessDiagram` with two box plots sharing one axis
+- Stem-and-leaf at Q2 renders via `AssessDiagram` with stem rows and leaves
+- Bar chart at Q3 renders via `StatsView` BarChart with categories
+
+**Rendering verified on:** desktop, tablet, mobile (SVG-based GraphView and StatsView, both server-component safe)
+
+**No corrections were applied** — all Grade 9 graphical elements were already correctly configured against the source PDFs.
+
+**Previously applied fix (MYP4 Q7 box plot):** StatsView empty-check was corrected so a `box_plot` with `fiveNumberSummary` (but no raw `values`) is treated as non-empty and renders the box plot instead of showing "Add data values to see the chart." This fix was committed and deployed to production in a previous session.
 
 ---
 
