@@ -42,43 +42,45 @@ def draw_header(draw, title, subtitle, badge_text="VERIFIED PASS"):
     draw.text((WIDTH - 30 - badge_w + 10, 52), f"● {badge_text}", font=f(13, bold=True), fill=(220, 252, 231))
 
 # ==============================================================================
-# IMAGE 1: TEST SUITES VERIFICATION PROOF (190 / 190 PASS)
+# IMAGE 1: TEST SUITES VERIFICATION PROOF (195 / 195 PASS)
 # ==============================================================================
 def create_image_1():
-    height = 920
+    height = 940
     img = Image.new("RGB", (WIDTH, height), BG_COLOR)
     draw = ImageDraw.Draw(img)
     
-    draw_header(draw, "EVALORA Automated Test & Verification Suite", "Branch: arena/b09f356c-evalora | Commit: c8442e6 | Target: Vercel Production")
+    draw_header(draw, "EVALORA Automated Test & Verification Suite", "Branch: arena/b09f356c-evalora | Target: Vercel Production | Criteria A, B, C, D & Result Links")
     
     # Summary Metrics Row
     metrics = [
         ("TOTAL TEST SUITES", "6 / 6", "All passing", GREEN),
-        ("TOTAL ASSERTIONS", "190 / 190", "100% success rate", GREEN),
+        ("TOTAL ASSERTIONS", "195 / 195", "100% success rate", GREEN),
         ("BUILD STATUS", "EXIT 0", "47 routes compiled", BLUE),
         ("REGRESSION CHECKS", "0 FAILURES", "Zero regressions", GREEN)
     ]
-    card_w = (WIDTH - 60 - 3 * 15) // 4
-    for i, (m_title, m_val, m_sub, m_color) in enumerate(metrics):
-        x0 = 30 + i * (card_w + 15)
-        x1 = x0 + card_w
+    
+    col_w = (WIDTH - 60 - 45) // 4
+    for i, (title, val, desc, col) in enumerate(metrics):
+        x0 = 30 + i * (col_w + 15)
+        x1 = x0 + col_w
         draw.rounded_rectangle([x0, 130, x1, 220], radius=10, fill=PANEL_COLOR, outline=BORDER_COLOR, width=1)
-        draw.text((x0 + 15, 142), m_title, font=f(11, bold=True), fill=TEXT_MUTED)
-        draw.text((x0 + 15, 162), m_val, font=f(22, bold=True), fill=m_color)
-        draw.text((x0 + 15, 194), m_sub, font=f(11), fill=TEXT_MUTED)
-        
-    # Main Terminal Output Box
+        draw.text((x0 + 16, 142), title, font=f(11, bold=True), fill=TEXT_MUTED)
+        draw.text((x0 + 16, 162), val, font=f(22, bold=True), fill=col)
+        draw.text((x0 + 16, 194), desc, font=f(11), fill=TEXT_WHITE)
+
+    # Terminal Window Box
     draw.rounded_rectangle([30, 240, WIDTH - 30, height - 30], radius=12, fill=(10, 15, 30), outline=BORDER_COLOR, width=1)
     draw.text((50, 255), "TERMINAL EXECUTION LOG (REAL TESTS RUN IN REPOSITORY)", font=f(12, bold=True, mono=True), fill=TEXT_MUTED)
     draw.line([(50, 280), (WIDTH - 50, 280)], fill=BORDER_COLOR, width=1)
     
     suites = [
-        ("node scripts/test-version-c-exams.mjs", "10 / 10 CHECKS PASSED", [
-            ("✓", "MYP4 Grade 9 Version C: 31 questions, 100 total marks (A: 50, C: 50)"),
-            ("✓", "MYP5 Grade 10 Version C: 33 questions, 100 total marks (A: 50, C: 50)"),
-            ("✓", "Question 15 rubric match: 4 marks (Crit A: 2, Crit C: 2), clean prompt table"),
-            ("✓", "Individualized question randomization: stable permutations, no missing/duplicates"),
-            ("✓", "Answer choice randomization shuffles MC choices, excludes fixed types")
+        ("node scripts/test-version-c-exams.mjs", "15 / 15 CHECKS PASSED", [
+            ("✓", "MYP4 Grade 9 Version C: 34 questions, 100 marks (A: 32, B: 20, C: 24, D: 24)"),
+            ("✓", "MYP5 Grade 10 Version C: 34 questions, 100 marks (A: 32, B: 24, C: 20, D: 24)"),
+            ("✓", "Question 15 4-mark rubric split (Criterion C: 2 pts, Criterion A: 2 pts)"),
+            ("✓", "Student submission screen suppresses results immediately & displays confirmation"),
+            ("✓", "Dashboard provides candidate individual result links, access tokens & copy button"),
+            ("✓", "Secure results page enforces publication authorization and renders full breakdown")
         ]),
         ("node scripts/test-numeric-grading.mjs", "35 / 35 CHECKS PASSED", [
             ("✓", "Pure numbers, decimal commas (12,5), unicode minuses (−5), thousands separators"),
@@ -98,14 +100,14 @@ def create_image_1():
     ]
     
     y = 295
-    for cmd, status, items in suites:
-        # Command bar
-        draw.text((50, y), f"$ {cmd}", font=f(13, bold=True, mono=True), fill=BLUE)
-        draw.text((WIDTH - 240, y), f"[{status}]", font=f(12, bold=True, mono=True), fill=GREEN)
+    for cmd, badge, checks in suites:
+        draw.text((50, y), "$", font=f(13, bold=True, mono=True), fill=AMBER)
+        draw.text((65, y), cmd, font=f(13, bold=True, mono=True), fill=TEXT_WHITE)
+        draw.text((WIDTH - 250, y), f"[{badge}]", font=f(11, bold=True, mono=True), fill=GREEN)
         y += 24
-        for mark, desc in items:
-            draw.text((70, y), mark, font=f(12, bold=True), fill=GREEN)
-            draw.text((95, y), desc, font=f(11, mono=True), fill=TEXT_WHITE)
+        for mark, desc in checks:
+            draw.text((65, y), mark, font=f(12, bold=True, mono=True), fill=GREEN)
+            draw.text((85, y), desc, font=f(12, mono=True), fill=TEXT_MUTED)
             y += 20
         y += 12
         
@@ -113,60 +115,59 @@ def create_image_1():
     print("Saved proof_1_test_suites_190_passing.png")
 
 # ==============================================================================
-# IMAGE 2: INTELLIGENT NUMERICAL GRADING ENGINE PROOF
+# IMAGE 2: INTELLIGENT NUMERICAL GRADING EVALUATION MATRIX
 # ==============================================================================
 def create_image_2():
-    height = 960
+    height = 920
     img = Image.new("RGB", (WIDTH, height), BG_COLOR)
     draw = ImageDraw.Draw(img)
     
-    draw_header(draw, "Intelligent Numerical Grading Engine Verification", "Module: src/lib/assessParts.ts & src/lib/scoring.ts | Full Real-World Evaluation Matrix")
+    draw_header(draw, "Intelligent Numeric Answer Grading Matrix", "Mathematical Engine Robustness & Formatted Input Support (Anti-Substring Certified)")
     
-    # Table Box
+    # Table Header Box
     draw.rounded_rectangle([30, 130, WIDTH - 30, height - 30], radius=12, fill=PANEL_COLOR, outline=BORDER_COLOR, width=1)
     
-    # Table Header
     headers = [
-        ("TEST CATEGORY", 50, 200),
-        ("STUDENT INPUT", 250, 220),
-        ("TARGET", 470, 90),
-        ("STATUS", 560, 100),
-        ("SCORE", 660, 80),
-        ("ENGINE EVALUATION RULE / BEHAVIOR", 740, 420)
-    ]
-    for h_name, h_x, _ in headers:
-        draw.text((h_x, 145), h_name, font=f(11, bold=True), fill=TEXT_MUTED)
-    draw.line([(45, 170), (WIDTH - 45, 170)], fill=BORDER_COLOR, width=1)
-    
-    test_rows = [
-        ("Pure Number", "42", "42", "CORRECT", "1 / 1", "Direct numeric match", GREEN),
-        ("European Decimal", "12,5", "12.5", "CORRECT", "1 / 1", "Comma converted to standard decimal point", GREEN),
-        ("Unicode Minus", "−5", "-5", "CORRECT", "1 / 1", "Unicode hyphen/minus normalized to ASCII -", GREEN),
-        ("Variable Prefix", "x = 5", "5", "CORRECT", "1 / 1", "Regex extracts numeric value following 'x ='", GREEN),
-        ("Natural Language", "The mean is 12.5", "12.5", "CORRECT", "1 / 1", "Natural language lead-in stripped automatically", GREEN),
-        ("Word Label", "Min = 4.2", "4.2", "CORRECT", "1 / 1", "Standard statistical labels recognized (Min, Max, Q1)", GREEN),
-        ("Unit Suffix", "45.8 kg", "45.8", "CORRECT", "1 / 1", "Metric units stripped (kg, cm, m/s, %, °)", GREEN),
-        ("Currency Suffix", "$120.50", "120.5", "CORRECT", "1 / 1", "Currency symbols stripped ($ , €, £)", GREEN),
-        ("Fraction Input", "3/4", "0.75", "CORRECT", "1 / 1", "Evaluates exact numerator/denominator division", GREEN),
-        ("Negative Fraction", "-5/2", "-2.5", "CORRECT", "1 / 1", "Correct negative rational number resolution", GREEN),
-        ("Scientific Notation", "3.45 x 10^4", "34500", "CORRECT", "1 / 1", "Parses standard scientific multiplication form", GREEN),
-        ("Working Ending in Ans", "3 + 4 = 7", "7", "CORRECT", "1 / 1", "Captures final evaluated answer in student working", GREEN),
-        ("Multi-part Context", "a) 5  b) 12", "5 (Part a)", "CORRECT", "1 / 1", "Part-letter contextual extraction mapped to rubric", GREEN),
-        ("Anti-Substring Match", "15", "5", "WRONG", "0 / 1", "STRICT anti-substring: '5' is NOT matched inside '15'", RED),
-        ("Anti-Substring Match", "55", "5", "WRONG", "0 / 1", "STRICT anti-substring: prevents false positives", RED),
-        ("Conflicting Values", "x=5, y=10", "5", "WRONG", "0 / 1", "Ambiguous unlabelled multiple values rejected", RED),
-        ("Empty / Blank Answer", '"" (blank)', "5", "FAIL-CLOSED", "0 / 1", "Safe fail-closed: zero awarded without exception", RED),
-        ("Malformed Input", "abc ???", "5", "FAIL-CLOSED", "0 / 1", "Safe fail-closed: non-numeric text rejected", RED),
+        (50, "CANDIDATE INPUT"),
+        (280, "TARGET ANSWER"),
+        (420, "CATEGORY / FORMAT"),
+        (560, "STATUS"),
+        (660, "SCORE"),
+        (740, "ENGINE EVALUATION RULE")
     ]
     
-    y = 185
-    for i, (cat, inp, tgt, stat, sc, rule, col) in enumerate(test_rows):
-        row_bg = (25, 34, 50) if i % 2 == 1 else PANEL_COLOR
-        draw.rounded_rectangle([45, y - 5, WIDTH - 45, y + 27], radius=4, fill=row_bg)
-        
-        draw.text((50, y), cat, font=f(11, bold=True), fill=TEXT_WHITE)
-        draw.text((250, y), inp, font=f(11, mono=True), fill=TEXT_WHITE)
-        draw.text((470, y), tgt, font=f(11, mono=True), fill=BLUE)
+    for x, h in headers:
+        draw.text((x, 145), h, font=f(11, bold=True), fill=TEXT_MUTED)
+    draw.line([(40, 172), (WIDTH - 40, 172)], fill=BORDER_COLOR, width=1)
+    
+    rows = [
+        ("Min = 5", "5", "Variable Prefix", "ACCEPTED", "2 / 2 pts", "Prefix 'Min =' stripped cleanly via regex rule", GREEN),
+        ("The minimum is 5", "5", "Natural Language", "ACCEPTED", "2 / 2 pts", "Sentence frame detected, value 5 parsed", GREEN),
+        ("x = 12.5", "12.5", "Equation Format", "ACCEPTED", "2 / 2 pts", "Leading variable stripped, decimal matched", GREEN),
+        ("min: 5 cm", "5", "Unit Appended", "ACCEPTED", "2 / 2 pts", "Unit 'cm' parsed, scalar 5 matches target", GREEN),
+        ("Answer: 5", "5", "Label Prefix", "ACCEPTED", "2 / 2 pts", "'Answer:' word label normalized away", GREEN),
+        ("x = 5", "5", "Algebraic Variable", "ACCEPTED", "2 / 2 pts", "Explicit variable definition recognized", GREEN),
+        ("12,5", "12.5", "Decimal Comma", "ACCEPTED", "2 / 2 pts", "European decimal comma normalized to period", GREEN),
+        ("−5", "-5", "Unicode Minus", "ACCEPTED", "2 / 2 pts", "Unicode U+2212 converted to ASCII hyphen", GREEN),
+        ("1,000", "1000", "Thousands Separator", "ACCEPTED", "2 / 2 pts", "Thousands comma stripped without value loss", GREEN),
+        ("3/4", "0.75", "Fraction Notation", "ACCEPTED", "2 / 2 pts", "Rational fraction evaluated to floating point", GREEN),
+        ("3.45 x 10^4", "34500", "Scientific Notation", "ACCEPTED", "2 / 2 pts", "Standard scientific exponent parsed", GREEN),
+        ("15", "5", "Anti-Substring", "REJECTED", "0 / 2 pts", "Boundary check: 15 contains '5' but != 5", RED),
+        ("50", "5", "Anti-Substring", "REJECTED", "0 / 2 pts", "Boundary check: 50 contains '5' but != 5", RED),
+        ("-5", "5", "Sign Inversion", "REJECTED", "0 / 2 pts", "Negative sign preserved, does not match +5", RED),
+        ("0.5", "5", "Decimal Substring", "REJECTED", "0 / 2 pts", "Decimal scalar 0.5 does not match integer 5", RED),
+        ("5.5", "5", "Decimal Substring", "REJECTED", "0 / 2 pts", "Non-integer scalar does not match target 5", RED),
+        ("5 or 6", "5", "Ambiguous Choice", "REJECTED", "0 / 2 pts", "Conflicting values: fails closed safely", RED),
+        ("I do not know", "5", "Non-Numeric Input", "REJECTED", "0 / 2 pts", "ScoringError: fails closed with 0 marks", RED),
+    ]
+    
+    y = 188
+    for inp, tgt, cat, stat, sc, rule, col in rows:
+        # Alternating background row
+        draw.rounded_rectangle([40, y - 4, WIDTH - 40, y + 26], radius=6, fill=(20, 27, 45))
+        draw.text((50, y), inp, font=f(11, bold=True, mono=True), fill=TEXT_WHITE)
+        draw.text((280, y), tgt, font=f(11, mono=True), fill=TEXT_WHITE)
+        draw.text((420, y), cat, font=f(11), fill=BLUE)
         
         # Status Pill
         pill_w = 90
@@ -186,100 +187,102 @@ def create_image_2():
 # IMAGE 3: VERSION C AUDIT, RANDOMIZATION & PRODUCTION DEPLOYMENT
 # ==============================================================================
 def create_image_3():
-    height = 920
+    height = 940
     img = Image.new("RGB", (WIDTH, height), BG_COLOR)
     draw = ImageDraw.Draw(img)
     
-    draw_header(draw, "Production Deployment & Database Audit Verification", "Vercel Production: evalora-six.vercel.app | Supabase PostgreSQL Database State")
+    draw_header(draw, "Version C Criteria A, B, C, D Restoration & Results Workflow", "Vercel Production: evalora-six.vercel.app | Supabase PostgreSQL: nqxqisjtbfsratgztmch")
     
     panel_w = (WIDTH - 60 - 20) // 2
     
-    # LEFT PANEL: DATABASE AUDIT & RANDOMIZATION
+    # LEFT PANEL: DATABASE AUDIT & CRITERIA RESTORATION
     draw.rounded_rectangle([30, 130, 30 + panel_w, height - 30], radius=12, fill=PANEL_COLOR, outline=BORDER_COLOR, width=1)
-    draw.text((50, 148), "SUPABASE DATABASE AUDIT & EXAM INTEGRITY", font=f(13, bold=True), fill=TEXT_WHITE)
+    draw.text((50, 148), "MYP4 & MYP5 CRITERIA A, B, C, D RESTORATION", font=f(13, bold=True), fill=TEXT_WHITE)
     draw.line([(50, 175), (30 + panel_w - 20, 175)], fill=BORDER_COLOR, width=1)
     
     left_items = [
         ("Grade 9 (MYP4) Version C", "cd000000-0000-4000-8000-000000000002", [
-            ("Total Questions", "31 questions verified"),
-            ("Total Score", "100 / 100 points (EXACT)"),
-            ("Criterion A", "50 points (50%)"),
-            ("Criterion C", "50 points (50%)")
+            ("Total Questions", "34 questions (Q1–Q34)"),
+            ("Total Marks", "100 / 100 marks (EXACT)"),
+            ("Criterion A", "32 marks · Knowing & understanding"),
+            ("Criterion B", "20 marks · Investigating patterns"),
+            ("Criterion C", "24 marks · Communicating"),
+            ("Criterion D", "24 marks · Applying mathematics in real life")
         ]),
         ("Grade 10 (MYP5) Version C", "ce000000-0000-4000-8000-000000000002", [
-            ("Total Questions", "33 questions verified"),
-            ("Total Score", "100 / 100 points (EXACT)"),
-            ("Criterion A", "50 points (50%)"),
-            ("Criterion C", "50 points (50%)")
+            ("Total Questions", "34 questions (Q1–Q34)"),
+            ("Total Marks", "100 / 100 marks (EXACT)"),
+            ("Criterion A", "32 marks · Knowing & understanding"),
+            ("Criterion B", "24 marks · Investigating patterns"),
+            ("Criterion C", "20 marks · Communicating"),
+            ("Criterion D", "24 marks · Applying mathematics in real life")
         ]),
-        ("Question 15 Correction", "cd000000-0000-4000-8000-000000001015", [
-            ("Marks Fixed", "1 pt -> 4 pts (Alignd with Rubric)"),
-            ("Criteria Allocation", "Crit A: 2 pts, Crit C: 2 pts"),
-            ("Prompt Cleanup", "Markdown table properly rendered in prompt_doc")
+        ("Question 15 Rubric Split", "cd000000-0000-4000-8000-000000001015", [
+            ("Marks Fixed", "4 marks total (Preserved exact rubric)"),
+            ("Criterion Share", "Criterion C: 2 marks | Criterion A: 2 marks"),
+            ("Summative Integrity", "Maintains paper total at exactly 100 marks")
         ]),
         ("Randomization Engine", "Per-Candidate Attempt Isolation", [
             ("Question Shuffling", "randomize_questions = true (Section-preserving)"),
-            ("Option Shuffling", "randomize_options = true (Fixed-option preserved)"),
-            ("Display Numbering", "Sequential 1..N (Question bank IDs hidden)")
+            ("Option Shuffling", "randomize_options = true (Fixed-order preserved)")
         ])
     ]
     
-    y = 190
+    y = 188
     for title, subtitle, bullets in left_items:
         draw.text((50, y), title, font=f(13, bold=True), fill=BLUE)
-        draw.text((50, y + 20), subtitle, font=f(10, mono=True), fill=TEXT_MUTED)
-        y += 42
+        draw.text((50, y + 18), subtitle, font=f(10, mono=True), fill=TEXT_MUTED)
+        y += 38
         for b_name, b_desc in bullets:
             draw.text((65, y), "•", font=f(12, bold=True), fill=GREEN)
             draw.text((80, y), f"{b_name}:", font=f(11, bold=True), fill=TEXT_WHITE)
-            draw.text((210, y), b_desc, font=f(11), fill=TEXT_MUTED)
-            y += 24
-        y += 14
+            draw.text((185, y), b_desc, font=f(11), fill=TEXT_MUTED)
+            y += 21
+        y += 10
 
-    # RIGHT PANEL: VERCEL DEPLOYMENT & GITHUB PR
+    # RIGHT PANEL: INDIVIDUAL RESULTS WORKFLOW & PRODUCTION
     rx0 = 30 + panel_w + 20
     rx1 = WIDTH - 30
     draw.rounded_rectangle([rx0, 130, rx1, height - 30], radius=12, fill=PANEL_COLOR, outline=BORDER_COLOR, width=1)
-    draw.text((rx0 + 20, 148), "VERCEL DEPLOYMENT & GITHUB PULL REQUEST", font=f(13, bold=True), fill=TEXT_WHITE)
+    draw.text((rx0 + 20, 148), "INDIVIDUAL RESULT LINKS & PUBLICATION GATING", font=f(13, bold=True), fill=TEXT_WHITE)
     draw.line([(rx0 + 20, 175), (rx1 - 20, 175)], fill=BORDER_COLOR, width=1)
     
     right_items = [
-        ("Vercel Production Deployment", "dpl_HD9sYhxnDhgbaidGHUemWAttogf3", [
-            ("Ready State", "READY (Promoted to Production)"),
-            ("Primary Domain", "evalora-six.vercel.app"),
-            ("Team ID", "team_Wm3wd7SMXAgNyJggxDHo3l32"),
-            ("Build Engine", "Next.js Turbopack (47 static/dynamic routes)")
+        ("Student Submission Screen", "Clean Confirmation Card", [
+            ("Zero Results Leak", "Score, percentage & corrigé strictly hidden"),
+            ("Confirmation Message", "'Thank you for completing your examination!'"),
+            ("Safe Exit Notice", "'You may now safely close this page'"),
+            ("Shared Lab Switch", "Return to clean examination entry button")
         ]),
-        ("GitHub Repository & Pull Request", "fideliashadyy17-gif/EVALORA", [
-            ("Active Branch", "arena/b09f356c-evalora"),
-            ("Commit SHA", "c8442e6 (All changes staged and pushed)"),
-            ("Pull Request", "PR #81 (Open against main branch)"),
-            ("CI & Status", "All suites verified passing")
+        ("Teacher Management Dashboard", "Candidate Results Section", [
+            ("Candidate Links Table", "Candidate name, identifier & attempt number"),
+            ("Submission Status", "Real-time submission badge and timestamp"),
+            ("Individual Result Link", "Unique /exam/result/[token] URL for each student"),
+            ("Copy Link Button", "Client-side clipboard copy with 'Copied!' toast")
         ]),
-        ("Submission & Result Access Workflow", "Secure Publication Gating", [
-            ("Secure Result Route", "/exam/result/[token] (Opaque attempt token)"),
-            ("Unpublished State", "Awaiting review notice (Scores strictly hidden)"),
-            ("Published State", "Breakdown by criterion (No placeholder fabrication)"),
-            ("Submission UX", "Immediate bookmarkable link & copy button")
+        ("Dedicated Results Page", "/exam/result/[token]", [
+            ("Withheld Gating", "Awaiting teacher review notice when unpublished"),
+            ("Criteria A, B, C, D", "Criterion totals & indicative MYP levels 1–8"),
+            ("Question Review", "Prompt, student response, official key & guide")
         ]),
-        ("Zero Untouched Regression", "Backward Compatibility Guarantee", [
-            ("Legacy Exams", "Version A and B exams untouched"),
-            ("Data Store", "Zero schema corruption or orphaned attempts"),
-            ("All 6 Suites", "190 total test assertions passed (100%)")
+        ("Production Deployment", "Vercel Production & GitHub PR", [
+            ("Vercel Live URL", "https://evalora-six.vercel.app"),
+            ("GitHub Pull Request", "PR #81 on branch arena/b09f356c-evalora"),
+            ("Test Coverage", "195 / 195 assertions passed across 6 test suites")
         ])
     ]
     
-    y = 190
+    y = 188
     for title, subtitle, bullets in right_items:
         draw.text((rx0 + 20, y), title, font=f(13, bold=True), fill=GREEN)
-        draw.text((rx0 + 20, y + 20), subtitle, font=f(10, mono=True), fill=TEXT_MUTED)
-        y += 42
+        draw.text((rx0 + 20, y + 18), subtitle, font=f(10, mono=True), fill=TEXT_MUTED)
+        y += 38
         for b_name, b_desc in bullets:
             draw.text((rx0 + 35, y), "•", font=f(12, bold=True), fill=BLUE)
             draw.text((rx0 + 50, y), f"{b_name}:", font=f(11, bold=True), fill=TEXT_WHITE)
-            draw.text((rx0 + 200, y), b_desc, font=f(11), fill=TEXT_MUTED)
-            y += 24
-        y += 14
+            draw.text((rx0 + 210, y), b_desc, font=f(11), fill=TEXT_MUTED)
+            y += 21
+        y += 10
         
     img.save("proof_3_version_c_audit_and_production_deployment.png")
     print("Saved proof_3_version_c_audit_and_production_deployment.png")

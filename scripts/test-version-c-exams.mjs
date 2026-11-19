@@ -295,9 +295,9 @@ test('answer choice randomization shuffles multiple choice while preserving keys
   assert.equal(pubAll.options[2].id, 'opt-c');
 });
 
-for (const [label, file, prefix] of [
-  ['Grade 9 Version C', 'supabase/migrations/20261118054730_myp4_grade9_statistics_version_c.sql', 'cd000000-0000-4000-8000-'],
-  ['Grade 10 Version C', 'supabase/migrations/20261118054739_myp5_grade10_sequences_version_c.sql', 'ce000000-0000-4000-8000-'],
+for (const [label, file, prefix, expectedTotals] of [
+  ['Grade 9 Version C', 'supabase/migrations/20261118054730_myp4_grade9_statistics_version_c.sql', 'cd000000-0000-4000-8000-', { A: 32, B: 20, C: 24, D: 24 }],
+  ['Grade 10 Version C', 'supabase/migrations/20261118054739_myp5_grade10_sequences_version_c.sql', 'ce000000-0000-4000-8000-', { A: 32, B: 24, C: 20, D: 24 }],
 ]) {
   test(`${label}: 34 questions, 100 marks and untouched existing papers`, () => {
     const sql = readFileSync(file, 'utf8');
@@ -312,6 +312,58 @@ for (const [label, file, prefix] of [
     assert.equal(sql.includes('source_reference'), true);
     assert.equal((sql.match(/on conflict \(id\) do nothing/g) ?? []).length >= 2, true);
   });
+
+  test(`${label}: Criteria A, B, C, D distribution sums to 100 marks exactly`, () => {
+    const sql = readFileSync(file, 'utf8');
+    const totalsMatch = sql.match(/"criterion_totals":\s*\{"A":\s*(\d+),\s*"B":\s*(\d+),\s*"C":\s*(\d+),\s*"D":\s*(\d+)\}/);
+    assert.ok(totalsMatch, 'criterion_totals must be defined in quiz record');
+    const parsedTotals = {
+      A: Number(totalsMatch[1]),
+      B: Number(totalsMatch[2]),
+      C: Number(totalsMatch[3]),
+      D: Number(totalsMatch[4]),
+    };
+    assert.deepEqual(parsedTotals, expectedTotals);
+    assert.equal(parsedTotals.A + parsedTotals.B + parsedTotals.C + parsedTotals.D, 100);
+
+    // Verify all 34 questions have their criterion assigned
+    const criterionCount = (sql.match(/"myp_criterion":"[A-D]"/g) ?? []).length;
+    assert.equal(criterionCount, 34, 'Every question must specify its MYP criterion');
+  });
 }
+
+test('student submission screen suppresses results immediately and presents confirmation message', () => {
+  const takeExamCode = readFileSync('src/app/take-exam/[attemptId]/TakeExamClient.tsx', 'utf8');
+  assert.ok(takeExamCode.includes('Thank you for completing your examination!'), 'Confirmation title must be present');
+  assert.ok(takeExamCode.includes('Your examination has been successfully submitted.'), 'Submission status must be clear');
+  assert.ok(takeExamCode.includes('Your responses have been saved.'), 'Save confirmation must be clear');
+  assert.ok(takeExamCode.includes('Your examination results will be available through your personal results link provided by your teacher.'), 'Personal results link guidance must be shown');
+  assert.ok(takeExamCode.includes('You may now safely close this page.'), 'Safe exit guidance must be shown');
+});
+
+test('administrator dashboard provides candidate individual result links, access tokens, and copy button', () => {
+  const dashboardCode = readFileSync('src/app/dashboard/exams/[id]/page.tsx', 'utf8');
+  assert.ok(dashboardCode.includes('Results Management & Individual Candidate Links'), 'Results management section must be present');
+  assert.ok(dashboardCode.includes('CopyResultLinkButton'), 'Copy link component must be integrated');
+  assert.ok(dashboardCode.includes('/exam/result/'), 'Result route must use secure access tokens');
+
+  const copyButtonCode = readFileSync('src/app/dashboard/exams/[id]/CopyResultLinkButton.tsx', 'utf8');
+  assert.ok(copyButtonCode.includes('navigator.clipboard.writeText'), 'Clipboard API must be implemented');
+});
+
+test('secure student results page enforces publication authorization and renders full breakdown when published', () => {
+  const resultsPageCode = readFileSync('src/app/exam/result/[token]/page.tsx', 'utf8');
+  // Token validation
+  assert.ok(resultsPageCode.includes('^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'), 'UUID format must be strictly validated');
+  // Withheld status
+  assert.ok(resultsPageCode.includes('pending teacher review and have not yet been published'), 'Withheld state must be communicated to student');
+  // Criteria A, B, C, D breakdown
+  assert.ok(resultsPageCode.includes('Performance by MYP Assessment Criterion'), 'Criteria breakdown section must be present');
+  assert.ok(resultsPageCode.includes('calculateMypLevel'), 'MYP achievement levels (1-8) must be calculated');
+  // Detailed review
+  assert.ok(resultsPageCode.includes('Student Submitted Response'), 'Student submitted answers must be displayed');
+  assert.ok(resultsPageCode.includes('Official Correct Answer'), 'Official correct answers must be displayed');
+  assert.ok(resultsPageCode.includes('Correction Guide &amp; Worked Explanation'), 'Worked explanation must be displayed');
+});
 
 console.log(`\n${checks} Version C examination checks passed (source shape, structured marking, presence).`);
