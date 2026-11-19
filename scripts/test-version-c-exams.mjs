@@ -343,11 +343,15 @@ test('student submission screen suppresses results immediately and presents conf
 
 test('administrator dashboard provides candidate individual result links, access tokens, and copy button', () => {
   const dashboardCode = readFileSync('src/app/dashboard/exams/[id]/page.tsx', 'utf8');
-  assert.ok(dashboardCode.includes('Results Management & Individual Candidate Links'), 'Results management section must be present');
+  assert.ok(dashboardCode.includes('Results Management & Individual Candidate Links'), 'Results management section must be present in workspace');
   assert.ok(dashboardCode.includes('CopyResultLinkButton'), 'Copy link component must be integrated');
   assert.ok(dashboardCode.includes('/exam/result/'), 'Result route must use secure access tokens');
 
-  const copyButtonCode = readFileSync('src/app/dashboard/exams/[id]/CopyResultLinkButton.tsx', 'utf8');
+  const adminDashboardCode = readFileSync('src/app/admin/examinations/results/page.tsx', 'utf8');
+  assert.ok(adminDashboardCode.includes('Results Management & Candidate Links'), 'Results management must be present in admin dashboard');
+  assert.ok(adminDashboardCode.includes('CopyResultLinkButton'), 'Copy link component must be integrated in admin dashboard');
+
+  const copyButtonCode = readFileSync('src/components/CopyResultLinkButton.tsx', 'utf8');
   assert.ok(copyButtonCode.includes('navigator.clipboard.writeText'), 'Clipboard API must be implemented');
 });
 

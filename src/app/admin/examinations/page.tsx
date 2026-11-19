@@ -63,6 +63,7 @@ export default async function AdminExaminations({
         subtitle="Create and run formal examinations in any workspace, register whole classes as candidates, and control exam windows platform-wide."
         action={
           <div className="flex flex-wrap items-end gap-2">
+            <ButtonLink href="/admin/examinations/results" variant="gold">Results &amp; Candidate Links</ButtonLink>
             <ButtonLink href="/admin/examinations/retakes" variant="outline">Retake requests</ButtonLink>
             <ButtonLink href="/admin/examinations/links" variant="outline">Link expiration</ButtonLink>
             <ButtonLink href="/admin/examinations/hints" variant="outline">Question hints</ButtonLink>
@@ -132,6 +133,7 @@ export default async function AdminExaminations({
                     <input type="hidden" name="next" value={`/dashboard/exams/${e.id}/paper`} />
                     <button className="font-medium text-gold-800 underline-offset-2 hover:underline">Print paper</button>
                   </form>
+                  <Link className="font-semibold text-evergreen-800 underline-offset-2 hover:underline" href={`/admin/examinations/results?exam=${e.id}`}>Results &amp; Candidate Links →</Link>
                   <form action={enterOrgWorkspace} className="inline">
                     <input type="hidden" name="organization_id" value={e.organization_id} />
                     <input type="hidden" name="next" value={`/dashboard/reports/exam/${e.id}`} />
