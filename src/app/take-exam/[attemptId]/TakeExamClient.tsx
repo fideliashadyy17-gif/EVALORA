@@ -26,7 +26,7 @@ import {
   readClosedAttemptMarker,
   type ExamQueueState,
 } from "@/lib/examSaveQueue";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
@@ -1150,14 +1150,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <button
                   key={q.question_id}
                   onClick={() => navigateTo(i)}
-                  aria-label={`Question ${q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+                  aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
                   aria-current={i === index ? "step" : undefined}
                   className={cn(
                     "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
                     i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
                   )}
                 >
-                  {q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}
+                  {i + 1}
                   {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
                   {q.result && (
                     <span
@@ -1351,10 +1351,54 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
                     <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
                     <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
+                    {token && (
+                      <ButtonLink href={`/exam/result/${token}`} variant="primary">
+                        Open Official Result Page →
+                      </ButtonLink>
+                    )}
                   </div>
                 </div>
               ) : (
-                <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " Your active browser session is closed so the next student can sign in safely." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
+                <div className="mt-4 space-y-4">
+                  <p className="text-sm text-ink-soft">
+                    Your answers have been securely submitted and stored on the server.
+                  </p>
+                  <div className="mx-auto max-w-xl rounded-xl border border-evergreen-900/15 bg-white p-5 text-left">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-wider text-evergreen-900">Your Secure Individual Result Link</p>
+                        <p className="mt-1 text-xs text-ink-soft">
+                          Save or bookmark this link to check your official marks later without logging in.
+                        </p>
+                      </div>
+                      {token && (
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            className="text-xs"
+                            onClick={() => {
+                              const url = `${window.location.origin}/exam/result/${token}`;
+                              void navigator.clipboard.writeText(url);
+                              alert("Result link copied to clipboard!");
+                            }}
+                          >
+                            Copy Link
+                          </Button>
+                          <ButtonLink href={`/exam/result/${token}`} variant="primary" className="text-xs">
+                            View Result Page →
+                          </ButtonLink>
+                        </div>
+                      )}
+                    </div>
+                    <div className="mt-3 rounded-lg bg-cream/80 p-3 text-xs text-evergreen-950">
+                      <p><strong>Status:</strong> Pending teacher review &amp; awaiting publication.</p>
+                      <p className="mt-1 text-ink-soft">
+                        Confirmation reference: <code className="font-mono font-semibold">{token ? String(token).slice(0, 8).toUpperCase() : attempt.id.slice(0, 8).toUpperCase()}</code>.
+                        When your institution releases the results, official scores and question-by-question breakdowns will appear on this link.
+                      </p>
+                    </div>
+                  </div>
+                </div>
               )}
               <div className="mx-auto mt-5 flex max-w-xl flex-col items-center gap-2 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 print:hidden">
                 <p className="text-xs leading-5 text-ink-soft">
@@ -1379,11 +1423,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <Badge tone="green">
                   {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
                   {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
-                  {current.question_meta?.question_label ?? current.question_meta?.question_number ?? index + 1} of{" "}
-                  {(current.question_meta?.paper_section
-                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section)
-                    : questions
-                  ).reduce((sum, q) => sum + (q.question_meta?.question_span ?? 1), 0)}
+                  {index + 1} of {questions.length}
                 </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (
@@ -1442,6 +1482,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
                 experience={experience}
+                displayQuestionNumber={index + 1}
               />
 
               {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}

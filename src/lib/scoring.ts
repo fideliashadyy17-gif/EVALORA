@@ -11,6 +11,7 @@ export interface ScorableQuestion {
   type: string;
   points: number;
   config: Record<string, unknown> | null;
+  prompt?: string | null;
 }
 
 export interface ScoreResult {
@@ -98,12 +99,18 @@ export function scoreAnswer(
     }
     case "numeric": {
       // Numeric entry accepts currency/unit text, comma decimals, fractions,
-      // percentages and a final line of worked arithmetic ("18+6=24").
+      // percentages, variable prefixes, labels, and worked arithmetic ("18+6=24").
       const expected = parseStudentNumber(cfg.numeric_answer);
       const tolerance = cfg.tolerance == null || cfg.tolerance === "" ? 0 : validNumber(cfg.tolerance);
-      const got = parseStudentNumber(answer.value);
+      const got = parseStudentNumber(answer.value, {
+        prompt: typeof question.prompt === "string" ? question.prompt : undefined,
+        expected: expected ?? undefined,
+        tolerance: tolerance ?? undefined,
+      });
       if (expected === null || tolerance === null || tolerance < 0 || got === null) throw new ScoringError();
-      const ok = Math.abs(got - expected) <= tolerance;
+      const rawStr = String(answer.value ?? "");
+      const ok = Math.abs(got - expected) <= tolerance ||
+        (/%/.test(rawStr) && Math.abs(got / 100 - expected) <= tolerance);
       return { isCorrect: ok, points: ok ? max : 0 };
     }
     case "ordering": {

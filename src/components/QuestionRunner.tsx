@@ -108,6 +108,7 @@ export function QuestionRunner({
   autosave = false,
   onHintUse,
   experience = DEFAULT_EXAM_EXPERIENCE,
+  displayQuestionNumber,
 }: {
   question: PublicQuestion;
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
@@ -124,6 +125,8 @@ export function QuestionRunner({
   onHintUse?: (partId: string, level: number) => void;
   /** Premium capability set for this examination. */
   experience?: ExamExperience;
+  /** Displayed sequential question number, e.g. 1, 2, 3... */
+  displayQuestionNumber?: number | string;
 }) {
   /** Marked options win over the neutral/selected styling after submission. */
   const optionClass = (id: string, idle: string, picked: string) => {
@@ -283,9 +286,9 @@ export function QuestionRunner({
         if (!bits.length) return null;
         return (
           <div className="mt-3 flex flex-wrap items-center gap-2">
-            {meta.question_number !== null ? (
+            {(displayQuestionNumber !== undefined || meta.question_number !== null) ? (
               <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-md bg-evergreen-700 px-1.5 text-xs font-bold text-white">
-                {meta.question_label ?? meta.question_number}
+                {displayQuestionNumber ?? meta.question_label ?? meta.question_number}
               </span>
             ) : null}
             {bits.map((bit) => (

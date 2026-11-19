@@ -242,6 +242,9 @@ export async function GET(request: Request) {
       max_score: submitted && resultsPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,
       results_published: resultsPublished,
       track: (attempt.track as "AB" | "BC" | null | undefined) ?? null,
+      access_token: attempt.access_token,
+      result_url: `/exam/result/${attempt.access_token}`,
+      confirmation_code: String(attempt.access_token).slice(0, 8).toUpperCase(),
     },
     hint_usage: hintUsage,
     questions: rows.map((row) => {

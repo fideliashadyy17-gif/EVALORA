@@ -1,4 +1,4 @@
-import { loadQuizQuestions, seededShuffle, type SessionQuestionRow } from "./live";
+import { loadQuizQuestions, randomizeQuestionRows, type SessionQuestionRow } from "./live";
 import { scoreAnswer, ScoringError } from "./scoring";
 import { attemptDeadline } from "./examDeadline";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -72,7 +72,7 @@ export async function attemptRows(
     }
     return order.map((id) => byId.get(id)!);
   }
-  return exam.settings.randomize_questions ? seededShuffle(rows, attempt.id) : rows;
+  return exam.settings.randomize_questions ? randomizeQuestionRows(rows, attempt.id) : rows;
 }
 
 /** Totals and status counts from one complete grading run. */

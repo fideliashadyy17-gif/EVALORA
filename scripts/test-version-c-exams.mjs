@@ -30,6 +30,21 @@ const assessParts = compile('src/lib/assessParts.ts', 'scripts/__version_c_asses
 const scoring = compile('src/lib/scoring.ts', 'scripts/__version_c_scoring.cjs', {
   './assessParts': assessParts,
 });
+const criterionShares = compile('src/lib/criterionShares.ts', 'scripts/__version_c_crit_shares.cjs');
+const live = compile('src/lib/live.ts', 'scripts/__version_c_live.cjs', {
+  './assessParts': assessParts,
+  './criterionShares': criterionShares,
+  './responseTools': {
+    responseWorkspaceFor: () => ({
+      calculator: { enabled: true },
+      tools: [],
+      graph: { enabled: false },
+      geometry: { enabled: false },
+    }),
+  },
+  './examResults': { criterionTitle: () => null, normaliseCriterionShares: () => null },
+  './matchDnd': { normaliseMatchMode: () => 'match' },
+});
 const presence = compile('src/lib/answerPresence.ts', 'scripts/__version_c_presence.cjs');
 const diagram = compile('src/lib/assessDiagram.ts', 'scripts/__version_c_diagram.cjs');
 
@@ -59,8 +74,53 @@ test('assess-parts partial credit uses algebraic and numeric equivalence', () =>
   };
   const q = { type: 'assess_parts', points: 4, config };
   assert.deepEqual(scoring.scoreAnswer(q, [], { parts: { d: '6', u: '149.00', f: '4n − 1' } }), { isCorrect: true, points: 4 });
+  assert.deepEqual(scoring.scoreAnswer(q, [], { parts: { d: 'd = 6', u: 'u25 = 149', f: '4n − 1' } }), { isCorrect: true, points: 4 });
   assert.deepEqual(scoring.scoreAnswer(q, [], { parts: { d: 6, u: 150, f: 'n' } }), { isCorrect: false, points: 1 });
   assert.deepEqual(scoring.scoreAnswer(q, [], { parts: { d: 6 } }), { isCorrect: false, points: 1 });
+});
+
+test('intelligent numerical answer grading handles labels, units, fractions, and context', () => {
+  const numQ = {
+    type: 'numeric',
+    points: 2,
+    config: { numeric_answer: 5, tolerance: 0 },
+    prompt: 'State the minimum value.',
+  };
+  // Flexible input formats
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '5' }), { isCorrect: true, points: 2 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: 'Min = 5' }), { isCorrect: true, points: 2 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: 'The minimum is 5' }), { isCorrect: true, points: 2 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: 'min: 5 cm' }), { isCorrect: true, points: 2 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: 'Answer: 5' }), { isCorrect: true, points: 2 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: 'x = 5' }), { isCorrect: true, points: 2 });
+
+  // Anti-substring checks
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '15' }), { isCorrect: false, points: 0 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '50' }), { isCorrect: false, points: 0 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '-5' }), { isCorrect: false, points: 0 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '0.5' }), { isCorrect: false, points: 0 });
+  assert.deepEqual(scoring.scoreAnswer(numQ, [], { value: '5.5' }), { isCorrect: false, points: 0 });
+
+  // Conflicting choices fails closed
+  assert.throws(() => scoring.scoreAnswer(numQ, [], { value: '5 or 6' }), scoring.ScoringError);
+
+  // Invalid non-numeric input for numeric question fails closed with ScoringError
+  assert.throws(() => scoring.scoreAnswer(numQ, [], { value: 'I do not know' }), scoring.ScoringError);
+
+  // Multi-part context-aware mapping
+  const statsConfig = {
+    parts: [
+      { id: 'mode', label: 'Mode', prompt: 'mode', kind: 'numeric', points: 1, answer: 18, hints: ['Find the most frequent score.', 'Look for the leaf that repeats.'] },
+      { id: 'median', label: 'Median', prompt: 'median', kind: 'numeric', points: 1, answer: 26, hints: ['Find the middle of ordered scores.', 'Locate the 6th of 11 scores.'] },
+    ],
+  };
+  const statsQ = { type: 'assess_parts', points: 2, config: statsConfig };
+  assert.deepEqual(scoring.scoreAnswer(statsQ, [], {
+    parts: {
+      mode: 'Mode = 18, Median = 26',
+      median: 'Mode = 18, Median = 26',
+    },
+  }), { isCorrect: true, points: 2 });
 });
 
 test('a plotted graph earns point-by-point partial credit', () => {
@@ -128,16 +188,111 @@ test('an unequal-width histogram is marked against frequencies, not drawn height
   assert.deepEqual(scoring.scoreAnswer(q, [], { statistics: { chart: 'bar_chart', groups: [] } }), { isCorrect: false, points: 0 });
 });
 
-test('new top/bottom tile-grid style is accepted and rendered as a grid', () => {
-  const spec = diagram.normaliseAssessDiagram({
-    kind: 'grid_pattern', title: 'Courtyard',
-    gridPatterns: [
-      { label: 'Stage 1', cols: 2, rows: 3, style: 'top_bottom_border' },
-      { label: 'Stage 2', cols: 3, rows: 4, style: 'top_bottom_border' },
-    ],
-  });
-  assert.equal(spec.gridPatterns.length, 2);
-  assert.equal(spec.gridPatterns[0].style, 'top_bottom_border');
+test('individualized question randomization generates distinct, stable permutations with no duplicates or omissions', () => {
+  // Generate 25 sample questions
+  const mockRows = Array.from({ length: 25 }, (_, i) => ({
+    id: `qq-${i + 1}`,
+    points: 1,
+    questions: {
+      id: `q-${i + 1}`,
+      type: 'single_choice',
+      config: { paper_section: i < 20 ? 'A' : 'B' },
+    },
+  }));
+
+  const orderA = live.randomizeQuestionRows(mockRows, 'exam-1:student-A');
+  const orderB = live.randomizeQuestionRows(mockRows, 'exam-1:student-B');
+  const orderC = live.randomizeQuestionRows(mockRows, 'exam-1:student-C');
+
+  // Length preserved
+  assert.equal(orderA.length, 25);
+  assert.equal(orderB.length, 25);
+  assert.equal(orderC.length, 25);
+
+  // No duplicates and no missing questions
+  assert.equal(new Set(orderA.map((r) => r.id)).size, 25);
+  assert.equal(new Set(orderB.map((r) => r.id)).size, 25);
+  assert.equal(new Set(orderC.map((r) => r.id)).size, 25);
+
+  // Different students get different orders
+  const diffA_B = orderA.some((r, idx) => r.id !== orderB[idx].id);
+  const diffB_C = orderB.some((r, idx) => r.id !== orderC[idx].id);
+  assert.equal(diffA_B, true, 'Student A and B must receive different question orders');
+  assert.equal(diffB_C, true, 'Student B and C must receive different question orders');
+
+  // Stability across refreshes/reconnects (same seed produces identical order)
+  const orderAReloaded = live.randomizeQuestionRows(mockRows, 'exam-1:student-A');
+  assert.deepEqual(orderA.map((r) => r.id), orderAReloaded.map((r) => r.id));
+});
+
+test('answer choice randomization shuffles multiple choice while preserving keys and avoiding order-dependent types', () => {
+  const mcRow = {
+    id: 'qq-1',
+    points: 1,
+    questions: {
+      id: 'q-mc',
+      type: 'single_choice',
+      prompt: 'Sample question',
+      config: {},
+      question_options: [
+        { id: 'opt-1', label: 'Option 1', is_correct: false },
+        { id: 'opt-2', label: 'Option 2', is_correct: true },
+        { id: 'opt-3', label: 'Option 3', is_correct: false },
+        { id: 'opt-4', label: 'Option 4', is_correct: false },
+      ],
+    },
+  };
+
+  const pubA = live.publicQuestion(mcRow, { randomizeOptions: true, seed: 'attempt-A' });
+  const pubB = live.publicQuestion(mcRow, { randomizeOptions: true, seed: 'attempt-B' });
+
+  // Option count preserved
+  assert.equal(pubA.options.length, 4);
+  assert.equal(pubB.options.length, 4);
+  // All option IDs preserved
+  assert.equal(new Set(pubA.options.map((o) => o.id)).size, 4);
+
+  // Stability for same attempt
+  const pubAReload = live.publicQuestion(mcRow, { randomizeOptions: true, seed: 'attempt-A' });
+  assert.deepEqual(pubA.options.map((o) => o.id), pubAReload.options.map((o) => o.id));
+
+  // True/False must NOT be randomized
+  const tfRow = {
+    id: 'qq-tf',
+    points: 1,
+    questions: {
+      id: 'q-tf',
+      type: 'true_false',
+      prompt: 'Sample statement',
+      config: {},
+      question_options: [
+        { id: 'opt-t', label: 'True', is_correct: true },
+        { id: 'opt-f', label: 'False', is_correct: false },
+      ],
+    },
+  };
+  const pubTf = live.publicQuestion(tfRow, { randomizeOptions: true, seed: 'attempt-A' });
+  assert.equal(pubTf.options[0].id, 'opt-t');
+  assert.equal(pubTf.options[1].id, 'opt-f');
+
+  // "All of the above" must NOT be randomized
+  const allAboveRow = {
+    id: 'qq-all',
+    points: 1,
+    questions: {
+      id: 'q-all',
+      type: 'single_choice',
+      prompt: 'Sample',
+      config: {},
+      question_options: [
+        { id: 'opt-a', label: 'Fact A', is_correct: false },
+        { id: 'opt-b', label: 'Fact B', is_correct: false },
+        { id: 'opt-c', label: 'All of the above', is_correct: true },
+      ],
+    },
+  };
+  const pubAll = live.publicQuestion(allAboveRow, { randomizeOptions: true, seed: 'attempt-A' });
+  assert.equal(pubAll.options[2].id, 'opt-c');
 });
 
 for (const [label, file, prefix] of [

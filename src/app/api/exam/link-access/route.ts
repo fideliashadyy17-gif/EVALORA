@@ -15,7 +15,7 @@ import {
   sanitizeIdentityData,
 } from "@/lib/exam-access";
 import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
-import { loadQuizQuestions, seededShuffle } from "@/lib/live";
+import { loadQuizQuestions, randomizeQuestionRows } from "@/lib/live";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "crypto";
@@ -573,7 +573,7 @@ export async function POST(request: Request) {
     const track = decision.track;
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const rows = track ? paperForTrack(rows0, track) : rows0;
-    const ordered = settings.randomize_questions ? seededShuffle(rows, `${exam.id}:${resolvedCandidate.id}`) : rows;
+    const ordered = settings.randomize_questions ? randomizeQuestionRows(rows, `${exam.id}:${resolvedCandidate.id}`) : rows;
     const { data, error } = await admin
       .from("exam_attempts")
       .insert({
