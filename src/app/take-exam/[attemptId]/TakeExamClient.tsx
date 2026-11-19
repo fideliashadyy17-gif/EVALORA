@@ -353,7 +353,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       },
       (next) => {
         setWarning(next);
-        if (activePolicy.sound && Date.now() - lastBeepAt.current > 1000) {
+        // Only sound the alarm for persistent or escalated warnings — a first,
+        // gentle reminder does not need an audible beep. Ordinary interruptions
+        // (focus_lost, offline) never reach here because they are not recordable.
+        if (
+          activePolicy.sound &&
+          (next.level === "strong" || next.level === "review") &&
+          Date.now() - lastBeepAt.current > 1000
+        ) {
           lastBeepAt.current = Date.now();
           beep();
         }

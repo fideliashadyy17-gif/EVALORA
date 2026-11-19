@@ -91,9 +91,23 @@ export function parseIntegrityPolicy(raw: unknown): IntegrityPolicy {
   return policy;
 }
 
-/** Events that the candidate is told about but that are not violations. */
+/**
+ * Events that are recorded for audit but are not counted as violations.
+ *
+ * `tab_visible`, `focus_back` and `online` are returns/recoveries — never a
+ * violation. `focus_lost` and `offline` are ordinary interruptions (OS
+ * notifications, battery warnings, Wi-Fi blips, volume changes) that can fire
+ * many times during a paper without any dishonesty; they are stored for the
+ * record but never counted against the candidate.
+ */
 export function isRecordable(event: IntegrityEvent): boolean {
-  return event !== "tab_visible" && event !== "focus_back" && event !== "online";
+  return (
+    event !== "tab_visible" &&
+    event !== "focus_back" &&
+    event !== "online" &&
+    event !== "focus_lost" &&
+    event !== "offline"
+  );
 }
 
 /** Does this assessment want this event recorded at all? */

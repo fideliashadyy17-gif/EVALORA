@@ -43,7 +43,7 @@ export default async function ResultPage({
     .eq("id", attemptId)
     .maybeSingle();
 
-  if (!attempt) redirect("/take-exam");
+  if (!attempt) redirect("/exam-access");
 
   const { data: exam } = await admin
     .from("exams")
@@ -57,7 +57,7 @@ export default async function ResultPage({
     .eq("id", attempt.candidate_id)
     .maybeSingle();
 
-  if (!exam || !candidate) redirect("/take-exam");
+  if (!exam || !candidate) redirect("/exam-access");
 
   const maxScore = Number(attempt.max_score) || 0;
   const score = Number(attempt.score) || 0;

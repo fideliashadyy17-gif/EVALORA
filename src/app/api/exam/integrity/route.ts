@@ -72,7 +72,11 @@ export async function POST(request: Request) {
       .select("id", { count: "exact", head: true })
       .eq("attempt_id", attempt.id)
       .like("type", "integrity_%")
-      .not("type", "in", "(integrity_tab_visible,integrity_focus_back,integrity_online)");
+      .not(
+        "type",
+        "in",
+        "(integrity_tab_visible,integrity_focus_back,integrity_online,integrity_focus_lost,integrity_offline)",
+      );
     return count ?? 0;
   };
 

@@ -74,6 +74,7 @@ ok("clipboard events follow the clipboard switch", (() => {
 })());
 ok("full-screen exit follows its own switch", rules.isEventEnabled("fullscreen_exit", rules.parseIntegrityPolicy({ fullscreen: false })) === false);
 ok("returns and reconnections are informational, not violations", ["tab_visible", "focus_back", "online"].every((e) => rules.isRecordable(e) === false) && rules.isRecordable("tab_hidden"));
+ok("ordinary interruptions are recorded but never counted as violations", ["focus_lost", "offline"].every((e) => rules.isRecordable(e) === false));
 ok("events map to readable incident types", rules.incidentTypeFor("tab_hidden") === "integrity_tab_hidden" && rules.eventFromIncidentType("integrity_tab_hidden") === "tab_hidden");
 ok("a teacher console label exists for each incident type", rules.describeIncidentType("integrity_fullscreen_exit").includes("full-screen"));
 ok("an unknown incident type is still readable", rules.describeIncidentType("left_seat") === "left seat");
