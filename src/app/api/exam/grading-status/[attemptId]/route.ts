@@ -1,5 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
 /**
@@ -14,7 +13,6 @@ export async function GET(
   { params }: { params: Promise<{ attemptId: string }> }
 ) {
   const { attemptId } = await params;
-  await requireUser();
 
   const admin = createAdminClient();
   const { data: attempt, error } = await admin

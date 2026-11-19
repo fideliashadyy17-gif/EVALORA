@@ -1,5 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { GradingPoller } from "./GradingPoller";
 
@@ -17,7 +16,6 @@ export default async function ProcessingPage({
   params: Promise<{ attemptId: string }>;
 }) {
   const { attemptId } = await params;
-  await requireUser();
 
   const admin = createAdminClient();
   const { data: attempt } = await admin

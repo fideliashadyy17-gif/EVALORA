@@ -1,5 +1,4 @@
 import { createAdminClient } from "@/lib/supabase/server";
-import { requireUser } from "@/lib/auth";
 import { redirect } from "next/navigation";
 
 const EXCELLENT_THRESHOLD = 80; // percent
@@ -33,7 +32,6 @@ export default async function ResultPage({
   params: Promise<{ attemptId: string }>;
 }) {
   const { attemptId } = await params;
-  await requireUser();
 
   const admin = createAdminClient();
 
