@@ -1,4 +1,5 @@
 import type { AssessDiagramSpec } from "@/lib/assessDiagram";
+import { MathText } from "./MathText";
 
 /**
  * Native SVG renderer for Assess Prep diagrams. Pure presentation from the
@@ -176,7 +177,7 @@ function StemLeaf({ spec }: { spec: AssessDiagramSpec }) {
           ))}
         </tbody>
       </table>
-      {spec.stemKey ? <p className="mt-2 text-center text-sm text-ink-soft">Key: {spec.stemKey}</p> : null}
+      {spec.stemKey ? <p className="mt-2 text-center text-sm text-ink-soft">Key: <MathText text={spec.stemKey} /></p> : null}
     </div>
   );
 }
@@ -189,11 +190,11 @@ function Table({ spec }: { spec: AssessDiagramSpec }) {
           phone rather than crushing every column into the screen width. */}
       <table className="w-full border-collapse text-sm text-ink" style={cols > 6 ? { minWidth: `${cols * 76}px` } : undefined}>
         <thead>
-          <tr>{(spec.columns ?? []).map((c, i) => <th key={i} className="border border-evergreen-900/25 bg-evergreen-50 px-3 py-2 text-left font-semibold">{c}</th>)}</tr>
+          <tr>{(spec.columns ?? []).map((c, i) => <th key={i} className="border border-evergreen-900/25 bg-evergreen-50 px-3 py-2 text-left font-semibold"><MathText text={c} /></th>)}</tr>
         </thead>
         <tbody>
           {(spec.rows ?? []).map((r, i) => (
-            <tr key={i}>{r.map((c, j) => <td key={j} className="border border-evergreen-900/20 px-3 py-1.5 tabular-nums">{c}</td>)}</tr>
+            <tr key={i}>{r.map((c, j) => <td key={j} className="border border-evergreen-900/20 px-3 py-1.5 tabular-nums"><MathText text={c} /></td>)}</tr>
           ))}
         </tbody>
       </table>
