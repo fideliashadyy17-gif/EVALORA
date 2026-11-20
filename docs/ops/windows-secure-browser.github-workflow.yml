@@ -1,7 +1,17 @@
 name: Build and Publish EVALORA Secure Browser (Windows x64)
 
 on:
+  push:
+    branches:
+      - 'arena/**'
+      - main
+  pull_request:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to attach binaries to (leave blank to skip release upload or default to v1.1.0)'
+        required: false
+        default: 'v1.1.0'
   release:
     types: [published]
 
@@ -19,7 +29,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
@@ -33,9 +43,9 @@ jobs:
 
       - name: Build Windows NSIS installer
         working-directory: desktop
-        run: npm run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --x64 --publish never
 
       - name: Compute SHA-256 Checksums
         shell: pwsh
@@ -45,15 +55,37 @@ jobs:
             $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256" -Encoding ascii
           }
+          Get-Content *.sha256
 
-      - name: Upload installer artifacts to Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release'
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: ${{ github.ref_name }}
-          files: |
+          name: EVALORA-Secure-Browser-Windows-x64
+          path: |
             desktop/dist/*.exe
             desktop/dist/*.exe.sha256
-            desktop/dist/latest.yml
+
+      - name: Publish to GitHub Release
+        shell: pwsh
+        working-directory: desktop/dist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.event.inputs.release_tag }}"
+          if (-not $tag) {
+            $tag = "v1.1.0"
+          }
+          Write-Host "Publishing assets to release tag: $tag"
+          $files = Get-ChildItem -File | Where-Object { $_.Name -like "*.exe*" }
+          Write-Host "Found files:"
+          $files | ForEach-Object { Write-Host " - $($_.FullName) ($($_.Length) bytes)" }
+          if ($files.Count -eq 0) {
+            Write-Error "No installer files found in desktop/dist!"
+            exit 1
+          }
+          foreach ($file in $files) {
+            Write-Host "Uploading $($file.Name) to release $tag..."
+            gh release upload $tag $file.FullName --clobber
+          }
+          Write-Host "Verification of assets on release $tag:"
+          gh release view $tag

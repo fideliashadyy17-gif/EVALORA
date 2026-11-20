@@ -76,7 +76,16 @@ jobs:
             $tag = "v1.1.0"
           }
           Write-Host "Publishing assets to release tag: $tag"
-          $files = Get-ChildItem -Path . -Include *.exe,*.sha256 -Recurse | Select-Object -ExpandProperty FullName
-          Write-Host "Files to upload:"
-          $files | ForEach-Object { Write-Host " - $_" }
-          gh release upload $tag $files --clobber
+          $files = Get-ChildItem -File | Where-Object { $_.Name -like "*.exe*" }
+          Write-Host "Found files:"
+          $files | ForEach-Object { Write-Host " - $($_.FullName) ($($_.Length) bytes)" }
+          if ($files.Count -eq 0) {
+            Write-Error "No installer files found in desktop/dist!"
+            exit 1
+          }
+          foreach ($file in $files) {
+            Write-Host "Uploading $($file.Name) to release $tag..."
+            gh release upload $tag $file.FullName --clobber
+          }
+          Write-Host "Verification of assets on release $tag:"
+          gh release view $tag
