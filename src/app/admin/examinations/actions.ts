@@ -76,6 +76,8 @@ export async function createExamAsAdmin(formData: FormData) {
   const proctoring = formData.get("proctoring") === "on";
   if (proctoring && !(await isFeatureEnabledFor(ctx, "proctoring"))) go(back, "e=proctoring_module");
 
+  const lockdownEnabled = formData.get("lockdown_enabled") === "on";
+
   const [{ data: org }, { data: quiz }, { count: questionCount }] = await Promise.all([
     admin.from("organizations").select("id").eq("id", organizationId!).maybeSingle(),
     admin.from("quizzes").select("id, organization_id, status").eq("id", quizId!).maybeSingle(),
@@ -113,6 +115,13 @@ export async function createExamAsAdmin(formData: FormData) {
         require_screen_share: proctoring && formData.get("require_screen_share") === "on",
         randomize_questions: formData.get("randomize_questions") === "on",
         randomize_options: formData.get("randomize_options") === "on",
+        lockdown: {
+          enabled: lockdownEnabled,
+          require_app: true,
+          strict_multi_display: formData.get("lockdown_strict_multi_display") !== "off",
+          block_clipboard: formData.get("lockdown_block_clipboard") !== "off",
+          min_app_version: "1.0.0",
+        },
         pass_mark_percent: passMark,
         results_published: false,
         access_mode: "shared_link",
@@ -665,4 +674,131 @@ export async function reviewProctoringIncidentAsAdmin(formData: FormData) {
   revalidatePath("/admin/examinations/monitoring");
   revalidatePath("/admin/proctoring");
   go(back, "ok=incident_reviewed");
+}
+
+export async function updateExamLockdownAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = fstr(formData, "id", 60) ?? fstr(formData, "exam_id", 60);
+  const back = safeBack(formData);
+  if (!examId) go(back, "e=not_found");
+
+  const enabled = formData.get("lockdown_enabled") === "on";
+  const strictMultiDisplay = formData.get("lockdown_strict_multi_display") === "on";
+  const blockClipboard = formData.get("lockdown_block_clipboard") === "on";
+
+  const { data: exam, error: readError } = await admin
+    .from("exams")
+    .select("id, organization_id, title, settings")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (readError || !exam) go(back, "e=not_found");
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const updatedSettings = {
+    ...currentSettings,
+    lockdown: {
+      enabled,
+      require_app: true,
+      strict_multi_display: strictMultiDisplay,
+      block_clipboard: blockClipboard,
+      min_app_version: "1.0.0",
+    },
+  };
+
+  const { error: updateError } = await admin.from("exams").update({ settings: updatedSettings }).eq("id", examId);
+  if (updateError) go(back, "e=failed");
+
+  await audit(ctx, "exam.lockdown_updated_by_admin", "exams", examId, exam.organization_id, {
+    title: exam.title,
+    lockdown_enabled: enabled,
+  });
+
+  revalidatePath("/admin/examinations");
+  revalidatePath(`/dashboard/exams/${examId}`);
+  redirect(`${back}${back.includes("?") ? "&" : "?"}ok=lockdown`);
+}
+
+export async function deleteExamAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = fstr(formData, "id", 60) ?? fstr(formData, "exam_id", 60);
+  const back = safeBack(formData);
+  if (!examId) go(back, "e=not_found");
+
+  // Strictly protect official platform benchmark examinations
+  if (examId === "cd000000-0000-4000-8000-000000000002" || examId === "ce000000-0000-4000-8000-000000000002") {
+    go(back, "e=protected_benchmark");
+  }
+
+  const { data: exam, error: examError } = await admin
+    .from("exams")
+    .select("id, title, organization_id, settings")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (examError || !exam) go(back, "e=not_found");
+
+  // Check whether candidate attempts or submissions exist
+  const { count: attemptCount } = await admin
+    .from("exam_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("exam_id", examId);
+
+  const attempts = attemptCount ?? 0;
+
+  if (attempts === 0) {
+    // Empty exam without attempts: perform clean permanent deletion of empty shell & links
+    await admin.from("proctoring_rooms").delete().eq("exam_id", examId);
+    await admin.from("exam_rubric_links").delete().eq("exam_id", examId);
+    await admin.from("exam_candidates").delete().eq("exam_id", examId);
+    await admin.from("exam_messages").delete().eq("exam_id", examId);
+    await admin.from("exam_presence").delete().eq("exam_id", examId);
+
+    const { error: delError } = await admin.from("exams").delete().eq("id", examId);
+    if (delError) go(back, "e=delete_failed");
+
+    await audit(ctx, "exam.deleted_permanent_by_admin", "exams", examId, exam.organization_id, {
+      title: exam.title,
+      attempts: 0,
+    });
+
+    revalidatePath("/admin/examinations");
+    revalidatePath("/dashboard/exams");
+    redirect(`${back}${back.includes("?") ? "&" : "?"}ok=deleted`);
+  } else {
+    // Exam contains historical student submissions/grades:
+    // Safe soft-delete / archival to protect academic records from cascading deletion!
+    const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+    const now = new Date().toISOString();
+
+    const { error: archiveError } = await admin
+      .from("exams")
+      .update({
+        deleted_at: now,
+        deleted_by: ctx.user.id,
+        deletion_reason: "Archived via Owner Control Center exam deletion",
+        status: "closed",
+        settings: {
+          ...currentSettings,
+          archived: true,
+          deleted: true,
+          deleted_at: now,
+          deleted_by: ctx.user.id,
+        },
+      })
+      .eq("id", examId);
+
+    if (archiveError) go(back, "e=archive_failed");
+
+    await audit(ctx, "exam.archived_by_admin", "exams", examId, exam.organization_id, {
+      title: exam.title,
+      attempts,
+    });
+
+    revalidatePath("/admin/examinations");
+    revalidatePath("/dashboard/exams");
+    redirect(`${back}${back.includes("?") ? "&" : "?"}ok=archived`);
+  }
 }

@@ -4,6 +4,12 @@ import { accessCodeMatches } from "@/lib/exam-access";
 import { admissionTrack, paperForTrack, trackSelectionEnabled } from "@/lib/examTrack";
 import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
 import { loadQuizQuestions, randomizeQuestionRows } from "@/lib/live";
+import {
+  buildLockdownLaunchUrl,
+  parseLockdownSettings,
+  verifyLockdownAttestation,
+  type LockdownAttestationPayload,
+} from "@/lib/lockdown";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -13,15 +19,18 @@ const Body = z.object({
   // (e.g. "MYP2 - FORM2 - 2026") must not be rejected before it is compared.
   exam_code: z.string().min(4).max(32),
   candidate_code: z.string().min(4).max(32),
+  lockdown_attestation: z.record(z.string(), z.unknown()).optional(),
 });
 
 /**
  * Candidate admission. Verifies both codes, the exam window and status,
- * then starts (or resumes) the single attempt. The official clock is
- * started_at + duration on the server — resuming never gains time.
+ * verifies lockdown environment if required, then starts (or resumes)
+ * the single attempt. The official clock is started_at + duration on the
+ * server — resuming never gains time.
  */
 export async function POST(request: Request) {
-  const parsed = Body.safeParse(await request.json().catch(() => null));
+  const rawJson = await request.json().catch(() => null);
+  const parsed = Body.safeParse(rawJson);
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   const examCode = parsed.data.exam_code.trim().toUpperCase();
   const candidateCode = parsed.data.candidate_code.trim().toUpperCase();
@@ -35,6 +44,11 @@ export async function POST(request: Request) {
     exam = (codedExams ?? []).find((row) => accessCodeMatches(examCode, row.access_code as string | null)) ?? null;
   }
   if (!exam) return NextResponse.json({ error: "Examination not found. Check the exam code." }, { status: 404 });
+
+  // Guard against accessing archived or deleted examinations
+  if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
+    return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410 });
+
   // A paused examination admits ONLY candidates resuming an existing active
   // attempt (checked below); every other non-open status refuses everyone.
   if (exam.status !== "open" && exam.status !== "paused")
@@ -45,6 +59,49 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: `This examination opens at ${new Date(exam.starts_at).toLocaleString()}.` }, { status: 403 });
   if (exam.ends_at && new Date(exam.ends_at) < now)
     return NextResponse.json({ error: "This examination window has closed." }, { status: 403 });
+
+  const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  const lockdown = parseLockdownSettings(settings.lockdown);
+
+  // Secure Environment Verification
+  let lockdownVerified = false;
+  let lockdownPlatform: string | null = null;
+  let lockdownAppVersion: string | null = null;
+
+  if (lockdown.enabled && lockdown.require_app) {
+    const rawAttestation =
+      (parsed.data.lockdown_attestation as Partial<LockdownAttestationPayload> | undefined) ?? {
+        timestamp: Number(request.headers.get("x-evalora-lockdown-timestamp")),
+        exam_code: request.headers.get("x-evalora-lockdown-exam") || examCode,
+        platform: request.headers.get("x-evalora-lockdown-platform") || "",
+        app_version: request.headers.get("x-evalora-lockdown-version") || "",
+        signature: request.headers.get("x-evalora-lockdown-signature") || "",
+        nonce: request.headers.get("x-evalora-lockdown-nonce") || undefined,
+      };
+
+    const verification = verifyLockdownAttestation(rawAttestation, examCode, {
+      minVersion: lockdown.min_app_version,
+    });
+
+    if (!verification.verified) {
+      return NextResponse.json(
+        {
+          error: "This examination requires the EVALORA Secure Exam Application. Standard web browsers are not permitted.",
+          lockdown_required: true,
+          lockdown_reason: verification.reason,
+          exam_id: exam.id,
+          exam_title: exam.title,
+          download_url: "/download/secure-browser",
+          launch_url: buildLockdownLaunchUrl(examCode, candidateCode),
+        },
+        { status: 403 },
+      );
+    }
+
+    lockdownVerified = true;
+    lockdownPlatform = verification.platform ?? null;
+    lockdownAppVersion = verification.app_version ?? null;
+  }
 
   const { data: exactCandidate } = await admin
     .from("exam_candidates")
@@ -71,7 +128,6 @@ export async function POST(request: Request) {
     .eq("candidate_id", candidate.id)
     .order("attempt_number", { ascending: false });
 
-  const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const attemptPolicy = typeof settings.attempt_policy === "string" ? settings.attempt_policy : "single_resume";
   const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
   const latestAttempt = rowsForCandidate[0] ?? null;
@@ -107,6 +163,8 @@ export async function POST(request: Request) {
         track: latestAttempt.track ?? null,
         deadline: deadline.toISOString(),
         proctoring: Boolean(settings.proctoring),
+        lockdown_required: lockdown.enabled,
+        lockdown_verified: Boolean(latestAttempt.lockdown_verified),
       });
     }
     if (exam.status !== "open" || (exam.ends_at && Date.parse(exam.ends_at) < Date.now()))
@@ -133,6 +191,8 @@ export async function POST(request: Request) {
       track: started.attempt.track ?? null,
       deadline: retakeDeadline.toISOString(),
       proctoring: Boolean(settings.proctoring),
+      lockdown_required: lockdown.enabled,
+      lockdown_verified: lockdownVerified,
     });
   }
 
@@ -158,12 +218,32 @@ export async function POST(request: Request) {
         // Only sent for track-selection examinations, so examinations without it
         // never reference the exam_attempts.track column.
         ...(track ? { track } : {}),
+        ...(lockdownVerified
+          ? {
+              lockdown_verified: true,
+              lockdown_platform: lockdownPlatform,
+              lockdown_app_version: lockdownAppVersion,
+              lockdown_verified_at: new Date().toISOString(),
+            }
+          : {}),
       })
       .select()
       .single();
     if (error || !data) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
     attempt = data;
     await admin.from("exam_candidates").update({ status: "in_progress" }).eq("id", candidate.id);
+  } else if (lockdownVerified && !attempt.lockdown_verified) {
+    // Record verified status on resumed attempt
+    await admin
+      .from("exam_attempts")
+      .update({
+        lockdown_verified: true,
+        lockdown_platform: lockdownPlatform,
+        lockdown_app_version: lockdownAppVersion,
+        lockdown_verified_at: new Date().toISOString(),
+      })
+      .eq("id", attempt.id);
+    attempt.lockdown_verified = true;
   }
 
   const finalAttempt = attempt;
@@ -188,5 +268,7 @@ export async function POST(request: Request) {
     track: finalAttempt.track ?? null,
     deadline: deadline.toISOString(),
     proctoring: Boolean((exam.settings as Record<string, unknown>)?.proctoring),
+    lockdown_required: lockdown.enabled,
+    lockdown_verified: Boolean(finalAttempt.lockdown_verified),
   });
 }

@@ -7,6 +7,7 @@ import {
   saveCandidateAttemptSession,
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
+import { Download, ExternalLink, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -20,6 +21,13 @@ export default function ExamAccessPage() {
   const [dismissedActivePointer, setDismissedActivePointer] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [lockdownInfo, setLockdownInfo] = useState<{
+    required: boolean;
+    examTitle?: string;
+    downloadUrl?: string;
+    launchUrl?: string;
+    reason?: string;
+  } | null>(null);
 
   useEffect(() => {
     const local = typeof window !== "undefined" ? window.localStorage : null;
@@ -30,6 +38,7 @@ export default function ExamAccessPage() {
     e?.preventDefault();
     setBusy(true);
     setError(null);
+    setLockdownInfo(null);
     let res: Response;
     try {
       res = await fetch("/api/exam/access", {
@@ -43,7 +52,18 @@ export default function ExamAccessPage() {
     }
     const data = await res.json().catch(() => null);
     setBusy(false);
-    if (!res.ok) return setError(data?.error ?? "Access denied.");
+    if (!res.ok) {
+      if (data?.lockdown_required) {
+        setLockdownInfo({
+          required: true,
+          examTitle: data.exam_title,
+          downloadUrl: data.download_url || "/download/secure-browser",
+          launchUrl: data.launch_url,
+          reason: data.lockdown_reason,
+        });
+      }
+      return setError(data?.error ?? "Access denied.");
+    }
     const saved = saveCandidateAttemptSession(
       typeof window !== "undefined" ? window.localStorage : null,
       typeof window !== "undefined" ? window.sessionStorage : null,
@@ -113,6 +133,48 @@ export default function ExamAccessPage() {
                   >
                     I am a different student
                   </Button>
+                </div>
+              </div>
+            )}
+            {lockdownInfo?.required && (
+              <div
+                role="alert"
+                aria-label="Secure examination application required"
+                className="mb-5 rounded-2xl border-2 border-evergreen-800 bg-evergreen-950 p-5 text-white shadow-lg"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="rounded-lg bg-gold-500/20 p-2 text-gold-400 shrink-0">
+                    <ShieldAlert className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 className="font-display text-base font-bold text-white">
+                      EVALORA Secure Exam Browser Required
+                    </h2>
+                    <p className="mt-1 text-xs leading-relaxed text-evergreen-100/90">
+                      {lockdownInfo.examTitle ? (
+                        <><strong>{lockdownInfo.examTitle}</strong> has been configured with strict exam lockdown.</>
+                      ) : (
+                        "This examination has been configured with strict exam lockdown."
+                      )}{" "}
+                      Standard web browsers (Chrome, Edge, Safari) cannot be used to take this examination.
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2.5">
+                      {lockdownInfo.launchUrl && (
+                        <a
+                          href={lockdownInfo.launchUrl}
+                          className="inline-flex items-center gap-1.5 rounded-xl bg-gold-500 px-3.5 py-2 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" /> Launch in Secure Browser
+                        </a>
+                      )}
+                      <Link
+                        href={lockdownInfo.downloadUrl || "/download/secure-browser"}
+                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                      >
+                        <Download className="h-3.5 w-3.5" /> Download Secure Browser
+                      </Link>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}

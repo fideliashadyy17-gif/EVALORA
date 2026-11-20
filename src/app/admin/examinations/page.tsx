@@ -1,14 +1,17 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { DeleteExamDialog } from "@/components/DeleteExamDialog";
+import { parseLockdownSettings } from "@/lib/lockdown";
 import { registerClassForExam } from "../actions/academics";
 import { enterOrgWorkspace } from "../actions/orgs";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
-import { CheckCircle2, FileCheck2, ShieldAlert, Video } from "lucide-react";
+import { Archive, CheckCircle2, FileCheck2, ShieldAlert, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminSetExamStatus } from "../actions";
+import { deleteExamAsAdmin } from "./actions";
 import { Table } from "../ui";
 
 export const metadata: Metadata = { title: "Examinations" };
@@ -34,7 +37,13 @@ export default async function AdminExaminations({
     .order("created_at", { ascending: false })
     .range((page - 1) * pageSize, page * pageSize - 1);
   if (sp.exam) query = query.eq("id", sp.exam);
-  if (sp.status) query = query.eq("status", sp.status);
+  if (sp.status === "archived") {
+    query = query.not("deleted_at", "is", null);
+  } else if (sp.status) {
+    query = query.eq("status", sp.status).is("deleted_at", null);
+  } else {
+    query = query.is("deleted_at", null);
+  }
   if (sp.q) query = query.ilike("title", `%${sp.q}%`);
   if (sp.org) query = query.eq("organization_id", sp.org);
   const [
@@ -48,9 +57,9 @@ export default async function AdminExaminations({
     query,
     admin.from("organizations").select("id, name").order("name").limit(500),
     admin.from("classes").select("id, name, organization_id").order("name").limit(1000),
-    admin.from("exams").select("id", { count: "exact", head: true }).eq("status", "open"),
-    admin.from("exams").select("id", { count: "exact", head: true }).in("status", ["scheduled", "paused"]),
-    admin.from("exams").select("id", { count: "exact", head: true }).eq("status", "closed"),
+    admin.from("exams").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "open"),
+    admin.from("exams").select("id", { count: "exact", head: true }).is("deleted_at", null).in("status", ["scheduled", "paused"]),
+    admin.from("exams").select("id", { count: "exact", head: true }).is("deleted_at", null).eq("status", "closed"),
   ]);
 
   const hasFilters = Boolean(sp.q || sp.status || sp.org || sp.exam);
@@ -80,6 +89,10 @@ export default async function AdminExaminations({
         }
       />
       {sp.ok === "candidates_added" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Class registered — candidate access codes are ready in the workspace.</p>}
+      {sp.ok === "deleted" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination permanently removed from the platform.</p>}
+      {sp.ok === "archived" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination safely archived. Historical student attempts, answers, and scores are preserved.</p>}
+      {sp.ok === "lockdown" && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Lockdown environment settings updated.</p>}
+      {sp.e === "protected_benchmark" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">Official platform benchmark examinations cannot be deleted.</p>}
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Done — the change is in the audit log.</p>}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -91,13 +104,14 @@ export default async function AdminExaminations({
 
       <form method="get" className="mb-4 flex flex-wrap items-center gap-2">
         <Input name="q" defaultValue={sp.q} placeholder="Search exam title…" className="max-w-sm" aria-label="Search exam title" />
-        <Select name="status" defaultValue={sp.status ?? ""} className="w-44" aria-label="Status">
-          <option value="">All statuses</option>
+        <Select name="status" defaultValue={sp.status ?? ""} className="w-48" aria-label="Status">
+          <option value="">All active examinations</option>
           <option value="open">Open</option>
           <option value="scheduled">Scheduled</option>
           <option value="paused">Paused</option>
           <option value="draft">Draft</option>
           <option value="closed">Closed</option>
+          <option value="archived">Archived / Deleted</option>
         </Select>
         <Select name="org" defaultValue={sp.org ?? ""} className="w-56" aria-label="Organization">
           <option value="">All organizations</option>
@@ -113,9 +127,14 @@ export default async function AdminExaminations({
         )}
       </form>
 
-      <Table head={["Examination", "Organization", "Window", "Candidates / attempts", "Proctoring", "Status", "Change status"]}>
+      <Table head={["Examination", "Organization", "Window", "Candidates / attempts", "Security & Environment", "Status", "Actions"]}>
         {(exams ?? []).map((e) => {
-          const proctored = Boolean((e.settings as Record<string, unknown> | null)?.proctoring);
+          const settings = (e.settings as Record<string, unknown> | null) ?? {};
+          const lockdown = parseLockdownSettings(settings.lockdown);
+          const proctored = Boolean(settings.proctoring);
+          const isArchived = Boolean(e.deleted_at || settings.archived);
+          const candidateCount = (e.exam_candidates as { count: number }[] | null)?.[0]?.count ?? 0;
+          const attemptCount = (e.exam_attempts as { count: number }[] | null)?.[0]?.count ?? 0;
           return (
             <tr key={e.id}>
               <td>
@@ -156,21 +175,50 @@ export default async function AdminExaminations({
                 {e.starts_at ? fmtDateTime(e.starts_at) : "—"} → {e.ends_at ? fmtDateTime(e.ends_at) : "—"}
               </td>
               <td className="tabular-nums">
-                {(e.exam_candidates as { count: number }[] | null)?.[0]?.count ?? 0} / {(e.exam_attempts as { count: number }[] | null)?.[0]?.count ?? 0}
+                {candidateCount} / {attemptCount}
               </td>
-              <td>{proctored ? <Badge tone="gold">Video</Badge> : <Badge tone="gray">Off</Badge>}</td>
-              <td><Badge tone={tone(e.status)}>{e.status}</Badge></td>
               <td>
-                <form action={adminSetExamStatus} className="flex items-center gap-1.5">
-                  <input type="hidden" name="id" value={e.id} />
-                  <select name="status" defaultValue={e.status} aria-label="Change status" className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
-                    <option value="draft">draft</option>
-                    <option value="scheduled">scheduled</option>
-                    <option value="open">open</option>
-                    <option value="closed">closed</option>
-                  </select>
-                  <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Apply</button>
-                </form>
+                <div className="flex flex-col gap-1 items-start">
+                  {proctored ? <Badge tone="gold"><Video className="h-3 w-3" /> Proctored</Badge> : null}
+                  {lockdown.enabled ? (
+                    <Badge tone="amber"><ShieldCheck className="h-3 w-3" /> Lockdown</Badge>
+                  ) : null}
+                  {!proctored && !lockdown.enabled ? (
+                    <Badge tone="gray">Standard Web</Badge>
+                  ) : null}
+                </div>
+              </td>
+              <td>
+                {isArchived ? (
+                  <Badge tone="gray"><Archive className="h-3 w-3" /> Archived</Badge>
+                ) : (
+                  <Badge tone={tone(e.status)}>{e.status}</Badge>
+                )}
+              </td>
+              <td>
+                <div className="flex flex-col gap-2">
+                  {!isArchived && (
+                    <form action={adminSetExamStatus} className="flex items-center gap-1.5">
+                      <input type="hidden" name="id" value={e.id} />
+                      <select name="status" defaultValue={e.status} aria-label="Change status" className="rounded-lg border border-evergreen-900/55 bg-white px-2 py-1.5 text-xs">
+                        <option value="draft">draft</option>
+                        <option value="scheduled">scheduled</option>
+                        <option value="open">open</option>
+                        <option value="closed">closed</option>
+                      </select>
+                      <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Apply</button>
+                    </form>
+                  )}
+                  <DeleteExamDialog
+                    examId={e.id}
+                    examTitle={e.title}
+                    accessCode={e.access_code}
+                    attemptCount={attemptCount}
+                    candidateCount={candidateCount}
+                    action={deleteExamAsAdmin}
+                    triggerVariant="outline"
+                  />
+                </div>
               </td>
             </tr>
           );

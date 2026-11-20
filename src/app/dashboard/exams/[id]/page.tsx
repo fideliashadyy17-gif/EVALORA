@@ -14,9 +14,11 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
+import { DeleteExamDialog } from "@/components/DeleteExamDialog";
+import { parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamLockdown, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -47,6 +49,7 @@ export default async function ExamDetailPage({
   if (!exam) notFound();
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  const lockdown = parseLockdownSettings(settings.lockdown);
   const accessLink = String(
     (exam as Record<string, unknown>).access_link
       ?? `/exam/join/${String((exam as Record<string, unknown>).invite_token ?? "")}`,
@@ -303,16 +306,95 @@ export default async function ExamDetailPage({
                 {settings.results_published ? "Unpublish results" : "Publish results"}
               </Button>
             </form>
-            <form action={deleteExam}>
-              <input type="hidden" name="id" value={id} />
-              <Button type="submit" variant="ghost" className="text-red-700">Delete</Button>
-            </form>
+            <DeleteExamDialog
+              examId={id}
+              examTitle={exam.title}
+              accessCode={exam.access_code}
+              attemptCount={(attempts ?? []).length}
+              candidateCount={(candidates ?? []).length}
+              action={deleteExam}
+            />
           </div>
         </div>
         <p className="mt-3 text-sm text-ink-soft">
           Results are currently <strong>{settings.results_published ? "visible to candidates" : "hidden from candidates"}</strong>.
           Objective questions are marked automatically on submission; written answers appear in the marking queue below.
         </p>
+      </Card>
+
+      {/* Secure Lockdown Environment Configuration */}
+      <Card className="mb-6 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-evergreen-900/10 pb-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                Secure Lockdown Exam Environment
+              </h2>
+              <Badge tone={lockdown.enabled ? "green" : "gray"}>
+                {lockdown.enabled ? "Lockdown Enabled" : "Standard Web Access (Disabled)"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-ink-soft">
+              {lockdown.enabled
+                ? "This exam requires the official EVALORA Secure Exam Application. Ordinary web browsers cannot be used to start or resume this paper."
+                : "Standard web browsers are permitted. Candidates can take this exam using Google Chrome, Microsoft Edge, Safari, or Firefox."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/download/secure-browser" variant="outline" className="text-xs">
+              View Application &amp; Download Links
+            </ButtonLink>
+          </div>
+        </div>
+
+        {can(ctx, org.id, CREATOR_ROLES) && (
+          <form action={updateExamLockdown} className="mt-4 space-y-4">
+            <input type="hidden" name="id" value={id} />
+            <div className="rounded-xl border border-evergreen-900/10 bg-cream/50 p-4">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="lockdown_enabled"
+                  defaultChecked={lockdown.enabled}
+                  className="mt-0.5 h-5 w-5 accent-evergreen-700"
+                />
+                <div>
+                  <span className="text-sm font-semibold text-evergreen-950">
+                    Enable Secure Lockdown Environment for this examination
+                  </span>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                    Strictly optional per-examination setting. When enabled, student access via standard browsers is
+                    strictly denied, and candidates must satisfy the EVALORA Secure Exam Application verification handshake.
+                  </p>
+                </div>
+              </label>
+
+              <div className="mt-4 grid gap-3 border-t border-evergreen-900/10 pt-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="lockdown_strict_multi_display"
+                    defaultChecked={lockdown.strict_multi_display}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Enforce single monitor (block multi-display)
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="lockdown_block_clipboard"
+                    defaultChecked={lockdown.block_clipboard}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Strict in-app clipboard isolation
+                </label>
+              </div>
+            </div>
+            <Button type="submit" variant="primary" className="text-xs">
+              Save Lockdown Settings
+            </Button>
+          </form>
+        )}
       </Card>
 
       {/* Results Management & Individual Candidate Links */}

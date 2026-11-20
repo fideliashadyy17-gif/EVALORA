@@ -34,7 +34,7 @@ export async function loadMonitorSnapshot(
 
   const { data: attemptRows } = await supabase
     .from("exam_attempts")
-    .select("id, status, started_at, submitted_at, extension_minutes, track, question_order, pause_reasons, paused_at, exam_candidates(full_name, candidate_ref, class_id)")
+    .select("id, status, started_at, submitted_at, extension_minutes, track, question_order, pause_reasons, paused_at, lockdown_verified, lockdown_platform, lockdown_app_version, exam_candidates(full_name, candidate_ref, class_id)")
     .eq("exam_id", examId)
     .order("started_at", { ascending: false })
     .limit(MONITOR_ATTEMPT_LIMIT);
@@ -42,6 +42,7 @@ export async function loadMonitorSnapshot(
     id: string; status: string; started_at: string; submitted_at: string | null; extension_minutes: number;
     track: string | null; question_order: unknown;
     pause_reasons: string[] | null; paused_at: string | null;
+    lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null;
     exam_candidates: { full_name: string; candidate_ref: string | null; class_id: string | null } | null;
   }[];
   const attemptIds = attempts.map((a) => a.id);
@@ -124,6 +125,9 @@ export async function loadMonitorSnapshot(
       answers: answersByAttempt.get(a.id) ?? [],
       presence: presenceByAttempt.get(a.id) ?? null,
       unread_from_candidate: unreadByAttempt.get(a.id) ?? 0,
+      lockdown_verified: a.lockdown_verified,
+      lockdown_platform: a.lockdown_platform,
+      lockdown_app_version: a.lockdown_app_version,
     }, attemptPaper, nowMs);
   });
 

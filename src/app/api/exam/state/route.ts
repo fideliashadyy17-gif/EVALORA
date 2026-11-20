@@ -7,6 +7,7 @@ import { answerReveal, publicQuestion, releasedFeedback } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseFormulaSheet } from "@/lib/examFormulas";
 import { parseIntegrityPolicy } from "@/lib/integrity";
+import { parseLockdownSettings } from "@/lib/lockdown";
 import { loadPublishedHints } from "@/lib/examHintsServer";
 import { getEntitlement } from "@/lib/entitlements";
 import { examExperienceFromLimits } from "@/lib/examExperience";
@@ -42,6 +43,8 @@ export async function GET(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers });
   const { attempt, exam, candidate } = ctx;
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
+  if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
+    return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const nowMs = Date.now();
   // An open organizer pause freezes the countdown: the paused duration joins
@@ -210,6 +213,7 @@ export async function GET(request: Request) {
       // which browser events to report and when to warn. Only thresholds and
       // switches travel here — never an answer, never another candidate.
       integrity: parseIntegrityPolicy(settings.integrity),
+      lockdown: parseLockdownSettings(settings.lockdown),
       // The paper's authored language and the premium capability set travel
       // together so the shell can protect the paper and present only tools the
       // organization is entitled to use.
@@ -226,6 +230,9 @@ export async function GET(request: Request) {
     attempt: {
       id: attempt.id,
       status: attempt.status,
+      lockdown_verified: Boolean(attempt.lockdown_verified),
+      lockdown_platform: (attempt.lockdown_platform as string | null) ?? null,
+      lockdown_app_version: (attempt.lockdown_app_version as string | null) ?? null,
       // Manual pause state (organizer). The connection pause is reported by
       // the presence heartbeat instead; both freeze the countdown, but only
       // this one blocks composition.

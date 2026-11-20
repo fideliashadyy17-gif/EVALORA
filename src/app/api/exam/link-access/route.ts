@@ -16,6 +16,12 @@ import {
 } from "@/lib/exam-access";
 import { findUsableGrant, startRetakeAttempt, type RetakeCandidateRow } from "@/lib/examRetakeServer";
 import { loadQuizQuestions, randomizeQuestionRows } from "@/lib/live";
+import {
+  buildLockdownLaunchUrl,
+  parseLockdownSettings,
+  verifyLockdownAttestation,
+  type LockdownAttestationPayload,
+} from "@/lib/lockdown";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "crypto";
@@ -84,7 +90,51 @@ export async function POST(request: Request) {
   if (!exam)
     return NextResponse.json({ error: "This examination link is invalid or has been regenerated." }, { status: 404 });
 
+  if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
+    return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410 });
+
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const lockdown = parseLockdownSettings(examSettings.lockdown);
+
+  let lockdownVerified = false;
+  let lockdownPlatform: string | null = null;
+  let lockdownAppVersion: string | null = null;
+
+  if (lockdown.enabled && lockdown.require_app) {
+    const rawAttestation =
+      (identity as { lockdown_attestation?: Partial<LockdownAttestationPayload> } | undefined)?.lockdown_attestation ?? {
+        timestamp: Number(request.headers.get("x-evalora-lockdown-timestamp")),
+        exam_code: request.headers.get("x-evalora-lockdown-exam") || access_code,
+        platform: request.headers.get("x-evalora-lockdown-platform") || "",
+        app_version: request.headers.get("x-evalora-lockdown-version") || "",
+        signature: request.headers.get("x-evalora-lockdown-signature") || "",
+        nonce: request.headers.get("x-evalora-lockdown-nonce") || undefined,
+      };
+
+    const verification = verifyLockdownAttestation(rawAttestation, access_code, {
+      minVersion: lockdown.min_app_version,
+    });
+
+    if (!verification.verified) {
+      return NextResponse.json(
+        {
+          error: "This examination requires the EVALORA Secure Exam Application. Standard web browsers are not permitted.",
+          lockdown_required: true,
+          lockdown_reason: verification.reason,
+          exam_id: exam.id,
+          exam_title: exam.title,
+          download_url: "/download/secure-browser",
+          launch_url: buildLockdownLaunchUrl(access_code),
+        },
+        { status: 403 },
+      );
+    }
+
+    lockdownVerified = true;
+    lockdownPlatform = verification.platform ?? null;
+    lockdownAppVersion = verification.app_version ?? null;
+  }
+
   const access = parseExamAccessSettings(examSettings);
   const identityResult = sanitizeIdentityData(access.identityFields, identity);
   if (!identityResult.ok)
@@ -590,6 +640,14 @@ export async function POST(request: Request) {
         guest_key_hash: matchedRosterCandidate ? null : guestKeyHash,
         invite_token,
         identity_data: identityData,
+        ...(lockdownVerified
+          ? {
+              lockdown_verified: true,
+              lockdown_platform: lockdownPlatform,
+              lockdown_app_version: lockdownAppVersion,
+              lockdown_verified_at: new Date().toISOString(),
+            }
+          : {}),
       })
       .select("*")
       .single();
@@ -637,5 +695,7 @@ export async function POST(request: Request) {
     attempt_number: Number(finalAttempt.attempt_number ?? 1),
     deadline: deadline.toISOString(),
     proctoring: Boolean(examSettings.proctoring),
+    lockdown_required: lockdown.enabled,
+    lockdown_verified: Boolean(finalAttempt.lockdown_verified),
   });
 }

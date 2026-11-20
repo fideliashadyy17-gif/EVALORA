@@ -31,7 +31,8 @@ import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Flag, ShieldAlert, Sigma, X } from "lucide-react";
+import { Flag, ShieldAlert, ShieldCheck, Sigma, X } from "lucide-react";
+import type { ExamLockdownSettings } from "@/lib/lockdown";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
@@ -46,9 +47,9 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
+  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
+  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null; lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
   questions: (PublicQuestion & {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */
@@ -974,6 +975,40 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   if (!state) return <Centered><p className="text-ink-soft">Loading your examination paper…</p></Centered>;
 
   const { exam, attempt, questions } = state;
+
+  const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
+  const isLockdownClient = typeof window !== "undefined" && Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__);
+  const isLockdownVerified = Boolean(attempt.lockdown_verified || isLockdownClient);
+
+  if (isLockdownRequired && !isLockdownVerified && attempt.status === "in_progress") {
+    return (
+      <Centered>
+        <div className="max-w-md rounded-2xl border-2 border-evergreen-900/30 bg-paper p-6 text-center shadow-xl sm:p-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-800">
+            <ShieldAlert className="h-8 w-8" />
+          </div>
+          <h1 className="mt-4 font-display text-xl font-bold text-evergreen-950">
+            EVALORA Secure Exam Browser Required
+          </h1>
+          <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+            This examination is configured in <strong>Lockdown Mode</strong>. Standard web browsers cannot be used to complete or resume this assessment.
+          </p>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <ButtonLink href="/download/secure-browser" variant="gold" className="w-full justify-center">
+              Download EVALORA Secure Browser
+            </ButtonLink>
+            <a
+              href={exam.entry_href || "/exam-access"}
+              className="inline-flex w-full items-center justify-center rounded-xl border border-evergreen-900/20 py-2.5 text-xs font-semibold text-evergreen-900 hover:bg-cream"
+            >
+              Return to Check-in
+            </a>
+          </div>
+        </div>
+      </Centered>
+    );
+  }
+
   const experience = exam.experience ?? DEFAULT_EXAM_EXPERIENCE;
   const paperLanguage: PaperLanguage = exam.language ?? "en";
   const submitted = attempt.status !== "in_progress";
@@ -1023,7 +1058,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
+              {isLockdownRequired && isLockdownVerified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
+                  <ShieldCheck className="h-3 w-3" /> Secure Lockdown
+                </span>
+              )}
+            </div>
             <p className="text-xs text-ink-soft">
               {state.candidate.first_name || state.candidate.last_name
                 ? `${state.candidate.first_name ?? ""} ${state.candidate.last_name ?? ""}`.trim()
