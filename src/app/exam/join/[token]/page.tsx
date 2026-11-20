@@ -17,6 +17,7 @@ import { ExamJoinClient } from "./JoinClient";
 
 export const metadata: Metadata = { title: "Examination access" };
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface ClassOption { id: string; name: string }
 

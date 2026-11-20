@@ -15,7 +15,7 @@ function createTimeoutFetch(timeoutMs = SUPABASE_SERVER_TIMEOUT_MS): typeof fetc
     }
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await fetch(input, { ...init, signal: controller.signal });
+      return await fetch(input, { cache: "no-store", ...init, signal: controller.signal });
     } finally {
       clearTimeout(timer);
       if (upstreamSignal) upstreamSignal.removeEventListener("abort", onUpstreamAbort);
