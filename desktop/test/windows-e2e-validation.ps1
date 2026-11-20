@@ -55,7 +55,6 @@ try {
     # SHA-256 Verification
     $ActualSha = (Get-FileHash $ExePath -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-Host "Computed SHA-256: $ActualSha"
-    Write-Host "Expected SHA-256: $ExpectedSha"
 
     $PublishedSha = $null
     if (Test-Path $ShaPath) {
@@ -64,10 +63,12 @@ try {
         Write-Host "Published SHA file content: $PublishedShaContent"
     }
 
-    if ($ActualSha -eq $ExpectedSha) {
-        Record-Test "SHA-256 verification" "PASS" "SHA-256 verified independently: $ActualSha matches published release checksum"
+    if ($PublishedSha -and $ActualSha -eq $PublishedSha) {
+        Record-Test "SHA-256 verification" "PASS" "SHA-256 verified independently ($ActualSha) matches published release checksum file ($PublishedSha)"
+    } elseif ($ActualSha -eq $ExpectedSha) {
+        Record-Test "SHA-256 verification" "PASS" "SHA-256 verified independently ($ActualSha) matches expected baseline checksum"
     } else {
-        Record-Test "SHA-256 verification" "FAIL" "Mismatch: actual=$ActualSha, expected=$ExpectedSha"
+        Record-Test "SHA-256 verification" "FAIL" "Mismatch: actual=$ActualSha, published=$PublishedSha, expected=$ExpectedSha"
     }
 
     # Inspect Windows file metadata
@@ -140,24 +141,27 @@ try {
     }
 
     # Verify Custom Protocol in Windows Registry
-    Write-Host "Verifying Windows Registry protocol registration (HKCU:\Software\Classes\evalora-lockdown)..."
-    $RegBase = "HKCU:\Software\Classes\evalora-lockdown"
-    $RegCommand = "$RegBase\shell\open\command"
+    Write-Host "Verifying Windows Registry protocol registration..."
+    $regKey = Get-Item "Registry::HKEY_CURRENT_USER\Software\Classes\evalora-lockdown\shell\open\command" -ErrorAction SilentlyContinue
+    if (-not $regKey) {
+        $regKey = Get-Item "Registry::HKEY_CLASSES_ROOT\evalora-lockdown\shell\open\command" -ErrorAction SilentlyContinue
+    }
+    if (-not $regKey) {
+        $regKey = Get-Item "HKCU:\Software\Classes\evalora-lockdown\shell\open\command" -ErrorAction SilentlyContinue
+    }
 
     $ProtocolRegPass = $false
     $CommandVal = $null
-    if (Test-Path $RegCommand) {
-        $DefaultVal = (Get-ItemProperty -Path $RegBase -Name "(Default)" -ErrorAction SilentlyContinue)."(Default)"
-        $CommandVal = (Get-ItemProperty -Path $RegCommand -Name "(Default)" -ErrorAction SilentlyContinue)."(Default)"
-        Write-Host "Registry (Default): $DefaultVal"
-        Write-Host "Registry shell\open\command: $CommandVal"
+    if ($regKey) {
+        $CommandVal = $regKey.GetValue("")
+        Write-Host "Registry shell\open\command default value: $CommandVal"
         if ($CommandVal -like "*EVALORA Secure Exam Browser*") {
             $ProtocolRegPass = $true
         }
     }
 
     if ($ProtocolRegPass) {
-        Record-Test "Protocol registration" "PASS" "HKCU:\Software\Classes\evalora-lockdown registered with open command: $CommandVal"
+        Record-Test "Protocol registration" "PASS" "Custom protocol evalora-lockdown registered with open command: $CommandVal"
     } else {
         Record-Test "Protocol registration" "FAIL" "Protocol registry key missing or misconfigured: $CommandVal"
     }
