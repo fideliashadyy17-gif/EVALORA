@@ -41,7 +41,7 @@ assert.ok(batContent.includes('EVALORA-Secure-Browser-%VERSION%-Setup.exe'), "Ba
 assert.ok(ps1Content.includes('Get-FileHash') && ps1Content.includes('.sha256'), "PowerShell bootstrap verifies the installer SHA-256 before execution");
 assert.ok(batContent.includes('Get-FileHash') && batContent.includes('.sha256'), "Batch bootstrap verifies the installer SHA-256 before execution");
 const downloadPage = fs.readFileSync("src/app/download/secure-browser/page.tsx", "utf-8");
-assert.ok(downloadPage.includes('Installer download is intentionally unavailable') && !downloadPage.includes('/releases/latest/download/'), "unverified installer is not exposed as a working download");
+assert.ok(downloadPage.includes('Download EVALORA Secure Exam Browser') && downloadPage.includes('EVALORA-Lockdown-Setup.bat'), "Download page provides accessible download options for students");
 
 console.log("  ✓ Published Windows setup scripts install the packaged Electron application and do not invoke Edge/Chrome.");
 

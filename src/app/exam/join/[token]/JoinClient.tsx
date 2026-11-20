@@ -317,34 +317,78 @@ export function ExamJoinClient({
               <div
                 role="alert"
                 aria-label="Secure examination application required"
-                className="mt-4 rounded-2xl border-2 border-evergreen-800 bg-evergreen-950 p-5 text-white shadow-lg"
+                className="mt-4 rounded-2xl border-2 border-evergreen-800 bg-evergreen-950 p-6 text-white shadow-xl"
               >
                 <div className="flex items-start gap-3">
-                  <span className="shrink-0 rounded-lg bg-gold-500/20 p-2 text-gold-400">
+                  <span className="shrink-0 rounded-lg bg-gold-500/20 p-2.5 text-gold-400">
                     <ShieldAlert className="h-6 w-6" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <h2 className="font-display text-base font-bold text-white">
-                      EVALORA Secure Exam Browser Required
-                    </h2>
-                    <p className="mt-1 text-xs leading-relaxed text-evergreen-100/90">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="font-display text-base font-bold text-white">
+                        EVALORA Secure Exam Browser Required
+                      </h2>
+                      <span className="rounded-full bg-gold-500/20 px-2.5 py-0.5 text-[11px] font-bold text-gold-300">
+                        Lockdown Active
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-evergreen-100/90">
                       This examination has been configured with strict exam lockdown. Standard web browsers (Chrome, Edge, Safari, Firefox) cannot be used to sit this paper.
                     </p>
+
+                    <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-black/40 p-3.5 text-xs text-evergreen-100/90">
+                      <div className="flex items-start gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-500 text-[11px] font-bold text-evergreen-950">1</span>
+                        <span><strong>First time on this PC?</strong> Download the setup script or install via the download page.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-500 text-[11px] font-bold text-evergreen-950">2</span>
+                        <span><strong>Already installed?</strong> Click <em>&quot;Launch in Secure Browser&quot;</em> and allow your browser to open the application.</span>
+                      </div>
+                    </div>
+
                     <div className="mt-4 flex flex-wrap gap-2.5">
                       {lockdownAlert.launchUrl && (
                         <a
                           href={lockdownAlert.launchUrl}
-                          className="inline-flex items-center gap-1.5 rounded-xl bg-gold-500 px-3.5 py-2 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+                          className="inline-flex items-center gap-2 rounded-xl bg-gold-500 px-4 py-2.5 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" /> Launch in Secure Browser
+                          <ExternalLink className="h-4 w-4" /> Launch in Secure Browser
                         </a>
                       )}
+                      <a
+                        href="/downloads/EVALORA-Lockdown-Setup.bat"
+                        download
+                        className="inline-flex items-center gap-2 rounded-xl border border-evergreen-700 bg-evergreen-800 px-4 py-2.5 text-xs font-semibold text-white shadow transition hover:bg-evergreen-700"
+                      >
+                        <Download className="h-4 w-4" /> Download Setup Script (.bat)
+                      </a>
                       <Link
                         href={lockdownAlert.downloadUrl || "/download/secure-browser"}
-                        className="inline-flex items-center gap-1.5 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5 text-xs font-semibold text-white transition hover:bg-white/20"
                       >
-                        <Download className="h-3.5 w-3.5" /> Download Secure Browser
+                        All Download Options
                       </Link>
+                    </div>
+
+                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] text-evergreen-200/80">
+                      <span>Application didn&apos;t open or screen flashed?</span>
+                      <div className="flex items-center gap-3">
+                        {lockdownAlert.launchUrl && (
+                          <a
+                            href={lockdownAlert.launchUrl}
+                            className="font-semibold text-gold-300 underline underline-offset-2 hover:text-gold-200"
+                          >
+                            Retry Launch
+                          </a>
+                        )}
+                        <Link
+                          href="/download/secure-browser"
+                          className="font-medium text-evergreen-300 underline underline-offset-2 hover:text-white"
+                        >
+                          Troubleshooting &amp; Setup Help
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </div>
