@@ -66,26 +66,11 @@ jobs:
             desktop/dist/*.exe.sha256
 
       - name: Publish to GitHub Release
-        shell: pwsh
-        working-directory: desktop/dist
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || 'v1.1.0' }}
+          files: |
+            desktop/dist/*.exe
+            desktop/dist/*.exe.sha256
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $tag = "${{ github.event.inputs.release_tag }}"
-          if (-not $tag) {
-            $tag = "v1.1.0"
-          }
-          Write-Host "Publishing assets to release tag: $tag"
-          $files = Get-ChildItem -File | Where-Object { $_.Name -like "*.exe*" }
-          Write-Host "Found files:"
-          $files | ForEach-Object { Write-Host " - $($_.FullName) ($($_.Length) bytes)" }
-          if ($files.Count -eq 0) {
-            Write-Error "No installer files found in desktop/dist!"
-            exit 1
-          }
-          foreach ($file in $files) {
-            Write-Host "Uploading $($file.Name) to release $tag..."
-            gh release upload $tag $file.FullName --clobber
-          }
-          Write-Host "Verification of assets on release $tag:"
-          gh release view $tag
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
