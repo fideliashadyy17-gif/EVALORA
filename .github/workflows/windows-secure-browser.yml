@@ -29,7 +29,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
           cache-dependency-path: desktop/package-lock.json
 
@@ -43,9 +43,9 @@ jobs:
 
       - name: Build Windows NSIS installer
         working-directory: desktop
-        run: npm run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --x64 --publish never
 
       - name: Compute SHA-256 Checksums
         shell: pwsh
@@ -64,16 +64,19 @@ jobs:
           path: |
             desktop/dist/*.exe
             desktop/dist/*.exe.sha256
-            desktop/dist/latest.yml
 
-      - name: Upload installer artifacts to Release
-        uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || github.ref == 'refs/heads/arena/b09f356c-evalora'
-        with:
-          tag_name: ${{ github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v1.1.0' }}
-          files: |
-            desktop/dist/*.exe
-            desktop/dist/*.exe.sha256
-            desktop/dist/latest.yml
+      - name: Publish to GitHub Release
+        shell: pwsh
+        working-directory: desktop/dist
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "${{ github.event.inputs.release_tag }}"
+          if (-not $tag) {
+            $tag = "v1.1.0"
+          }
+          Write-Host "Publishing assets to release tag: $tag"
+          $files = Get-ChildItem -Path . -Include *.exe,*.sha256 -Recurse | Select-Object -ExpandProperty FullName
+          Write-Host "Files to upload:"
+          $files | ForEach-Object { Write-Host " - $_" }
+          gh release upload $tag $files --clobber
