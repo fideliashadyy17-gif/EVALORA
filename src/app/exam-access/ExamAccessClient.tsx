@@ -102,8 +102,9 @@ export function ExamAccessClient({
     setError(null);
     setLockdownInfo(null);
 
+    const activeLockdown = isLockdownClient || isSecureBrowserEnvironment();
     let lockdownAttestation: unknown = null;
-    if (isLockdownClient) {
+    if (activeLockdown) {
       const lockdownApi = (window as unknown as {
         __EVALORA_SECURE_LOCKDOWN__?: {
           getAttestation: (code: string) => Promise<unknown>;
@@ -142,11 +143,12 @@ export function ExamAccessClient({
           exam_code: examCode.trim().toUpperCase(),
         };
       }
+      setIsLockdownClient(true);
       persistSecureBrowserState();
     }
 
     const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (isLockdownClient) {
+    if (activeLockdown || lockdownAttestation) {
       reqHeaders["x-evalora-secure-browser"] = "1";
     }
     if (lockdownAttestation && typeof lockdownAttestation === "object") {
@@ -218,11 +220,11 @@ export function ExamAccessClient({
       return setError("Your browser blocked session storage. Enable it and try again.");
     }
 
-    if (isLockdownClient) {
+    if (activeLockdown || data?.lockdown_verified) {
       persistSecureBrowserState();
     }
 
-    router.push(isLockdownClient ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
+    router.push(activeLockdown || data?.lockdown_verified ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
   }
 
   return (

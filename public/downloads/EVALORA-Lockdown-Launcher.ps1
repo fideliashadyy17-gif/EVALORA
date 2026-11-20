@@ -49,19 +49,19 @@ if not "!EXAM_CODE!"=="" (
 )
 
 if not "!INVITE_TOKEN!"=="" (
-    set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1"
+    set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1&secure_browser=1"
     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 ) else if not "!TARGET_PATH!"=="" (
     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
     echo !TARGET_PATH! | findstr /i "\?" >nul
     if !ERRORLEVEL! EQU 0 (
-        set "TARGET_URL=!TARGET_URL!&lockdown=1"
+        set "TARGET_URL=!TARGET_URL!&lockdown=1&secure_browser=1"
     ) else (
-        set "TARGET_URL=!TARGET_URL!?lockdown=1"
+        set "TARGET_URL=!TARGET_URL!?lockdown=1&secure_browser=1"
     )
     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 ) else (
-    set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
+    set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1&secure_browser=1"
     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 )
 

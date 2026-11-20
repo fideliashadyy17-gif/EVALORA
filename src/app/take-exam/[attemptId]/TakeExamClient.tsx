@@ -506,6 +506,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       });
     }
     offset.current = new Date(data.server_now).getTime() - Date.now();
+    if (data.attempt.lockdown_verified) {
+      persistSecureBrowserState();
+    }
     setState(data);
     setManualPause({ paused: Boolean(data.attempt.paused), notice: data.attempt.pause_notice ?? null });
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
@@ -990,7 +993,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // Strict lockdown runtime check: when lockdown is required, the student MUST be sitting
   // the examination inside the verified Secure Exam Application. Opening an active attempt
   // in an ordinary browser (Chrome, Edge, Safari, Firefox) is strictly blocked.
-  if (isLockdownRequired && !isLockdownClient && attempt.status === "in_progress") {
+  if (isLockdownRequired && !isLockdownVerified && attempt.status === "in_progress") {
     return (
       <Centered>
         <div className="max-w-md rounded-2xl border-2 border-evergreen-900/30 bg-paper p-6 text-center shadow-xl sm:p-8">
@@ -1400,7 +1403,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   token={token}
                   questionId={current.question_id}
                   initialHints={current.hints ?? null}
-                  disabled={submitting}
+                  disabled={submitted}
                   answerState={answerStateFor({
                     hasSavedAnswer: Boolean(current.saved_answer) || answerDirty,
                     isCorrect: null,

@@ -113,6 +113,7 @@ function buildTargetUrl(params = {}) {
     const search = new URLSearchParams();
     if (examCode) search.set("code", examCode.trim().toUpperCase());
     search.set("lockdown", "1");
+    search.set("secure_browser", "1");
     return `${url}?${search.toString()}`;
   }
 
@@ -120,7 +121,7 @@ function buildTargetUrl(params = {}) {
   if (pathParam && pathParam.startsWith("/")) {
     let url = `${DEFAULT_EVALORA_HOST}${pathParam}`;
     const separator = url.includes("?") ? "&" : "?";
-    let extra = "lockdown=1";
+    let extra = "lockdown=1&secure_browser=1";
     if (examCode && !url.includes("code=")) {
       extra += `&code=${encodeURIComponent(examCode.trim().toUpperCase())}`;
     }
@@ -128,7 +129,7 @@ function buildTargetUrl(params = {}) {
   }
 
   // 3. Fallback: candidate check-in page
-  let url = `${DEFAULT_EVALORA_HOST}/exam-access?lockdown=1`;
+  let url = `${DEFAULT_EVALORA_HOST}/exam-access?lockdown=1&secure_browser=1`;
   if (examCode) {
     url += `&code=${encodeURIComponent(examCode.trim().toUpperCase())}`;
   }

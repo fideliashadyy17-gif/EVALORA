@@ -17,6 +17,16 @@
 
 import { createHmac, randomBytes } from "node:crypto";
 
+function canonicalAccessCode(value: unknown): string {
+  if (typeof value !== "string") return "";
+  return value
+    .normalize("NFKC")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .replace(/O/g, "0")
+    .replace(/I/g, "1");
+}
+
 export const LOCKDOWN_APP_NAME = "EVALORA Secure Exam Browser";
 export const LOCKDOWN_CURRENT_VERSION = "1.0.0";
 export const LOCKDOWN_PROTOCOL = "evalora-lockdown";
@@ -106,18 +116,24 @@ export function computeLockdownSignature(
   return createHmac("sha256", LOCKDOWN_SHARED_SECRET).update(message).digest("hex");
 }
 
+export interface LockdownVerificationOptions {
+  minVersion?: string;
+  maxAgeMs?: number;
+  storedExamCode?: string | null;
+}
+
 /**
  * Verify cryptographic attestation from the EVALORA Secure Exam Application.
  * Guards against:
- * 1. Replay attacks (timestamp must be within 5-minute sliding window)
- * 2. Exam code tampering
+ * 1. Replay attacks (timestamp must be within sliding window)
+ * 2. Exam code tampering (canonical comparison tolerant to formatting)
  * 3. Outdated application versions
  * 4. Fake client headers
  */
 export function verifyLockdownAttestation(
   payload: Partial<LockdownAttestationPayload> | null | undefined,
   expectedExamCode: string,
-  options?: { minVersion?: string; maxAgeMs?: number },
+  options?: LockdownVerificationOptions,
 ): LockdownVerificationResult {
   if (!payload || typeof payload !== "object") {
     return { verified: false, reason: "Missing lockdown attestation payload." };
@@ -129,7 +145,7 @@ export function verifyLockdownAttestation(
     return { verified: false, reason: "Invalid timestamp in lockdown attestation." };
   }
 
-  const maxAge = options?.maxAgeMs ?? 8 * 60 * 1000; // 8 minutes sliding window
+  const maxAge = options?.maxAgeMs ?? 15 * 60 * 1000; // 15 minutes sliding window
   const now = Date.now();
   if (Math.abs(now - timestamp) > maxAge) {
     return { verified: false, reason: "Lockdown attestation timestamp expired. Please check your system clock." };
@@ -137,10 +153,25 @@ export function verifyLockdownAttestation(
 
   const normalizedExam = (exam_code || "").trim().toUpperCase();
   const normalizedExpected = (expectedExamCode || "").trim().toUpperCase();
+  const storedCode = (options?.storedExamCode || "").trim().toUpperCase();
 
-  // If a specific exam code is provided in the payload and it does not match
-  // the expected exam code or the EVALORA generic challenge, reject mismatch.
-  if (normalizedExam && normalizedExam !== normalizedExpected && normalizedExam !== "EVALORA") {
+  const canonicalExam = canonicalAccessCode(normalizedExam);
+  const canonicalExpected = canonicalAccessCode(normalizedExpected);
+  const canonicalStored = canonicalAccessCode(storedCode);
+
+  // A code matches if:
+  // 1. No exam code specified or it is generic "EVALORA"
+  // 2. Exact match against expectedExamCode or storedExamCode
+  // 3. Canonical match (tolerant to hyphens, spaces, O/0, I/1)
+  const codeMatches =
+    !normalizedExam ||
+    normalizedExam === "EVALORA" ||
+    normalizedExam === normalizedExpected ||
+    (Boolean(storedCode) && normalizedExam === storedCode) ||
+    (Boolean(canonicalExam && canonicalExpected) && canonicalExam === canonicalExpected) ||
+    (Boolean(canonicalExam && canonicalStored) && canonicalExam === canonicalStored);
+
+  if (!codeMatches) {
     return { verified: false, reason: "Lockdown attestation exam code mismatch." };
   }
 
@@ -166,14 +197,17 @@ export function verifyLockdownAttestation(
   // 1. Computed for the specific expected examination code
   // 2. Computed for the generic challenge code ("EVALORA") issued by the server
   // 3. Computed for the exam code provided in the payload (if it matches normalizedExam)
+  // 4. Computed for the stored exam access code
   const expectedSig = computeLockdownSignature(timestamp, normalizedExpected, platform, app_version, nonce ?? "");
   const genericSig = computeLockdownSignature(timestamp, "EVALORA", platform, app_version, nonce ?? "");
   const payloadExamSig = normalizedExam ? computeLockdownSignature(timestamp, normalizedExam, platform, app_version, nonce ?? "") : "";
+  const storedExamSig = storedCode ? computeLockdownSignature(timestamp, storedCode, platform, app_version, nonce ?? "") : "";
 
   const sigValid =
     signature.toLowerCase() === expectedSig.toLowerCase() ||
     signature.toLowerCase() === genericSig.toLowerCase() ||
-    (Boolean(payloadExamSig) && signature.toLowerCase() === payloadExamSig.toLowerCase());
+    (Boolean(payloadExamSig) && signature.toLowerCase() === payloadExamSig.toLowerCase()) ||
+    (Boolean(storedExamSig) && signature.toLowerCase() === storedExamSig.toLowerCase());
 
   if (!sigValid) {
     return { verified: false, reason: "Cryptographic signature validation failed. Untrusted environment." };
@@ -198,8 +232,8 @@ export interface LockdownLaunchOptions {
  * Preserves the original examination context (e.g. invite token or exact link path)
  * so students land on their specific examination join page instead of a generic check-in screen.
  *
- * Uses the clean format `evalora-lockdown://join/<token>?code=<code>` when an invite token is present,
- * ensuring no shell character issues (such as unescaped & in Windows batch files) occur.
+ * Uses the clean format `evalora-lockdown://join/<token>?code=<code>&lockdown=1&secure_browser=1` when an invite token is present,
+ * ensuring no shell character issues occur and all target handlers receive explicit secure context markers.
  */
 export function buildLockdownLaunchUrl(
   examCodeOrOptions: string | LockdownLaunchOptions,
@@ -212,6 +246,8 @@ export function buildLockdownLaunchUrl(
     if (candidateCode?.trim()) {
       params.set("candidate", candidateCode.trim().toUpperCase());
     }
+    params.set("lockdown", "1");
+    params.set("secure_browser", "1");
     return `${LOCKDOWN_PROTOCOL}://enter?${params.toString()}`;
   }
 
@@ -226,12 +262,14 @@ export function buildLockdownLaunchUrl(
   const code = (opts.examCode || "").trim().toUpperCase();
   const candidate = opts.candidateCode?.trim().toUpperCase();
 
-  // If an invitation token is present, use clean path-based scheme evalora-lockdown://join/<token>?code=<code>
+  // If an invitation token is present, use clean path-based scheme evalora-lockdown://join/<token>?code=<code>&lockdown=1&secure_browser=1
   if (token) {
     const url = `${LOCKDOWN_PROTOCOL}://join/${encodeURIComponent(token)}`;
     const params = new URLSearchParams();
     if (code) params.set("code", code);
     if (candidate) params.set("candidate", candidate);
+    params.set("lockdown", "1");
+    params.set("secure_browser", "1");
     const qs = params.toString();
     return qs ? `${url}?${qs}` : url;
   }
@@ -246,6 +284,8 @@ export function buildLockdownLaunchUrl(
   if (candidate) {
     params.set("candidate", candidate);
   }
+  params.set("lockdown", "1");
+  params.set("secure_browser", "1");
   return `${LOCKDOWN_PROTOCOL}://enter?${params.toString()}`;
 }
 

@@ -50,19 +50,19 @@ echo     set "EXAM_CODE=!EXAM_CODE:\=!"
 echo ^)
 echo.
 echo if not "!INVITE_TOKEN!"=="" ^(
-echo     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1"
+echo     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1&secure_browser=1"
 echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 echo ^) else if not "!TARGET_PATH!"=="" ^(
 echo     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
 echo     echo !TARGET_PATH! ^| findstr /i "\?" ^>nul
 echo     if !ERRORLEVEL! EQU 0 ^(
-echo         set "TARGET_URL=!TARGET_URL!&lockdown=1"
+echo         set "TARGET_URL=!TARGET_URL!&lockdown=1&secure_browser=1"
 echo     ^) else ^(
-echo         set "TARGET_URL=!TARGET_URL!?lockdown=1"
+echo         set "TARGET_URL=!TARGET_URL!?lockdown=1&secure_browser=1"
 echo     ^)
 echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 echo ^) else ^(
-echo     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
+echo     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1&secure_browser=1"
 echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 echo ^)
 echo.

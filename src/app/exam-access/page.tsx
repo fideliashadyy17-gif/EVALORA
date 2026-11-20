@@ -55,7 +55,13 @@ export default async function ExamAccessPage({
   if (matchedExam?.invite_token) {
     const qs = new URLSearchParams();
     qs.set("code", inputCode);
-    if (lockdown) qs.set("lockdown", lockdown);
+    const examSettings = (matchedExam.settings ?? {}) as Record<string, unknown>;
+    const examLockdown = (examSettings.lockdown ?? {}) as Record<string, unknown>;
+    const isLockdown = lockdown === "1" || Boolean(examLockdown.enabled);
+    if (isLockdown) {
+      qs.set("lockdown", "1");
+      qs.set("secure_browser", "1");
+    }
     redirect(`/exam/join/${matchedExam.invite_token}?${qs.toString()}`);
   }
 
