@@ -1,42 +1,41 @@
 {
   "name": "evalora-secure-browser",
-  "version": "1.0.0",
-  "description": "Official Secure Lockdown Examination Application for EVALORA Assessment Suite",
+  "version": "1.1.0",
+  "description": "EVALORA Secure Exam Browser for Windows",
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "pack": "electron-builder --dir",
-    "dist:win": "electron-builder --win",
-    "dist:portable": "electron-builder --win portable"
+    "pack": "electron-builder --dir --x64",
+    "dist:win": "electron-builder --win nsis --x64",
+    "dist:portable": "electron-builder --win portable --x64",
+    "test": "node test/attestation-smoke.cjs"
   },
   "author": "EVALORA Assessment Systems",
   "license": "Proprietary",
-  "dependencies": {
-    "electron-is-dev": "^3.0.1"
-  },
   "devDependencies": {
-    "electron": "^33.2.0",
-    "electron-builder": "^25.1.8"
+    "electron": "33.2.0",
+    "electron-builder": "25.1.8"
   },
   "build": {
     "appId": "ai.evalora.lockdown",
     "productName": "EVALORA Secure Exam Browser",
-    "directories": {
-      "output": "dist"
-    },
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "package.json"],
+    "asar": true,
     "win": {
-      "target": [
-        "nsis",
-        "portable"
-      ],
-      "icon": "assets/icon.ico",
-      "requestedExecutionLevel": "asInvoker"
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "EVALORA-Secure-Browser-${version}-Setup.${ext}"
     },
-    "protocols": {
-      "name": "EVALORA Lockdown Protocol",
-      "schemes": [
-        "evalora-lockdown"
-      ]
-    }
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EVALORA Secure Exam Browser",
+      "deleteAppDataOnUninstall": false
+    },
+    "protocols": [{ "name": "EVALORA Lockdown Protocol", "schemes": ["evalora-lockdown"] }]
   }
 }

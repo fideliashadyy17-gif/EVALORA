@@ -19,9 +19,8 @@ import { loadQuizQuestions, randomizeQuestionRows } from "@/lib/live";
 import {
   buildLockdownLaunchUrl,
   parseLockdownSettings,
-  verifyLockdownAttestation,
-  type LockdownAttestationPayload,
 } from "@/lib/lockdown";
+import { verifyAndConsumeLockdownChallenge } from "@/lib/lockdownAttestation";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "crypto";
@@ -138,32 +137,15 @@ export async function POST(request: Request) {
   let lockdownAppVersion: string | null = null;
 
   if (lockdown.enabled && lockdown.require_app) {
-    const isSecureBrowserUa = (request.headers.get("user-agent") || "").includes("EVALORA-Secure-Browser");
-    const isSecureBrowserHeader = request.headers.get("x-evalora-secure-browser") === "1";
-    const isDirectSecureClient = isSecureBrowserUa || isSecureBrowserHeader;
-
-    const rawAttestation =
-      (identity as { lockdown_attestation?: Partial<LockdownAttestationPayload> } | undefined)?.lockdown_attestation ?? {
-        timestamp: Number(request.headers.get("x-evalora-lockdown-timestamp")),
-        exam_code: request.headers.get("x-evalora-lockdown-exam") || access_code,
-        platform: request.headers.get("x-evalora-lockdown-platform") || (isDirectSecureClient ? "win32" : ""),
-        app_version: request.headers.get("x-evalora-lockdown-version") || (isDirectSecureClient ? "1.0.0" : ""),
-        signature: request.headers.get("x-evalora-lockdown-signature") || "",
-        nonce: request.headers.get("x-evalora-lockdown-nonce") || undefined,
-      };
-
-    let verification = verifyLockdownAttestation(rawAttestation, access_code, {
+    // A body proof is still bound to the submitted identity/session and consumed
+    // atomically. User-Agent, headers, URL flags and browser storage are ignored.
+    const rawAttestation = (identity as { lockdown_attestation?: unknown } | undefined)?.lockdown_attestation;
+    const verification = await verifyAndConsumeLockdownChallenge(admin, rawAttestation, {
+      examId: String(exam.id),
+      examCode: access_code,
+      candidateContext: { first_name, last_name, class_id, class_name, guest_key, identity },
       minVersion: lockdown.min_app_version,
-      storedExamCode: exam.access_code as string | null,
     });
-
-    if (!verification.verified && isDirectSecureClient) {
-      verification = {
-        verified: true,
-        platform: (rawAttestation.platform || "win32").toLowerCase(),
-        app_version: rawAttestation.app_version || "1.0.0",
-      };
-    }
 
     if (!verification.verified) {
       return NextResponse.json(

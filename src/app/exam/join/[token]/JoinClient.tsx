@@ -12,7 +12,7 @@ import {
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
 import { createClient } from "@/lib/supabase/client";
-import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
+import { createLockdownCandidateBinding, isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import { Download, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -37,7 +37,6 @@ export function ExamJoinClient({
   languageLock,
   lockdownRequired,
   lockdownLaunchUrl,
-  lockdownChallenge,
 }: {
   token: string;
   title: string;
@@ -55,14 +54,6 @@ export function ExamJoinClient({
   languageLock: boolean;
   lockdownRequired?: boolean;
   lockdownLaunchUrl?: string;
-  lockdownChallenge?: {
-    timestamp: number;
-    exam_code: string;
-    platform: string;
-    app_version: string;
-    signature: string;
-    nonce: string;
-  };
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -147,42 +138,22 @@ export function ExamJoinClient({
     if (activeLockdown || lockdownRequired) {
       const lockdownApi = (window as unknown as {
         __EVALORA_SECURE_LOCKDOWN__?: {
-          getAttestation: (examCode: string) => Promise<unknown>;
+          getAttestation: (examCode: string, context: { first_name: string; last_name: string; class_id: string; guest_key: string; identity: Record<string, string>; candidate_binding: string }) => Promise<unknown>;
         };
       }).__EVALORA_SECURE_LOCKDOWN__;
       if (lockdownApi) {
         try {
-          lockdownAttestation = await lockdownApi.getAttestation(code.trim().toUpperCase());
+          const candidateContext = { first_name: firstName.trim(), last_name: lastName.trim(), class_id: classId, guest_key: guestKey, identity };
+          const candidate_binding = await createLockdownCandidateBinding(candidateContext);
+          lockdownAttestation = await lockdownApi.getAttestation(code.trim().toUpperCase(), { ...candidateContext, candidate_binding });
         } catch (e) {
           console.warn("Failed to collect lockdown attestation:", e);
         }
       }
 
-      // If not obtained from Electron IPC, request fresh attestation for entered exam code
-      if (!lockdownAttestation) {
-        try {
-          const freshRes = await fetch("/api/exam/lockdown/challenge", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-evalora-secure-browser": "1",
-            },
-            body: JSON.stringify({ exam_code: code.trim().toUpperCase() }),
-          });
-          if (freshRes.ok) {
-            lockdownAttestation = await freshRes.json();
-          }
-        } catch (err) {
-          console.warn("Failed to fetch fresh lockdown attestation:", err);
-        }
-      }
-
-      if (!lockdownAttestation && lockdownChallenge) {
-        lockdownAttestation = {
-          ...lockdownChallenge,
-          exam_code: code.trim().toUpperCase(),
-        };
-      }
+      // Never mint or fetch a server-signed client assertion here. The server
+      // admission endpoint accepts only the signature returned by the native
+      // Secure Browser bridge; ordinary browser markers do not create one.
       if (activeLockdown) {
         setIsLockdownClient(true);
         persistSecureBrowserState();
@@ -190,18 +161,6 @@ export function ExamJoinClient({
     }
 
     const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
-    if (activeLockdown || lockdownAttestation) {
-      reqHeaders["x-evalora-secure-browser"] = "1";
-    }
-    if (lockdownAttestation && typeof lockdownAttestation === "object") {
-      const att = lockdownAttestation as Record<string, unknown>;
-      if (att.timestamp) reqHeaders["x-evalora-lockdown-timestamp"] = String(att.timestamp);
-      if (att.exam_code) reqHeaders["x-evalora-lockdown-exam"] = String(att.exam_code);
-      if (att.platform) reqHeaders["x-evalora-lockdown-platform"] = String(att.platform);
-      if (att.app_version) reqHeaders["x-evalora-lockdown-version"] = String(att.app_version);
-      if (att.signature) reqHeaders["x-evalora-lockdown-signature"] = String(att.signature);
-      if (att.nonce) reqHeaders["x-evalora-lockdown-nonce"] = String(att.nonce);
-    }
 
     let res: Response;
     try {

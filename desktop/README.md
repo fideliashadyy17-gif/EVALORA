@@ -1,76 +1,32 @@
-# EVALORA Secure Exam Browser (Desktop Lockdown Environment)
+# EVALORA Secure Browser 1.1.0
 
-The official dedicated desktop examination application for EVALORA Assessment Suite, engineered for high-stakes summative e-assessments, IB MYP assessments, and institutional examinations.
+The Windows distribution is a packaged Electron application. The published Windows setup files download and run the NSIS installer; they never start Chrome or Edge and never use a User-Agent as evidence.
 
----
+## Build
 
-## 1. Architectural Investigation & Technical Rationale
-
-### Web Browser Limitations vs. Native Desktop Capabilities
-A standard web browser (Chrome, Edge, Firefox, Safari) runs inside a restricted user sandbox governed by Web standards. While EVALORA's web application enforces robust presentation-level protections (capture-phase clipboard interception, context-menu cancellation, focus-loss observation, and fullscreen monitoring via `src/lib/assessmentLockdown.ts` and `src/lib/integrity.ts`), **no standard web browser can reliably control host operating-system facilities**:
-
-| Security Threat | Standard Web Browser Capability | EVALORA Secure Exam Browser (Native Desktop) |
-|---|---|---|
-| **OS Shortcuts (`Alt+Tab`, `Win`, `Alt+F4`)** | Observable after the fact via blur; cannot prevent switching | **Intercepted at OS level** via global shortcut hooks before the OS switches tasks |
-| **External Applications (Discord, OBS, WhatsApp, Zoom)** | Cannot detect or terminate running background processes | **Active process watchdog** monitors Windows process table (`tasklist`) and blocks prohibited tools |
-| **Screen Recording / Capture / Screen Sharing** | Vulnerable to OBS, Discord stream, PrintScreen, Snipping Tool | **`setContentProtection(true)`** engages Windows DWM hardware-level screen capture blacking |
-| **Multi-Monitor Exploitation** | Fullscreen API only covers one display; secondary displays stay active | **Multi-Display Watchdog** detects all connected monitors via `screen.getAllDisplays()` and enforces single-screen policy |
-| **Developer Tools & Inspection** | Cannot disable DevTools on student's personal browser | **DevTools strictly disabled**, context isolation enabled, node integration forbidden |
-| **Navigation Escape** | Student can open new tabs or navigate away | **Strict origin firewall** rejects any navigation outside the official EVALORA platform |
-| **System Modification Risk** | None | **Clean exit protocol**: zero permanent registry or OS modifications upon exit |
-
----
-
-## 2. Cryptographic Attestation Protocol
-
-To prevent client spoofing or unauthorized entry from standard browsers when Lockdown is enabled:
-
-1. **Challenge Request**: The Secure Exam Browser requests or receives an ephemeral cryptographic challenge.
-2. **HMAC-SHA256 Signing**: The application's isolated runtime signs `timestamp:examCode:platform:version:nonce` with the shared runtime secret.
-3. **Backend Verification (`/api/exam/access`)**:
-   - Validates timestamp within a 5-minute sliding window (guards against replay attacks).
-   - Validates exam code matching.
-   - Validates platform (`win32`, `darwin`, `linux`) and minimum acceptable version.
-   - Verifies the cryptographic HMAC signature.
-4. **Admission Granted**: The student's attempt is flagged with `lockdown_verified: true`, `lockdown_platform: "win32"`, and `lockdown_verified_at: timestamp`.
-5. **Admin Visibility**: Invigilators see the verified green badge in the real-time proctoring console.
-
----
-
-## 3. Distribution & Deployment Models for Schools
-
-### A. Windows Managed Lab Deployment (Active Directory / Intune / GPO)
-For school-owned desktop laboratories:
-- Build MSI / Silent Installer: `npm run dist:win` produces an installer that supports silent installation via:
-  ```powershell
-  EvaloraSecureBrowserSetup.exe /S /allusers
-  ```
-- Protocol Registration: Automatically registers `evalora-lockdown://` so web links launch directly into the secure shell.
-
-### B. Student Personal Laptops (BYOD — Windows 10 & 11)
-- Portable Standalone Executable:
-  ```powershell
-  npm run dist:portable
-  ```
-  Produces `EVALORA-Secure-Browser-Portable.exe` which requires **zero administrative installation rights**. Students can download, run, take the exam, and close the file with no lingering system footprint.
-
-### C. macOS Deployments
-- Packaged as a signed `.dmg` application bundle with macOS accessibility and full-screen kiosk support.
-
----
-
-## 4. Building the Application
-
-```bash
+```powershell
 cd desktop
-npm install
-npm run start       # Run in local development
-npm run dist:win    # Generate Windows NSIS and Portable installers in /dist
+npm ci
+npm test
+npm run dist:win
 ```
 
----
+The x64 installer is written to `desktop/dist/EVALORA-Secure-Browser-1.1.0-Setup.exe`.
 
-## 5. Invigilator Emergency Exit
-In the event of an emergency or unexpected interruption before paper submission, invigilators can press `Ctrl + Alt + Shift + X` and enter the authorization code:
-`EVALORA-EXIT-2026`
-This smoothly restores normal window controls and exits the application cleanly.
+## Native proof protocol
+
+The main process creates a per-Windows-user Ed25519 key pair. Electron `safeStorage` encrypts the PKCS#8 private key using Windows DPAPI before it is persisted under Electron's user-data directory. The main process requests a two-minute server challenge, signs the challenge together with the normalized examination code, candidate-binding hash, guest-session identifier, platform, and application version, then returns the proof over a narrow context-isolated IPC API. Server admission independently authorizes the candidate, verifies the signature against the public key recorded with the challenge, binds it to the exact exam/session/identity, and atomically consumes the challenge.
+
+No application-wide/shared HMAC secret is present. A challenge is not proof by itself; the signed challenge is accepted once and only in the context it was issued for. The browser UI's bridge/UA/URL markers are presentation signals, not backend authorization.
+
+### Security limits (important)
+
+This provides key-possession and replay resistance, not Windows Remote Attestation. DPAPI protects the private-key file at rest for the current Windows user; it does not prove secure boot, a pristine OS, an Authenticode-signed EVALORA publisher identity, or that a determined same-user attacker is running an unmodified binary. A client can generate a different key and request a challenge. Electron is not tamper-proof. High-stakes deployments requiring proof of a signed/managed binary need an Authenticode publisher certificate and a verifiable Windows device-attestation/enrollment service (for example, managed TPM-backed key attestation); those credentials/services are not configured in this repository/environment.
+
+The NSIS artifact is currently unsigned because no publisher code-signing certificate is configured. Windows may show its normal unknown-publisher warning. Do not describe the current software key as publisher attestation.
+
+## Launch and compatibility
+
+The installer registers `evalora-lockdown://`. Exam links retain their invitation token or direct-entry path and examination code when handed to the application. Lockdown-OFF exams remain available in standard browsers; lockdown policy is per examination. Existing examination codes, links, settings, questions, candidates, attempts and answers are not changed by the application installer.
+
+The 1.0 shared-HMAC protocol is retired by the server because its client-side secret was public. Candidates must update the old browser launcher/application to 1.1.0 for Lockdown exams; no exam credential or exam code is rotated.

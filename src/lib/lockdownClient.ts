@@ -1,104 +1,50 @@
-/**
- * EVALORA Secure Exam Browser — Client-Side Detection & Session Management
- *
- * Provides resilient, tamper-evident detection of the verified Secure Browser environment
- * across Electron desktop instances, Edge/Chrome isolated kiosk sessions, URL query parameters,
- * and authenticated storage contexts.
- */
-
-/**
- * Robustly detect if the current window is executing inside the EVALORA Secure Exam Browser.
- * Guards against parameter mangling (such as Windows cmd caret escapes like "1^" or "^code").
- */
-export function isSecureBrowserEnvironment(searchParams?: URLSearchParams | null): boolean {
+/** Client-side hints for the Secure Browser UI. Admission never trusts these hints. */
+export function isSecureBrowserEnvironment(): boolean {
   if (typeof window === "undefined") return false;
-
-  // 1. Electron Desktop API injection (preload contextBridge)
-  const electronApi = (window as unknown as {
-    __EVALORA_SECURE_LOCKDOWN__?: { isSecureEnvironment?: boolean };
-  }).__EVALORA_SECURE_LOCKDOWN__;
-  if (electronApi && electronApi.isSecureEnvironment) {
-    return true;
-  }
-
-  // 2. Dedicated Secure Browser User-Agent (set by Electron or kiosk launcher)
-  if (typeof navigator !== "undefined" && navigator.userAgent && navigator.userAgent.includes("EVALORA-Secure-Browser")) {
-    return true;
-  }
-
-  // 3. Search parameters in current URL: ?lockdown=1 or ?secure_browser=1
-  // Resilient to Windows batch caret escaping (e.g. "1^", "1", "true")
-  const sp = searchParams || (typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null);
-  if (sp) {
-    const rawLockdown = (sp.get("lockdown") || sp.get("^lockdown"))?.replace(/\^+$/, "").trim();
-    if (rawLockdown === "1" || rawLockdown === "true") return true;
-
-    const rawSecure = (sp.get("secure_browser") || sp.get("^secure_browser"))?.replace(/\^+$/, "").trim();
-    if (rawSecure === "1" || rawSecure === "true") return true;
-  }
-
-  // 4. Session Storage persistence within active window session
-  try {
-    if (
-      window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
-      window.sessionStorage?.getItem("evalora_lockdown_session") === "active"
-    ) {
-      return true;
-    }
-  } catch {}
-
-  // 5. Local Storage persistence across tabs/windows of the same profile
-  try {
-    if (
-      window.localStorage?.getItem("evalora_lockdown_active") === "1" ||
-      window.localStorage?.getItem("evalora_lockdown_session") === "active"
-    ) {
-      return true;
-    }
-  } catch {}
-
-  // 6. Same-site cookie persistence across redirects
-  try {
-    if (typeof document !== "undefined" && document.cookie && /(?:^|;\s*)evalora_lockdown_active=1/.test(document.cookie)) {
-      return true;
-    }
-  } catch {}
-
-  return false;
+  const api = (window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: { getAttestation?: unknown } }).__EVALORA_SECURE_LOCKDOWN__;
+  return Boolean(api && typeof api.getAttestation === "function");
 }
 
-/**
- * Persist the verified secure browser state across session storage, local storage, and cookies.
- */
+export type LockdownCandidateContext = {
+  first_name?: string;
+  last_name?: string;
+  class_id?: string;
+  class_name?: string;
+  guest_key?: string;
+  candidate_code?: string;
+  identity?: Record<string, unknown>;
+};
+
+function normalized(value: unknown): string {
+  return typeof value === "string" ? value.normalize("NFKC").trim().replace(/\s+/g, " ").toLowerCase() : "";
+}
+
+function canonicalCandidateContext(context: LockdownCandidateContext): string {
+  const identity = Object.fromEntries(
+    Object.entries(context.identity ?? {})
+      .filter(([key]) => key !== "lockdown_attestation")
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([key, value]) => [key, normalized(value)]),
+  );
+  return JSON.stringify([
+    "EVALORA-CANDIDATE-V2",
+    normalized(context.first_name), normalized(context.last_name), normalized(context.class_id),
+    normalized(context.class_name), normalized(context.guest_key), normalized(context.candidate_code), identity,
+  ]);
+}
+
+export async function createLockdownCandidateBinding(context: LockdownCandidateContext): Promise<string> {
+  const digest = await globalThis.crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalCandidateContext(context)));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export function persistSecureBrowserState(): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-    window.sessionStorage?.setItem("evalora_lockdown_session", "active");
-  } catch {}
-  try {
-    window.localStorage?.setItem("evalora_lockdown_active", "1");
-    window.localStorage?.setItem("evalora_lockdown_session", "active");
-  } catch {}
-  try {
-    if (typeof document !== "undefined") {
-      document.cookie = "evalora_lockdown_active=1; path=/; max-age=86400; SameSite=Lax";
-    }
-  } catch {}
+  // UI-only compatibility shim. No storage/cookie marker is written or treated as proof.
 }
 
-/**
- * Cleanly extract an examination code from URL search parameters,
- * handling potential cmd caret escaping on parameter keys or values.
- */
 export function extractCleanExamCode(searchParams?: URLSearchParams | null): string {
   const sp = searchParams || (typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null);
   if (!sp) return "";
-  const code =
-    sp.get("code") ||
-    sp.get("^code") ||
-    sp.get("exam") ||
-    sp.get("^exam") ||
-    "";
-  return code.replace(/\^+$/, "").trim().toUpperCase();
+  return (sp.get("code") || sp.get("^code") || sp.get("exam") || sp.get("^exam") || "")
+    .replace(/\^+$/, "").trim().toUpperCase();
 }
