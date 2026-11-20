@@ -8,14 +8,14 @@ import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
-import { CheckCircle2, ClipboardList, FileCheck2, Users } from "lucide-react";
+import { CheckCircle2, ClipboardList, FileCheck2, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
-import { parseLockdownSettings } from "@/lib/lockdown";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
   pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamLockdown, updateWorkspaceExamAccess,
@@ -340,7 +340,19 @@ export default async function ExamDetailPage({
                 : "Standard web browsers are permitted. Candidates can take this exam using Google Chrome, Microsoft Edge, Safari, or Firefox."}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {lockdown.enabled && lockdown.require_app && (
+              <a
+                href={buildLockdownLaunchUrl({
+                  token: exam.invite_token,
+                  examCode: exam.access_code,
+                  path: accessLink,
+                })}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gold-500 px-3 py-1.5 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Launch Secure Browser
+              </a>
+            )}
             <ButtonLink href="/download/secure-browser" variant="outline" className="text-xs">
               View Application &amp; Download Links
             </ButtonLink>
