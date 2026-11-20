@@ -27,7 +27,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-powershell.exe -NoProfile -Command "$expected=(Get-Content -Raw '%CHECKSUM%').Trim().Split(' ')[0]; $actual=(Get-FileHash '%TARGET%' -Algorithm SHA256).Hash.ToLowerInvariant(); if ($actual -ne $expected) { exit 1 }"
+powershell.exe -NoProfile -Command "$expected=((Get-Content -Raw '%CHECKSUM%').Trim() -split '\s+')[0].ToLowerInvariant(); $actual=(Get-FileHash '%TARGET%' -Algorithm SHA256).Hash.ToLowerInvariant(); if ($actual -ne $expected) { exit 1 }"
 if errorlevel 1 (
   echo Installer checksum verification failed. Refusing to execute the file.
   del /q "%TARGET%" "%CHECKSUM%" 2>nul
