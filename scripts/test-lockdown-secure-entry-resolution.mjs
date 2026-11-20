@@ -50,7 +50,7 @@ console.log("  ✓ Windows launcher scripts are free of literal caret bugs and e
 // ---------------------------------------------------------------------------
 // 2. Client-Side Secure Browser Environment Detection
 // ---------------------------------------------------------------------------
-console.log("\n2. Checking Frontend Secure Browser Detection & Parameter Resilience...");
+console.log("\n2. Checking UI-only Secure Browser hints & parameter resilience...");
 
 // Clean code extraction
 assert.strictEqual(extractCleanExamCode(new URLSearchParams("lockdown=1&code=4E6E2138A7")), "4E6E2138A7");
@@ -112,7 +112,7 @@ global.document.cookie = "evalora_lockdown_active=1; path=/";
 assert.strictEqual(isSecureBrowserEnvironment(new URLSearchParams("")), true);
 global.document.cookie = "";
 
-console.log("  ✓ Frontend resiliently detects Secure Browser while strictly restricting standard browsers.");
+console.log("  ✓ Browser markers are parsed for UI context; server admission must still verify a native signature.");
 
 // ---------------------------------------------------------------------------
 // 3. Cryptographic Attestation Verification
@@ -142,20 +142,20 @@ assert.strictEqual(res1.verified, true);
 assert.strictEqual(res1.platform, "win32");
 assert.strictEqual(res1.app_version, "1.0.0");
 
-// Valid attestation with server generic challenge ("EVALORA")
-const validGenericSig = computeLockdownSignature(now, "EVALORA", platform, version, nonce);
+// Generic signatures must not be transferable between examinations.
+const genericSig = computeLockdownSignature(now, "EVALORA", platform, version, nonce);
 const res2 = verifyLockdownAttestation(
   {
     timestamp: now,
     exam_code: examCode,
     platform,
     app_version: version,
-    signature: validGenericSig,
+    signature: genericSig,
     nonce,
   },
   examCode,
 );
-assert.strictEqual(res2.verified, true);
+assert.strictEqual(res2.verified, false);
 
 // Attestation with tampered signature -> must fail
 const resTampered = verifyLockdownAttestation(
@@ -171,14 +171,15 @@ const resTampered = verifyLockdownAttestation(
 );
 assert.strictEqual(resTampered.verified, false);
 
-// Attestation expired (> 8 min window) -> must fail
+// Attestation expired (> 15 minute window) -> must fail
+const expiredTimestamp = now - 16 * 60 * 1000;
 const resExpired = verifyLockdownAttestation(
   {
-    timestamp: now - 10 * 60 * 1000,
+    timestamp: expiredTimestamp,
     exam_code: examCode,
     platform,
     app_version: version,
-    signature: validSig1,
+    signature: computeLockdownSignature(expiredTimestamp, examCode, platform, version, nonce),
     nonce,
   },
   examCode,
@@ -200,7 +201,7 @@ const resOutdated = verifyLockdownAttestation(
 );
 assert.strictEqual(resOutdated.verified, false);
 
-console.log("  ✓ Cryptographic attestation verification prevents spoofing, tampering, replay, and outdated clients.");
+console.log("  ✓ Cryptographic attestation verification rejects tampering, replay, and outdated clients.");
 
 // ---------------------------------------------------------------------------
 // 4. Verification of Route Handlers & Clients
@@ -208,37 +209,32 @@ console.log("  ✓ Cryptographic attestation verification prevents spoofing, tam
 console.log("\n4. Checking Route Handlers and Client Implementations...");
 
 const linkAccessRoute = fs.readFileSync("src/app/api/exam/link-access/route.ts", "utf-8");
-assert.ok(
-  linkAccessRoute.includes("lockdownVerified && !attempt.lockdown_verified"),
-  "route.ts must update lockdown_verified on existing/resumed attempts",
-);
+const directAccessRoute = fs.readFileSync("src/app/api/exam/access/route.ts", "utf-8");
+const challengeRoute = fs.readFileSync("src/app/api/exam/lockdown/challenge/route.ts", "utf-8");
+const joinPage = fs.readFileSync("src/app/exam/join/[token]/page.tsx", "utf-8");
+const accessPage = fs.readFileSync("src/app/exam-access/page.tsx", "utf-8");
+
+assert.ok(linkAccessRoute.includes("lockdownVerified && !attempt.lockdown_verified"), "link-access must update verified status on a resumed attempt");
+assert.ok(!linkAccessRoute.includes("isDirectSecureClient"), "User-Agent/custom headers must never grant lockdown admission");
+assert.ok(!directAccessRoute.includes("isDirectSecureClient"), "direct access must not treat a User-Agent/custom header as attestation");
+assert.ok(linkAccessRoute.includes("identity as { lockdown_attestation"), "shared-link admission must read the signed payload from the request body");
+assert.ok(directAccessRoute.includes("parsed.data.lockdown_attestation"), "direct admission must read the signed payload from the request body");
+assert.ok(challengeRoute.includes("status: 410") && !challengeRoute.includes("computeLockdownSignature"), "web endpoints must not mint HMAC attestations");
+assert.ok(!joinPage.includes("computeLockdownSignature") && !joinPage.includes("lockdownChallenge"), "shared-link pages must not expose a signed challenge");
+assert.ok(!accessPage.includes("computeLockdownSignature") && !accessPage.includes("lockdownChallenge"), "direct-entry pages must not expose a signed challenge");
 
 const joinClient = fs.readFileSync("src/app/exam/join/[token]/JoinClient.tsx", "utf-8");
-assert.ok(
-  joinClient.includes("isSecureBrowserEnvironment"),
-  "JoinClient.tsx must use isSecureBrowserEnvironment",
-);
-assert.ok(
-  joinClient.includes("persistSecureBrowserState"),
-  "JoinClient.tsx must persist secure browser state",
-);
+assert.ok(joinClient.includes("getAttestation"), "JoinClient must obtain the signed assertion through the native bridge");
+assert.ok(!joinClient.includes("/api/exam/lockdown/challenge"), "JoinClient must not ask the web server to mint proof");
 
 const examAccessClient = fs.readFileSync("src/app/exam-access/ExamAccessClient.tsx", "utf-8");
-assert.ok(
-  examAccessClient.includes("isSecureBrowserEnvironment"),
-  "ExamAccessClient.tsx must use isSecureBrowserEnvironment",
-);
-assert.ok(
-  examAccessClient.includes("persistSecureBrowserState"),
-  "ExamAccessClient.tsx must persist secure browser state",
-);
+assert.ok(examAccessClient.includes("getAttestation"), "ExamAccessClient must obtain the signed assertion through the native bridge");
+assert.ok(!examAccessClient.includes("/api/exam/lockdown/challenge"), "ExamAccessClient must not ask the web server to mint proof");
 
 const takeExamClient = fs.readFileSync("src/app/take-exam/[attemptId]/TakeExamClient.tsx", "utf-8");
-assert.ok(
-  takeExamClient.includes("isSecureBrowserEnvironment"),
-  "TakeExamClient.tsx must use isSecureBrowserEnvironment",
-);
+assert.ok(takeExamClient.includes("isSecureBrowserEnvironment"), "TakeExamClient may use browser detection for presentation");
+assert.ok(takeExamClient.includes("const isLockdownVerified = Boolean(attempt.lockdown_verified)"), "TakeExamClient must gate locked papers on server-recorded attestation, not a client marker");
 
-console.log("  ✓ Route handlers and UI components maintain verified secure application context throughout entry.");
+console.log("  ✓ Both admission routes require signed native attestation; headers, URLs and server-minted challenges cannot grant access.");
 
 console.log("\nAll EVALORA Secure Browser Lockdown Entry & Handshake Resolution tests PASSED successfully!");

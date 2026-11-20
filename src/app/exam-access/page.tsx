@@ -1,5 +1,4 @@
 import { validUuid } from "@/lib/exam-access";
-import { computeLockdownSignature, generateLockdownChallenge } from "@/lib/lockdown";
 import { createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ExamAccessClient } from "./ExamAccessClient";
@@ -89,25 +88,12 @@ export default async function ExamAccessPage({
     }
   }
 
-  const now = Date.now();
-  const nonce = generateLockdownChallenge();
-  const lockdownSignature = computeLockdownSignature(now, inputCode || "EVALORA", "win32", "1.0.0", nonce);
-  const lockdownChallenge = {
-    timestamp: now,
-    exam_code: inputCode || "EVALORA",
-    platform: "win32",
-    app_version: "1.0.0",
-    signature: lockdownSignature,
-    nonce,
-  };
-
   return (
     <ExamAccessClient
       initialExamCode={inputCode}
       classes={classes}
       codeToClassMap={codeToClassMap}
       defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
-      lockdownChallenge={lockdownChallenge}
     />
   );
 }

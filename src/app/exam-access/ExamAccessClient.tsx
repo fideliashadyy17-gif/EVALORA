@@ -24,20 +24,11 @@ export function ExamAccessClient({
   classes = [],
   codeToClassMap = {},
   defaultClassId = null,
-  lockdownChallenge,
 }: {
   initialExamCode?: string;
   classes?: ClassOption[];
   codeToClassMap?: Record<string, string>;
   defaultClassId?: string | null;
-  lockdownChallenge?: {
-    timestamp: number;
-    exam_code: string;
-    platform: string;
-    app_version: string;
-    signature: string;
-    nonce: string;
-  };
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
@@ -118,31 +109,9 @@ export function ExamAccessClient({
         }
       }
 
-      // If not obtained from Electron IPC, request fresh attestation for entered exam code
-      if (!lockdownAttestation) {
-        try {
-          const freshRes = await fetch("/api/exam/lockdown/challenge", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-evalora-secure-browser": "1",
-            },
-            body: JSON.stringify({ exam_code: examCode.trim().toUpperCase() }),
-          });
-          if (freshRes.ok) {
-            lockdownAttestation = await freshRes.json();
-          }
-        } catch (err) {
-          console.warn("Failed to fetch fresh lockdown attestation:", err);
-        }
-      }
-
-      if (!lockdownAttestation && lockdownChallenge) {
-        lockdownAttestation = {
-          ...lockdownChallenge,
-          exam_code: examCode.trim().toUpperCase(),
-        };
-      }
+      // Do not ask the web server to sign an assertion: that endpoint was
+      // forgeable from an ordinary browser. Only native Secure Browser IPC may
+      // supply an admission attestation.
       setIsLockdownClient(true);
       persistSecureBrowserState();
     }

@@ -44,10 +44,19 @@ console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
 // ─── Test 2: Deep Link Launch URL Generator ───────────────────────
 {
   const uri1 = buildLockdownLaunchUrl("MYP4-FORM2");
-  assert.equal(uri1, "evalora-lockdown://enter?exam=MYP4-FORM2");
+  const parsed1 = new URL(uri1);
+  assert.equal(parsed1.protocol, "evalora-lockdown:");
+  assert.equal(parsed1.host, "enter");
+  assert.equal(parsed1.searchParams.get("exam"), "MYP4-FORM2");
+  assert.equal(parsed1.searchParams.get("lockdown"), "1");
+  assert.equal(parsed1.searchParams.get("secure_browser"), "1");
 
   const uri2 = buildLockdownLaunchUrl("MYP4-FORM2", "CAND-1234");
-  assert.equal(uri2, "evalora-lockdown://enter?exam=MYP4-FORM2&candidate=CAND-1234");
+  const parsed2 = new URL(uri2);
+  assert.equal(parsed2.searchParams.get("exam"), "MYP4-FORM2");
+  assert.equal(parsed2.searchParams.get("candidate"), "CAND-1234");
+  assert.equal(parsed2.searchParams.get("lockdown"), "1");
+  assert.equal(parsed2.searchParams.get("secure_browser"), "1");
 
   // Context-preserving deep link for shared examination links
   const token = "b2f69046-6b21-432a-bd1e-5369bbde1cfb";
@@ -56,7 +65,6 @@ console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
     examCode: "8J4FDA35",
     path: `/exam/join/${token}`,
   });
-  assert.equal(uri3, `evalora-lockdown://join/${token}?code=8J4FDA35`);
   const parsed3 = new URL(uri3);
   assert.equal(parsed3.protocol, "evalora-lockdown:");
   assert.equal(parsed3.host, "join");
@@ -114,7 +122,7 @@ console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
   assert.equal(tamperedResult.verified, false, "Tampered signature must be rejected");
 
   // Expired timestamp (replay attack prevention)
-  const oldTime = now - 10 * 60 * 1000; // 10 minutes ago
+  const oldTime = now - 16 * 60 * 1000; // Outside the 15-minute acceptance window
   const oldSig = computeLockdownSignature(oldTime, examCode, "win32", "1.0.0", "nonce-2");
   const replayResult = verifyLockdownAttestation(
     {

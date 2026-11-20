@@ -15,7 +15,7 @@
  * - When Lockdown is disabled, standard web access remains completely unobstructed.
  */
 
-import { createHmac, randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 
 function canonicalAccessCode(value: unknown): string {
   if (typeof value !== "string") return "";
@@ -159,17 +159,16 @@ export function verifyLockdownAttestation(
   const canonicalExpected = canonicalAccessCode(normalizedExpected);
   const canonicalStored = canonicalAccessCode(storedCode);
 
-  // A code matches if:
-  // 1. No exam code specified or it is generic "EVALORA"
-  // 2. Exact match against expectedExamCode or storedExamCode
-  // 3. Canonical match (tolerant to hyphens, spaces, O/0, I/1)
-  const codeMatches =
-    !normalizedExam ||
-    normalizedExam === "EVALORA" ||
+  // An assertion must name this examination. Do not accept an empty or global
+  // "EVALORA" identity: that would make a valid generic assertion portable
+  // across every exam. Canonical matching remains tolerant of separators and
+  // common O/0 and I/1 transcription errors.
+  const codeMatches = Boolean(canonicalExam) && (
     normalizedExam === normalizedExpected ||
     (Boolean(storedCode) && normalizedExam === storedCode) ||
     (Boolean(canonicalExam && canonicalExpected) && canonicalExam === canonicalExpected) ||
-    (Boolean(canonicalExam && canonicalStored) && canonicalExam === canonicalStored);
+    (Boolean(canonicalExam && canonicalStored) && canonicalExam === canonicalStored)
+  );
 
   if (!codeMatches) {
     return { verified: false, reason: "Lockdown attestation exam code mismatch." };
@@ -193,21 +192,14 @@ export function verifyLockdownAttestation(
     return { verified: false, reason: "Missing cryptographic signature in lockdown attestation." };
   }
 
-  // A valid attestation signature can be:
-  // 1. Computed for the specific expected examination code
-  // 2. Computed for the generic challenge code ("EVALORA") issued by the server
-  // 3. Computed for the exam code provided in the payload (if it matches normalizedExam)
-  // 4. Computed for the stored exam access code
-  const expectedSig = computeLockdownSignature(timestamp, normalizedExpected, platform, app_version, nonce ?? "");
-  const genericSig = computeLockdownSignature(timestamp, "EVALORA", platform, app_version, nonce ?? "");
-  const payloadExamSig = normalizedExam ? computeLockdownSignature(timestamp, normalizedExam, platform, app_version, nonce ?? "") : "";
-  const storedExamSig = storedCode ? computeLockdownSignature(timestamp, storedCode, platform, app_version, nonce ?? "") : "";
-
-  const sigValid =
-    signature.toLowerCase() === expectedSig.toLowerCase() ||
-    signature.toLowerCase() === genericSig.toLowerCase() ||
-    (Boolean(payloadExamSig) && signature.toLowerCase() === payloadExamSig.toLowerCase()) ||
-    (Boolean(storedExamSig) && signature.toLowerCase() === storedExamSig.toLowerCase());
+  // Bind the MAC to exactly the examination identifier asserted by the
+  // desktop client. The earlier generic/expected/stored-code alternatives
+  // made one signature reusable across aliases and, in the generic case,
+  // across every examination.
+  const expectedSig = computeLockdownSignature(timestamp, normalizedExam, platform, app_version, nonce ?? "");
+  const supplied = Buffer.from(signature, "hex");
+  const expected = Buffer.from(expectedSig, "hex");
+  const sigValid = supplied.length === expected.length && timingSafeEqual(supplied, expected);
 
   if (!sigValid) {
     return { verified: false, reason: "Cryptographic signature validation failed. Untrusted environment." };

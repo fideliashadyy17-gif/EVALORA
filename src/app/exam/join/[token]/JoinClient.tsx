@@ -37,7 +37,6 @@ export function ExamJoinClient({
   languageLock,
   lockdownRequired,
   lockdownLaunchUrl,
-  lockdownChallenge,
 }: {
   token: string;
   title: string;
@@ -55,14 +54,6 @@ export function ExamJoinClient({
   languageLock: boolean;
   lockdownRequired?: boolean;
   lockdownLaunchUrl?: string;
-  lockdownChallenge?: {
-    timestamp: number;
-    exam_code: string;
-    platform: string;
-    app_version: string;
-    signature: string;
-    nonce: string;
-  };
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -158,31 +149,9 @@ export function ExamJoinClient({
         }
       }
 
-      // If not obtained from Electron IPC, request fresh attestation for entered exam code
-      if (!lockdownAttestation) {
-        try {
-          const freshRes = await fetch("/api/exam/lockdown/challenge", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-evalora-secure-browser": "1",
-            },
-            body: JSON.stringify({ exam_code: code.trim().toUpperCase() }),
-          });
-          if (freshRes.ok) {
-            lockdownAttestation = await freshRes.json();
-          }
-        } catch (err) {
-          console.warn("Failed to fetch fresh lockdown attestation:", err);
-        }
-      }
-
-      if (!lockdownAttestation && lockdownChallenge) {
-        lockdownAttestation = {
-          ...lockdownChallenge,
-          exam_code: code.trim().toUpperCase(),
-        };
-      }
+      // Never mint or fetch a server-signed client assertion here. The server
+      // admission endpoint accepts only the signature returned by the native
+      // Secure Browser bridge; ordinary browser markers do not create one.
       if (activeLockdown) {
         setIsLockdownClient(true);
         persistSecureBrowserState();

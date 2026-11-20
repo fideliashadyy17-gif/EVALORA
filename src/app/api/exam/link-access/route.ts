@@ -138,32 +138,16 @@ export async function POST(request: Request) {
   let lockdownAppVersion: string | null = null;
 
   if (lockdown.enabled && lockdown.require_app) {
-    const isSecureBrowserUa = (request.headers.get("user-agent") || "").includes("EVALORA-Secure-Browser");
-    const isSecureBrowserHeader = request.headers.get("x-evalora-secure-browser") === "1";
-    const isDirectSecureClient = isSecureBrowserUa || isSecureBrowserHeader;
-
+    // The request body is the only attestation source. User-Agent, custom
+    // headers, URL parameters and browser storage are all client-controlled and
+    // must never substitute for a cryptographically valid desktop assertion.
     const rawAttestation =
-      (identity as { lockdown_attestation?: Partial<LockdownAttestationPayload> } | undefined)?.lockdown_attestation ?? {
-        timestamp: Number(request.headers.get("x-evalora-lockdown-timestamp")),
-        exam_code: request.headers.get("x-evalora-lockdown-exam") || access_code,
-        platform: request.headers.get("x-evalora-lockdown-platform") || (isDirectSecureClient ? "win32" : ""),
-        app_version: request.headers.get("x-evalora-lockdown-version") || (isDirectSecureClient ? "1.0.0" : ""),
-        signature: request.headers.get("x-evalora-lockdown-signature") || "",
-        nonce: request.headers.get("x-evalora-lockdown-nonce") || undefined,
-      };
+      (identity as { lockdown_attestation?: Partial<LockdownAttestationPayload> } | undefined)?.lockdown_attestation;
 
-    let verification = verifyLockdownAttestation(rawAttestation, access_code, {
+    const verification = verifyLockdownAttestation(rawAttestation, access_code, {
       minVersion: lockdown.min_app_version,
       storedExamCode: exam.access_code as string | null,
     });
-
-    if (!verification.verified && isDirectSecureClient) {
-      verification = {
-        verified: true,
-        platform: (rawAttestation.platform || "win32").toLowerCase(),
-        app_version: rawAttestation.app_version || "1.0.0",
-      };
-    }
 
     if (!verification.verified) {
       return NextResponse.json(

@@ -7,12 +7,7 @@ import {
   parseExamAccessSettings,
   validUuid,
 } from "@/lib/exam-access";
-import {
-  buildLockdownLaunchUrl,
-  computeLockdownSignature,
-  generateLockdownChallenge,
-  parseLockdownSettings,
-} from "@/lib/lockdown";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import { getEntitlement } from "@/lib/entitlements";
 import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
@@ -63,18 +58,6 @@ export default async function SharedExamJoinPage({
     examCode,
     path: `/exam/join/${cleanToken}`,
   });
-
-  const now = Date.now();
-  const nonce = generateLockdownChallenge();
-  const lockdownSignature = computeLockdownSignature(now, examCode, "win32", "1.0.0", nonce);
-  const lockdownChallenge = {
-    timestamp: now,
-    exam_code: examCode,
-    platform: "win32",
-    app_version: "1.0.0",
-    signature: lockdownSignature,
-    nonce,
-  };
 
   const entitlement = await getEntitlement(admin, exam.organization_id);
   const experience = examExperienceFromLimits(entitlement.limits);
@@ -183,7 +166,6 @@ export default async function SharedExamJoinPage({
       languageLock={experience.languageLock}
       lockdownRequired={lockdownRequired}
       lockdownLaunchUrl={lockdownLaunchUrl}
-      lockdownChallenge={lockdownChallenge}
     />
   );
 }

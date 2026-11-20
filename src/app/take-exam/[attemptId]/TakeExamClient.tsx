@@ -987,12 +987,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const { exam, attempt, questions } = state;
 
   const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
-  const isLockdownClient = isSecureBrowserEnvironment();
-  const isLockdownVerified = Boolean(isLockdownClient || attempt.lockdown_verified);
+  // UI detection (UA, URL markers, storage and the Electron bridge) is only a
+  // presentation hint. Admission is authorized by the server-recorded result
+  // of a verified desktop attestation; a client-controlled marker cannot grant
+  // access to a lockdown paper.
+  const isLockdownVerified = Boolean(attempt.lockdown_verified);
 
-  // Strict lockdown runtime check: when lockdown is required, the student MUST be sitting
-  // the examination inside the verified Secure Exam Application. Opening an active attempt
-  // in an ordinary browser (Chrome, Edge, Safari, Firefox) is strictly blocked.
+  // Strict lockdown runtime check: a required paper is only rendered after the
+  // server has recorded a valid Secure Browser attestation for this attempt.
   if (isLockdownRequired && !isLockdownVerified && attempt.status === "in_progress") {
     return (
       <Centered>
