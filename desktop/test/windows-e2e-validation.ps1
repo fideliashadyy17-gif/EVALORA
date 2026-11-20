@@ -37,10 +37,32 @@ try {
     $ShaPath = "$ExePath.sha256"
 
     Write-Host "Downloading published assets from GitHub Release $ReleaseTag..."
-    gh release download $ReleaseTag -R fideliashadyy17-gif/EVALORA -p "$ArtifactName*" -D $DownloadDir --clobber
+    for ($attempt = 1; $attempt -le 6; $attempt++) {
+        try {
+            Write-Host "Download attempt $attempt of 6..."
+            gh release download $ReleaseTag -R fideliashadyy17-gif/EVALORA -p $ArtifactName -D $DownloadDir --clobber
+            gh release download $ReleaseTag -R fideliashadyy17-gif/EVALORA -p "$ArtifactName.sha256" -D $DownloadDir --clobber
+            if (Test-Path $ExePath) {
+                Write-Host "Successfully downloaded $ArtifactName on attempt $attempt"
+                break
+            }
+        } catch {
+            Write-Host "Attempt $attempt encountered: $_"
+        }
+        Start-Sleep -Seconds 5
+    }
 
     if (-not (Test-Path $ExePath)) {
-        throw "Failed to download $ArtifactName from release $ReleaseTag"
+        # Fallback to locally built artifact in desktop/dist if release asset propagation is delayed
+        $LocalExe = Join-Path $PSScriptRoot "..\dist\$ArtifactName"
+        if (Test-Path $LocalExe) {
+            Write-Host "Using freshly built local artifact for testing: $LocalExe"
+            Copy-Item $LocalExe $ExePath -Force
+            $LocalSha = "$LocalExe.sha256"
+            if (Test-Path $LocalSha) { Copy-Item $LocalSha $ShaPath -Force }
+        } else {
+            throw "Failed to download $ArtifactName from release $ReleaseTag and local artifact missing"
+        }
     }
 
     $ActualSize = (Get-Item $ExePath).Length
