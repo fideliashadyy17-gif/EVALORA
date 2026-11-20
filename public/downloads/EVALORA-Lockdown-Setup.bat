@@ -23,8 +23,15 @@ echo set "TARGET_PATH="
 echo set "EXAM_CODE="
 echo set "CANDIDATE_CODE="
 echo.
-echo if not "%%INPUT_URL%%"=="" ^(
-echo     for %%%%p in ^(%%INPUT_URL:^?=" "%%^) do ^(
+echo if not "!INPUT_URL!"=="" ^(
+echo     if "!INPUT_URL:~0,24!"=="evalora-lockdown://join/" ^(
+echo         for /f "tokens=3 delims=/? " %%%%a in ^("!INPUT_URL!"^) do ^(
+echo             set "INVITE_TOKEN=%%%%a"
+echo         ^)
+echo     ^)
+echo     set "URL_CLEAN=!INPUT_URL:?=" "!"
+echo     set "URL_CLEAN=!URL_CLEAN:&=" "!"
+echo     for %%%%p in ^(!URL_CLEAN!^) do ^(
 echo         set "PARAM=%%%%~p"
 echo         if "!PARAM:~0,6!"=="token=" set "INVITE_TOKEN=!PARAM:~6!"
 echo         if "!PARAM:~0,7!"=="invite=" set "INVITE_TOKEN=!PARAM:~7!"
@@ -36,14 +43,29 @@ echo     ^)
 echo ^)
 echo.
 echo if not "!INVITE_TOKEN!"=="" ^(
-echo     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!"
-echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo     set "INVITE_TOKEN=!INVITE_TOKEN:/=!"
+echo     set "INVITE_TOKEN=!INVITE_TOKEN:\=!"
+echo ^)
+echo if not "!EXAM_CODE!"=="" ^(
+echo     set "EXAM_CODE=!EXAM_CODE:/=!"
+echo     set "EXAM_CODE=!EXAM_CODE:\=!"
+echo ^)
+echo.
+echo if not "!INVITE_TOKEN!"=="" ^(
+echo     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1"
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
 echo ^) else if not "!TARGET_PATH!"=="" ^(
 echo     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
-echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo     echo !TARGET_PATH! ^| findstr /i "\?" ^>nul
+echo     if !ERRORLEVEL! EQU 0 ^(
+echo         set "TARGET_URL=!TARGET_URL!^&lockdown=1"
+echo     ^) else ^(
+echo         set "TARGET_URL=!TARGET_URL!?lockdown=1"
+echo     ^)
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
 echo ^) else ^(
-echo     set "TARGET_URL=!EVALORA_BASE!/exam-access"
-echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
 echo     if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&candidate=!CANDIDATE_CODE!"
 echo ^)
 echo.
@@ -64,17 +86,15 @@ echo.
 echo start "" "!TARGET_URL!"
 ) > "%TARGET_DIR%\evalora-launcher.cmd"
 
-:: Register the evalora-lockdown:// protocol in HKCU (Requires NO Administrator Privileges)
-echo [1/3] Registering evalora-lockdown:// deep-linking protocol...
-reg add "HKCU\Software\Classes\evalora-lockdown" /ve /t REG_SZ /d "URL:EVALORA Lockdown Protocol" /f >nul 2>&1
-reg add "HKCU\Software\Classes\evalora-lockdown" /v "URL Protocol" /t REG_SZ /d "" /f >nul 2>&1
-reg add "HKCU\Software\Classes\evalora-lockdown\shell" /f >nul 2>&1
-reg add "HKCU\Software\Classes\evalora-lockdown\shell\open" /f >nul 2>&1
-reg add "HKCU\Software\Classes\evalora-lockdown\shell\open\command" /ve /t REG_SZ /d "\"%TARGET_DIR%\evalora-launcher.cmd\" \"%%1\"" /f >nul 2>&1
+:: Register the evalora-lockdown:// protocol in HKCU
+echo [1/3] Registering evalora-lockdown:// protocol handler...
+reg add "HKCU\Software\Classes\evalora-lockdown" /ve /d "URL:EVALORA Lockdown Protocol" /f >nul
+reg add "HKCU\Software\Classes\evalora-lockdown" /v "URL Protocol" /d "" /f >nul
+reg add "HKCU\Software\Classes\evalora-lockdown\shell\open\command" /ve /d "\"%TARGET_DIR%\evalora-launcher.cmd\" \"%%1\"" /f >nul
 
-:: Create Desktop Shortcut using VBScript
+:: Create desktop shortcut
 echo [2/3] Creating Desktop Shortcut...
-set "VBS_SCRIPT=%TEMP%\create_evalora_shortcut.vbs"
+set "VBS_SCRIPT=%TEMP%\evalora_shortcut.vbs"
 (
 echo Set oWS = WScript.CreateObject^("WScript.Shell"^)
 echo sLinkFile = oWS.SpecialFolders^("Desktop"^) ^& "\EVALORA Secure Exam Browser.lnk"
@@ -85,26 +105,18 @@ echo oLink.WorkingDirectory = "%TARGET_DIR%"
 echo oLink.Save
 ) > "%VBS_SCRIPT%"
 cscript //nologo "%VBS_SCRIPT%" >nul 2>&1
-del "%VBS_SCRIPT%" >nul 2>&1
+if exist "%VBS_SCRIPT%" del /f /q "%VBS_SCRIPT%" >nul 2>&1
 
-echo [3/3] Verifying registration...
-reg query "HKCU\Software\Classes\evalora-lockdown" >nul 2>&1
-if %ERRORLEVEL% EQU 0 (
+echo [3/3] Verifying installation...
+if exist "%TARGET_DIR%\evalora-launcher.cmd" (
     echo.
     echo ======================================================================
-    echo  SUCCESS! EVALORA Secure Exam Browser is installed and ready.
-    echo ======================================================================
-    echo  - Protocol: evalora-lockdown:// registered successfully.
-    echo  - Shortcut: Created on your Desktop.
-    echo  - Permissions: User-level installation (No Admin rights required).
-    echo.
-    echo  You can now return to your browser and click "Launch in Secure Browser"
-    echo  or double-click the "EVALORA Secure Exam Browser" icon on your desktop.
+    echo   EVALORA Secure Exam Browser setup completed successfully!
+    echo   You can now click "Launch in Secure Browser" on your examination page.
     echo ======================================================================
 ) else (
     echo.
-    echo Notice: Registration completed. If you encounter issues launching from
-    echo your browser, please run the shortcut on your desktop directly.
+    echo [ERROR] Setup encountered an issue creating the launcher.
 )
 
 echo.

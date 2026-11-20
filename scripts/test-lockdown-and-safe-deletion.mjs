@@ -56,11 +56,12 @@ console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
     examCode: "8J4FDA35",
     path: `/exam/join/${token}`,
   });
+  assert.equal(uri3, `evalora-lockdown://join/${token}?code=8J4FDA35`);
   const parsed3 = new URL(uri3);
   assert.equal(parsed3.protocol, "evalora-lockdown:");
-  assert.equal(parsed3.searchParams.get("token"), token);
-  assert.equal(parsed3.searchParams.get("path"), `/exam/join/${token}`);
-  assert.equal(parsed3.searchParams.get("exam"), "8J4FDA35");
+  assert.equal(parsed3.host, "join");
+  assert.equal(parsed3.pathname, `/${token}`);
+  assert.equal(parsed3.searchParams.get("code"), "8J4FDA35");
 
   console.log("  ✓ Deep linking protocol URI (evalora-lockdown://) formatted correctly and preserves original exam context");
 }

@@ -22,8 +22,15 @@ set "TARGET_PATH="
 set "EXAM_CODE="
 set "CANDIDATE_CODE="
 
-if not "%INPUT_URL%"=="" (
-    for %%p in (%INPUT_URL:?=" "%) do (
+if not "!INPUT_URL!"=="" (
+    if "!INPUT_URL:~0,24!"=="evalora-lockdown://join/" (
+        for /f "tokens=3 delims=/? " %%a in ("!INPUT_URL!") do (
+            set "INVITE_TOKEN=%%a"
+        )
+    )
+    set "URL_CLEAN=!INPUT_URL:?=" "!"
+    set "URL_CLEAN=!URL_CLEAN:&=" "!"
+    for %%p in (!URL_CLEAN!) do (
         set "PARAM=%%~p"
         if "!PARAM:~0,6!"=="token=" set "INVITE_TOKEN=!PARAM:~6!"
         if "!PARAM:~0,7!"=="invite=" set "INVITE_TOKEN=!PARAM:~7!"
@@ -35,15 +42,30 @@ if not "%INPUT_URL%"=="" (
 )
 
 if not "!INVITE_TOKEN!"=="" (
-    set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!"
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+    set "INVITE_TOKEN=!INVITE_TOKEN:/=!"
+    set "INVITE_TOKEN=!INVITE_TOKEN:\=!"
+)
+if not "!EXAM_CODE!"=="" (
+    set "EXAM_CODE=!EXAM_CODE:/=!"
+    set "EXAM_CODE=!EXAM_CODE:\=!"
+)
+
+if not "!INVITE_TOKEN!"=="" (
+    set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
 ) else if not "!TARGET_PATH!"=="" (
     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+    echo !TARGET_PATH! | findstr /i "\?" >nul
+    if !ERRORLEVEL! EQU 0 (
+        set "TARGET_URL=!TARGET_URL!^&lockdown=1"
+    ) else (
+        set "TARGET_URL=!TARGET_URL!?lockdown=1"
+    )
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
 ) else (
-    set "TARGET_URL=!EVALORA_BASE!/exam-access"
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
-    if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!&candidate=!CANDIDATE_CODE!"
+    set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
+    if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&candidate=!CANDIDATE_CODE!"
 )
 
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (

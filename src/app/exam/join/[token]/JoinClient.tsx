@@ -36,6 +36,7 @@ export function ExamJoinClient({
   languageLock,
   lockdownRequired,
   lockdownLaunchUrl,
+  lockdownChallenge,
 }: {
   token: string;
   title: string;
@@ -53,6 +54,14 @@ export function ExamJoinClient({
   languageLock: boolean;
   lockdownRequired?: boolean;
   lockdownLaunchUrl?: string;
+  lockdownChallenge?: {
+    timestamp: number;
+    exam_code: string;
+    platform: string;
+    app_version: string;
+    signature: string;
+    nonce: string;
+  };
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -72,8 +81,14 @@ export function ExamJoinClient({
   const [busy, setBusy] = useState(false);
 
   const isLockdownClient =
-    typeof window !== "undefined" &&
-    Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__);
+    (typeof window !== "undefined" &&
+      Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
+    (typeof window !== "undefined" &&
+      Boolean(
+        new URLSearchParams(window.location.search).get("lockdown") === "1" ||
+        new URLSearchParams(window.location.search).get("secure_browser") === "1" ||
+        window.sessionStorage?.getItem("evalora_lockdown_active") === "1"
+      ));
 
   const [lockdownAlert, setLockdownAlert] = useState<{
     required: boolean;
@@ -89,6 +104,15 @@ export function ExamJoinClient({
         }
       : null,
   );
+
+  useEffect(() => {
+    if (isLockdownClient) {
+      setLockdownAlert(null);
+      try {
+        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
+      } catch {}
+    }
+  }, [isLockdownClient]);
 
   useEffect(() => {
     const local = typeof window !== "undefined" ? window.localStorage : null;
@@ -140,6 +164,15 @@ export function ExamJoinClient({
           console.warn("Failed to collect lockdown attestation:", e);
         }
       }
+      if (!lockdownAttestation && lockdownChallenge) {
+        lockdownAttestation = {
+          ...lockdownChallenge,
+          exam_code: code.trim().toUpperCase(),
+        };
+      }
+      try {
+        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
+      } catch {}
     }
 
     let res: Response;

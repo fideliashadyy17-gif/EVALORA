@@ -70,11 +70,17 @@ if (process.defaultApp) {
 }
 
 function parseCommandLineArgs(argv) {
-  const uri = argv.find((arg) => arg.startsWith("evalora-lockdown://"));
+  const uri = argv.find((arg) => arg.startsWith("evalora-lockdown://") || arg.startsWith("\"evalora-lockdown://"));
   if (uri) {
     try {
-      const parsed = new URL(uri);
-      const token = parsed.searchParams.get("token") || parsed.searchParams.get("invite");
+      const cleanUri = uri.replace(/^"|"$/g, "").trim();
+      const parsed = new URL(cleanUri);
+      
+      let token = parsed.searchParams.get("token") || parsed.searchParams.get("invite");
+      if (!token && parsed.host === "join") {
+        token = parsed.pathname.replace(/^\/+|\/+$/g, "");
+      }
+      
       const pathParam = parsed.searchParams.get("path");
       const examCode = parsed.searchParams.get("exam") || parsed.searchParams.get("code");
       const candidateCode = parsed.searchParams.get("candidate");
@@ -93,7 +99,10 @@ function parseCommandLineArgs(argv) {
 }
 
 function buildTargetUrl(params = {}) {
-  const token = params.token || params.invite;
+  let token = params.token || params.invite;
+  if (token) {
+    token = token.replace(/\/+$|%2F+$/i, "").trim();
+  }
   const pathParam = params.path;
   const examCode = params.examCode || params.code || params.exam;
   const candidateCode = params.candidateCode || params.candidate;
@@ -101,27 +110,29 @@ function buildTargetUrl(params = {}) {
   // 1. If an invitation token is provided, open the specific exam join page
   if (token) {
     let url = `${DEFAULT_EVALORA_HOST}/exam/join/${encodeURIComponent(token)}`;
-    if (examCode) {
-      url += `?code=${encodeURIComponent(examCode)}`;
-    }
-    return url;
+    const search = new URLSearchParams();
+    if (examCode) search.set("code", examCode.trim().toUpperCase());
+    search.set("lockdown", "1");
+    return `${url}?${search.toString()}`;
   }
 
   // 2. If a specific path is provided (e.g. /exam/join/[token])
   if (pathParam && pathParam.startsWith("/")) {
     let url = `${DEFAULT_EVALORA_HOST}${pathParam}`;
-    if (examCode && !pathParam.includes("code=")) {
-      url += pathParam.includes("?") ? `&code=${encodeURIComponent(examCode)}` : `?code=${encodeURIComponent(examCode)}`;
+    const separator = url.includes("?") ? "&" : "?";
+    let extra = "lockdown=1";
+    if (examCode && !url.includes("code=")) {
+      extra += `&code=${encodeURIComponent(examCode.trim().toUpperCase())}`;
     }
-    return url;
+    return `${url}${separator}${extra}`;
   }
 
   // 3. Fallback: candidate check-in page
-  let url = `${DEFAULT_EVALORA_HOST}/exam-access`;
+  let url = `${DEFAULT_EVALORA_HOST}/exam-access?lockdown=1`;
   if (examCode) {
-    url += `?code=${encodeURIComponent(examCode)}`;
+    url += `&code=${encodeURIComponent(examCode.trim().toUpperCase())}`;
     if (candidateCode) {
-      url += `&candidate=${encodeURIComponent(candidateCode)}`;
+      url += `&candidate=${encodeURIComponent(candidateCode.trim().toUpperCase())}`;
     }
   }
   return url;
@@ -243,6 +254,15 @@ function createWindow() {
   const initialUrl =
     launchTargetUrl || buildTargetUrl({ examCode: launchExamCode, candidateCode: launchCandidateCode });
   mainWindow.loadURL(initialUrl);
+
+  // Recovery fallback if specific join link encounters an error
+  mainWindow.webContents.on("did-fail-load", (event, errorCode, errorDescription, validatedURL) => {
+    console.error("Failed to load target URL:", validatedURL, errorCode, errorDescription);
+    if (validatedURL && !validatedURL.includes("/exam-access")) {
+      console.log("Falling back to exam access check-in page...");
+      mainWindow.loadURL(`${DEFAULT_EVALORA_HOST}/exam-access?lockdown=1${launchExamCode ? `&code=${encodeURIComponent(launchExamCode)}` : ""}`);
+    }
+  });
 
   // Register system-level hotkey blocks
   registerGlobalShortcuts();

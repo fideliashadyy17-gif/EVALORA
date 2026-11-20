@@ -180,34 +180,48 @@ export interface LockdownLaunchOptions {
  * Generate a custom deep-link URI to launch the exam directly inside the desktop application.
  * Preserves the original examination context (e.g. invite token or exact link path)
  * so students land on their specific examination join page instead of a generic check-in screen.
+ *
+ * Uses the clean format `evalora-lockdown://join/<token>?code=<code>` when an invite token is present,
+ * ensuring no shell character issues (such as unescaped & in Windows batch files) occur.
  */
 export function buildLockdownLaunchUrl(
   examCodeOrOptions: string | LockdownLaunchOptions,
   candidateCode?: string,
 ): string {
-  const params = new URLSearchParams();
   if (typeof examCodeOrOptions === "string") {
-    if (examCodeOrOptions.trim()) {
-      params.set("exam", examCodeOrOptions.trim().toUpperCase());
-    }
+    const examCode = examCodeOrOptions.trim().toUpperCase();
+    const params = new URLSearchParams();
+    if (examCode) params.set("exam", examCode);
     if (candidateCode?.trim()) {
       params.set("candidate", candidateCode.trim().toUpperCase());
     }
-  } else {
-    const opts = examCodeOrOptions;
-    if (opts.token?.trim()) {
-      params.set("token", opts.token.trim());
-    }
-    if (opts.path?.trim()) {
-      params.set("path", opts.path.trim());
-    }
-    const code = opts.examCode?.trim();
-    if (code) {
-      params.set("exam", code.toUpperCase());
-    }
-    if (opts.candidateCode?.trim()) {
-      params.set("candidate", opts.candidateCode.trim().toUpperCase());
-    }
+    return `${LOCKDOWN_PROTOCOL}://enter?${params.toString()}`;
+  }
+
+  const opts = examCodeOrOptions;
+  const token = opts.token?.trim().replace(/\/+$|%2F+$/i, "");
+  const code = (opts.examCode || "").trim().toUpperCase();
+  const candidate = opts.candidateCode?.trim().toUpperCase();
+
+  // If an invitation token is present, use clean path-based scheme evalora-lockdown://join/<token>?code=<code>
+  if (token) {
+    const url = `${LOCKDOWN_PROTOCOL}://join/${encodeURIComponent(token)}`;
+    const params = new URLSearchParams();
+    if (code) params.set("code", code);
+    if (candidate) params.set("candidate", candidate);
+    const qs = params.toString();
+    return qs ? `${url}?${qs}` : url;
+  }
+
+  const params = new URLSearchParams();
+  if (opts.path?.trim()) {
+    params.set("path", opts.path.trim());
+  }
+  if (code) {
+    params.set("exam", code);
+  }
+  if (candidate) {
+    params.set("candidate", candidate);
   }
   return `${LOCKDOWN_PROTOCOL}://enter?${params.toString()}`;
 }

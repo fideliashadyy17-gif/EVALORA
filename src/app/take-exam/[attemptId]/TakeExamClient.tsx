@@ -977,7 +977,15 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const { exam, attempt, questions } = state;
 
   const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
-  const isLockdownClient = typeof window !== "undefined" && Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__);
+  const isLockdownClient =
+    (typeof window !== "undefined" &&
+      Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
+    (typeof window !== "undefined" &&
+      Boolean(
+        window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
+        new URLSearchParams(window.location.search).get("lockdown") === "1" ||
+        new URLSearchParams(window.location.search).get("secure_browser") === "1"
+      ));
   const isLockdownVerified = Boolean(isLockdownClient || attempt.lockdown_verified);
 
   // Strict lockdown runtime check: when lockdown is required, the student MUST be sitting
