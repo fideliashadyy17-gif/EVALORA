@@ -672,14 +672,26 @@ export async function POST(request: Request) {
     });
   }
 
-  if (attempt && !identityDataEqual(attempt.identity_data ?? {}, identityData)) {
-    const { data: updatedAttempt } = await admin
-      .from("exam_attempts")
-      .update({ identity_data: identityData })
-      .eq("id", attempt.id)
-      .select("*")
-      .single();
-    if (updatedAttempt) attempt = updatedAttempt;
+  if (attempt) {
+    const updates: Record<string, unknown> = {};
+    if (!identityDataEqual(attempt.identity_data ?? {}, identityData)) {
+      updates.identity_data = identityData;
+    }
+    if (lockdownVerified && !attempt.lockdown_verified) {
+      updates.lockdown_verified = true;
+      updates.lockdown_platform = lockdownPlatform;
+      updates.lockdown_app_version = lockdownAppVersion;
+      updates.lockdown_verified_at = new Date().toISOString();
+    }
+    if (Object.keys(updates).length > 0) {
+      const { data: updatedAttempt } = await admin
+        .from("exam_attempts")
+        .update(updates)
+        .eq("id", attempt.id)
+        .select("*")
+        .single();
+      if (updatedAttempt) attempt = updatedAttempt;
+    }
   }
   if (!attempt) {
     const settings = (exam.settings ?? {}) as Record<string, unknown>;
@@ -731,6 +743,20 @@ export async function POST(request: Request) {
       const racedActive = (racedRows ?? []).find((row) => row.status === "in_progress") ?? null;
       if (!racedActive) return NextResponse.json({ error: "Could not start your attempt." }, { status: 500 });
       attempt = racedActive;
+      if (lockdownVerified && !racedActive.lockdown_verified) {
+        const { data: updatedRaced } = await admin
+          .from("exam_attempts")
+          .update({
+            lockdown_verified: true,
+            lockdown_platform: lockdownPlatform,
+            lockdown_app_version: lockdownAppVersion,
+            lockdown_verified_at: new Date().toISOString(),
+          })
+          .eq("id", racedActive.id)
+          .select("*")
+          .single();
+        if (updatedRaced) attempt = updatedRaced;
+      }
     } else {
       attempt = data;
     }

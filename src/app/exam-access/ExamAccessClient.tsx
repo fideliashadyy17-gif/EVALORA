@@ -9,6 +9,7 @@ import {
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
 import { Download, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
+import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -53,17 +54,7 @@ export function ExamAccessClient({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isLockdownClient =
-    (typeof window !== "undefined" &&
-      Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
-    (typeof window !== "undefined" &&
-      Boolean(
-        (typeof navigator !== "undefined" && navigator.userAgent.includes("EVALORA-Secure-Browser")) ||
-        new URLSearchParams(window.location.search).get("lockdown") === "1" ||
-        new URLSearchParams(window.location.search).get("secure_browser") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_session") === "active",
-      ));
+  const [isLockdownClient, setIsLockdownClient] = useState(() => isSecureBrowserEnvironment());
 
   const [lockdownInfo, setLockdownInfo] = useState<{
     required: boolean;
@@ -77,12 +68,11 @@ export function ExamAccessClient({
     const local = typeof window !== "undefined" ? window.localStorage : null;
     setGuestKey(ensureBrowserGuestKey(local, "exam-access"));
     setActivePointer(readActiveCandidatePointer(local, { entryHref: "/exam-access" }));
-    if (isLockdownClient) {
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-      } catch {}
+    if (isSecureBrowserEnvironment()) {
+      setIsLockdownClient(true);
+      persistSecureBrowserState();
     }
-  }, [isLockdownClient]);
+  }, []);
 
   function handleExamCodeChange(val: string) {
     const upper = val.toUpperCase();
@@ -132,7 +122,10 @@ export function ExamAccessClient({
         try {
           const freshRes = await fetch("/api/exam/lockdown/challenge", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "x-evalora-secure-browser": "1",
+            },
             body: JSON.stringify({ exam_code: examCode.trim().toUpperCase() }),
           });
           if (freshRes.ok) {
@@ -149,10 +142,7 @@ export function ExamAccessClient({
           exam_code: examCode.trim().toUpperCase(),
         };
       }
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-        window.sessionStorage?.setItem("evalora_lockdown_session", "active");
-      } catch {}
+      persistSecureBrowserState();
     }
 
     const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
@@ -229,10 +219,7 @@ export function ExamAccessClient({
     }
 
     if (isLockdownClient) {
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_session", "active");
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-      } catch {}
+      persistSecureBrowserState();
     }
 
     router.push(isLockdownClient ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);

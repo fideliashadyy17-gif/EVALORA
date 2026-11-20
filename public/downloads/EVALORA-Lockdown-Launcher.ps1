@@ -50,31 +50,34 @@ if not "!EXAM_CODE!"=="" (
 
 if not "!INVITE_TOKEN!"=="" (
     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!?lockdown=1"
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 ) else if not "!TARGET_PATH!"=="" (
     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
     echo !TARGET_PATH! | findstr /i "\?" >nul
     if !ERRORLEVEL! EQU 0 (
-        set "TARGET_URL=!TARGET_URL!^&lockdown=1"
+        set "TARGET_URL=!TARGET_URL!&lockdown=1"
     ) else (
         set "TARGET_URL=!TARGET_URL!?lockdown=1"
     )
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 ) else (
     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
-    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!&code=!EXAM_CODE!"
 )
 
+set "LOCKDOWN_PROFILE=%LOCALAPPDATA%\EVALORA-Lockdown\profile"
+if not exist "!LOCKDOWN_PROFILE!" mkdir "!LOCKDOWN_PROFILE!"
+
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
-    start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
+    start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --user-data-dir="!LOCKDOWN_PROFILE!" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
     exit /b 0
 )
 if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (
-    start "" "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
+    start "" "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" --user-data-dir="!LOCKDOWN_PROFILE!" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
     exit /b 0
 )
 if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
-    start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --no-first-run
+    start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --user-data-dir="!LOCKDOWN_PROFILE!" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --no-first-run
     exit /b 0
 )
 

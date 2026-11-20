@@ -12,6 +12,7 @@ import {
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
 import { createClient } from "@/lib/supabase/client";
+import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import { Download, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -80,17 +81,7 @@ export function ExamJoinClient({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const isLockdownClient =
-    (typeof window !== "undefined" &&
-      Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
-    (typeof window !== "undefined" &&
-      Boolean(
-        (typeof navigator !== "undefined" && navigator.userAgent.includes("EVALORA-Secure-Browser")) ||
-        new URLSearchParams(window.location.search).get("lockdown") === "1" ||
-        new URLSearchParams(window.location.search).get("secure_browser") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_session") === "active"
-      ));
+  const [isLockdownClient, setIsLockdownClient] = useState(() => isSecureBrowserEnvironment());
 
   const [lockdownAlert, setLockdownAlert] = useState<{
     required: boolean;
@@ -98,7 +89,7 @@ export function ExamJoinClient({
     downloadUrl?: string;
     reason?: string;
   } | null>(
-    lockdownRequired && !isLockdownClient
+    lockdownRequired && !isSecureBrowserEnvironment()
       ? {
           required: true,
           launchUrl: lockdownLaunchUrl,
@@ -108,13 +99,12 @@ export function ExamJoinClient({
   );
 
   useEffect(() => {
-    if (isLockdownClient) {
+    if (isSecureBrowserEnvironment()) {
+      setIsLockdownClient(true);
       setLockdownAlert(null);
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-      } catch {}
+      persistSecureBrowserState();
     }
-  }, [isLockdownClient]);
+  }, []);
 
   useEffect(() => {
     const local = typeof window !== "undefined" ? window.localStorage : null;
@@ -172,7 +162,10 @@ export function ExamJoinClient({
         try {
           const freshRes = await fetch("/api/exam/lockdown/challenge", {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+              "Content-Type": "application/json",
+              "x-evalora-secure-browser": "1",
+            },
             body: JSON.stringify({ exam_code: code.trim().toUpperCase() }),
           });
           if (freshRes.ok) {
@@ -189,10 +182,7 @@ export function ExamJoinClient({
           exam_code: code.trim().toUpperCase(),
         };
       }
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-        window.sessionStorage?.setItem("evalora_lockdown_session", "active");
-      } catch {}
+      persistSecureBrowserState();
     }
 
     const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
@@ -266,10 +256,7 @@ export function ExamJoinClient({
       return setError("Your browser blocked session storage. Enable it and try again.");
     }
     if (isLockdownClient) {
-      try {
-        window.sessionStorage?.setItem("evalora_lockdown_session", "active");
-        window.sessionStorage?.setItem("evalora_lockdown_active", "1");
-      } catch {}
+      persistSecureBrowserState();
     }
     router.push(isLockdownClient ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
   }

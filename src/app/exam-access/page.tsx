@@ -11,16 +11,19 @@ export default async function ExamAccessPage({
 }: {
   searchParams: Promise<{ code?: string; exam?: string; candidate?: string; lockdown?: string; token?: string }>;
 }) {
-  const params = await searchParams;
-  const inputCode = (params.code || params.exam || "").trim().toUpperCase();
-  const token = params.token?.trim();
-  const lockdown = params.lockdown;
+  const rawParams = ((await searchParams) ?? {}) as Record<string, string | undefined>;
+  const rawCode = rawParams.code || rawParams["^code"] || rawParams.exam || rawParams["^exam"] || "";
+  const inputCode = rawCode.replace(/\^+$/, "").trim().toUpperCase();
+  const rawToken = rawParams.token || rawParams["^token"] || "";
+  const token = rawToken.replace(/\^+$/, "").trim();
+  const rawLockdown = rawParams.lockdown || rawParams["^lockdown"] || "";
+  const lockdown = rawLockdown.replace(/\^+$/, "").trim();
 
   // 1. If an invitation token is passed in query, redirect directly to the join page
   if (token && validUuid(token)) {
     const qs = new URLSearchParams();
     if (inputCode) qs.set("code", inputCode);
-    if (lockdown) qs.set("lockdown", lockdown);
+    if (lockdown) qs.set("lockdown", lockdown === "1" ? "1" : lockdown);
     const search = qs.toString();
     redirect(`/exam/join/${token}${search ? `?${search}` : ""}`);
   }

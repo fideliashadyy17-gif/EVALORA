@@ -33,6 +33,7 @@ import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTr
 import { Track } from "livekit-client";
 import { Flag, ShieldAlert, ShieldCheck, Sigma, X } from "lucide-react";
 import { buildLockdownLaunchUrl, type ExamLockdownSettings } from "@/lib/lockdown";
+import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
@@ -297,6 +298,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       oscillator.stop(ctx.currentTime + 0.4);
     } catch {
       // Audio is a courtesy, never a requirement.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isSecureBrowserEnvironment()) {
+      persistSecureBrowserState();
     }
   }, []);
 
@@ -977,17 +984,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const { exam, attempt, questions } = state;
 
   const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
-  const isLockdownClient =
-    (typeof window !== "undefined" &&
-      Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
-    (typeof window !== "undefined" &&
-      Boolean(
-        (typeof navigator !== "undefined" && navigator.userAgent.includes("EVALORA-Secure-Browser")) ||
-        window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_session") === "active" ||
-        new URLSearchParams(window.location.search).get("lockdown") === "1" ||
-        new URLSearchParams(window.location.search).get("secure_browser") === "1"
-      ));
+  const isLockdownClient = isSecureBrowserEnvironment();
   const isLockdownVerified = Boolean(isLockdownClient || attempt.lockdown_verified);
 
   // Strict lockdown runtime check: when lockdown is required, the student MUST be sitting

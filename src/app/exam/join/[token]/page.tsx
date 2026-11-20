@@ -33,7 +33,7 @@ export default async function SharedExamJoinPage({
   searchParams: Promise<{ code?: string }>;
 }) {
   const { token } = await params;
-  const { code } = await searchParams;
+  const rawParams = ((await searchParams) ?? {}) as Record<string, string | string[] | undefined>;
   const cleanToken = (token ?? "").trim();
   if (!validUuid(cleanToken))
     return <Shell title="This examination link is invalid." body="Ask your institution for the current shareable link and access code." />;
@@ -51,7 +51,13 @@ export default async function SharedExamJoinPage({
   const access = parseExamAccessSettings(examSettings);
   const lockdown = parseLockdownSettings(examSettings.lockdown);
   const lockdownRequired = Boolean(lockdown.enabled && lockdown.require_app);
-  const examCode = (code ?? exam.access_code ?? "").trim().toUpperCase();
+  const rawCode =
+    typeof rawParams.code === "string"
+      ? rawParams.code
+      : typeof rawParams["^code"] === "string"
+        ? rawParams["^code"]
+        : undefined;
+  const examCode = (rawCode ?? exam.access_code ?? "").replace(/\^+$/, "").trim().toUpperCase();
   const lockdownLaunchUrl = buildLockdownLaunchUrl({
     token: cleanToken,
     examCode,
