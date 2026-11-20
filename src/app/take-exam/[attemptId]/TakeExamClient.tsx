@@ -982,7 +982,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
     (typeof window !== "undefined" &&
       Boolean(
+        (typeof navigator !== "undefined" && navigator.userAgent.includes("EVALORA-Secure-Browser")) ||
         window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
+        window.sessionStorage?.getItem("evalora_lockdown_session") === "active" ||
         new URLSearchParams(window.location.search).get("lockdown") === "1" ||
         new URLSearchParams(window.location.search).get("secure_browser") === "1"
       ));

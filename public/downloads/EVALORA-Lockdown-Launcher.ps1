@@ -66,15 +66,15 @@ if not "!INVITE_TOKEN!"=="" (
 )
 
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (
-    start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
+    start "" "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
     exit /b 0
 )
 if exist "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" (
-    start "" "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
+    start "" "%ProgramFiles%\Microsoft\Edge\Application\msedge.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --edge-kiosk-type=fullscreen --disable-pinch --no-first-run
     exit /b 0
 )
 if exist "%ProgramFiles%\Google\Chrome\Application\chrome.exe" (
-    start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --app="!TARGET_URL!" --kiosk --no-first-run
+    start "" "%ProgramFiles%\Google\Chrome\Application\chrome.exe" --app="!TARGET_URL!" --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 EVALORA-Secure-Browser/1.0.0" --kiosk --no-first-run
     exit /b 0
 )
 

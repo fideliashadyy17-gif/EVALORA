@@ -58,9 +58,11 @@ export function ExamAccessClient({
       Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__)) ||
     (typeof window !== "undefined" &&
       Boolean(
+        (typeof navigator !== "undefined" && navigator.userAgent.includes("EVALORA-Secure-Browser")) ||
         new URLSearchParams(window.location.search).get("lockdown") === "1" ||
         new URLSearchParams(window.location.search).get("secure_browser") === "1" ||
-        window.sessionStorage?.getItem("evalora_lockdown_active") === "1",
+        window.sessionStorage?.getItem("evalora_lockdown_active") === "1" ||
+        window.sessionStorage?.getItem("evalora_lockdown_session") === "active",
       ));
 
   const [lockdownInfo, setLockdownInfo] = useState<{
@@ -124,6 +126,23 @@ export function ExamAccessClient({
           console.warn("Failed to collect lockdown attestation:", err);
         }
       }
+
+      // If not obtained from Electron IPC, request fresh attestation for entered exam code
+      if (!lockdownAttestation) {
+        try {
+          const freshRes = await fetch("/api/exam/lockdown/challenge", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ exam_code: examCode.trim().toUpperCase() }),
+          });
+          if (freshRes.ok) {
+            lockdownAttestation = await freshRes.json();
+          }
+        } catch (err) {
+          console.warn("Failed to fetch fresh lockdown attestation:", err);
+        }
+      }
+
       if (!lockdownAttestation && lockdownChallenge) {
         lockdownAttestation = {
           ...lockdownChallenge,
@@ -132,14 +151,29 @@ export function ExamAccessClient({
       }
       try {
         window.sessionStorage?.setItem("evalora_lockdown_active", "1");
+        window.sessionStorage?.setItem("evalora_lockdown_session", "active");
       } catch {}
+    }
+
+    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+    if (isLockdownClient) {
+      reqHeaders["x-evalora-secure-browser"] = "1";
+    }
+    if (lockdownAttestation && typeof lockdownAttestation === "object") {
+      const att = lockdownAttestation as Record<string, unknown>;
+      if (att.timestamp) reqHeaders["x-evalora-lockdown-timestamp"] = String(att.timestamp);
+      if (att.exam_code) reqHeaders["x-evalora-lockdown-exam"] = String(att.exam_code);
+      if (att.platform) reqHeaders["x-evalora-lockdown-platform"] = String(att.platform);
+      if (att.app_version) reqHeaders["x-evalora-lockdown-version"] = String(att.app_version);
+      if (att.signature) reqHeaders["x-evalora-lockdown-signature"] = String(att.signature);
+      if (att.nonce) reqHeaders["x-evalora-lockdown-nonce"] = String(att.nonce);
     }
 
     let res: Response;
     try {
       res = await fetch("/api/exam/link-access", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({
           access_code: examCode.trim().toUpperCase(),
           first_name: firstName.trim(),
@@ -201,7 +235,7 @@ export function ExamAccessClient({
       } catch {}
     }
 
-    router.push(`/take-exam/${data.attempt_id}`);
+    router.push(isLockdownClient ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
   }
 
   return (

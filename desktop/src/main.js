@@ -218,6 +218,12 @@ function createWindow() {
     },
   });
 
+  // Identify as EVALORA Secure Exam Application via user agent
+  const defaultUa = mainWindow.webContents.getUserAgent();
+  if (!defaultUa.includes("EVALORA-Secure-Browser")) {
+    mainWindow.webContents.setUserAgent(`${defaultUa} EVALORA-Secure-Browser/${APP_VERSION}`);
+  }
+
   // OS-level Content Protection: blocks screen recording, screen capture, OBS, Zoom window capture
   if (typeof mainWindow.setContentProtection === "function") {
     mainWindow.setContentProtection(true);
