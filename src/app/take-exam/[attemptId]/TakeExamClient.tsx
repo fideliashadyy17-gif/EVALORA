@@ -978,9 +978,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
   const isLockdownClient = typeof window !== "undefined" && Boolean((window as unknown as { __EVALORA_SECURE_LOCKDOWN__?: unknown }).__EVALORA_SECURE_LOCKDOWN__);
-  const isLockdownVerified = Boolean(attempt.lockdown_verified || isLockdownClient);
+  const isLockdownVerified = Boolean(isLockdownClient || attempt.lockdown_verified);
 
-  if (isLockdownRequired && !isLockdownVerified && attempt.status === "in_progress") {
+  // Strict lockdown runtime check: when lockdown is required, the student MUST be sitting
+  // the examination inside the verified Secure Exam Application. Opening an active attempt
+  // in an ordinary browser (Chrome, Edge, Safari, Firefox) is strictly blocked.
+  if (isLockdownRequired && !isLockdownClient && attempt.status === "in_progress") {
     return (
       <Centered>
         <div className="max-w-md rounded-2xl border-2 border-evergreen-900/30 bg-paper p-6 text-center shadow-xl sm:p-8">
@@ -994,7 +997,13 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             This examination is configured in <strong>Lockdown Mode</strong>. Standard web browsers cannot be used to complete or resume this assessment.
           </p>
           <div className="mt-6 flex flex-col gap-2.5">
-            <ButtonLink href="/download/secure-browser" variant="gold" className="w-full justify-center">
+            <a
+              href="evalora-lockdown://enter"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gold-500 py-3 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+            >
+              Launch in Secure Browser
+            </a>
+            <ButtonLink href="/download/secure-browser" variant="outline" className="w-full justify-center">
               Download EVALORA Secure Browser
             </ButtonLink>
             <a

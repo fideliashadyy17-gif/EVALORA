@@ -7,6 +7,7 @@ import {
   parseExamAccessSettings,
   validUuid,
 } from "@/lib/exam-access";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import { getEntitlement } from "@/lib/entitlements";
 import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
@@ -34,7 +35,7 @@ export default async function SharedExamJoinPage({
   const admin = createAdminClient();
   const { data: exam } = await admin
     .from("exams")
-    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,invite_activates_at,invite_no_expiry,event_id,class_id,settings")
+    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,invite_activates_at,invite_no_expiry,event_id,class_id,settings,access_code")
     .eq("invite_token", token)
     .maybeSingle();
   if (!exam)
@@ -42,6 +43,9 @@ export default async function SharedExamJoinPage({
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const access = parseExamAccessSettings(examSettings);
+  const lockdown = parseLockdownSettings(examSettings.lockdown);
+  const lockdownRequired = Boolean(lockdown.enabled && lockdown.require_app);
+  const lockdownLaunchUrl = exam.access_code ? buildLockdownLaunchUrl(exam.access_code) : undefined;
   const entitlement = await getEntitlement(admin, exam.organization_id);
   const experience = examExperienceFromLimits(entitlement.limits);
   const language = detectExamLanguage(
@@ -141,12 +145,14 @@ export default async function SharedExamJoinPage({
       defaultClassId={defaultClassId}
       verifiedClassId={verifiedClassId}
       verifiedStudentName={verifiedStudentName}
-      initialCode={(code ?? "").trim().toUpperCase()}
+      initialCode={(code ?? exam.access_code ?? "").trim().toUpperCase()}
       accessMode={access.accessMode}
       identityFields={access.identityFields}
       requiresAccount={requiresAccount}
       language={language}
       languageLock={experience.languageLock}
+      lockdownRequired={lockdownRequired}
+      lockdownLaunchUrl={lockdownLaunchUrl}
     />
   );
 }
