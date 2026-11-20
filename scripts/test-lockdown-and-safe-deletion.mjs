@@ -49,7 +49,20 @@ console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
   const uri2 = buildLockdownLaunchUrl("MYP4-FORM2", "CAND-1234");
   assert.equal(uri2, "evalora-lockdown://enter?exam=MYP4-FORM2&candidate=CAND-1234");
 
-  console.log("  ✓ Deep linking protocol URI (evalora-lockdown://) formatted correctly");
+  // Context-preserving deep link for shared examination links
+  const token = "b2f69046-6b21-432a-bd1e-5369bbde1cfb";
+  const uri3 = buildLockdownLaunchUrl({
+    token,
+    examCode: "8J4FDA35",
+    path: `/exam/join/${token}`,
+  });
+  const parsed3 = new URL(uri3);
+  assert.equal(parsed3.protocol, "evalora-lockdown:");
+  assert.equal(parsed3.searchParams.get("token"), token);
+  assert.equal(parsed3.searchParams.get("path"), `/exam/join/${token}`);
+  assert.equal(parsed3.searchParams.get("exam"), "8J4FDA35");
+
+  console.log("  ✓ Deep linking protocol URI (evalora-lockdown://) formatted correctly and preserves original exam context");
 }
 
 // ─── Test 3: Ephemeral Challenge Generation ───────────────────────

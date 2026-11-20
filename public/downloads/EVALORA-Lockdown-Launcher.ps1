@@ -17,21 +17,32 @@ $LauncherContent = @"
 setlocal enabledelayedexpansion
 set "EVALORA_BASE=https://evalora-six.vercel.app"
 set "INPUT_URL=%~1"
+set "INVITE_TOKEN="
+set "TARGET_PATH="
 set "EXAM_CODE="
 set "CANDIDATE_CODE="
 
 if not "%INPUT_URL%"=="" (
     for %%p in (%INPUT_URL:?=" "%) do (
         set "PARAM=%%~p"
+        if "!PARAM:~0,6!"=="token=" set "INVITE_TOKEN=!PARAM:~6!"
+        if "!PARAM:~0,7!"=="invite=" set "INVITE_TOKEN=!PARAM:~7!"
+        if "!PARAM:~0,5!"=="path=" set "TARGET_PATH=!PARAM:~5!"
         if "!PARAM:~0,5!"=="exam=" set "EXAM_CODE=!PARAM:~5!"
         if "!PARAM:~0,5!"=="code=" set "EXAM_CODE=!PARAM:~5!"
         if "!PARAM:~0,10!"=="candidate=" set "CANDIDATE_CODE=!PARAM:~10!"
     )
 )
 
-set "TARGET_URL=!EVALORA_BASE!/exam-access"
-if not "!EXAM_CODE!"=="" (
-    set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+if not "!INVITE_TOKEN!"=="" (
+    set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+) else if not "!TARGET_PATH!"=="" (
+    set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+) else (
+    set "TARGET_URL=!EVALORA_BASE!/exam-access"
+    if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
     if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!&candidate=!CANDIDATE_CODE!"
 )
 

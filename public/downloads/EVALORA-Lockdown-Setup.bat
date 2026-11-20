@@ -18,21 +18,32 @@ echo @echo off
 echo setlocal enabledelayedexpansion
 echo set "EVALORA_BASE=https://evalora-six.vercel.app"
 echo set "INPUT_URL=%%~1"
+echo set "INVITE_TOKEN="
+echo set "TARGET_PATH="
 echo set "EXAM_CODE="
 echo set "CANDIDATE_CODE="
 echo.
 echo if not "%%INPUT_URL%%"=="" ^(
 echo     for %%%%p in ^(%%INPUT_URL:^?=" "%%^) do ^(
 echo         set "PARAM=%%%%~p"
+echo         if "!PARAM:~0,6!"=="token=" set "INVITE_TOKEN=!PARAM:~6!"
+echo         if "!PARAM:~0,7!"=="invite=" set "INVITE_TOKEN=!PARAM:~7!"
+echo         if "!PARAM:~0,5!"=="path=" set "TARGET_PATH=!PARAM:~5!"
 echo         if "!PARAM:~0,5!"=="exam=" set "EXAM_CODE=!PARAM:~5!"
 echo         if "!PARAM:~0,5!"=="code=" set "EXAM_CODE=!PARAM:~5!"
 echo         if "!PARAM:~0,10!"=="candidate=" set "CANDIDATE_CODE=!PARAM:~10!"
 echo     ^)
 echo ^)
 echo.
-echo set "TARGET_URL=!EVALORA_BASE!/exam-access"
-echo if not "!EXAM_CODE!"=="" ^(
-echo     set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo if not "!INVITE_TOKEN!"=="" ^(
+echo     set "TARGET_URL=!EVALORA_BASE!/exam/join/!INVITE_TOKEN!"
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo ^) else if not "!TARGET_PATH!"=="" ^(
+echo     set "TARGET_URL=!EVALORA_BASE!!TARGET_PATH!"
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
+echo ^) else ^(
+echo     set "TARGET_URL=!EVALORA_BASE!/exam-access"
+echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!?code=!EXAM_CODE!"
 echo     if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&candidate=!CANDIDATE_CODE!"
 echo ^)
 echo.

@@ -12,7 +12,7 @@ import {
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
 import { createClient } from "@/lib/supabase/client";
-import { Download, ExternalLink, ShieldAlert } from "lucide-react";
+import { Download, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -325,6 +325,17 @@ export function ExamJoinClient({
                     </div>
                   </div>
                 </div>
+              </div>
+            )}
+
+            {isLockdownClient && (
+              <div
+                role="status"
+                aria-label="Secure environment active"
+                className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-600/25 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-900 shadow-sm"
+              >
+                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span>Verified EVALORA Secure Exam Browser Environment Active</span>
               </div>
             )}
 

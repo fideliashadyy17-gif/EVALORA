@@ -169,14 +169,45 @@ export function verifyLockdownAttestation(
   };
 }
 
+export interface LockdownLaunchOptions {
+  examCode?: string;
+  candidateCode?: string;
+  token?: string;
+  path?: string;
+}
+
 /**
  * Generate a custom deep-link URI to launch the exam directly inside the desktop application.
+ * Preserves the original examination context (e.g. invite token or exact link path)
+ * so students land on their specific examination join page instead of a generic check-in screen.
  */
-export function buildLockdownLaunchUrl(examCode: string, candidateCode?: string): string {
+export function buildLockdownLaunchUrl(
+  examCodeOrOptions: string | LockdownLaunchOptions,
+  candidateCode?: string,
+): string {
   const params = new URLSearchParams();
-  params.set("exam", examCode.trim().toUpperCase());
-  if (candidateCode?.trim()) {
-    params.set("candidate", candidateCode.trim().toUpperCase());
+  if (typeof examCodeOrOptions === "string") {
+    if (examCodeOrOptions.trim()) {
+      params.set("exam", examCodeOrOptions.trim().toUpperCase());
+    }
+    if (candidateCode?.trim()) {
+      params.set("candidate", candidateCode.trim().toUpperCase());
+    }
+  } else {
+    const opts = examCodeOrOptions;
+    if (opts.token?.trim()) {
+      params.set("token", opts.token.trim());
+    }
+    if (opts.path?.trim()) {
+      params.set("path", opts.path.trim());
+    }
+    const code = opts.examCode?.trim();
+    if (code) {
+      params.set("exam", code.toUpperCase());
+    }
+    if (opts.candidateCode?.trim()) {
+      params.set("candidate", opts.candidateCode.trim().toUpperCase());
+    }
   }
   return `${LOCKDOWN_PROTOCOL}://enter?${params.toString()}`;
 }

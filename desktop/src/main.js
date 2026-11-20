@@ -44,6 +44,7 @@ const PROHIBITED_PROCESSES = [
 let mainWindow = null;
 let launchExamCode = null;
 let launchCandidateCode = null;
+let launchTargetUrl = null;
 
 // Enforce single instance lock
 const gotLock = app.requestSingleInstanceLock();
@@ -73,10 +74,17 @@ function parseCommandLineArgs(argv) {
   if (uri) {
     try {
       const parsed = new URL(uri);
-      launchExamCode = parsed.searchParams.get("exam") || parsed.searchParams.get("code");
-      launchCandidateCode = parsed.searchParams.get("candidate");
-      if (mainWindow && launchExamCode) {
-        mainWindow.loadURL(buildTargetUrl(launchExamCode, launchCandidateCode));
+      const token = parsed.searchParams.get("token") || parsed.searchParams.get("invite");
+      const pathParam = parsed.searchParams.get("path");
+      const examCode = parsed.searchParams.get("exam") || parsed.searchParams.get("code");
+      const candidateCode = parsed.searchParams.get("candidate");
+
+      launchExamCode = examCode;
+      launchCandidateCode = candidateCode;
+      launchTargetUrl = buildTargetUrl({ token, path: pathParam, examCode, candidateCode });
+
+      if (mainWindow && launchTargetUrl) {
+        mainWindow.loadURL(launchTargetUrl);
       }
     } catch (e) {
       console.error("Failed to parse lockdown URI:", e);
@@ -84,7 +92,31 @@ function parseCommandLineArgs(argv) {
   }
 }
 
-function buildTargetUrl(examCode, candidateCode) {
+function buildTargetUrl(params = {}) {
+  const token = params.token || params.invite;
+  const pathParam = params.path;
+  const examCode = params.examCode || params.code || params.exam;
+  const candidateCode = params.candidateCode || params.candidate;
+
+  // 1. If an invitation token is provided, open the specific exam join page
+  if (token) {
+    let url = `${DEFAULT_EVALORA_HOST}/exam/join/${encodeURIComponent(token)}`;
+    if (examCode) {
+      url += `?code=${encodeURIComponent(examCode)}`;
+    }
+    return url;
+  }
+
+  // 2. If a specific path is provided (e.g. /exam/join/[token])
+  if (pathParam && pathParam.startsWith("/")) {
+    let url = `${DEFAULT_EVALORA_HOST}${pathParam}`;
+    if (examCode && !pathParam.includes("code=")) {
+      url += pathParam.includes("?") ? `&code=${encodeURIComponent(examCode)}` : `?code=${encodeURIComponent(examCode)}`;
+    }
+    return url;
+  }
+
+  // 3. Fallback: candidate check-in page
   let url = `${DEFAULT_EVALORA_HOST}/exam-access`;
   if (examCode) {
     url += `?code=${encodeURIComponent(examCode)}`;
@@ -208,7 +240,8 @@ function createWindow() {
   });
 
   // Load target URL
-  const initialUrl = buildTargetUrl(launchExamCode, launchCandidateCode);
+  const initialUrl =
+    launchTargetUrl || buildTargetUrl({ examCode: launchExamCode, candidateCode: launchCandidateCode });
   mainWindow.loadURL(initialUrl);
 
   // Register system-level hotkey blocks

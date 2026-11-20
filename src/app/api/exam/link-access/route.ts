@@ -124,7 +124,11 @@ export async function POST(request: Request) {
           exam_id: exam.id,
           exam_title: exam.title,
           download_url: "/download/secure-browser",
-          launch_url: buildLockdownLaunchUrl(access_code),
+          launch_url: buildLockdownLaunchUrl({
+            token: invite_token,
+            path: `/exam/join/${invite_token}`,
+            examCode: access_code,
+          }),
         },
         { status: 403 },
       );

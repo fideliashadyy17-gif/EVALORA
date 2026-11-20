@@ -45,7 +45,11 @@ export default async function SharedExamJoinPage({
   const access = parseExamAccessSettings(examSettings);
   const lockdown = parseLockdownSettings(examSettings.lockdown);
   const lockdownRequired = Boolean(lockdown.enabled && lockdown.require_app);
-  const lockdownLaunchUrl = exam.access_code ? buildLockdownLaunchUrl(exam.access_code) : undefined;
+  const lockdownLaunchUrl = buildLockdownLaunchUrl({
+    token,
+    examCode: exam.access_code ?? "",
+    path: `/exam/join/${token}`,
+  });
   const entitlement = await getEntitlement(admin, exam.organization_id);
   const experience = examExperienceFromLimits(entitlement.limits);
   const language = detectExamLanguage(
