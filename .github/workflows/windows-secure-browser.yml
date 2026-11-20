@@ -1,6 +1,11 @@
 name: Build and Publish EVALORA Secure Browser (Windows x64)
 
 on:
+  push:
+    branches:
+      - 'arena/**'
+      - main
+  pull_request:
   workflow_dispatch:
     inputs:
       release_tag:
@@ -63,7 +68,7 @@ jobs:
 
       - name: Upload installer artifacts to Release
         uses: softprops/action-gh-release@v2
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '')
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release_tag != '') || github.ref == 'refs/heads/arena/b09f356c-evalora'
         with:
           tag_name: ${{ github.event.inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || 'v1.1.0' }}
           files: |
