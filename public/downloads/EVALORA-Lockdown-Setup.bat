@@ -21,7 +21,6 @@ echo set "INPUT_URL=%%~1"
 echo set "INVITE_TOKEN="
 echo set "TARGET_PATH="
 echo set "EXAM_CODE="
-echo set "CANDIDATE_CODE="
 echo.
 echo if not "!INPUT_URL!"=="" ^(
 echo     if "!INPUT_URL:~0,24!"=="evalora-lockdown://join/" ^(
@@ -38,7 +37,6 @@ echo         if "!PARAM:~0,7!"=="invite=" set "INVITE_TOKEN=!PARAM:~7!"
 echo         if "!PARAM:~0,5!"=="path=" set "TARGET_PATH=!PARAM:~5!"
 echo         if "!PARAM:~0,5!"=="exam=" set "EXAM_CODE=!PARAM:~5!"
 echo         if "!PARAM:~0,5!"=="code=" set "EXAM_CODE=!PARAM:~5!"
-echo         if "!PARAM:~0,10!"=="candidate=" set "CANDIDATE_CODE=!PARAM:~10!"
 echo     ^)
 echo ^)
 echo.
@@ -66,7 +64,6 @@ echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!
 echo ^) else ^(
 echo     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
 echo     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
-echo     if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&candidate=!CANDIDATE_CODE!"
 echo ^)
 echo.
 echo :: Check for Edge or Chrome executable to launch kiosk mode

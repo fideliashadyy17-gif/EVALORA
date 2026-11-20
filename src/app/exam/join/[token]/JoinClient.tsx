@@ -375,8 +375,8 @@ export function ExamJoinClient({
             <form onSubmit={submit} className="mt-5 space-y-4">
               {error && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="First name *"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" /></Field>
-                <Field label="Last name *"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" /></Field>
+                <Field label="First Name"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" /></Field>
+                <Field label="Last Name"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" /></Field>
               </div>
               {identityFields.map((field) => (
                 <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} hint="Required by this examination's organizer.">
@@ -389,7 +389,7 @@ export function ExamJoinClient({
                   />
                 </Field>
               ))}
-              <Field label="Examination access code" hint="Use the code provided with this link. Hyphens, spaces and O/0 look-alikes don't matter — pasting the code works too.">
+              <Field label="Examination Code" hint="Use the code provided with this link. Hyphens, spaces and O/0 look-alikes don't matter — pasting the code works too.">
                 <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false} />
               </Field>
               <Field label="Class" hint={effectiveVerifiedClassId ? "Your verified class is fixed." : "Choose your class. Your AP Calculus course (AB or BC) follows from your class."}>
@@ -403,7 +403,7 @@ export function ExamJoinClient({
                 <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
               </label>
               <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || effectiveRequiresAccount}>
-                {busy ? "Verifying…" : "Verify & begin examination"}
+                {busy ? "Verifying…" : "Verify and Begin"}
               </Button>
               <p className="text-center text-xs text-ink-soft">
                 Returning after a disconnection? Re-enter the same link, code, name, identification fields and class on this browser to resume your saved answers.

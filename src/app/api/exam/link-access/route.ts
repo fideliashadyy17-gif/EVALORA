@@ -29,11 +29,12 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 const Body = z.object({
-  invite_token: z.string().uuid(),
+  invite_token: z.string().uuid().optional(),
   access_code: z.string().min(4).max(32),
   first_name: z.string().trim().min(1).max(80),
   last_name: z.string().trim().min(1).max(80),
   class_id: z.string().uuid().optional(),
+  class_name: z.string().trim().max(80).optional(),
   guest_key: z.string().min(16).max(120),
   identity: z.record(z.string(), z.unknown()).optional(),
   ignore_auth_session: z.boolean().optional(),
@@ -78,20 +79,56 @@ export async function POST(request: Request) {
   const parsed = Body.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
-  const { invite_token, access_code, first_name, last_name, guest_key, class_id, identity, ignore_auth_session } = parsed.data;
+  const { invite_token, access_code, first_name, last_name, guest_key, class_id, class_name, identity, ignore_auth_session } = parsed.data;
   const admin = createAdminClient();
   const supabase = await createClient();
 
-  const { data: exam } = await admin
-    .from("exams")
-    .select("*")
-    .eq("invite_token", invite_token)
-    .maybeSingle();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let exam: any = null;
+  if (invite_token) {
+    const { data } = await admin
+      .from("exams")
+      .select("*")
+      .eq("invite_token", invite_token)
+      .maybeSingle();
+    exam = data;
+  }
+  if (!exam && access_code) {
+    const normalized = normalizeCode(access_code);
+    const { data: byCode } = await admin
+      .from("exams")
+      .select("*")
+      .eq("access_code", normalized)
+      .maybeSingle();
+    exam = byCode;
+    if (!exam) {
+      const { data: byHash } = await admin
+        .from("exams")
+        .select("*")
+        .eq("access_code_hash", sha256(normalized))
+        .maybeSingle();
+      exam = byHash;
+    }
+    if (!exam) {
+      const { data: codedExams } = await admin
+        .from("exams")
+        .select("*")
+        .not("access_code", "is", null);
+      exam =
+        ((codedExams ?? []) as Record<string, unknown>[]).find((row) =>
+          accessCodeMatches(normalized, row.access_code as string | null),
+        ) ?? null;
+    }
+  }
+
   if (!exam)
-    return NextResponse.json({ error: "This examination link is invalid or has been regenerated." }, { status: 404 });
+    return NextResponse.json({ error: "Examination not found. Please check your access code." }, { status: 404 });
 
   if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
     return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410 });
+
+  const effectiveInviteToken = (exam.invite_token as string) || invite_token || "";
+  const entryHref = effectiveInviteToken ? `/exam/join/${effectiveInviteToken}` : "/exam-access";
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const lockdown = parseLockdownSettings(examSettings.lockdown);
@@ -125,8 +162,8 @@ export async function POST(request: Request) {
           exam_title: exam.title,
           download_url: "/download/secure-browser",
           launch_url: buildLockdownLaunchUrl({
-            token: invite_token,
-            path: `/exam/join/${invite_token}`,
+            token: effectiveInviteToken || undefined,
+            path: entryHref,
             examCode: access_code,
           }),
         },
@@ -299,11 +336,37 @@ export async function POST(request: Request) {
   if (exam.class_id) baseEligibleClasses.add(exam.class_id);
   for (const id of access.linkedClassIds) baseEligibleClasses.add(id);
   const eligibleClasses = new Set(mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds));
-  if (eligibleClasses.size === 0)
-    return NextResponse.json({ error: "No eligible class is configured for this examination." }, { status: 409 });
 
-  const selectedClassId = class_id ?? (eligibleClasses.size === 1 ? [...eligibleClasses][0] : null);
-  if (!selectedClassId || !eligibleClasses.has(selectedClassId))
+  // If no specific eligible classes were configured, fall back to all classes in the organization
+  if (eligibleClasses.size === 0 && exam.organization_id) {
+    const { data: orgClasses } = await admin
+      .from("classes")
+      .select("id")
+      .eq("organization_id", exam.organization_id);
+    for (const c of orgClasses ?? []) {
+      eligibleClasses.add(c.id as string);
+    }
+  }
+
+  let selectedClassId = class_id ?? null;
+  if (!selectedClassId && class_name) {
+    const { data: orgClasses } = await admin
+      .from("classes")
+      .select("id, name")
+      .eq("organization_id", exam.organization_id);
+    const found = (orgClasses ?? []).find(
+      (c) => c.name.toLowerCase().trim() === class_name.toLowerCase().trim(),
+    );
+    if (found) selectedClassId = found.id as string;
+  }
+  if (!selectedClassId && eligibleClasses.size === 1) {
+    selectedClassId = [...eligibleClasses][0];
+  }
+  if (!selectedClassId && exam.class_id) {
+    selectedClassId = exam.class_id as string;
+  }
+
+  if (!selectedClassId || (!eligibleClasses.has(selectedClassId) && eligibleClasses.size > 0))
     return NextResponse.json({ error: "Select an eligible class for this examination." }, { status: 403 });
   const { data: classRow } = await admin
     .from("classes")
@@ -493,7 +556,7 @@ export async function POST(request: Request) {
           access_code: genCode(10),
           status: "registered",
           guest_key_hash: guestKeyHash,
-          invite_token,
+          invite_token: effectiveInviteToken || null,
           source: "shared_link",
           identity_data: identityData,
         })
@@ -525,7 +588,6 @@ export async function POST(request: Request) {
   }
   const candidate = candidateRow as { id: string; [key: string]: unknown };
   const resolvedCandidate = candidate;
-  const entryHref = `/exam/join/${invite_token}`;
 
   // One candidate can now legitimately own several attempts (each authorized
   // retake is a NEW row). Resume the active one, otherwise evaluate the latest.
@@ -642,7 +704,7 @@ export async function POST(request: Request) {
         class_id: selectedClassId,
         student_id: studentId,
         guest_key_hash: matchedRosterCandidate ? null : guestKeyHash,
-        invite_token,
+        invite_token: effectiveInviteToken || null,
         identity_data: identityData,
         ...(lockdownVerified
           ? {

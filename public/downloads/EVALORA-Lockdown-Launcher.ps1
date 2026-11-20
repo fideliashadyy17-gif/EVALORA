@@ -20,7 +20,6 @@ set "INPUT_URL=%~1"
 set "INVITE_TOKEN="
 set "TARGET_PATH="
 set "EXAM_CODE="
-set "CANDIDATE_CODE="
 
 if not "!INPUT_URL!"=="" (
     if "!INPUT_URL:~0,24!"=="evalora-lockdown://join/" (
@@ -37,7 +36,6 @@ if not "!INPUT_URL!"=="" (
         if "!PARAM:~0,5!"=="path=" set "TARGET_PATH=!PARAM:~5!"
         if "!PARAM:~0,5!"=="exam=" set "EXAM_CODE=!PARAM:~5!"
         if "!PARAM:~0,5!"=="code=" set "EXAM_CODE=!PARAM:~5!"
-        if "!PARAM:~0,10!"=="candidate=" set "CANDIDATE_CODE=!PARAM:~10!"
     )
 )
 
@@ -65,7 +63,6 @@ if not "!INVITE_TOKEN!"=="" (
 ) else (
     set "TARGET_URL=!EVALORA_BASE!/exam-access?lockdown=1"
     if not "!EXAM_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&code=!EXAM_CODE!"
-    if not "!CANDIDATE_CODE!"=="" set "TARGET_URL=!TARGET_URL!^&candidate=!CANDIDATE_CODE!"
 )
 
 if exist "%ProgramFiles(x86)%\Microsoft\Edge\Application\msedge.exe" (

@@ -198,6 +198,7 @@ export async function GET(request: Request) {
     server_now: new Date(nowMs).toISOString(),
     exam: {
       id: exam.id,
+      access_code: (exam.access_code as string | null) ?? null,
       entry_href: entryHref,
       title: exam.title,
       description: exam.description,

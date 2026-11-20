@@ -122,11 +122,11 @@ function Shell({ code, problem }: { code: string; problem: "code" | "invalid" | 
               </button>
             </form>
             <p className="mt-4 border-t border-evergreen-900/10 pt-4 text-xs text-ink-soft">
-          Sitting an examination your school organised with an exam code and a personal candidate code?{" "}
-          <Link href="/exam-access" className="font-medium text-evergreen-800 underline">
-            Use the candidate access page
-          </Link>
-          .
+              Sitting an examination with an access code?{" "}
+              <Link href="/exam-access" className="font-medium text-evergreen-800 underline">
+                Use the student examination access page
+              </Link>
+              .
             </p>
           </div>
         </Card>

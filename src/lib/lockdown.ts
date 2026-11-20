@@ -199,7 +199,13 @@ export function buildLockdownLaunchUrl(
   }
 
   const opts = examCodeOrOptions;
-  const token = opts.token?.trim().replace(/\/+$|%2F+$/i, "");
+  let token = opts.token?.trim().replace(/\/+$|%2F+$/i, "");
+  if (!token && opts.path) {
+    const match = opts.path.match(/\/exam\/join\/([a-zA-Z0-9_-]+)/);
+    if (match) {
+      token = match[1];
+    }
+  }
   const code = (opts.examCode || "").trim().toUpperCase();
   const candidate = opts.candidateCode?.trim().toUpperCase();
 

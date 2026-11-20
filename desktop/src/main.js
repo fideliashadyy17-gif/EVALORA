@@ -131,9 +131,6 @@ function buildTargetUrl(params = {}) {
   let url = `${DEFAULT_EVALORA_HOST}/exam-access?lockdown=1`;
   if (examCode) {
     url += `&code=${encodeURIComponent(examCode.trim().toUpperCase())}`;
-    if (candidateCode) {
-      url += `&candidate=${encodeURIComponent(candidateCode.trim().toUpperCase())}`;
-    }
   }
   return url;
 }

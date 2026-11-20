@@ -1,4 +1,5 @@
 import { validUuid } from "@/lib/exam-access";
+import { computeLockdownSignature, generateLockdownChallenge } from "@/lib/lockdown";
 import { createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ExamAccessClient } from "./ExamAccessClient";
@@ -24,30 +25,80 @@ export default async function ExamAccessPage({
     redirect(`/exam/join/${token}${search ? `?${search}` : ""}`);
   }
 
-  // 2. If an examination access code is passed (e.g. from an existing launcher or shortcut)
-  // and no candidate code is present, check if this exam has a shared invitation link.
-  // If it does, automatically redirect to its standard join page so students see
-  // First Name, Last Name, Examination Code, Class instead of a personal candidate code prompt.
-  if (inputCode && !params.candidate?.trim()) {
-    const admin = createAdminClient();
-    const { data: matchedExam } = await admin
+  const admin = createAdminClient();
+
+  // 2. If an examination access code is passed, resolve matching exam
+  let matchedExam = null;
+  if (inputCode) {
+    const { data: byCode } = await admin
       .from("exams")
-      .select("invite_token, status, shared_link_enabled")
+      .select("id, organization_id, title, description, instructions, invite_token, status, shared_link_enabled, access_code, settings, class_id")
       .eq("access_code", inputCode)
       .maybeSingle();
-
-    if (matchedExam?.invite_token) {
-      const qs = new URLSearchParams();
-      qs.set("code", inputCode);
-      if (lockdown) qs.set("lockdown", lockdown);
-      redirect(`/exam/join/${matchedExam.invite_token}?${qs.toString()}`);
+    matchedExam = byCode;
+    if (!matchedExam) {
+      const { createHash } = await import("crypto");
+      const hash = createHash("sha256").update(inputCode, "utf8").digest("hex");
+      const { data: byHash } = await admin
+        .from("exams")
+        .select("id, organization_id, title, description, instructions, invite_token, status, shared_link_enabled, access_code, settings, class_id")
+        .eq("access_code_hash", hash)
+        .maybeSingle();
+      matchedExam = byHash;
     }
   }
+
+  // If the matched exam has an invite_token, automatically redirect to its dedicated join page
+  if (matchedExam?.invite_token) {
+    const qs = new URLSearchParams();
+    qs.set("code", inputCode);
+    if (lockdown) qs.set("lockdown", lockdown);
+    redirect(`/exam/join/${matchedExam.invite_token}?${qs.toString()}`);
+  }
+
+  // Fetch available classes for the organization so students can select their class
+  const { data: classesData } = await admin
+    .from("classes")
+    .select("id, name, code, organization_id")
+    .order("name", { ascending: true });
+
+  const classes = (classesData ?? []).map((c) => ({
+    id: c.id as string,
+    name: c.name as string,
+  }));
+
+  // Fetch open exams to build a code-to-class map for auto-selection
+  const { data: openExams } = await admin
+    .from("exams")
+    .select("access_code, class_id")
+    .not("access_code", "is", null);
+
+  const codeToClassMap: Record<string, string> = {};
+  for (const ex of openExams ?? []) {
+    if (ex.access_code && ex.class_id) {
+      codeToClassMap[ex.access_code.toUpperCase().trim()] = ex.class_id as string;
+    }
+  }
+
+  const now = Date.now();
+  const nonce = generateLockdownChallenge();
+  const lockdownSignature = computeLockdownSignature(now, inputCode || "EVALORA", "win32", "1.0.0", nonce);
+  const lockdownChallenge = {
+    timestamp: now,
+    exam_code: inputCode || "EVALORA",
+    platform: "win32",
+    app_version: "1.0.0",
+    signature: lockdownSignature,
+    nonce,
+  };
 
   return (
     <ExamAccessClient
       initialExamCode={inputCode}
-      initialCandidateCode={(params.candidate || "").trim().toUpperCase()}
+      classes={classes}
+      codeToClassMap={codeToClassMap}
+      defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
+      lockdownChallenge={lockdownChallenge}
     />
   );
 }
