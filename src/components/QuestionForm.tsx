@@ -60,6 +60,7 @@ type AssessPartKind = "numeric" | "text" | "expression";
 
 /** Draft-friendly form state for a typed, auto-marked multi-part question. */
 interface AssessPartState {
+  clientKey: string;
   id: string;
   label: string;
   prompt: string;
@@ -100,6 +101,7 @@ function initialAssessPart(raw: unknown, index: number): AssessPartState {
     : "";
   const id = typeof part.id === "string" && part.id.trim() ? part.id.trim() : partIdFor(index);
   return {
+    clientKey: typeof part.clientKey === "string" && part.clientKey ? part.clientKey : `part-key-${index}-${id}`,
     id,
     label: typeof part.label === "string" && part.label.trim() ? part.label : `(${id})`,
     prompt: typeof part.prompt === "string" ? part.prompt : "",
@@ -565,7 +567,7 @@ export function QuestionForm({
           </Field>
         </div>
 
-        <Field label="Question" hint="Text / Word mode for prose, Math mode for visual equations, LaTeX mode for source. Content can mix all three.">
+        <Field as="div" label="Question" hint="Text / Word mode for prose, Math mode for visual equations, LaTeX mode for source. Content can mix all three.">
           <RichContentEditor
             value={promptDoc}
             onChange={setPromptDoc}
@@ -618,7 +620,7 @@ export function QuestionForm({
             )}
             <div className="space-y-4">
               {assessParts.map((part, index) => (
-                <div key={`${part.id}-${index}`} className="space-y-3 rounded-xl border border-evergreen-900/15 bg-white p-4">
+                <div key={part.clientKey} className="space-y-3 rounded-xl border border-evergreen-900/15 bg-white p-4">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="font-semibold text-evergreen-950">Part {index + 1}</p>
                     <button type="button" className="text-sm font-medium text-red-700 hover:underline" onClick={() => setAssessParts((previous) => previous.filter((_, current) => current !== index))}>Remove part</button>
@@ -980,7 +982,7 @@ export function QuestionForm({
           </div>
         )}
 
-        <Field label="Worked solution / explanation" hint="Shown after answering (live feedback) and in examination review where enabled. Full mathematical editor available.">
+        <Field as="div" label="Worked solution / explanation" hint="Shown after answering (live feedback) and in examination review where enabled. Full mathematical editor available.">
           <RichContentEditor
             value={explanationDoc}
             onChange={setExplanationDoc}

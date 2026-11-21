@@ -35,6 +35,8 @@ Module._load=function(request,parent) {
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:(raw)=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
   if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
+  if(request==='@/lib/lockdown')return {buildLockdownLaunchUrl:()=>'',DEFAULT_EXAM_LOCKDOWN:{enabled:false,require_app:false}};
+  if(request==='@/lib/lockdownClient')return {isSecureBrowserEnvironment:()=>false,persistSecureBrowserState:()=>{}};
   if(request==='@/lib/examSaveQueue') return queue;
   if(request==='./ExamMessenger') return {ExamMessenger:()=>null};
   if(request==='./RetakePanel') return {RetakePanel:()=>null};

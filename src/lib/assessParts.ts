@@ -366,6 +366,11 @@ export function parseStudentNumber(raw: unknown, context: NumericParseContext = 
     return null;
   }
 
+  // Negative assertions: e.g. "12 is incorrect", "12 is wrong", "not 12", "12 n'est pas la réponse"
+  if (/\b(?:is\s+incorrect|is\s+wrong|is\s+not|not\s+[+-]?\d+|pas\s+[+-]?\d+|faux|incorrect|wrong|never)\b/i.test(s)) {
+    return null;
+  }
+
   // Try direct single numeric token first
   const direct = parseSingleNumericToken(s);
   if (direct !== null) return direct;
@@ -406,6 +411,14 @@ export function parseStudentNumber(raw: unknown, context: NumericParseContext = 
   }
 
   if (parsedClauses.length > 1) {
+    // Prioritize an explicit final answer label if present
+    const explicitFinal = parsedClauses.find((c) =>
+      /\b(?:final|answer|ans|result|total|therefore|donc)\b/i.test(c.label),
+    );
+    if (explicitFinal) {
+      return explicitFinal.value;
+    }
+
     const ctxLabel = (context.label || "").toLowerCase().trim();
     const ctxPrompt = (context.prompt || "").toLowerCase().trim();
     const targetKey = ctxLabel || ctxPrompt;
@@ -504,6 +517,33 @@ export function spellingMatches(given: string, accepted: string): boolean {
   return differences === 1;
 }
 
+function evalAlgebraicExpr(expr: string, val: number): number | null {
+  let s = String(expr ?? "").trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9_]*=/, "");
+  s = s.replace(/[−–—]/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[xntuabk]/g, `(${val})`);
+  s = s.replace(/(\d)\(/g, "$1*(").replace(/\)(\d)/g, ")*$1").replace(/\)\(/g, ")*(");
+  s = s.replace(/(\d)([a-z(])/g, "$1*$2");
+  return evaluateArithmetic(s);
+}
+
+export function algebraicEquivalent(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const testPoints = [2, 3, 5, -1, 0.5, 7];
+  let validEvals = 0;
+  for (const p of testPoints) {
+    const v1 = evalAlgebraicExpr(a, p);
+    const v2 = evalAlgebraicExpr(b, p);
+    if (v1 === null || v2 === null || !Number.isFinite(v1) || !Number.isFinite(v2)) {
+      continue;
+    }
+    if (Math.abs(v1 - v2) > 1e-6) return false;
+    validEvals++;
+  }
+  return validEvals >= 4;
+}
+
 /**
  * Written-answer equivalence used by every text-bearing question type:
  * case/spacing-insensitive exact match, a label-stripped variant
@@ -531,7 +571,10 @@ export function textAnswersMatch(given: string, accepted: string, options: { exp
     if (/%$/.test(gStripped) && !/%$/.test(aStripped) && Math.abs(gNumber / 100 - aNumber) < 1e-9) return true;
     if (/%$/.test(aStripped) && !/%$/.test(gStripped) && Math.abs(aNumber / 100 - gNumber) < 1e-9) return true;
   }
-  if (options.expression && canonicalExpression(g) === canonicalExpression(a)) return true;
+  if (options.expression) {
+    if (canonicalExpression(g) === canonicalExpression(a)) return true;
+    if (algebraicEquivalent(g, a)) return true;
+  }
   if (spellingMatches(gStripped, aStripped)) return true;
   // "1/2, 0.5, 4/8, 50%" is a list of equivalent values, not one value.
   if (/[,;]/.test(g)) {
@@ -571,8 +614,12 @@ export function scoreAssessParts(parts: AssessPart[], answer: unknown, maxOverri
         (part.unit === "%" && Math.abs(got * 100 - part.answer) <= tol)
       );
     } else if (part.kind === "expression") {
-      const got = typeof given === "string" ? canonicalExpression(given) : "";
-      correct = got.length > 0 && (part.accepted ?? []).some((a) => canonicalExpression(a) === got);
+      const rawGiven = typeof given === "string" ? given.trim() : "";
+      const got = canonicalExpression(rawGiven);
+      correct = got.length > 0 && (part.accepted ?? []).some((a) => {
+        if (canonicalExpression(a) === got) return true;
+        return algebraicEquivalent(rawGiven, a);
+      });
     } else if (part.keywords?.length) {
       // Keyword rubric: credit an accepted variant (or a single typo), or when
       // enough concept groups are present, so a correct justification in the

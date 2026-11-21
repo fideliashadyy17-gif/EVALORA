@@ -1322,7 +1322,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             />
           ) : null}
 
-          {submitted ? (
+          {submitted && !corrigeAll ? (
             <Card className="exam-submission-confirmation-card mx-auto max-w-2xl border border-evergreen-900/15 p-8 text-center shadow-sm sm:p-10">
               {queueState.pending > 0 && (
                 <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">
@@ -1381,15 +1381,58 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 >
                   Finish &amp; return to examination entry
                 </Button>
+                {showCorrige && (
+                  <Button
+                    variant="outline"
+                    className="w-full sm:w-auto mt-2"
+                    onClick={() => setCorrigeAll(true)}
+                  >
+                    Voir le corrigé complet →
+                  </Button>
+                )}
               </div>
+
+              {/* Authorised feedback summary and criterion performance review */}
+              {showCorrige && (
+                <div data-testid="feedback-summary" className="feedback-summary mx-auto mt-6 max-w-xl text-left">
+                  {(() => {
+                    const summary = resultSummary(questions, exam.pass_mark_percent);
+                    return (
+                      <div className="rounded-xl border border-evergreen-900/10 bg-white p-4 space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Performance Summary</p>
+                        {summary.criteria?.map((criterion, idx) => (
+                          <div key={idx} className="flex justify-between text-xs text-ink">
+                            <span>Criterion {criterion.criterion}: {criterion.title ?? ""}</span>
+                            <span className="font-semibold">{criterion.awarded}/{criterion.max}</span>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
             </Card>
-          ) : current && (
+          ) : current && !corrigeAll && (
             <Card className="exam-question-card p-6 sm:p-7">
+              {(() => {
+                // Pre-compute question feedback for authorised review
+                if (showCorrige) {
+                  void questionFeedback({
+                    topic: current.topic,
+                    criterion: current.criterion,
+                    explanation: current.explanation,
+                  });
+                }
+                return null;
+              })()}
               <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">
                   {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
                   {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
-                  {index + 1} of {questions.length}
+                  {current.question_meta?.question_number ?? index + 1} of{" "}
+                  {current.question_meta?.paper_section
+                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section).length
+                    : questions.length}
                 </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (

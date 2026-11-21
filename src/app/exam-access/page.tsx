@@ -89,11 +89,13 @@ export default async function ExamAccessPage({
   }
 
   return (
-    <ExamAccessClient
-      initialExamCode={inputCode}
-      classes={classes}
-      codeToClassMap={codeToClassMap}
-      defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
-    />
+    <main className="min-h-screen bg-cream">
+      <ExamAccessClient
+        initialExamCode={inputCode}
+        classes={classes}
+        codeToClassMap={codeToClassMap}
+        defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
+      />
+    </main>
   );
 }

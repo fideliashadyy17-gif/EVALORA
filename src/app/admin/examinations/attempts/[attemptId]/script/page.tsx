@@ -1,13 +1,14 @@
 import { AnswerResponseView } from "@/components/AnswerResponseView";
 import { MathText } from "@/components/MathText";
 import { RichContent } from "@/components/RichContent";
-import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { loadExamScript, SCRIPT_STATUS_LABEL, type ScriptStatus } from "@/lib/examScript";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { regradeAttemptAsAdmin } from "../../../actions";
 
 export const metadata: Metadata = { title: "Complete examination script — platform" };
 export const dynamic = "force-dynamic";
@@ -67,7 +68,16 @@ export default async function ExaminationScriptPage({
           <div className="flex flex-wrap gap-2">
             <ButtonLink href={`/admin/myp-results/${script.attempt.id}`} variant="outline">MYP result</ButtonLink>
             <ButtonLink href="/admin/examinations/marking" variant="outline">Marking queue</ButtonLink>
-            <ButtonLink href="/admin/examinations/results">All results</ButtonLink>
+            <ButtonLink href="/admin/examinations/results" variant="outline">All results</ButtonLink>
+            {script.attempt.status !== "in_progress" && (
+              <form action={regradeAttemptAsAdmin} className="inline">
+                <input type="hidden" name="attempt_id" value={script.attempt.id} />
+                <input type="hidden" name="back" value={`/admin/examinations/attempts/${script.attempt.id}/script`} />
+                <Button type="submit" variant="gold" title="Re-evaluate with mathematical equivalence rules">
+                  Regrade attempt
+                </Button>
+              </form>
+            )}
           </div>
         }
         meta={

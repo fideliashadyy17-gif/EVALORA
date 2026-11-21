@@ -59,4 +59,9 @@ update exams
    'ce000000-0000-4000-8000-000000000002'
  );
 
+-- 5. Correct MYP4 Version C Q7 answer key: B (IQR = 26, 75%) is the mathematically valid answer
+update question_options
+   set is_correct = (label = 'B')
+ where question_id = 'cd000000-0000-4000-8000-000000001007';
+
 commit;

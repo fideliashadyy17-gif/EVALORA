@@ -2,7 +2,7 @@
 
 import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib/admin";
 import { isEmail, parseCsv } from "@/lib/csv";
-import { attemptDeadline } from "@/lib/exam";
+import { attemptDeadline, attemptRows, gradeAttemptDetailed } from "@/lib/exam";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -801,4 +801,164 @@ export async function deleteExamAsAdmin(formData: FormData) {
     revalidatePath("/dashboard/exams");
     redirect(`${back}${back.includes("?") ? "&" : "?"}ok=archived`);
   }
+}
+
+/**
+ * Super Admin auditable regrading of a single candidate attempt.
+ * Evaluates all objective and mathematical equivalence answers using the latest engine,
+ * preserves human marker overrides, and records history in grade_change_log and audit_logs.
+ */
+export async function regradeAttemptAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const back = safeBack(formData, "/admin/examinations/results");
+  const note = fstr(formData, "note", 500);
+
+  if (!attemptId) go(back, "e=attempt");
+
+  const { data: attempt, error: attemptError } = await admin
+    .from("exam_attempts")
+    .select("id, exam_id, status, score, max_score, question_order, exams!inner(id, organization_id, quiz_id, settings)")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (attemptError || !attempt) go(back, "e=attempt");
+  if (attempt.status === "in_progress") go(back, "e=in_progress");
+
+  const exam = attempt.exams as unknown as {
+    id: string;
+    organization_id: string;
+    quiz_id: string | null;
+    settings: Record<string, unknown> | null;
+  };
+
+  if (!exam.quiz_id) go(back, "e=exam");
+
+  const rows = await attemptRows(admin, {
+    quiz_id: exam.quiz_id,
+    settings: (exam.settings ?? {}) as Record<string, unknown>,
+  }, {
+    id: attempt.id,
+    question_order: attempt.question_order,
+  });
+
+  const previousScore = attempt.score !== null ? Number(attempt.score) : null;
+  const summary = await gradeAttemptDetailed(admin, attempt.id, rows);
+
+  const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
+  const { data: updatedAttempt, error: updateError } = await admin
+    .from("exam_attempts")
+    .update({
+      score: summary.score,
+      max_score: summary.max,
+      status: "marked",
+      grading_status: allMarked ? "graded" : "pending_manual",
+      pending_manual_count: summary.ungradedCount + summary.failedCount,
+    })
+    .eq("id", attempt.id)
+    .select("id, score")
+    .maybeSingle();
+
+  if (updateError || !updatedAttempt) go(back, "e=failed");
+
+  await audit(ctx, "exam.attempt_regraded_by_admin", "exam_attempts", attempt.id, exam.organization_id, {
+    exam_id: exam.id,
+    attempt_id: attempt.id,
+    previous_score: previousScore,
+    new_score: summary.score,
+    max_score: summary.max,
+    auto_score: summary.autoScore,
+    score_changed: previousScore !== summary.score,
+    note: note || "Super Admin regrade with latest mathematical equivalence rules",
+  });
+
+  revalidatePath("/admin/examinations/results");
+  revalidatePath("/admin/examinations/marking");
+  revalidatePath("/admin/myp-results");
+  revalidatePath(`/admin/myp-results/${attempt.id}`);
+  revalidatePath(`/admin/examinations/attempts/${attempt.id}/script`);
+
+  go(back, "ok=regraded");
+}
+
+/**
+ * Super Admin auditable regrading of all submitted attempts on an examination.
+ * Idempotently evaluates objective answers, synchronizes scores, and logs audit events.
+ */
+export async function regradeExamAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = String(formData.get("exam_id") ?? "");
+  const back = safeBack(formData, "/admin/examinations/results");
+  const note = fstr(formData, "note", 500);
+
+  if (!examId) go(back, "e=exam");
+
+  const { data: exam, error: examError } = await admin
+    .from("exams")
+    .select("id, organization_id, quiz_id, settings, title")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (examError || !exam || !exam.quiz_id) go(back, "e=exam");
+
+  const { data: attempts, error: attemptsError } = await admin
+    .from("exam_attempts")
+    .select("id, status, score, question_order")
+    .eq("exam_id", examId)
+    .in("status", ["submitted", "auto_submitted", "marked"]);
+
+  if (attemptsError || !attempts) go(back, "e=failed");
+
+  let regradedCount = 0;
+  let changedScoreCount = 0;
+
+  for (const att of attempts) {
+    try {
+      const rows = await attemptRows(admin, {
+        quiz_id: exam.quiz_id,
+        settings: (exam.settings ?? {}) as Record<string, unknown>,
+      }, {
+        id: att.id,
+        question_order: att.question_order,
+      });
+
+      const prevScore = att.score !== null ? Number(att.score) : null;
+      const summary = await gradeAttemptDetailed(admin, att.id, rows);
+      const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
+
+      await admin
+        .from("exam_attempts")
+        .update({
+          score: summary.score,
+          max_score: summary.max,
+          status: "marked",
+          grading_status: allMarked ? "graded" : "pending_manual",
+          pending_manual_count: summary.ungradedCount + summary.failedCount,
+        })
+        .eq("id", att.id);
+
+      regradedCount++;
+      if (prevScore !== summary.score) {
+        changedScoreCount++;
+      }
+    } catch {
+      // Continue regrading other attempts if one encounters an issue
+    }
+  }
+
+  await audit(ctx, "exam.exam_regraded_by_admin", "exams", exam.id, exam.organization_id, {
+    exam_id: exam.id,
+    title: exam.title,
+    attempts_regraded: regradedCount,
+    scores_changed: changedScoreCount,
+    note: note || "Super Admin bulk regrade with latest mathematical equivalence rules",
+  });
+
+  revalidatePath("/admin/examinations/results");
+  revalidatePath("/admin/examinations/marking");
+  revalidatePath("/admin/myp-results");
+
+  go(back, "ok=exam_regraded");
 }

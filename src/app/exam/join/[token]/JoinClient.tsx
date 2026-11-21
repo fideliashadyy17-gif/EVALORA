@@ -409,8 +409,8 @@ export function ExamJoinClient({
             <form onSubmit={submit} className="mt-5 space-y-4">
               {error && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="First Name"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" /></Field>
-                <Field label="Last Name"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" /></Field>
+                <Field label="First Name"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" placeholder="First name *" /></Field>
+                <Field label="Last Name"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" placeholder="Last name *" /></Field>
               </div>
               {identityFields.map((field) => (
                 <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} hint="Required by this examination's organizer.">

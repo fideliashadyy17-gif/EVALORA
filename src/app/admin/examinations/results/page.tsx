@@ -11,7 +11,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
-import { setExamResultsPublishedAsAdmin } from "../actions";
+import { regradeAttemptAsAdmin, regradeExamAsAdmin, setExamResultsPublishedAsAdmin } from "../actions";
 import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "Results Management & Candidate Links · EVALORA" };
@@ -20,6 +20,8 @@ export const dynamic = "force-dynamic";
 const MESSAGES: Record<string, string> = {
   results_published: "Results published. Candidates can now see their score, criteria breakdown, and worked solutions on their personal result link.",
   results_unpublished: "Results unpublished and withheld from candidates.",
+  regraded: "Candidate attempt regraded successfully. Scores, partial credit, and audit history updated.",
+  exam_regraded: "Examination regraded across all submitted attempts. All scores and grade logs synchronized.",
   exam: "That examination no longer exists.",
   failed: "Result publication could not be changed.",
 };
@@ -181,6 +183,13 @@ export default async function ExaminationResultsPage({
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
             <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>
+            <form action={regradeExamAsAdmin}>
+              <input type="hidden" name="exam_id" value={selected.id} />
+              <input type="hidden" name="back" value={back} />
+              <Button type="submit" variant="outline" title="Re-evaluate all objective questions with mathematical equivalence rules">
+                Regrade examination
+              </Button>
+            </form>
             <MypExportButton format="pdf" scope="collective" query={`exam=${selected.id}`} label="Collective MYP PDF" compact />
             <MypExportButton format="xlsx" scope="collective" query={`exam=${selected.id}`} label="MYP Excel" compact />
             <form action={enterOrgWorkspace}>
@@ -261,6 +270,19 @@ export default async function ExaminationResultsPage({
                             >
                               MYP
                             </Link>
+                            {a.status !== "in_progress" && (
+                              <form action={regradeAttemptAsAdmin} className="inline">
+                                <input type="hidden" name="attempt_id" value={a.id} />
+                                <input type="hidden" name="back" value={back} />
+                                <button
+                                  type="submit"
+                                  className="whitespace-nowrap text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                                  title="Idempotently regrade this attempt using the latest scoring engine"
+                                >
+                                  Regrade
+                                </button>
+                              </form>
+                            )}
                           </div>
                         </td>
                       </tr>
