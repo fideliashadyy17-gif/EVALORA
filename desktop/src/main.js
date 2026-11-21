@@ -4,8 +4,16 @@ const fs = require("fs");
 const crypto = require("crypto");
 
 const APP_VERSION = app.getVersion();
-const DEFAULT_EVALORA_HOST = (process.env.EVALORA_HOST || "https://evalora-six.vercel.app").replace(/\/$/, "");
-const ALLOWED_HOSTS = new Set([new URL(DEFAULT_EVALORA_HOST).host, "evalora-six.vercel.app", "localhost:3000", "127.0.0.1:3000"]);
+const DEFAULT_EVALORA_HOST = (process.env.EVALORA_HOST || "https://evalora-edu.online").replace(/\/$/, "");
+const ALLOWED_HOSTS = new Set([
+  new URL(DEFAULT_EVALORA_HOST).host,
+  "evalora-edu.online",
+  "www.evalora-edu.online",
+  "evalora-six.vercel.app",
+  "evalora-starboyboy2017-cells-projects.vercel.app",
+  "localhost:3000",
+  "127.0.0.1:3000",
+]);
 const PROFILE_KEY_PATH = path.join(app.getPath("userData"), "device-key.dpapi");
 let mainWindow = null;
 let launchTargetUrl = null;

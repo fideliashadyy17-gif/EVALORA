@@ -16,7 +16,7 @@ if errorlevel 1 (
 )
 curl.exe --fail --location --silent --show-error "%RELEASE_URL%" --output "%TARGET%"
 if errorlevel 1 (
-  echo Installer download failed. Please retry from https://evalora-six.vercel.app/download/secure-browser
+  echo Installer download failed. Please retry from https://evalora-edu.online/download/secure-browser
   pause
   exit /b 1
 )

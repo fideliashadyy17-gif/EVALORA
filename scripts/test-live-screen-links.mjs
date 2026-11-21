@@ -11,17 +11,7 @@
  *
  * Run: node scripts/test-live-screen-links.mjs
  */
-import { execSync } from "node:child_process";
-import { createRequire } from "node:module";
-
-const outDir = "/tmp/evalora-live-links-test";
-execSync(
-  `npx tsc src/lib/liveLinks.ts --outDir ${outDir} --rootDir src --module commonjs --target es2022 --strict --skipLibCheck`,
-  { stdio: "inherit" },
-);
-
-const require = createRequire(import.meta.url);
-const { screenLinks } = require(`${outDir}/lib/liveLinks.js`);
+import { screenLinks } from "../src/lib/liveLinks.ts";
 
 let checks = 0;
 const ok = (name, condition) => {
@@ -30,7 +20,7 @@ const ok = (name, condition) => {
   console.log(`  ✓ ${name}`);
 };
 
-const CANONICAL = "https://evalora-six.vercel.app";
+const CANONICAL = "https://evalora-edu.online";
 const path = "/live/31dd0de3-2148-4bfb-8b59-198062e32064/screen?token=eyJzaWQiOiIzMWRkIn0.sig";
 const { absolute, host } = screenLinks(path, CANONICAL);
 

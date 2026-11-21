@@ -19,7 +19,7 @@ try {
   exit $Process.ExitCode
 } catch {
   Write-Error "EVALORA Secure Browser installation failed: $_"
-  Write-Host 'Download the installer from https://evalora-six.vercel.app/download/secure-browser' -ForegroundColor Yellow
+  Write-Host 'Download the installer from https://evalora-edu.online/download/secure-browser' -ForegroundColor Yellow
   exit 1
 } finally {
   if (Test-Path $Installer) { Remove-Item $Installer -Force -ErrorAction SilentlyContinue }

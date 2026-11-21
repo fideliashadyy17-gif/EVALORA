@@ -83,7 +83,7 @@ export default async function ExamLinksPage({
   const pageSize = 15;
   const admin = createAdminClient();
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "evalora-six.vercel.app";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "evalora-edu.online";
   const proto = h.get("x-forwarded-proto") ?? "https";
   const origin = `${proto}://${host}`;
 
