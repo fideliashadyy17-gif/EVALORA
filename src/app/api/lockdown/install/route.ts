@@ -23,7 +23,7 @@ export async function GET() {
   const fallback = `$TargetDir = "$env:LOCALAPPDATA\\EVALORA-Lockdown"
 if (-not (Test-Path $TargetDir)) { New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null }
 $LauncherPath = "$TargetDir\\evalora-launcher.cmd"
-Set-Content -Path $LauncherPath -Value '@echo off\`nstart "" "https://evalora-six.vercel.app/exam-access"' -Force
+Set-Content -Path $LauncherPath -Value '@echo off\`nstart "" "https://evalora-edu.online/exam-access"' -Force
 $RegPath = "HKCU:\\Software\\Classes\\evalora-lockdown"
 New-Item -Path $RegPath -Force | Out-Null
 Set-ItemProperty -Path $RegPath -Name "(Default)" -Value "URL:EVALORA Lockdown Protocol" -Force

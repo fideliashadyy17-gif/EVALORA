@@ -60,7 +60,7 @@ export default function DownloadSecureBrowserPage() {
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-3 rounded-xl bg-black/60 p-4 font-mono text-xs text-gold-300">
             <code className="select-all flex-1 break-all">
-              irm https://evalora-six.vercel.app/api/lockdown/install | iex
+              irm https://evalora-edu.online/api/lockdown/install | iex
             </code>
           </div>
           <p className="mt-3 text-[11px] text-evergreen-300">
