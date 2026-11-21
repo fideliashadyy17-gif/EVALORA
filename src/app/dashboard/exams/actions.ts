@@ -54,6 +54,8 @@ export async function createExam(formData: FormData) {
   const end = endRaw ? new Date(endRaw) : null;
   if ((start && !Number.isFinite(start.getTime())) || (end && !Number.isFinite(end.getTime())) || (start && end && end <= start)) redirect("/dashboard/exams/new?e=window");
 
+  const lockdownWanted = formData.get("lockdown_enabled") === "on";
+
   // One insert only: a lost response can mean the insert succeeded. Retrying
   // blindly could create duplicate examinations.
   const { data: exam, error } = await supabase.from("exams").insert({
@@ -71,6 +73,13 @@ export async function createExam(formData: FormData) {
       require_screen_share: proctoringWanted && formData.get("require_screen_share") === "on",
       randomize_questions: formData.get("randomize_questions") === "on",
       randomize_options: formData.get("randomize_options") === "on",
+      lockdown: {
+        enabled: lockdownWanted,
+        require_app: true,
+        strict_multi_display: formData.get("lockdown_strict_multi_display") !== "off",
+        block_clipboard: formData.get("lockdown_block_clipboard") !== "off",
+        min_app_version: "1.0.0",
+      },
       pass_mark_percent: passMark,
       results_published: false,
       access_mode: "shared_link", identity_fields: [], eligible_class_ids: [], attempt_policy: "single_resume",
@@ -166,18 +175,116 @@ export async function pauseExam(formData: FormData) {
   redirect(`${back}?ok=${action === "pause" ? "paused" : "resumed"}`);
 }
 
+export async function updateExamLockdown(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const id = String(formData.get("id") ?? "");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=lockdown");
+
+  const enabled = formData.get("lockdown_enabled") === "on";
+  const strictMultiDisplay = formData.get("lockdown_strict_multi_display") === "on";
+  const blockClipboard = formData.get("lockdown_block_clipboard") === "on";
+
+  const supabase = await createClient();
+  const { data: exam, error: readError } = await supabase.from("exams").select("settings, status").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`/dashboard/exams/${id}?e=lockdown`);
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const updatedSettings = {
+    ...currentSettings,
+    lockdown: {
+      enabled,
+      require_app: true,
+      strict_multi_display: strictMultiDisplay,
+      block_clipboard: blockClipboard,
+      min_app_version: "1.0.0",
+    },
+  };
+
+  const { error: updateError } = await supabase.from("exams").update({ settings: updatedSettings }).eq("id", id).eq("organization_id", org.id);
+  if (updateError) redirect(`/dashboard/exams/${id}?e=lockdown`);
+
+  revalidatePath("/dashboard/exams");
+  revalidatePath(`/dashboard/exams/${id}`);
+  redirect(`/dashboard/exams/${id}?ok=lockdown`);
+}
+
 export async function deleteExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=delete");
+
+  // Strictly protect official benchmark examinations
+  if (id === "cd000000-0000-4000-8000-000000000002" || id === "ce000000-0000-4000-8000-000000000002") {
+    redirect("/dashboard/exams?e=protected_benchmark");
+  }
+
   const supabase = await createClient();
-  const { data, error } = await supabase.from("exams").delete().eq("id", id).eq("organization_id", org.id).select("id").maybeSingle();
-  // The database prevents cascading an exam deletion through attempts and answers.
-  if (error || !data) redirect("/dashboard/exams?e=delete");
-  revalidatePath("/dashboard/exams");
-  redirect("/dashboard/exams?ok=deleted");
+  const admin = createAdminClient();
+
+  // Verify exam belongs to this organization (strict tenant isolation)
+  const { data: exam, error: examError } = await supabase
+    .from("exams")
+    .select("id, title, settings, organization_id")
+    .eq("id", id)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+
+  if (examError || !exam) redirect("/dashboard/exams?e=delete");
+
+  // Check whether candidate attempts or submissions exist
+  const { count: attemptCount } = await admin
+    .from("exam_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("exam_id", id);
+
+  const attempts = attemptCount ?? 0;
+
+  if (attempts === 0) {
+    // Empty exam without attempts: perform clean permanent deletion of empty shell & links
+    await admin.from("proctoring_rooms").delete().eq("exam_id", id);
+    await admin.from("exam_rubric_links").delete().eq("exam_id", id);
+    await admin.from("exam_candidates").delete().eq("exam_id", id);
+    await admin.from("exam_messages").delete().eq("exam_id", id);
+    await admin.from("exam_presence").delete().eq("exam_id", id);
+
+    const { error: delError } = await admin.from("exams").delete().eq("id", id).eq("organization_id", org.id);
+    if (delError) redirect("/dashboard/exams?e=delete");
+
+    revalidatePath("/dashboard/exams");
+    redirect("/dashboard/exams?ok=deleted");
+  } else {
+    // Exam contains historical student submissions/grades:
+    // Safe soft-delete / archival to protect academic records from cascading deletion!
+    const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+    const now = new Date().toISOString();
+
+    const { error: archiveError } = await admin
+      .from("exams")
+      .update({
+        deleted_at: now,
+        deleted_by: ctx.user.id,
+        deletion_reason: "Archived via workspace exam deletion",
+        status: "closed",
+        settings: {
+          ...currentSettings,
+          archived: true,
+          deleted: true,
+          deleted_at: now,
+          deleted_by: ctx.user.id,
+        },
+      })
+      .eq("id", id)
+      .eq("organization_id", org.id);
+
+    if (archiveError) redirect("/dashboard/exams?e=delete");
+
+    revalidatePath("/dashboard/exams");
+    redirect("/dashboard/exams?ok=archived");
+  }
 }
 
 export async function addCandidate(formData: FormData) {

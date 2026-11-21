@@ -1,0 +1,46 @@
+{
+  "name": "evalora-secure-browser",
+  "version": "1.1.0",
+  "description": "EVALORA Secure Exam Browser for Windows",
+  "main": "src/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/fideliashadyy17-gif/EVALORA.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --dir --x64 --publish never",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "dist:portable": "electron-builder --win portable --x64 --publish never",
+    "test": "node test/attestation-smoke.cjs"
+  },
+  "author": "EVALORA Assessment Systems",
+  "license": "Proprietary",
+  "devDependencies": {
+    "electron": "33.2.0",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "ai.evalora.lockdown",
+    "productName": "EVALORA Secure Exam Browser",
+    "publish": null,
+    "directories": { "output": "dist" },
+    "files": ["src/**/*", "package.json"],
+    "asar": true,
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "requestedExecutionLevel": "asInvoker",
+      "artifactName": "EVALORA-Secure-Browser-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EVALORA Secure Exam Browser",
+      "deleteAppDataOnUninstall": false
+    },
+    "protocols": [{ "name": "EVALORA Lockdown Protocol", "schemes": ["evalora-lockdown"] }]
+  }
+}

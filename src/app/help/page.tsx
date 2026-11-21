@@ -22,7 +22,7 @@ export default function HelpPage() {
         <p>Open the examination and choose <strong>Proctoring room</strong>. You will see a grid of candidate cameras (12–16 per page). Use <strong>Log incident</strong> to record observations with a severity level. Incidents are reviewed afterwards — record facts, not conclusions.</p>
 
         <h2>For candidates</h2>
-        <p>Go to <strong>Enter an examination</strong>, type the examination code your institution shared and your personal candidate code. Allow camera/microphone access if your exam is proctored. Your answers save automatically; if your connection drops, re-enter with the same codes to continue.</p>
+        <p>Go to <strong>Enter an examination</strong>, enter your first name, last name, the examination code your institution shared, and your class. Allow camera/microphone access if your exam is proctored. Your answers save automatically; if your connection drops, re-enter with the same details to continue.</p>
 
         <h2>Billing help</h2>
         <p>Dashboard → Billing shows your current plan, trial end date and payment history. To upgrade: choose a plan, follow the payment instructions, then submit your transaction reference. Activation happens after our team verifies the payment — you will receive an in-app notification.</p>

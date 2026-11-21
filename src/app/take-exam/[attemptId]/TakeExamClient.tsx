@@ -26,12 +26,14 @@ import {
   readClosedAttemptMarker,
   type ExamQueueState,
 } from "@/lib/examSaveQueue";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card } from "@/components/ui";
 import { cn, mmss } from "@/lib/utils";
 import "@livekit/components-styles";
 import { LiveKitRoom, VideoTrack, useConnectionState, useLocalParticipant, useTracks } from "@livekit/components-react";
 import { Track } from "livekit-client";
-import { Flag, ShieldAlert, Sigma, X } from "lucide-react";
+import { Flag, ShieldAlert, ShieldCheck, Sigma, X } from "lucide-react";
+import { buildLockdownLaunchUrl, type ExamLockdownSettings } from "@/lib/lockdown";
+import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
@@ -46,9 +48,9 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
+  exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
-  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null };
+  attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null; lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
   questions: (PublicQuestion & {
     /** Published pedagogical guidance, delivered with the paper. Never an answer. */
@@ -300,6 +302,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   }, []);
 
   useEffect(() => {
+    if (isSecureBrowserEnvironment()) {
+      persistSecureBrowserState();
+    }
+  }, []);
+
+  useEffect(() => {
     try {
       const local = typeof localStorage !== "undefined" ? localStorage : null;
       const session = typeof sessionStorage !== "undefined" ? sessionStorage : null;
@@ -498,6 +506,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       });
     }
     offset.current = new Date(data.server_now).getTime() - Date.now();
+    if (data.attempt.lockdown_verified) {
+      persistSecureBrowserState();
+    }
     setState(data);
     setManualPause({ paused: Boolean(data.attempt.paused), notice: data.attempt.pause_notice ?? null });
     setFlagged(activeRef.current && pending.length ? pending[pending.length - 1].flagged : data.attempt.flagged ?? []);
@@ -974,6 +985,54 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   if (!state) return <Centered><p className="text-ink-soft">Loading your examination paper…</p></Centered>;
 
   const { exam, attempt, questions } = state;
+
+  const isLockdownRequired = Boolean(exam.lockdown?.enabled && exam.lockdown?.require_app);
+  // UI detection (UA, URL markers, storage and the Electron bridge) is only a
+  // presentation hint. Admission is authorized by the server-recorded result
+  // of a verified desktop attestation; a client-controlled marker cannot grant
+  // access to a lockdown paper.
+  const isLockdownVerified = Boolean(attempt.lockdown_verified);
+
+  // Strict lockdown runtime check: a required paper is only rendered after the
+  // server has recorded a valid Secure Browser attestation for this attempt.
+  if (isLockdownRequired && !isLockdownVerified && attempt.status === "in_progress") {
+    return (
+      <Centered>
+        <div className="max-w-md rounded-2xl border-2 border-evergreen-900/30 bg-paper p-6 text-center shadow-xl sm:p-8">
+          <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-100 text-amber-800">
+            <ShieldAlert className="h-8 w-8" />
+          </div>
+          <h1 className="mt-4 font-display text-xl font-bold text-evergreen-950">
+            EVALORA Secure Exam Browser Required
+          </h1>
+          <p className="mt-2 text-xs leading-relaxed text-ink-soft">
+            This examination is configured in <strong>Lockdown Mode</strong>. Standard web browsers cannot be used to complete or resume this assessment.
+          </p>
+          <div className="mt-6 flex flex-col gap-2.5">
+            <a
+              href={buildLockdownLaunchUrl({
+                path: exam.entry_href || "/exam-access",
+                examCode: exam.access_code || undefined,
+              })}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gold-500 py-3 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+            >
+              Launch in Secure Browser
+            </a>
+            <ButtonLink href="/download/secure-browser" variant="outline" className="w-full justify-center">
+              Download EVALORA Secure Browser
+            </ButtonLink>
+            <a
+              href={exam.entry_href || "/exam-access"}
+              className="inline-flex w-full items-center justify-center rounded-xl border border-evergreen-900/20 py-2.5 text-xs font-semibold text-evergreen-900 hover:bg-cream"
+            >
+              Return to Check-in
+            </a>
+          </div>
+        </div>
+      </Centered>
+    );
+  }
+
   const experience = exam.experience ?? DEFAULT_EXAM_EXPERIENCE;
   const paperLanguage: PaperLanguage = exam.language ?? "en";
   const submitted = attempt.status !== "in_progress";
@@ -1023,7 +1082,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <Logo href={null} iconOnly />
           <div className="min-w-0 flex-1">
-            <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
+            <div className="flex items-center gap-2">
+              <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
+              {isLockdownRequired && isLockdownVerified && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
+                  <ShieldCheck className="h-3 w-3" /> Secure Lockdown
+                </span>
+              )}
+            </div>
             <p className="text-xs text-ink-soft">
               {state.candidate.first_name || state.candidate.last_name
                 ? `${state.candidate.first_name ?? ""} ${state.candidate.last_name ?? ""}`.trim()
@@ -1130,64 +1196,83 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               </> : <p className="text-xs text-ink-soft">Requesting video access…</p>}
             </Card>
           )}
-          <Card className="exam-question-navigation p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-evergreen-950">
-                {showCorrige ? `Corrigé · ${questions.length} questions` : "Question navigator"}
+          {submitted && !showCorrige ? (
+            <Card className="exam-question-navigation p-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-7 w-7 items-center justify-center rounded-full bg-evergreen-100 text-sm font-bold text-evergreen-900">
+                  ✓
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-evergreen-950">Examination Submitted</p>
+                  <p className="text-xs text-ink-soft">All responses locked &amp; saved</p>
+                </div>
+              </div>
+              <p className="mt-3 text-xs leading-relaxed text-ink-soft">
+                Your responses have been securely stored on the server. Your examination results will be available through your personal results link provided by your teacher.
               </p>
-              {!submitted && <span className="text-xs font-semibold tabular-nums text-evergreen-800">{savedIds.size}/{questions.length} saved</span>}
-            </div>
-            {!submitted && <div
-              className="exam-progress-track mb-3"
-              role="progressbar"
-              aria-label="Answers confirmed by the server"
-              aria-valuemin={0}
-              aria-valuemax={questions.length}
-              aria-valuenow={savedIds.size}
-            ><span style={{ width: `${questions.length ? Math.min(100, (savedIds.size / questions.length) * 100) : 0}%` }} /></div>}
-            <div className="exam-question-grid">
-              {questions.map((q, i) => (
-                <button
-                  key={q.question_id}
-                  onClick={() => navigateTo(i)}
-                  aria-label={`Question ${q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
-                  aria-current={i === index ? "step" : undefined}
-                  className={cn(
-                    "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
-                    i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
-                  )}
-                >
-                  {q.question_meta?.question_label ?? q.question_meta?.question_number ?? i + 1}
-                  {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
-                  {q.result && (
-                    <span
-                      aria-hidden
-                      className={cn(
-                        "absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white",
-                        resultMark(q.result).tone,
-                      )}
-                    >
-                      {resultMark(q.result).glyph}
-                    </span>
-                  )}
-                </button>
-              ))}
-            </div>
-            {showCorrige ? (
-              <p className="mt-3 text-xs text-ink-soft">
-                {correctCount} correct · {answeredCount} answered · {questions.length - answeredCount} left blank (0 marks)
+            </Card>
+          ) : (
+            <Card className="exam-question-navigation p-4">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-evergreen-950">
+                  {showCorrige ? `Corrigé · ${questions.length} questions` : "Question navigator"}
+                </p>
+                {!submitted && <span className="text-xs font-semibold tabular-nums text-evergreen-800">{savedIds.size}/{questions.length} saved</span>}
+              </div>
+              {!submitted && <div
+                className="exam-progress-track mb-3"
+                role="progressbar"
+                aria-label="Answers confirmed by the server"
+                aria-valuemin={0}
+                aria-valuemax={questions.length}
+                aria-valuenow={savedIds.size}
+              ><span style={{ width: `${questions.length ? Math.min(100, (savedIds.size / questions.length) * 100) : 0}%` }} /></div>}
+              <div className="exam-question-grid">
+                {questions.map((q, i) => (
+                  <button
+                    key={q.question_id}
+                    onClick={() => navigateTo(i)}
+                    aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+                    aria-current={i === index ? "step" : undefined}
+                    className={cn(
+                      "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
+                      i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
+                    )}
+                  >
+                    {i + 1}
+                    {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
+                    {q.result && (
+                      <span
+                        aria-hidden
+                        className={cn(
+                          "absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white",
+                          resultMark(q.result).tone,
+                        )}
+                      >
+                        {resultMark(q.result).glyph}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+              {showCorrige ? (
+                <p className="mt-3 text-xs text-ink-soft">
+                  {correctCount} correct · {answeredCount} answered · {questions.length - answeredCount} left blank (0 marks)
+                </p>
+              ) : (
+                <p className="mt-3 text-xs text-ink-soft" aria-live="polite">{savedIds.size} of {questions.length} answers confirmed by the server.</p>
+              )}
+              <p className="mt-1 text-xs text-ink-soft" aria-live="polite">
+                {queueState.pending ? `${queueState.pending} answer(s) awaiting confirmation${queueState.syncing ? " · saving…" : ""}.` : "No answer saves waiting."}
               </p>
-            ) : (
-              <p className="mt-3 text-xs text-ink-soft" aria-live="polite">{savedIds.size} of {questions.length} answers confirmed by the server.</p>
-            )}
-            <p className="mt-1 text-xs text-ink-soft" aria-live="polite">
-              {queueState.pending ? `${queueState.pending} answer(s) awaiting confirmation${queueState.syncing ? " · saving…" : ""}.` : "No answer saves waiting."}
-            </p>
-            {queueState.error && <p role="alert" className="mt-2 text-xs text-red-700">{queueState.error}</p>}
-            {!queueState.durable && <p role="alert" className="mt-2 text-xs text-red-700">Local recovery is unavailable. Do not refresh or close this tab while answers are waiting.</p>}
-            {queueState.pending > 0 && !queueState.syncing && !submitted && <Button variant="outline" className="mt-2 w-full text-xs" onClick={() => void queueRef.current?.flush()}>Retry saving</Button>}
-            <p className="mt-2 text-xs text-ink-soft">Written, mathematical and graphical answers save automatically; <strong>Save answer</strong> confirms immediately. Flags are sent when an answer is saved. Waiting answers are preserved on this browser for refresh recovery until you submit your paper.</p>
-          </Card>
+              {queueState.error && <p role="alert" className="mt-2 text-xs text-red-700">{queueState.error}</p>}
+              {!queueState.durable && <p role="alert" className="mt-2 text-xs text-red-700">Local recovery is unavailable. Do not refresh or close this tab while answers are waiting.</p>}
+              {queueState.pending > 0 && !queueState.syncing && !submitted && (
+                <Button variant="outline" className="mt-2 w-full text-xs" onClick={() => void queueRef.current?.flush()}>Retry saving</Button>
+              )}
+              <p className="mt-2 text-xs text-ink-soft">Written, mathematical and graphical answers save automatically; <strong>Save answer</strong> confirms immediately. Flags are sent when an answer is saved. Waiting answers are preserved on this browser for refresh recovery until you submit your paper.</p>
+            </Card>
+          )}
           {exam.instructions && (
             <Card className="p-4">
               <p className="text-sm font-semibold text-evergreen-950">Instructions</p>
@@ -1237,127 +1322,55 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
             />
           ) : null}
 
-          {submitted && !corrigeAll ? (
-            <Card className="exam-results-card p-7 text-center">
-              {queueState.pending > 0 && <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">{queueState.pending} answer(s) were not confirmed before submission or expiry. Contact your invigilator; do not close this tab.</p>}
-              <p className="text-5xl">📋</p>
-              <h1 className="mt-3 font-display text-3xl font-semibold text-evergreen-950">
-                {attempt.status === "auto_submitted" ? "Time expired — paper submitted automatically" : "Your paper has been submitted"}
+          {submitted ? (
+            <Card className="exam-submission-confirmation-card mx-auto max-w-2xl border border-evergreen-900/15 p-8 text-center shadow-sm sm:p-10">
+              {queueState.pending > 0 && (
+                <p role="alert" className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-800">
+                  {queueState.pending} answer(s) were not confirmed before submission or expiry. Contact your invigilator; do not close this tab.
+                </p>
+              )}
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-evergreen-100 text-3xl font-bold text-evergreen-900">
+                ✓
+              </div>
+              <h1 className="mt-5 font-display text-2xl font-semibold text-evergreen-950 sm:text-3xl">
+                Thank you for completing your examination!
               </h1>
-              {typeof attempt.attempt_number === "number" && (
-                <p className="mt-2 text-sm text-ink-soft" data-testid="attempt-number">
-                  {attempt.attempt_number === 1 ? "First attempt" : attempt.attempt_number === 2 ? "Second attempt" : `Attempt ${attempt.attempt_number}`}
-                  {" · "}this attempt is permanently locked
+              <div className="mt-4 space-y-2 text-base leading-relaxed text-evergreen-950">
+                <p className="font-semibold text-evergreen-900">Your examination has been successfully submitted.</p>
+                <p className="font-medium text-evergreen-900">Your responses have been saved.</p>
+                <p className="text-sm text-ink-soft">
+                  Your examination results will be available through your personal results link provided by your teacher.
                 </p>
-              )}
-              {attempt.track && (
-                <p className="mt-3 text-sm text-ink-soft" data-testid="exam-track">
-                  Track: <strong className="text-evergreen-900">{attempt.track === "AB" ? "Calculus AB" : "Calculus BC"}</strong>
-                  {attempt.track === "AB" ? " · questions 1–44" : " · questions 1–50"}
+                <p className="pt-2 text-sm font-semibold text-evergreen-950">
+                  You may now safely close this page.
                 </p>
-              )}
-              {attempt.results_published && attempt.score !== null ? (
-                <div className="mt-4">
-                  <p className="text-lg">Score: <strong className="text-evergreen-800">{attempt.score} / {attempt.max_score}</strong> ({pct?.toFixed(1)}%)</p>
-                  <Badge tone={(pct ?? 0) >= exam.pass_mark_percent ? "green" : "red"} className="mt-2 px-3 py-1">
-                    {(pct ?? 0) >= exam.pass_mark_percent ? "PASS" : "Below pass mark"} · pass mark {exam.pass_mark_percent}%
-                  </Badge>
-                  <p className="mt-3 text-sm text-ink-soft">The complete corrigé is open: use the question navigator to review all {questions.length} questions with the correct answer and the official explanation. Blank answers score 0 and are shown too.</p>
-                  {(() => {
-                    const usage = state.hint_usage ?? [];
-                    const hintedQuestions = new Set(usage.map((u) => u.question_id)).size;
-                    const summary = resultSummary(
-                      questions.map((q) => ({
-                        type: q.type,
-                        topic: q.topic ?? null,
-                        criterion: q.criterion ?? null,
-                        criterionShares: q.criterion_shares ?? null,
-                        points: q.points,
-                        result: q.result ? { is_correct: q.result.is_correct, points_awarded: q.result.points_awarded } : null,
-                      })),
-                      exam.pass_mark_percent,
-                    );
-                    return (
-                      <div className="mx-auto mt-5 max-w-2xl space-y-4 text-left" data-testid="feedback-summary">
-                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
-                          <p className="font-display text-base font-semibold text-evergreen-950">How this paper was marked</p>
-                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                            <p className="text-sm">
-                              <span className="font-semibold text-evergreen-900">Objective questions</span>
-                              <span className="block text-ink-soft">
-                                {summary.objective.awarded} / {summary.objective.max} marks ({summary.objective.percent}%) · {summary.objective.count} question{summary.objective.count === 1 ? "" : "s"} auto-marked
-                              </span>
-                            </p>
-                            <p className="text-sm">
-                              <span className="font-semibold text-evergreen-900">Structured questions</span>
-                              <span className="block text-ink-soft">
-                                {summary.structured.awarded} / {summary.structured.max} marks ({summary.structured.percent}%) · {summary.structured.count} question{summary.structured.count === 1 ? "" : "s"}
-                              </span>
-                            </p>
-                          </div>
-                          {summary.pendingManual ? (
-                            <p role="status" className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                              {summary.pendingCount} structured answer{summary.pendingCount === 1 ? " is" : "s are"} still awaiting your examiner&rsquo;s mark. Your percentage is provisional until that marking is complete.
-                            </p>
-                          ) : null}
-                        </div>
+              </div>
 
-                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
-                          <p className="font-display text-base font-semibold text-evergreen-950">Your result in context</p>
-                          <p className="mt-2 text-sm leading-relaxed text-evergreen-950" data-testid="personalised-message">{summary.message}</p>
-                          <p className="mt-2 text-xs text-ink-soft">
-                            Hints used: <strong className="text-evergreen-900">{usage.length}</strong> on {hintedQuestions} question{hintedQuestions === 1 ? "" : "s"} — a hint never costs marks; it shows you where to revise.
-                          </p>
-                        </div>
-
-                        <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
-                          <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by topic</p>
-                          <ul className="mt-1 divide-y divide-evergreen-900/10">
-                            {summary.topics.map((topic) => (
-                              <li key={topic.topic} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                                <span className="min-w-0 flex-1 truncate capitalize">{topic.topic}</span>
-                                <span className="shrink-0 text-ink-soft">
-                                  {topic.awarded}/{topic.max} · <strong className={topic.band === "Strong" ? "text-evergreen-800" : topic.band === "Developing" ? "text-gold-700" : "text-red-700"}>{topic.band}</strong>
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-
-                        {summary.criteria.length ? (
-                          <div className="rounded-xl border border-evergreen-900/15 bg-white p-4">
-                            <p className="text-xs font-bold uppercase tracking-wide text-ink-soft">Performance by MYP criterion (indicative level band)</p>
-                            <ul className="mt-1 divide-y divide-evergreen-900/10">
-                              {summary.criteria.map((criterion) => (
-                                <li key={criterion.criterion} className="flex items-center justify-between gap-3 py-1.5 text-sm">
-                                  <span className="min-w-0 flex-1">
-                                    <strong>Criterion {criterion.criterion}</strong>
-                                    <span className="block text-xs text-ink-soft">
-                                      {criterion.title ?? ""}
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 text-right text-ink-soft">
-                                    {criterion.awarded}/{criterion.max} · <strong className="text-evergreen-900">Level {criterion.level}</strong>
-                                  </span>
-                                </li>
-                              ))}
-                            </ul>
-                            <p className="mt-2 text-[11px] text-ink-soft">The level band is indicative only: it is derived from the marks on this paper, not from an eAssessment moderation.</p>
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })()}
-                  <div className="mt-4 flex flex-wrap justify-center gap-2 print:hidden">
-                    <Button onClick={() => setCorrigeAll(true)}>Voir le corrigé complet ({questions.length} questions)</Button>
-                    <Button variant="outline" onClick={() => window.print()} disabled={!attempt.results_published}>Imprimer / PDF</Button>
-                  </div>
+              {/* Confirmation Details Reference Box */}
+              <div className="mx-auto mt-6 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 text-left text-xs text-ink-soft space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span>Examination:</span>
+                  <strong className="text-evergreen-950 font-medium">{exam.title}</strong>
                 </div>
-              ) : (
-                <p className="mt-3 text-ink-soft">Results will appear here once your institution publishes them.{queueState.pending === 0 && !queueState.error ? " Your active browser session is closed so the next student can sign in safely." : " Keep this tab open and contact your invigilator about the unconfirmed recovery data."}</p>
-              )}
-              <div className="mx-auto mt-5 flex max-w-xl flex-col items-center gap-2 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 print:hidden">
-                <p className="text-xs leading-5 text-ink-soft">
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span>Candidate:</span>
+                  <strong className="text-evergreen-950 font-medium">
+                    {state.candidate.first_name || state.candidate.last_name
+                      ? `${state.candidate.first_name ?? ""} ${state.candidate.last_name ?? ""}`.trim()
+                      : state.candidate.name}
+                  </strong>
+                </div>
+                <div className="flex flex-wrap items-center justify-between gap-1">
+                  <span>Confirmation code:</span>
+                  <code className="font-mono font-semibold text-evergreen-900">
+                    {token ? String(token).slice(0, 8).toUpperCase() : attempt.id.slice(0, 8).toUpperCase()}
+                  </code>
+                </div>
+              </div>
+
+              {/* Clean session switch for shared lab / classroom computers */}
+              <div className="mx-auto mt-6 flex flex-col items-center gap-2 rounded-xl border border-evergreen-900/10 bg-white p-4 print:hidden">
+                <p className="text-xs text-ink-soft">
                   Sharing this computer or tablet with classmates? Select below to return to a clean examination entry screen for the next student.
                 </p>
                 <Button
@@ -1369,21 +1382,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   Finish &amp; return to examination entry
                 </Button>
               </div>
-              <RetakePanel attemptId={attemptId} token={token} submitted={submitted} />
             </Card>
-          ) : null}
-
-          {current && !corrigeAll && (
-            <Card className={`exam-question-card ${submitted ? "mt-5" : ""} p-6 sm:p-7`}>
+          ) : current && (
+            <Card className="exam-question-card p-6 sm:p-7">
               <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">
                   {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
                   {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
-                  {current.question_meta?.question_label ?? current.question_meta?.question_number ?? index + 1} of{" "}
-                  {(current.question_meta?.paper_section
-                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section)
-                    : questions
-                  ).reduce((sum, q) => sum + (q.question_meta?.question_span ?? 1), 0)}
+                  {index + 1} of {questions.length}
                 </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (
@@ -1393,9 +1399,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     {criterionTitle(current.criterion) ? ` — ${criterionTitle(current.criterion)}` : ""}
                   </Badge>
                 ) : null}
-                {/* Inline, keyed by question: the hint can never belong to the
-                    previous question, and opening it touches no answer, timer,
-                    save queue or submission state. */}
                 <HintPanel
                   key={`hint-${current.question_id}`}
                   attemptId={attemptId}
@@ -1405,11 +1408,11 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   disabled={submitted}
                   answerState={answerStateFor({
                     hasSavedAnswer: Boolean(current.saved_answer) || answerDirty,
-                    isCorrect: current.result?.is_correct ?? null,
+                    isCorrect: null,
                   })}
                 />
                 <button
-                  disabled={submitted || submitting}
+                  disabled={submitting}
                   onClick={() => {
                     const next = flagged.includes(current.question_id)
                       ? flagged.filter((f) => f !== current.question_id)
@@ -1427,7 +1430,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 key={`${current.question_id}-${runnerVersion}`}
                 question={current}
                 initial={current.saved_answer}
-                disabled={submitted || submitting || manualPause.paused}
+                disabled={submitting || manualPause.paused}
                 submitLabel="Save answer"
                 autosave
                 onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
@@ -1442,62 +1445,19 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 onDirtyChange={setAnswerDirty}
                 markings={currentMarkings}
                 experience={experience}
+                displayQuestionNumber={index + 1}
               />
 
-              {answerDirty && !submitted && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}
-              {answerDirty && !submitted && <Button variant="outline" className="mt-2" disabled={submitting} onClick={() => {
+              {answerDirty && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}
+              {answerDirty && <Button variant="outline" className="mt-2" disabled={submitting} onClick={() => {
                 if (window.confirm("Discard the unsaved changes to this answer?")) { setRunnerVersion((version) => version + 1); setAnswerDirty(false); }
               }}>Discard unsaved changes</Button>}
               {draftWarning && <p role="alert" className="mt-2 text-sm text-red-700">Save this answer or discard the changes before submitting.</p>}
 
-              {current.result && !corrigeAll && (
-                <div className={`mt-5 rounded-xl p-4 text-sm ${resultTone(current.result)}`}>
-                  <p className="font-semibold">{resultLabel(current.result, current.points)}</p>
-                  {currentKeyLine && <p className="mt-1 font-medium">{currentKeyLine}</p>}
-                  {(current.result.explanation || current.result.explanation_doc) && (
-                    <div className="mt-1"><RichContent doc={current.result.explanation_doc ?? null} text={current.result.explanation ?? ""} /></div>
-                  )}
-                  {(() => {
-                    const feedback = questionFeedback({
-                      topic: current.topic ?? null,
-                      criterion: current.criterion ?? null,
-                      markingCriteria: current.reveal?.marking_criteria ?? null,
-                      nextTimeHint: current.reveal?.next_time_hint ?? null,
-                    });
-                    if (!feedback.any) return null;
-                    return (
-                      <dl className="mt-3 space-y-2 border-t border-evergreen-900/10 pt-3 text-sm" data-testid="question-feedback">
-                        {feedback.assessed ? (
-                          <div>
-                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">What this question assesses</dt>
-                            <dd className="capitalize">{feedback.assessed}</dd>
-                          </div>
-                        ) : null}
-                        {feedback.scheme ? (
-                          <div>
-                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">Marking scheme</dt>
-                            <dd className="whitespace-pre-wrap leading-relaxed">{feedback.scheme}</dd>
-                          </div>
-                        ) : null}
-                        {feedback.improve ? (
-                          <div>
-                            <dt className="text-[11px] font-bold uppercase tracking-wide text-ink-soft">How to improve next time</dt>
-                            <dd className="leading-relaxed">{feedback.improve}</dd>
-                          </div>
-                        ) : null}
-                      </dl>
-                    );
-                  })()}
-                  {/* The marking scheme is published for every question, so a blank one is revision material too. */}
-                </div>
-              )}
-
               <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-evergreen-900/10 pt-4">
                 <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>← Previous</Button>
                 <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>Next →</Button>
-                {!submitted && (
-                  <Button variant="danger" className="ml-auto" onClick={requestSubmit}>Submit examination</Button>
-                )}
+                <Button variant="danger" className="ml-auto" onClick={requestSubmit}>Submit examination</Button>
               </div>
             </Card>
           )}

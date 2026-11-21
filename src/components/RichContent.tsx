@@ -10,12 +10,13 @@ import { StatsView } from "./stats/StatsView";
 import { DataTableView } from "./stats/DataTableView";
 import { normaliseAssessDiagram } from "@/lib/assessDiagram";
 import { AssessDiagram } from "./AssessDiagram";
+import { docHasCorruptedMath, renderMathAndFormatting } from "@/lib/mathRender";
 
 /**
  * Renders structured question content (rich document) identically everywhere:
  * admin previews, quiz play, live competitions, examinations, results and
  * explanations. Falls back to the legacy plain-text + $math$ renderer when a
- * question predates structured content. Server-component safe.
+ * question predates structured content or contains corrupted math nodes. Server-component safe.
  */
 export function RichContent({
   doc,
@@ -26,7 +27,7 @@ export function RichContent({
   text?: string | null;
   className?: string;
 }) {
-  if (doc && !docIsEmpty(doc)) {
+  if (doc && !docIsEmpty(doc) && !docHasCorruptedMath(doc)) {
     return <div className={`rich-content ${className ?? ""}`}>{renderNodes(doc.content ?? [])}</div>;
   }
   return <MathText text={text ?? ""} className={className} />;
@@ -129,53 +130,53 @@ function renderNode(node: RichNode, key: string): React.ReactNode {
 }
 
 function renderText(node: RichNode, key: string): React.ReactNode {
-  let out: React.ReactNode = node.text ?? "";
+  let html = renderMathAndFormatting(node.text ?? "");
   const marks = node.marks ?? [];
-  // Apply marks inside-out; order is cosmetic for these inline styles.
   for (const mark of marks) {
     switch (mark.type) {
       case "bold":
-        out = <strong>{out}</strong>;
+        html = `<strong>${html}</strong>`;
         break;
       case "italic":
-        out = <em>{out}</em>;
+        html = `<em>${html}</em>`;
         break;
       case "underline":
-        out = <u>{out}</u>;
+        html = `<u>${html}</u>`;
         break;
       case "strike":
-        out = <s>{out}</s>;
+        html = `<s>${html}</s>`;
         break;
       case "code":
-        out = <code>{out}</code>;
+        html = `<code>${html}</code>`;
         break;
-      case "link": {
-        const href = String(mark.attrs?.href ?? "");
-        if (/^(https?:|mailto:)/.test(href)) {
-          out = (
-            <a href={href} target="_blank" rel="noreferrer noopener">
-              {out}
-            </a>
-          );
-        }
-        break;
-      }
-      case "textStyle": {
-        const style: React.CSSProperties = {};
-        if (mark.attrs?.color) style.color = String(mark.attrs.color);
-        if (mark.attrs?.fontFamily) style.fontFamily = String(mark.attrs.fontFamily);
-        if (mark.attrs?.fontSize) style.fontSize = String(mark.attrs.fontSize);
-        if (Object.keys(style).length) out = <span style={style}>{out}</span>;
-        break;
-      }
-      case "highlight": {
-        const color = mark.attrs?.color ? String(mark.attrs.color) : undefined;
-        out = <mark style={color ? { backgroundColor: color } : undefined}>{out}</mark>;
-        break;
-      }
       default:
         break;
     }
   }
-  return <span key={key}>{out}</span>;
+
+  let element: React.ReactNode = <span key={key} dangerouslySetInnerHTML={{ __html: html }} />;
+
+  for (const mark of marks) {
+    if (mark.type === "link") {
+      const href = String(mark.attrs?.href ?? "");
+      if (/^(https?:|mailto:)/.test(href)) {
+        element = (
+          <a key={key} href={href} target="_blank" rel="noreferrer noopener">
+            {element}
+          </a>
+        );
+      }
+    } else if (mark.type === "textStyle") {
+      const style: React.CSSProperties = {};
+      if (mark.attrs?.color) style.color = String(mark.attrs.color);
+      if (mark.attrs?.fontFamily) style.fontFamily = String(mark.attrs.fontFamily);
+      if (mark.attrs?.fontSize) style.fontSize = String(mark.attrs.fontSize);
+      if (Object.keys(style).length) element = <span key={key} style={style}>{element}</span>;
+    } else if (mark.type === "highlight") {
+      const color = mark.attrs?.color ? String(mark.attrs.color) : undefined;
+      element = <mark key={key} style={color ? { backgroundColor: color } : undefined}>{element}</mark>;
+    }
+  }
+
+  return element;
 }

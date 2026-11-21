@@ -148,7 +148,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", icon: Clock3 },
       { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", icon: Activity },
       { href: "/admin/examinations/marking", label: "Marking & Grading", icon: ClipboardList },
-      { href: "/admin/examinations/results", label: "Examination Results", icon: TrendingUp },
+      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", icon: Link2 },
       { href: "/admin/myp-results", label: "MYP Results & Reports", icon: GraduationCap },
       { href: "/admin/examinations/reports", label: "Reports & Exports", icon: ScrollText },
       { href: "/admin/proctoring", label: "Proctoring Oversight", icon: Video, badgeKey: "incidents" },
@@ -182,6 +182,7 @@ const GROUPS: NavGroup[] = [
     title: "I. Operational Workspace",
     items: [
       { href: "/admin/operations", label: "Full Customer Workspace Access", icon: LayoutDashboard },
+      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", icon: Link2 },
       { href: "/admin/classes", label: "Class Management (direct)", icon: GraduationCap },
       { href: "/admin/examinations/invitations", label: "Exam Links & Codes", icon: Link2 },
     ],

@@ -95,6 +95,47 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                 </label>
               ))}
             </div>
+
+            <div className="rounded-xl border border-evergreen-900/15 bg-paper p-4">
+              <div className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  id="lockdown_enabled"
+                  name="lockdown_enabled"
+                  className="mt-1 h-5 w-5 accent-evergreen-700"
+                />
+                <div>
+                  <label htmlFor="lockdown_enabled" className="block text-sm font-semibold text-evergreen-950">
+                    Require EVALORA Secure Exam Application (Lockdown Mode)
+                  </label>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                    Strictly optional. When enabled, candidates cannot enter using ordinary web browsers and must launch
+                    the official EVALORA Secure Exam Application, which enforces fullscreen kiosk, OS-level screen protection,
+                    and prohibited background process monitoring. Standard web access remains unobstructed when disabled.
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                      <input
+                        type="checkbox"
+                        name="lockdown_strict_multi_display"
+                        defaultChecked
+                        className="h-4 w-4 accent-evergreen-700"
+                      />
+                      Enforce single display (block multi-monitor)
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                      <input
+                        type="checkbox"
+                        name="lockdown_block_clipboard"
+                        defaultChecked
+                        className="h-4 w-4 accent-evergreen-700"
+                      />
+                      Strict clipboard isolation
+                    </label>
+                  </div>
+                </div>
+              </div>
+            </div>
             {!ent.limits.proctoring && (
               <p className="text-sm text-amber-800">
                 Proctoring needs Premium — your current entitlement is <strong>{ent.planName}</strong>.{" "}

@@ -7,6 +7,7 @@ import {
   parseExamAccessSettings,
   validUuid,
 } from "@/lib/exam-access";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import { getEntitlement } from "@/lib/entitlements";
 import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
@@ -16,6 +17,7 @@ import { ExamJoinClient } from "./JoinClient";
 
 export const metadata: Metadata = { title: "Examination access" };
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 interface ClassOption { id: string; name: string }
 
@@ -27,21 +29,37 @@ export default async function SharedExamJoinPage({
   searchParams: Promise<{ code?: string }>;
 }) {
   const { token } = await params;
-  const { code } = await searchParams;
-  if (!validUuid(token))
+  const rawParams = ((await searchParams) ?? {}) as Record<string, string | string[] | undefined>;
+  const cleanToken = (token ?? "").trim();
+  if (!validUuid(cleanToken))
     return <Shell title="This examination link is invalid." body="Ask your institution for the current shareable link and access code." />;
 
   const admin = createAdminClient();
   const { data: exam } = await admin
     .from("exams")
-    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,invite_activates_at,invite_no_expiry,event_id,class_id,settings")
-    .eq("invite_token", token)
+    .select("id,organization_id,title,description,instructions,status,starts_at,ends_at,shared_link_enabled,invite_expires_at,invite_activates_at,invite_no_expiry,event_id,class_id,settings,access_code")
+    .eq("invite_token", cleanToken)
     .maybeSingle();
   if (!exam)
     return <Shell title="This examination link is invalid." body="It may have been regenerated. Ask your institution for the current link." />;
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const access = parseExamAccessSettings(examSettings);
+  const lockdown = parseLockdownSettings(examSettings.lockdown);
+  const lockdownRequired = Boolean(lockdown.enabled && lockdown.require_app);
+  const rawCode =
+    typeof rawParams.code === "string"
+      ? rawParams.code
+      : typeof rawParams["^code"] === "string"
+        ? rawParams["^code"]
+        : undefined;
+  const examCode = (rawCode ?? exam.access_code ?? "").replace(/\^+$/, "").trim().toUpperCase();
+  const lockdownLaunchUrl = buildLockdownLaunchUrl({
+    token: cleanToken,
+    examCode,
+    path: `/exam/join/${cleanToken}`,
+  });
+
   const entitlement = await getEntitlement(admin, exam.organization_id);
   const experience = examExperienceFromLimits(entitlement.limits);
   const language = detectExamLanguage(
@@ -133,7 +151,7 @@ export default async function SharedExamJoinPage({
 
   return (
     <ExamJoinClient
-      token={token}
+      token={cleanToken}
       title={exam.title}
       description={exam.description}
       instructions={exam.instructions}
@@ -141,12 +159,14 @@ export default async function SharedExamJoinPage({
       defaultClassId={defaultClassId}
       verifiedClassId={verifiedClassId}
       verifiedStudentName={verifiedStudentName}
-      initialCode={(code ?? "").trim().toUpperCase()}
+      initialCode={examCode}
       accessMode={access.accessMode}
       identityFields={access.identityFields}
       requiresAccount={requiresAccount}
       language={language}
       languageLock={experience.languageLock}
+      lockdownRequired={lockdownRequired}
+      lockdownLaunchUrl={lockdownLaunchUrl}
     />
   );
 }

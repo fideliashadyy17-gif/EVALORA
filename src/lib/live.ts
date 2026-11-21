@@ -272,6 +272,45 @@ export function seededShuffle<T>(arr: T[], seed: string): T[] {
   return a;
 }
 
+/**
+ * Randomize question rows deterministically for an attempt.
+ * Preserves sections (e.g. Part A questions stay within Part A, Part B within Part B).
+ * Guarantees no duplicate or missing questions.
+ */
+export function randomizeQuestionRows<T extends { questions?: { config?: unknown } | null }>(
+  rows: T[],
+  seed: string,
+): T[] {
+  if (!rows || rows.length <= 1) return rows ? [...rows] : [];
+  const hasSections = rows.some((r) => {
+    const cfg = r.questions?.config as Record<string, unknown> | null | undefined;
+    return typeof cfg?.paper_section === "string";
+  });
+  if (!hasSections) {
+    return seededShuffle(rows, seed);
+  }
+
+  // Preserve the order of sections while shuffling within each section
+  const sectionOrder: string[] = [];
+  const sectionGroups = new Map<string, T[]>();
+  for (const row of rows) {
+    const cfg = row.questions?.config as Record<string, unknown> | null | undefined;
+    const sec = typeof cfg?.paper_section === "string" ? cfg.paper_section : "__default__";
+    if (!sectionGroups.has(sec)) {
+      sectionGroups.set(sec, []);
+      sectionOrder.push(sec);
+    }
+    sectionGroups.get(sec)!.push(row);
+  }
+
+  const out: T[] = [];
+  for (const sec of sectionOrder) {
+    const group = sectionGroups.get(sec) ?? [];
+    out.push(...seededShuffle(group, `${seed}:${sec}`));
+  }
+  return out;
+}
+
 export interface SessionQuestionRow {
   id: string; // quiz_question id
   question_id: string;
@@ -329,8 +368,15 @@ export function publicQuestion(
   const cfg = (q.config ?? {}) as Record<string, unknown>;
   const baseOptions = q.question_options.map((o) => ({ id: o.id, label: o.label, content_doc: o.content_doc ?? null }));
   let options = baseOptions;
-  if (opts.randomizeOptions && ["single_choice", "multiple_select", "true_false", "poll"].includes(q.type)) {
-    options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}`);
+  if (opts.randomizeOptions && ["single_choice", "multiple_select", "poll"].includes(q.type)) {
+    const hasFixedOption = baseOptions.some((o) => {
+      const txt = (o.label ?? "").toLowerCase();
+      return txt.includes("all of the above") || txt.includes("none of the above") || txt.includes("toutes les réponses");
+    });
+    const allowShuffle = cfg.randomize_options !== false && !hasFixedOption;
+    if (allowShuffle) {
+      options = seededShuffle(baseOptions, `${opts.seed ?? ""}:${q.id}`);
+    }
   }
   const optionBackedTypes = ["single_choice", "multiple_select", "true_false", "poll", "ordering"];
   // The composition environment is derived from the question itself. Only the

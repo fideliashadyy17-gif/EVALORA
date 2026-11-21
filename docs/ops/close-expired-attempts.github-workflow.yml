@@ -26,7 +26,7 @@ jobs:
       - name: Run the sweep
         env:
           CRON_SECRET: ${{ secrets.EVALORA_CRON_SECRET }}
-          SWEEP_URL: https://evalora-six.vercel.app/api/cron/close-expired-attempts
+          SWEEP_URL: https://evalora-edu.online/api/cron/close-expired-attempts
         run: |
           set -euo pipefail
           if [ -z "${CRON_SECRET}" ]; then

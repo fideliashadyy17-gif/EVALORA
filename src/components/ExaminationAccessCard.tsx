@@ -6,6 +6,8 @@ import {
   parseExamAccessSettings,
   type ExamAccessExam,
 } from "@/lib/exam-access";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
+import { ShieldCheck } from "lucide-react";
 
 export interface ExaminationAccessCardProps {
   examTitle: string;
@@ -30,6 +32,7 @@ export function ExaminationAccessCard({
   settings,
 }: ExaminationAccessCardProps) {
   const access = parseExamAccessSettings(settings);
+  const lockdown = parseLockdownSettings(settings?.lockdown);
   const availability = examAccessAvailability(exam);
   const restrictions = [
     "Server-verified access code bound to this examination",
@@ -73,7 +76,20 @@ export function ExaminationAccessCard({
             <Input readOnly value={shareUrl} className="font-mono text-xs" aria-label="Unique examination access link" />
             <CopyInvitation text={shareUrl} label="Copy link" />
           </div>
-          <ButtonLink href={accessLink} variant="outline">Open candidate access page</ButtonLink>
+          <div className="flex flex-wrap items-center gap-2">
+            <ButtonLink href={accessLink} variant="outline">Open candidate access page</ButtonLink>
+            {lockdown.enabled && lockdown.require_app && (
+              <a
+                href={buildLockdownLaunchUrl({
+                  examCode: accessCode,
+                  path: accessLink,
+                })}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gold-500 px-3.5 py-2 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Launch Secure Browser
+              </a>
+            )}
+          </div>
         </div>
         <div className="space-y-2">
           <p className="text-sm font-semibold text-evergreen-950">Access code</p>

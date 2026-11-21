@@ -12,7 +12,7 @@ import {
   trackSelectionEnabled,
   parseTrack,
 } from "./examTrack";
-import { loadQuizQuestions, seededShuffle } from "./live";
+import { loadQuizQuestions, randomizeQuestionRows } from "./live";
 import { retakeState, usableGrant, type RetakeRequestView, type RetakeState } from "./examRetake";
 import { parseExamAccessSettings } from "./exam-access.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -194,7 +194,7 @@ export async function startRetakeAttempt(
       const baseRows = await loadQuizQuestions(admin, exam.quiz_id, { failOnError: true });
       const paper = track ? paperForTrack(baseRows, track) : baseRows;
       const seed = retakeOrderSeed(exam.id, candidate.id, nextNumber);
-      ordered = settings.randomize_questions ? seededShuffle(paper, seed) : paper;
+      ordered = settings.randomize_questions ? randomizeQuestionRows(paper, seed) : paper;
     } catch {
       return { ok: false, error: "The examination paper is unavailable. Contact your institution." };
     }

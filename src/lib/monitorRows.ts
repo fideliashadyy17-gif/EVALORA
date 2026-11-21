@@ -40,6 +40,9 @@ export interface MonitorAttemptInput {
     pending_saves: number;
   } | null;
   unread_from_candidate: number;
+  lockdown_verified?: boolean;
+  lockdown_platform?: string | null;
+  lockdown_app_version?: string | null;
 }
 
 export interface MonitorRow {
@@ -51,6 +54,9 @@ export interface MonitorRow {
   started_at: string;
   submitted_at: string | null;
   deadline: string;
+  lockdown_verified?: boolean;
+  lockdown_platform?: string | null;
+  lockdown_app_version?: string | null;
   /** Pause reasons open on this attempt: organizer ('assessment'/'student') and/or automatic ('connection'). Empty = composing. */
   pause_reasons: ("assessment" | "student" | "connection")[];
   /** When the current manual pause window opened (null when not paused). */
@@ -117,6 +123,9 @@ export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[],
     started_at: attempt.started_at,
     submitted_at: attempt.submitted_at,
     deadline: attempt.deadline,
+    lockdown_verified: attempt.lockdown_verified,
+    lockdown_platform: attempt.lockdown_platform,
+    lockdown_app_version: attempt.lockdown_app_version,
     pause_reasons: parseRowPauseReasons(attempt.pause_reasons),
     paused_at: attempt.status === "in_progress" && parseRowPauseReasons(attempt.pause_reasons).length
       ? (typeof attempt.paused_at === "string" ? attempt.paused_at : null)

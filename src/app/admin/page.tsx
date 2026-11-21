@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Library,
   LifeBuoy,
+  Link2,
   PenSquare,
   Radio,
   Repeat,
@@ -121,6 +122,7 @@ export default async function AdminOverview() {
   ].filter((a) => a.n > 0);
 
   const quickActions = [
+    { href: "/admin/examinations/results", label: "Results Management & Candidate Links", icon: Link2 },
     { href: "/admin/organizations/new", label: "Create organization / school", icon: Building2 },
     { href: "/admin/students/new", label: "Register a student", icon: GraduationCap },
     { href: "/admin/competitions/new", label: "Create a competition", icon: Trophy },
@@ -139,7 +141,8 @@ export default async function AdminOverview() {
             You run EVALORA{ctx.profile.is_primary ? " as its Primary Super Admin" : ""} — create and operate organizations, competitions, examinations and commerce from here. Every action is audit-logged.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
-            <ButtonLink href="/admin/organizations/new" variant="gold">Create organization</ButtonLink>
+            <ButtonLink href="/admin/examinations/results" variant="gold">Results Management &amp; Candidate Links</ButtonLink>
+            <ButtonLink href="/admin/organizations/new" variant="outline">Create organization</ButtonLink>
             <ButtonLink href="/admin/examinations" variant="outline">Manage examinations</ButtonLink>
           </div>
         </div>

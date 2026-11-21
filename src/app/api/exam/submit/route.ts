@@ -83,6 +83,7 @@ export async function POST(request: Request) {
 
   // Already submitted: report the stored facts. No grading, no write.
   if (attempt.status !== "in_progress") {
+    const resultsPublished = Boolean((exam.settings as Record<string, unknown> | null)?.results_published);
     return NextResponse.json(
       {
         ok: true,
@@ -91,6 +92,12 @@ export async function POST(request: Request) {
         auto_submitted: attempt.status === "auto_submitted",
         submitted_at: attempt.submitted_at ?? null,
         deadline: window.deadline,
+        access_token: attempt.access_token,
+        result_url: `/exam/result/${attempt.access_token}`,
+        confirmation_code: String(attempt.access_token).slice(0, 8).toUpperCase(),
+        score: resultsPublished ? (attempt.score !== null ? Number(attempt.score) : null) : null,
+        max_score: resultsPublished ? (attempt.max_score !== null ? Number(attempt.max_score) : null) : null,
+        results_published: resultsPublished,
         ...(parsed.data.idempotency_key ? { idempotency_key: parsed.data.idempotency_key } : {}),
       },
       { headers },
@@ -141,6 +148,9 @@ export async function POST(request: Request) {
       score: resultsPublished ? result.score : null,
       max_score: resultsPublished ? result.max : null,
       results_published: resultsPublished,
+      access_token: attempt.access_token,
+      result_url: `/exam/result/${attempt.access_token}`,
+      confirmation_code: String(attempt.access_token).slice(0, 8).toUpperCase(),
       ...(parsed.data.idempotency_key ? { idempotency_key: parsed.data.idempotency_key } : {}),
     },
     { headers },

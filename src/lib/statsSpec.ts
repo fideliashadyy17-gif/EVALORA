@@ -241,6 +241,10 @@ export function statsSpecSummary(spec: StatsSpec): string {
     const count = (spec.groups ?? []).length;
     return `${count} class${count === 1 ? "" : "es"} (grouped)`;
   }
+  if (spec.chart === "box_plot" && spec.fiveNumberSummary) {
+    const s = spec.fiveNumberSummary;
+    return `five-number summary (min ${s.min}, Q1 ${s.q1}, median ${s.median}, Q3 ${s.q3}, max ${s.max})`;
+  }
   return `${spec.values.length} value${spec.values.length === 1 ? "" : "s"}`;
 }
 
@@ -251,6 +255,8 @@ export function statsSpecIssues(spec: StatsSpec): string[] {
   } else if (statsIsGrouped(spec)) {
     if (!(spec.groups ?? []).some((group) => group.frequency > 0)) issues.push("enter a frequency for at least one class");
     if (groupSeriesIssues(spec.groups ?? []).length) issues.push(...groupSeriesIssues(spec.groups ?? []));
+  } else if (spec.chart === "box_plot" && spec.fiveNumberSummary) {
+    // A five-number summary provides the complete box plot specification directly.
   } else if (spec.values.length === 0) {
     issues.push("add at least one data value");
   }

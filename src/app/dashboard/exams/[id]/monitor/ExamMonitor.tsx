@@ -346,9 +346,20 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
                       <td className="px-3 py-3">
                         <p className="font-medium text-evergreen-950">{r.candidate_name}</p>
                         <p className="text-xs text-ink-soft">{[r.class_name, r.candidate_ref].filter(Boolean).join(" · ") || "—"}</p>
-                        {r.unread_from_candidate > 0 && (
-                          <span className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[11px] font-bold text-evergreen-950">{r.unread_from_candidate} new</span>
-                        )}
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {r.lockdown_verified ? (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                              Verified Secure App ({r.lockdown_platform ?? "desktop"})
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600">
+                              Standard Browser
+                            </span>
+                          )}
+                          {r.unread_from_candidate > 0 && (
+                            <span className="inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[11px] font-bold text-evergreen-950">{r.unread_from_candidate} new</span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${conn.tone}`}>{conn.text}</span>
