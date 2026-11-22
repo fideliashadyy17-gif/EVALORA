@@ -269,6 +269,14 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const attemptStatus = state?.attempt.status ?? "in_progress";
   const attemptActive = attemptStatus === "in_progress";
   const activePolicy = useMemo(() => parseIntegrityPolicy(state?.exam.integrity), [state?.exam.integrity]);
+  const canonicalQuestions = useMemo(() => {
+    if (!state?.questions) return [];
+    return [...state.questions].sort((a, b) => {
+      const keyA = a.question_meta?.paper_question_key ?? a.question_meta?.question_number ?? 0;
+      const keyB = b.question_meta?.paper_question_key ?? b.question_meta?.question_number ?? 0;
+      return keyA - keyB;
+    });
+  }, [state?.questions]);
   const [lk, setLk] = useState<{ token: string; serverUrl: string } | null>(null);
   const [videoError, setVideoError] = useState<string | null>(null);
   const [mediaError, setMediaError] = useState<string | null>(null);
@@ -1391,7 +1399,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 maxScore: attempt.max_score,
                 passMarkPercent: exam.pass_mark_percent,
               }}
-              questions={questions}
+              questions={canonicalQuestions}
               onBack={() => setCorrigeAll(false)}
             />
           ) : null}

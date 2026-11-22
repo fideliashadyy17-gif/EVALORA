@@ -463,6 +463,7 @@ export function publicQuestion(
       : criterionTitle(typeof cfg.myp_criterion === "string" ? cfg.myp_criterion : null),
     difficulty_level: typeof cfg.difficulty_level === "string" ? cfg.difficulty_level : null,
     marks: Number.isFinite(Number(cfg.marks)) ? Number(cfg.marks) : Number(row.points ?? q.points),
+    paper_question_key: typeof cfg.paper_question_key === "number" ? cfg.paper_question_key : null,
   };
   if (q.type === "assess_parts") {
     out.assess_parts = publicAssessParts(assessPartsFromConfig(cfg));

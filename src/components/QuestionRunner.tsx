@@ -89,6 +89,7 @@ export interface QuestionMeta {
   criterion_title: string | null;
   difficulty_level: string | null;
   marks: number;
+  paper_question_key?: number | null;
 }
 
 /**

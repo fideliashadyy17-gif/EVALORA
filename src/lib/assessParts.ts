@@ -152,11 +152,12 @@ export function publicAssessParts(parts: AssessPart[]): PublicAssessPart[] {
 /** Model-answer lines for the authorised post-submission reveal. */
 export function assessPartSummary(parts: AssessPart[]): string[] {
   return parts.map((p) => {
+    const lbl = p.label.endsWith(":") ? p.label.slice(0, -1).trim() : p.label.trim();
     if (p.kind === "numeric") {
       const tol = p.tolerance ? ` (± ${p.tolerance})` : "";
-      return `${p.label} ${p.answer}${p.unit ? ` ${p.unit}` : ""}${tol}`;
+      return `${lbl}: ${p.answer}${p.unit ? ` ${p.unit}` : ""}${tol}`;
     }
-    return `${p.label} ${p.accepted?.[0] ?? ""}`;
+    return `${lbl}: ${p.accepted?.[0] ?? ""}`;
   });
 }
 
@@ -288,6 +289,10 @@ function parseSingleNumericToken(token: string): number | null {
   let s = token.trim();
   // Strip currency
   s = s.replace(/[$£€¥]/g, "").trim();
+
+  // Normalize French / international thousands spaces (e.g. "1 800", "2 400 000", "1 440 g", "3 280")
+  // while preserving mixed fractions like "1 1/2"
+  s = s.replace(/(\d)[\s\u00a0\u202f]+(?=\d{3}(?:\D|$))/g, "$1");
 
   // Scientific notation: 2.5 x 10^4, 2.5 * 10^4, 1.5e3, 2.5 x 10^{-3}
   const sciMatch = /^([+-]?\d+(?:\.\d+)?)\s*(?:[x*]|\s*\*\s*)\s*10\s*\^\s*\{?([+-]?\d+)\}?\s*([a-z°]+)?$/i.exec(s);

@@ -203,6 +203,9 @@ export interface ExamQuestionResult {
   correct_option_ids: string[];
   explanation: string | null;
   explanation_doc: RichDoc | null;
+  saved_answer?: unknown;
+  part_scores?: Record<string, unknown> | null;
+  grading_note?: string | null;
 }
 
 export type OptionMark = "correct" | "wrong";
@@ -211,6 +214,8 @@ type SavedAnswer = {
   is_correct: boolean | null;
   points_awarded: number | string | null;
   answer?: unknown;
+  part_scores?: Record<string, unknown> | null;
+  grading_note?: string | null;
 } | null | undefined;
 
 /** Option ids carried by a saved answer, for both single and multi choice. */
@@ -244,6 +249,9 @@ export function buildExamResult(args: {
     correct_option_ids: correctOptionIds,
     explanation: explanation ?? null,
     explanation_doc: explanationDoc ?? null,
+    saved_answer: saved?.answer ?? null,
+    part_scores: saved?.part_scores ?? null,
+    grading_note: saved?.grading_note ?? null,
   };
 }
 

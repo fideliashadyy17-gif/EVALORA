@@ -5,6 +5,7 @@ import { MathText } from "@/components/MathText";
 import { createAdminClient } from "@/lib/supabase/server";
 import { attemptRows } from "@/lib/exam";
 import { answerReveal, releasedFeedback } from "@/lib/live";
+import { assessPartsFromConfig } from "@/lib/assessParts";
 import type { RichDoc } from "@/lib/content";
 import type { Metadata } from "next";
 import { CopyButton } from "./CopyButton";
@@ -128,6 +129,8 @@ export default async function ExamResultTokenPage({
 
   type QuestionDetail = {
     number: number;
+    label: string;
+    span: number;
     section: string | null;
     points: number;
     awarded: number;
@@ -154,7 +157,16 @@ export default async function ExamResultTokenPage({
         .eq("attempt_id", attempt.id);
       const savedMap = new Map((savedAnswers ?? []).map((a) => [a.question_id, a]));
 
-      questionsBreakdown = rows.map((row, index) => {
+      // Sort rows by canonical position on the paper so Question 1 is Question 1, Question 20 is Question 20, etc.
+      const canonicalRows = [...rows].sort((a, b) => {
+        const cfgA = (a.questions.config ?? {}) as Record<string, unknown>;
+        const cfgB = (b.questions.config ?? {}) as Record<string, unknown>;
+        const posA = Number(cfgA.paper_question_key ?? a.position ?? 0);
+        const posB = Number(cfgB.paper_question_key ?? b.position ?? 0);
+        return posA - posB;
+      });
+
+      questionsBreakdown = canonicalRows.map((row, index) => {
         const q = row.questions;
         const cfg = (q.config ?? {}) as Record<string, unknown>;
         const s = savedMap.get(q.id);
@@ -163,6 +175,11 @@ export default async function ExamResultTokenPage({
         const isManual = q.type === "open_ended" && !cfg.structured_marks;
         const reveal = answerReveal(row);
         const fb = releasedFeedback(row);
+
+        const questionNumber = typeof cfg.question_number === "number" ? cfg.question_number : index + 1;
+        const questionLabel = typeof cfg.question_label === "string" ? cfg.question_label : String(questionNumber);
+        const questionSpan = typeof cfg.question_span === "number" ? cfg.question_span : 1;
+        const paperSection = typeof cfg.paper_section === "string" ? cfg.paper_section : null;
 
         // Map Criteria points
         const criterionCode = String(cfg.myp_criterion || "A").toUpperCase();
@@ -200,10 +217,20 @@ export default async function ExamResultTokenPage({
               .map((o) => o.label);
             studentAns = labels.length ? labels.join(", ") : "(None selected)";
           } else if (ans.parts && typeof ans.parts === "object") {
-            const partsList = Object.entries(ans.parts as Record<string, string>)
-              .map(([k, v]) => `Part ${k}: ${v}`)
-              .join(" · ");
+            const parts = assessPartsFromConfig(cfg);
+            const ansParts = ans.parts as Record<string, string>;
+            const partsList = parts.map((p) => {
+              const val = ansParts[p.id];
+              return `${p.label}: ${val && val.trim() ? val.trim() : "(No answer)"}`;
+            }).join(" · ");
             studentAns = partsList || "(No typed parts)";
+          } else if (ans.pairs && typeof ans.pairs === "object") {
+            const pairsList = Object.entries(ans.pairs as Record<string, string>)
+              .map(([k, v]) => `${k} → ${v}`)
+              .join(" · ");
+            studentAns = pairsList || "(No pairs)";
+          } else if (Array.isArray(ans.order)) {
+            studentAns = (ans.order as string[]).join(" → ");
           }
         }
 
@@ -225,8 +252,10 @@ export default async function ExamResultTokenPage({
         }
 
         return {
-          number: index + 1,
-          section: typeof cfg.paper_section === "string" ? cfg.paper_section : null,
+          number: questionNumber,
+          label: questionLabel,
+          span: questionSpan,
+          section: paperSection,
           points: maxPts,
           awarded: awardedPts,
           isCorrect: s?.is_correct ?? (isManual ? null : false),
@@ -419,8 +448,7 @@ export default async function ExamResultTokenPage({
                             {q.number}
                           </span>
                           <span className="font-semibold text-evergreen-950 text-sm">
-                            Question {q.number}
-                            {q.section ? ` · Part ${q.section}` : ""}
+                            {q.section ? `Part ${q.section} · ` : ""}{q.span > 1 ? "Questions " : "Question "}{q.label}
                           </span>
                           <span className="rounded bg-cream px-2 py-0.5 text-xs font-medium text-ink-soft">
                             Criterion {q.criterionCode}
