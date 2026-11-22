@@ -1,9 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { renderLatex } from "@/lib/content";
 import { MATH_CATEGORIES, type MathKey } from "@/components/editor/mathKeyboard";
-import { NUMERIC_MATH_CATEGORY, matrixInsertion, plainInsertionForKey, type PlainMathInsertion } from "@/components/editor/plainMathKeyboard";
+import {
+  NUMERIC_MATH_CATEGORY,
+  matrixInsertion,
+  plainInsertionForKey,
+  type PlainMathInsertion,
+} from "@/components/editor/plainMathKeyboard";
+import { mathInputManager } from "@/lib/mathInputManager";
 
 /**
  * The shared mathematical keyboard, rendered as a reusable panel for ANY
@@ -29,35 +35,63 @@ export function MathKeyboardPanel({
   onInsert,
   variant = "full",
   label = "Mathematical symbols",
+  targetId,
 }: {
   /** Called with the plain-text insertion the host field must apply at its cursor. */
   onInsert: (insertion: PlainMathInsertion) => void;
   /** "full" = every category; "numeric" = digits-friendly compact set. */
   variant?: "full" | "numeric";
   label?: string;
+  /** Optional ID of the host input field that owns this keyboard instance. */
+  targetId?: string;
 }) {
   const categories = variant === "numeric" ? [NUMERIC_MATH_CATEGORY] : MATH_CATEGORIES;
   const [categoryId, setCategoryId] = useState(categories[0].id);
   const [rows, setRows] = useState(2);
   const [columns, setColumns] = useState(2);
   const [matrixStyle, setMatrixStyle] = useState<"paren" | "bracket" | "bar">("paren");
+  const [activeTargetInfo, setActiveTargetInfo] = useState<{ id: string; label?: string } | null>(() => {
+    const active = mathInputManager.getActiveTarget();
+    return active ? { id: active.id, label: active.label } : null;
+  });
+
+  useEffect(() => {
+    return mathInputManager.subscribe(() => {
+      const active = mathInputManager.getActiveTarget();
+      setActiveTargetInfo(active ? { id: active.id, label: active.label } : null);
+    });
+  }, []);
+
   const cat = categories.find((c) => c.id === categoryId) ?? categories[0];
+
+  const handleInsertion = (ins: PlainMathInsertion) => {
+    const inserted = mathInputManager.insertIntoActive(ins, targetId);
+    if (!inserted) {
+      onInsert(ins);
+    }
+  };
 
   const press = (key: MathKey) => {
     if (variant === "numeric" && NUMERIC_OVERRIDES[key.i]) {
-      onInsert(NUMERIC_OVERRIDES[key.i]);
+      handleInsertion(NUMERIC_OVERRIDES[key.i]);
       return;
     }
-    onInsert(plainInsertionForKey(key));
+    handleInsertion(plainInsertionForKey(key));
   };
 
   return (
     <div
-      className="mt-2 rounded-xl border border-evergreen-900/20 bg-cream/70 px-2.5 py-2"
+      className="mt-2 rounded-xl border border-evergreen-900/20 bg-cream/70 px-2.5 py-2 shadow-sm"
       role="group"
       aria-label={label}
       data-testid="math-keyboard-panel"
     >
+      {activeTargetInfo?.label && (
+        <div className="mb-1.5 flex items-center justify-between text-[11px] font-semibold text-evergreen-800/80">
+          <span>Target: {activeTargetInfo.label}</span>
+          <span className="text-[10px] font-normal text-ink-soft">Active field cursor</span>
+        </div>
+      )}
       {variant === "full" && (
         <div className="scroll-slim mb-2 flex gap-1 overflow-x-auto pb-1" role="tablist" aria-label="Symbol categories">
           {categories.map((c) => (
@@ -66,8 +100,14 @@ export function MathKeyboardPanel({
               type="button"
               role="tab"
               aria-selected={cat.id === c.id}
+              onMouseDown={(e) => e.preventDefault()}
+              onTouchStart={(e) => e.preventDefault()}
               onClick={() => setCategoryId(c.id)}
-              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold ${cat.id === c.id ? "bg-evergreen-700 text-white" : "border border-evergreen-900/15 bg-white text-evergreen-900 hover:bg-evergreen-50"}`}
+              className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                cat.id === c.id
+                  ? "bg-evergreen-700 text-white shadow-sm"
+                  : "border border-evergreen-900/15 bg-white text-evergreen-900 hover:bg-evergreen-50"
+              }`}
             >
               {c.label}
             </button>
@@ -121,7 +161,7 @@ export function MathKeyboardPanel({
             className="rounded-lg bg-evergreen-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-evergreen-800"
             onMouseDown={(e) => e.preventDefault()}
             onTouchStart={(e) => e.preventDefault()}
-            onClick={() => onInsert(matrixInsertion(rows, columns, matrixStyle))}
+            onClick={() => handleInsertion(matrixInsertion(rows, columns, matrixStyle))}
           >
             Insert {rows}×{columns} matrix
           </button>
