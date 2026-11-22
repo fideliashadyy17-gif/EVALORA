@@ -20,7 +20,7 @@ function sha256(value: string) {
  * A candidate normally arrives through the invitation link
  * (`/exam/join/<token>`) generated for their assessment, but the bare address
  * `/exam` used to be a 404 — which is what a student sees when they type
- * "evalora-six.vercel.app/exam" instead of pasting the whole link. This page
+ * "evalora-edu.online/exam" instead of pasting the whole link. This page
  * resolves what they have:
  *
  *  - a pasted invitation link, or a bare invitation token → straight to the join page;
@@ -122,11 +122,11 @@ function Shell({ code, problem }: { code: string; problem: "code" | "invalid" | 
               </button>
             </form>
             <p className="mt-4 border-t border-evergreen-900/10 pt-4 text-xs text-ink-soft">
-          Sitting an examination your school organised with an exam code and a personal candidate code?{" "}
-          <Link href="/exam-access" className="font-medium text-evergreen-800 underline">
-            Use the candidate access page
-          </Link>
-          .
+              Sitting an examination with an access code?{" "}
+              <Link href="/exam-access" className="font-medium text-evergreen-800 underline">
+                Use the student examination access page
+              </Link>
+              .
             </p>
           </div>
         </Card>

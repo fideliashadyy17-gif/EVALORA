@@ -33,6 +33,28 @@ function createBoundedFetch(timeoutMs: number): typeof fetch {
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  const host = (request.headers.get("host") ?? "").trim().toLowerCase().replace(/:\d+$/, "");
+
+  // Permanent retirement and canonical redirect of legacy domains (evalora-six.vercel.app -> evalora-edu.online)
+  if (host === "evalora-six.vercel.app" || host === "evalora.vercel.app" || host.endsWith(".evalora-six.vercel.app")) {
+    const canonicalHost = host.endsWith(".evalora-six.vercel.app")
+      ? `${host.slice(0, -".evalora-six.vercel.app".length)}.evalora-edu.online`
+      : "evalora-edu.online";
+    const redirectUrl = new URL(request.url);
+    redirectUrl.protocol = "https:";
+    redirectUrl.host = canonicalHost;
+    redirectUrl.port = "";
+    return NextResponse.redirect(redirectUrl, { status: 301 });
+  }
+
+  // Canonical www to apex redirect for evalora-edu.online
+  if (host === "www.evalora-edu.online") {
+    const redirectUrl = new URL(request.url);
+    redirectUrl.protocol = "https:";
+    redirectUrl.host = "evalora-edu.online";
+    redirectUrl.port = "";
+    return NextResponse.redirect(redirectUrl, { status: 301 });
+  }
 
   const requestHeaders = new Headers(request.headers);
   requestHeaders.delete("x-evalora-tenant-slug");
@@ -64,6 +86,8 @@ export async function middleware(request: NextRequest) {
     // only if createServerClient is mocked; in production env vars are always present.
   }
 
+  const isCanonical = host === "evalora-edu.online" || host.endsWith(".evalora-edu.online");
+
   const supabase = createServerClient(
     supabaseUrl!,
     supabaseAnonKey!,
@@ -76,7 +100,12 @@ export async function middleware(request: NextRequest) {
         setAll: (cookiesToSet) => {
           cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
           response = NextResponse.next({ request: { headers: requestHeaders } });
-          cookiesToSet.forEach(({ name, value, options }) => response.cookies.set(name, value, options));
+          cookiesToSet.forEach(({ name, value, options }) => {
+            const mergedOptions = isCanonical
+              ? { ...options, domain: ".evalora-edu.online", sameSite: "lax" as const, secure: true }
+              : options;
+            response.cookies.set(name, value, mergedOptions);
+          });
         },
       },
     },

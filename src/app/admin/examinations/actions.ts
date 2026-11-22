@@ -2,9 +2,10 @@
 
 import { audit, fdate, fint, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib/admin";
 import { isEmail, parseCsv } from "@/lib/csv";
-import { attemptDeadline } from "@/lib/exam";
+import { attemptDeadline, attemptRows, gradeAttemptDetailed } from "@/lib/exam";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
+import { scoreAnswerDetailed } from "@/lib/scoring";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -76,6 +77,8 @@ export async function createExamAsAdmin(formData: FormData) {
   const proctoring = formData.get("proctoring") === "on";
   if (proctoring && !(await isFeatureEnabledFor(ctx, "proctoring"))) go(back, "e=proctoring_module");
 
+  const lockdownEnabled = formData.get("lockdown_enabled") === "on";
+
   const [{ data: org }, { data: quiz }, { count: questionCount }] = await Promise.all([
     admin.from("organizations").select("id").eq("id", organizationId!).maybeSingle(),
     admin.from("quizzes").select("id, organization_id, status").eq("id", quizId!).maybeSingle(),
@@ -113,6 +116,13 @@ export async function createExamAsAdmin(formData: FormData) {
         require_screen_share: proctoring && formData.get("require_screen_share") === "on",
         randomize_questions: formData.get("randomize_questions") === "on",
         randomize_options: formData.get("randomize_options") === "on",
+        lockdown: {
+          enabled: lockdownEnabled,
+          require_app: true,
+          strict_multi_display: formData.get("lockdown_strict_multi_display") !== "off",
+          block_clipboard: formData.get("lockdown_block_clipboard") !== "off",
+          min_app_version: "1.0.0",
+        },
         pass_mark_percent: passMark,
         results_published: false,
         access_mode: "shared_link",
@@ -666,3 +676,538 @@ export async function reviewProctoringIncidentAsAdmin(formData: FormData) {
   revalidatePath("/admin/proctoring");
   go(back, "ok=incident_reviewed");
 }
+
+export async function updateExamLockdownAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = fstr(formData, "id", 60) ?? fstr(formData, "exam_id", 60);
+  const back = safeBack(formData);
+  if (!examId) go(back, "e=not_found");
+
+  const enabled = formData.get("lockdown_enabled") === "on";
+  const strictMultiDisplay = formData.get("lockdown_strict_multi_display") === "on";
+  const blockClipboard = formData.get("lockdown_block_clipboard") === "on";
+
+  const { data: exam, error: readError } = await admin
+    .from("exams")
+    .select("id, organization_id, title, settings")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (readError || !exam) go(back, "e=not_found");
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const updatedSettings = {
+    ...currentSettings,
+    lockdown: {
+      enabled,
+      require_app: true,
+      strict_multi_display: strictMultiDisplay,
+      block_clipboard: blockClipboard,
+      min_app_version: "1.0.0",
+    },
+  };
+
+  const { error: updateError } = await admin.from("exams").update({ settings: updatedSettings }).eq("id", examId);
+  if (updateError) go(back, "e=failed");
+
+  await audit(ctx, "exam.lockdown_updated_by_admin", "exams", examId, exam.organization_id, {
+    title: exam.title,
+    lockdown_enabled: enabled,
+  });
+
+  revalidatePath("/admin/examinations");
+  revalidatePath(`/dashboard/exams/${examId}`);
+  redirect(`${back}${back.includes("?") ? "&" : "?"}ok=lockdown`);
+}
+
+export async function deleteExamAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = fstr(formData, "id", 60) ?? fstr(formData, "exam_id", 60);
+  const back = safeBack(formData);
+  if (!examId) go(back, "e=not_found");
+
+  // Strictly protect official platform benchmark examinations
+  if (examId === "cd000000-0000-4000-8000-000000000002" || examId === "ce000000-0000-4000-8000-000000000002") {
+    go(back, "e=protected_benchmark");
+  }
+
+  const { data: exam, error: examError } = await admin
+    .from("exams")
+    .select("id, title, organization_id, settings")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (examError || !exam) go(back, "e=not_found");
+
+  // Check whether candidate attempts or submissions exist
+  const { count: attemptCount } = await admin
+    .from("exam_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("exam_id", examId);
+
+  const attempts = attemptCount ?? 0;
+
+  if (attempts === 0) {
+    // Empty exam without attempts: perform clean permanent deletion of empty shell & links
+    await admin.from("proctoring_rooms").delete().eq("exam_id", examId);
+    await admin.from("exam_rubric_links").delete().eq("exam_id", examId);
+    await admin.from("exam_candidates").delete().eq("exam_id", examId);
+    await admin.from("exam_messages").delete().eq("exam_id", examId);
+    await admin.from("exam_presence").delete().eq("exam_id", examId);
+
+    const { error: delError } = await admin.from("exams").delete().eq("id", examId);
+    if (delError) go(back, "e=delete_failed");
+
+    await audit(ctx, "exam.deleted_permanent_by_admin", "exams", examId, exam.organization_id, {
+      title: exam.title,
+      attempts: 0,
+    });
+
+    revalidatePath("/admin/examinations");
+    revalidatePath("/dashboard/exams");
+    redirect(`${back}${back.includes("?") ? "&" : "?"}ok=deleted`);
+  } else {
+    // Exam contains historical student submissions/grades:
+    // Safe soft-delete / archival to protect academic records from cascading deletion!
+    const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+    const now = new Date().toISOString();
+
+    const { error: archiveError } = await admin
+      .from("exams")
+      .update({
+        deleted_at: now,
+        deleted_by: ctx.user.id,
+        deletion_reason: "Archived via Owner Control Center exam deletion",
+        status: "closed",
+        settings: {
+          ...currentSettings,
+          archived: true,
+          deleted: true,
+          deleted_at: now,
+          deleted_by: ctx.user.id,
+        },
+      })
+      .eq("id", examId);
+
+    if (archiveError) go(back, "e=archive_failed");
+
+    await audit(ctx, "exam.archived_by_admin", "exams", examId, exam.organization_id, {
+      title: exam.title,
+      attempts,
+    });
+
+    revalidatePath("/admin/examinations");
+    revalidatePath("/dashboard/exams");
+    redirect(`${back}${back.includes("?") ? "&" : "?"}ok=archived`);
+  }
+}
+
+/**
+ * Super Admin auditable regrading of a single candidate attempt.
+ * Evaluates all objective and mathematical equivalence answers using the latest engine,
+ * preserves human marker overrides, and records history in grade_change_log and audit_logs.
+ */
+export async function regradeAttemptAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const back = safeBack(formData, "/admin/examinations/results");
+  const note = fstr(formData, "note", 500);
+
+  if (!attemptId) go(back, "e=attempt");
+
+  const { data: attempt, error: attemptError } = await admin
+    .from("exam_attempts")
+    .select("id, exam_id, status, score, max_score, question_order, exams!inner(id, organization_id, quiz_id, settings)")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (attemptError || !attempt) go(back, "e=attempt");
+  if (attempt.status === "in_progress") go(back, "e=in_progress");
+
+  const exam = attempt.exams as unknown as {
+    id: string;
+    organization_id: string;
+    quiz_id: string | null;
+    settings: Record<string, unknown> | null;
+  };
+
+  if (!exam.quiz_id) go(back, "e=exam");
+
+  const rows = await attemptRows(admin, {
+    quiz_id: exam.quiz_id,
+    settings: (exam.settings ?? {}) as Record<string, unknown>,
+  }, {
+    id: attempt.id,
+    question_order: attempt.question_order,
+  });
+
+  const previousScore = attempt.score !== null ? Number(attempt.score) : null;
+  const summary = await gradeAttemptDetailed(admin, attempt.id, rows);
+
+  const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
+  const { data: updatedAttempt, error: updateError } = await admin
+    .from("exam_attempts")
+    .update({
+      score: summary.score,
+      max_score: summary.max,
+      status: "marked",
+      grading_status: allMarked ? "graded" : "pending_manual",
+      pending_manual_count: summary.ungradedCount + summary.failedCount,
+    })
+    .eq("id", attempt.id)
+    .select("id, score")
+    .maybeSingle();
+
+  if (updateError || !updatedAttempt) go(back, "e=failed");
+
+  await audit(ctx, "exam.attempt_regraded_by_admin", "exam_attempts", attempt.id, exam.organization_id, {
+    exam_id: exam.id,
+    attempt_id: attempt.id,
+    previous_score: previousScore,
+    new_score: summary.score,
+    max_score: summary.max,
+    auto_score: summary.autoScore,
+    score_changed: previousScore !== summary.score,
+    note: note || "Super Admin regrade with latest mathematical equivalence rules",
+  });
+
+  revalidatePath("/admin/examinations/results");
+  revalidatePath("/admin/examinations/marking");
+  revalidatePath("/admin/myp-results");
+  revalidatePath(`/admin/myp-results/${attempt.id}`);
+  revalidatePath(`/admin/examinations/attempts/${attempt.id}/script`);
+
+  go(back, "ok=regraded");
+}
+
+/**
+ * Super Admin auditable regrading of all submitted attempts on an examination.
+ * Idempotently evaluates objective answers, synchronizes scores, and logs audit events.
+ */
+export async function regradeExamAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = String(formData.get("exam_id") ?? "");
+  const back = safeBack(formData, "/admin/examinations/results");
+  const note = fstr(formData, "note", 500);
+
+  if (!examId) go(back, "e=exam");
+
+  const { data: exam, error: examError } = await admin
+    .from("exams")
+    .select("id, organization_id, quiz_id, settings, title")
+    .eq("id", examId)
+    .maybeSingle();
+
+  if (examError || !exam || !exam.quiz_id) go(back, "e=exam");
+
+  const { data: attempts, error: attemptsError } = await admin
+    .from("exam_attempts")
+    .select("id, status, score, question_order")
+    .eq("exam_id", examId)
+    .in("status", ["submitted", "auto_submitted", "marked"]);
+
+  if (attemptsError || !attempts) go(back, "e=failed");
+
+  let regradedCount = 0;
+  let changedScoreCount = 0;
+
+  for (const att of attempts) {
+    try {
+      const rows = await attemptRows(admin, {
+        quiz_id: exam.quiz_id,
+        settings: (exam.settings ?? {}) as Record<string, unknown>,
+      }, {
+        id: att.id,
+        question_order: att.question_order,
+      });
+
+      const prevScore = att.score !== null ? Number(att.score) : null;
+      const summary = await gradeAttemptDetailed(admin, att.id, rows);
+      const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
+
+      await admin
+        .from("exam_attempts")
+        .update({
+          score: summary.score,
+          max_score: summary.max,
+          status: "marked",
+          grading_status: allMarked ? "graded" : "pending_manual",
+          pending_manual_count: summary.ungradedCount + summary.failedCount,
+        })
+        .eq("id", att.id);
+
+      regradedCount++;
+      if (prevScore !== summary.score) {
+        changedScoreCount++;
+      }
+    } catch {
+      // Continue regrading other attempts if one encounters an issue
+    }
+  }
+
+  await audit(ctx, "exam.exam_regraded_by_admin", "exams", exam.id, exam.organization_id, {
+    exam_id: exam.id,
+    title: exam.title,
+    attempts_regraded: regradedCount,
+    scores_changed: changedScoreCount,
+    note: note || "Super Admin bulk regrade with latest mathematical equivalence rules",
+  });
+
+  revalidatePath("/admin/examinations/results");
+  revalidatePath("/admin/examinations/marking");
+  revalidatePath("/admin/myp-results");
+
+  go(back, "ok=exam_regraded");
+}
+
+/**
+ * Super Admin manual mark adjustment & override on any individual question in an answer sheet.
+ * Awards full or partial marks, overrides auto-grading decisions, records the reason in
+ * grade_change_log and audit_logs, and automatically recalculates the final exam score.
+ */
+export async function overrideAnswerMarkAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const questionId = String(formData.get("question_id") ?? "");
+  const answerId = String(formData.get("answer_id") ?? "");
+  const back = safeBack(formData, `/admin/examinations/attempts/${attemptId}/script`);
+
+  if (!attemptId || !questionId) go(back, "e=missing_params");
+
+  const { data: attempt, error: attemptError } = await admin
+    .from("exam_attempts")
+    .select("id, exam_id, status, score, max_score, exams!inner(id, organization_id, quiz_id, settings)")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (attemptError || !attempt) go(back, "e=attempt");
+
+  const exam = attempt.exams as unknown as {
+    id: string;
+    organization_id: string;
+    quiz_id: string | null;
+  };
+
+  let maxPoints = 0;
+  if (exam.quiz_id) {
+    const { data: qq } = await admin
+      .from("quiz_questions")
+      .select("points")
+      .eq("quiz_id", exam.quiz_id)
+      .eq("question_id", questionId)
+      .maybeSingle();
+    if (qq && qq.points !== null) maxPoints = Number(qq.points);
+  }
+  if (!maxPoints) {
+    const { data: q } = await admin.from("questions").select("points").eq("id", questionId).maybeSingle();
+    maxPoints = Number(q?.points ?? 1);
+  }
+
+  const rawPoints = String(formData.get("points") ?? "").trim();
+  const points = Number(rawPoints);
+  if (!Number.isFinite(points) || points < 0 || points > maxPoints) {
+    go(back, "e=invalid_points");
+  }
+
+  const reason = fstr(formData, "reason", 1000) || fstr(formData, "note", 1000) || "Super Admin manual mark override";
+
+  let targetAnswerId = answerId;
+  let previousPoints: number | null = null;
+  if (targetAnswerId) {
+    const { data: existing } = await admin.from("exam_answers").select("id, points_awarded").eq("id", targetAnswerId).maybeSingle();
+    if (existing) {
+      previousPoints = existing.points_awarded !== null ? Number(existing.points_awarded) : null;
+    }
+  } else {
+    const { data: existing } = await admin
+      .from("exam_answers")
+      .select("id, points_awarded")
+      .eq("attempt_id", attemptId)
+      .eq("question_id", questionId)
+      .maybeSingle();
+    if (existing) {
+      targetAnswerId = existing.id;
+      previousPoints = existing.points_awarded !== null ? Number(existing.points_awarded) : null;
+    }
+  }
+
+  const now = new Date().toISOString();
+  if (targetAnswerId) {
+    const { error: updateErr } = await admin
+      .from("exam_answers")
+      .update({
+        points_awarded: points,
+        is_correct: points > 0,
+        grading_status: "human_graded",
+        marked_by: ctx.user.id,
+        marker_note: reason,
+        grading_note: reason,
+        updated_at: now,
+      })
+      .eq("id", targetAnswerId);
+    if (updateErr) go(back, "e=save_failed");
+  } else {
+    const { data: inserted, error: insertErr } = await admin
+      .from("exam_answers")
+      .insert({
+        attempt_id: attemptId,
+        question_id: questionId,
+        answer: {},
+        points_awarded: points,
+        is_correct: points > 0,
+        grading_status: "human_graded",
+        marked_by: ctx.user.id,
+        marker_note: reason,
+        grading_note: reason,
+        created_at: now,
+        updated_at: now,
+      })
+      .select("id")
+      .single();
+    if (insertErr || !inserted) go(back, "e=save_failed");
+    targetAnswerId = inserted.id;
+  }
+
+  const { data: allAnswers } = await admin
+    .from("exam_answers")
+    .select("points_awarded, is_correct, grading_status")
+    .eq("attempt_id", attemptId);
+
+  const totalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const unresolved = (allAnswers ?? []).filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
+
+  await admin
+    .from("exam_attempts")
+    .update({
+      score: totalScore,
+      status: "marked",
+      grading_status: unresolved === 0 ? "graded" : "pending_manual",
+      pending_manual_count: unresolved,
+    })
+    .eq("id", attemptId);
+
+  await audit(ctx, "exam.answer_overridden_by_super_admin", "exam_answers", targetAnswerId, exam.organization_id, {
+    attempt_id: attemptId,
+    exam_id: exam.id,
+    question_id: questionId,
+    previous_points: previousPoints,
+    new_points: points,
+    max_points: maxPoints,
+    new_total_score: totalScore,
+    reason,
+  });
+
+  revalidatePath("/admin/examinations/results");
+  revalidatePath("/admin/examinations/marking");
+  revalidatePath(`/admin/myp-results/${attemptId}`);
+  revalidatePath(`/admin/examinations/attempts/${attemptId}/script`);
+
+  go(back, "ok=mark_overridden");
+}
+
+/**
+ * Super Admin single question regrade on one candidate attempt.
+ * Evaluates just this question using the latest scoring engine, updates exam_answers,
+ * recalculates total attempt score, and records audit trail.
+ */
+export async function regradeSingleQuestionAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const attemptId = String(formData.get("attempt_id") ?? "");
+  const questionId = String(formData.get("question_id") ?? "");
+  const back = safeBack(formData, `/admin/examinations/attempts/${attemptId}/script`);
+
+  if (!attemptId || !questionId) go(back, "e=missing_params");
+
+  const { data: attempt, error: attemptError } = await admin
+    .from("exam_attempts")
+    .select("id, exam_id, status, score, question_order, exams!inner(id, organization_id, quiz_id, settings)")
+    .eq("id", attemptId)
+    .maybeSingle();
+
+  if (attemptError || !attempt || !attempt.exams) go(back, "e=attempt");
+
+  const exam = attempt.exams as unknown as {
+    id: string;
+    organization_id: string;
+    quiz_id: string | null;
+    settings: Record<string, unknown> | null;
+  };
+
+  if (!exam.quiz_id) go(back, "e=exam");
+
+  const rows = await attemptRows(admin, {
+    quiz_id: exam.quiz_id,
+    settings: (exam.settings ?? {}) as Record<string, unknown>,
+  }, {
+    id: attempt.id,
+    question_order: attempt.question_order,
+  });
+
+  const targetRow = rows.find((r) => r.questions.id === questionId);
+  if (!targetRow) go(back, "e=question_not_in_exam");
+
+  const { data: answerRow } = await admin
+    .from("exam_answers")
+    .select("*")
+    .eq("attempt_id", attemptId)
+    .eq("question_id", questionId)
+    .maybeSingle();
+
+  if (answerRow && answerRow.answer) {
+    const detail = scoreAnswerDetailed(
+      { type: targetRow.questions.type, points: targetRow.questions.points, config: targetRow.questions.config },
+      targetRow.questions.question_options,
+      answerRow.answer as Record<string, unknown>,
+      targetRow.points,
+    );
+
+    await admin
+      .from("exam_answers")
+      .update({
+        points_awarded: detail.points,
+        is_correct: detail.isCorrect,
+        grading_status: "auto_graded",
+        grading_note: detail.points === targetRow.points ? "Full marks awarded by auto-grader" : detail.points > 0 ? "Partial marks awarded by auto-grader" : "0 marks awarded by auto-grader",
+        part_scores: { parts: detail.perPart, structured: detail.structured },
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", answerRow.id);
+  }
+
+  const { data: allAnswers } = await admin
+    .from("exam_answers")
+    .select("points_awarded, is_correct, grading_status")
+    .eq("attempt_id", attemptId);
+
+  const totalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const unresolved = (allAnswers ?? []).filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
+
+  await admin
+    .from("exam_attempts")
+    .update({
+      score: totalScore,
+      status: "marked",
+      grading_status: unresolved === 0 ? "graded" : "pending_manual",
+      pending_manual_count: unresolved,
+    })
+    .eq("id", attemptId);
+
+  await audit(ctx, "exam.question_regraded_by_admin", "exam_answers", answerRow?.id ?? questionId, exam.organization_id, {
+    attempt_id: attemptId,
+    exam_id: exam.id,
+    question_id: questionId,
+    new_total_score: totalScore,
+  });
+
+  revalidatePath(`/admin/examinations/attempts/${attemptId}/script`);
+  revalidatePath("/admin/examinations/results");
+
+  go(back, "ok=question_regraded");
+}
+

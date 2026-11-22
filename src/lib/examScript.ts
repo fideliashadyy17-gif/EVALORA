@@ -73,6 +73,10 @@ export interface ScriptQuestion {
   structured: ScriptStructuredResult[];
   markingBreakdown: { label: string; marks: number; focus?: string }[];
   publicParts: ReturnType<typeof publicAssessParts>;
+  questionId: string;
+  answerId: string | null;
+  markerNote: string | null;
+  markedBy: string | null;
 }
 
 export interface ScriptSummary {
@@ -364,6 +368,10 @@ export async function loadExamScript(
             }))
         : [],
       publicParts: publicAssessParts(parts),
+      questionId: q.id,
+      answerId: saved?.id ? String(saved.id) : null,
+      markerNote: typeof saved?.marker_note === "string" ? saved.marker_note : null,
+      markedBy: typeof saved?.marked_by === "string" ? saved.marked_by : null,
     };
   });
 

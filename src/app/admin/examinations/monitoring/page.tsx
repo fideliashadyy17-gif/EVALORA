@@ -40,6 +40,9 @@ interface AttemptRow {
   extension_minutes: number;
   pause_reasons: string[] | null;
   paused_at: string | null;
+  lockdown_verified?: boolean;
+  lockdown_platform?: string | null;
+  lockdown_app_version?: string | null;
   exam_candidates: { full_name: string; candidate_ref: string | null } | null;
   exams: { title: string; duration_minutes: number; ends_at: string | null; quiz_id: string | null; organization_id: string } | null;
   exam_answers: { count: number }[];
@@ -56,7 +59,7 @@ export default async function ExaminationMonitoringPage({
 
   let attemptQuery = admin
     .from("exam_attempts")
-    .select("id, exam_id, started_at, submitted_at, status, extension_minutes, pause_reasons, paused_at, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id, organization_id), exam_answers(count)")
+    .select("id, exam_id, started_at, submitted_at, status, extension_minutes, pause_reasons, paused_at, lockdown_verified, lockdown_platform, lockdown_app_version, exam_candidates(full_name, candidate_ref), exams(title, duration_minutes, ends_at, quiz_id, organization_id), exam_answers(count)")
     .order("started_at", { ascending: false })
     .limit(500);
   if (sp.exam) attemptQuery = attemptQuery.eq("exam_id", sp.exam);
@@ -234,7 +237,21 @@ export default async function ExaminationMonitoringPage({
               const creditedMin = Math.round((creditBy.get(a.id) ?? 0) / 60000);
               return (
                 <tr key={a.id}>
-                  <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exams?.title}{a.exam_candidates?.candidate_ref ? ` · ${a.exam_candidates.candidate_ref}` : ""}</span></td>
+                  <td>
+                    <span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span>
+                    <span className="block text-xs text-ink-soft">{a.exams?.title}{a.exam_candidates?.candidate_ref ? ` · ${a.exam_candidates.candidate_ref}` : ""}</span>
+                    <span className="mt-1 flex flex-wrap gap-1">
+                      {a.lockdown_verified ? (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
+                          Verified Secure App ({a.lockdown_platform ?? "desktop"})
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-stone-100 px-2 py-0.5 text-[10px] font-medium text-stone-600">
+                          Standard Browser
+                        </span>
+                      )}
+                    </span>
+                  </td>
                   <td className="text-ink-soft">{fmtDateTime(a.started_at)}</td>
                   <td>{deadline ? fmtDateTime(deadline.toISOString()) : "—"}<span className="block text-xs text-ink-soft">{a.status === "in_progress" && remaining !== null ? (remaining < 0 ? `${Math.abs(remaining)} min overdue` : `${remaining} min left`) : a.submitted_at ? `Submitted ${fmtDateTime(a.submitted_at)}` : ""}</span></td>
                   <td>

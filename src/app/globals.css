@@ -221,6 +221,12 @@ body {
   min-height: 5.5rem;
   line-height: 1.65;
   color: var(--color-ink);
+  cursor: text;
+  caret-color: var(--color-evergreen-950, #062e24);
+}
+.rce-editor .tiptap p,
+.rce-editor .tiptap span {
+  cursor: text;
 }
 .rce-compact .tiptap { min-height: 2.9rem; padding: 0.5rem 0.7rem; }
 .rce-editor .tiptap p { margin: 0.35em 0; }

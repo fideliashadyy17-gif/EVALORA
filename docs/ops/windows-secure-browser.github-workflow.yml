@@ -1,0 +1,85 @@
+name: Build and Publish EVALORA Secure Browser (Windows x64)
+
+on:
+  push:
+    branches:
+      - 'arena/**'
+      - main
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to attach binaries to (leave blank to skip release upload or default to v1.1.0)'
+        required: false
+        default: 'v1.1.0'
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+
+      - name: Install Desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Run Desktop security & attestation tests
+        working-directory: desktop
+        run: npm test
+
+      - name: Build Windows NSIS installer
+        working-directory: desktop
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --x64 --publish never
+
+      - name: Compute SHA-256 Checksums
+        shell: pwsh
+        working-directory: desktop/dist
+        run: |
+          Get-ChildItem -Filter *.exe | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  $($_.Name)" | Set-Content "$($_.FullName).sha256" -Encoding ascii
+          }
+          Get-Content *.sha256
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EVALORA-Secure-Browser-Windows-x64
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.exe.sha256
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag || 'v1.1.0' }}
+          files: |
+            desktop/dist/*.exe
+            desktop/dist/*.exe.sha256
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run Real Windows Installation & E2E Validation Suite
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pwsh -File desktop/test/windows-e2e-validation.ps1

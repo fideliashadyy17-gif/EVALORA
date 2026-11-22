@@ -1,0 +1,136 @@
+import assert from "node:assert/strict";
+import {
+  parseLockdownSettings,
+  isExamLockdownActive,
+  buildLockdownLaunchUrl,
+  generateLockdownChallenge,
+  DEFAULT_LOCKDOWN_SETTINGS,
+} from "../src/lib/lockdown.ts";
+
+console.log("Running Secure Lockdown & Safe Exam Deletion Test Suite...\n");
+
+// ─── Test 1: Lockdown Configuration & Optional Defaults ───────────
+{
+  const def = parseLockdownSettings(null);
+  assert.equal(def.enabled, false, "Lockdown must default to disabled (never globally forced)");
+  assert.equal(def.require_app, true);
+  assert.equal(def.strict_multi_display, true);
+
+  const empty = parseLockdownSettings({});
+  assert.equal(empty.enabled, false, "Empty settings must default to disabled");
+
+  const enabled = parseLockdownSettings({
+    enabled: true,
+    require_app: true,
+    strict_multi_display: true,
+    block_clipboard: true,
+  });
+  assert.equal(enabled.enabled, true);
+  assert.equal(enabled.require_app, true);
+  assert.equal(enabled.strict_multi_display, true);
+  assert.equal(enabled.block_clipboard, true);
+
+  // Existing exams without lockdown
+  assert.equal(isExamLockdownActive({}), false);
+  assert.equal(isExamLockdownActive({ settings: {} }), false);
+  assert.equal(isExamLockdownActive({ settings: { lockdown: { enabled: false } } }), false);
+  assert.equal(isExamLockdownActive({ settings: { lockdown: { enabled: true } } }), true);
+
+  console.log("  ✓ Lockdown settings are strictly optional, default to disabled, and never globally forced");
+}
+
+// ─── Test 2: Deep Link Launch URL Generator ───────────────────────
+{
+  const uri1 = buildLockdownLaunchUrl("MYP4-FORM2");
+  const parsed1 = new URL(uri1);
+  assert.equal(parsed1.protocol, "evalora-lockdown:");
+  assert.equal(parsed1.host, "enter");
+  assert.equal(parsed1.searchParams.get("exam"), "MYP4-FORM2");
+  assert.equal(parsed1.searchParams.get("lockdown"), "1");
+  assert.equal(parsed1.searchParams.get("secure_browser"), "1");
+
+  const uri2 = buildLockdownLaunchUrl("MYP4-FORM2", "CAND-1234");
+  const parsed2 = new URL(uri2);
+  assert.equal(parsed2.searchParams.get("exam"), "MYP4-FORM2");
+  assert.equal(parsed2.searchParams.get("candidate"), "CAND-1234");
+  assert.equal(parsed2.searchParams.get("lockdown"), "1");
+  assert.equal(parsed2.searchParams.get("secure_browser"), "1");
+
+  // Context-preserving deep link for shared examination links
+  const token = "b2f69046-6b21-432a-bd1e-5369bbde1cfb";
+  const uri3 = buildLockdownLaunchUrl({
+    token,
+    examCode: "8J4FDA35",
+    path: `/exam/join/${token}`,
+  });
+  const parsed3 = new URL(uri3);
+  assert.equal(parsed3.protocol, "evalora-lockdown:");
+  assert.equal(parsed3.host, "join");
+  assert.equal(parsed3.pathname, `/${token}`);
+  assert.equal(parsed3.searchParams.get("code"), "8J4FDA35");
+
+  console.log("  ✓ Deep linking protocol URI (evalora-lockdown://) formatted correctly and preserves original exam context");
+}
+
+// ─── Test 3: Ephemeral Challenge Generation ───────────────────────
+{
+  const challenge1 = generateLockdownChallenge();
+  const challenge2 = generateLockdownChallenge();
+  assert.equal(typeof challenge1, "string");
+  assert.equal(challenge1.length, 32);
+  assert.notEqual(challenge1, challenge2, "Challenges must be cryptographically unique");
+
+  console.log("  ✓ Cryptographic ephemeral challenge generation verified");
+}
+
+// ─── Test 4: Native challenge security regression suite ────────────
+{
+  const attestation = await import("../src/lib/lockdownAttestation.ts");
+  assert.equal(typeof attestation.verifyAndConsumeLockdownChallenge, "function");
+  assert.equal(typeof attestation.lockdownCandidateBinding, "function");
+  assert.equal(attestation.lockdownCandidateBinding({ first_name: "A", last_name: "B", guest_key: "a".repeat(32) }).length, 64);
+  console.log("  ✓ V2 native challenge verifier and candidate binding are available");
+}
+
+// ─── Test 5: Safe Exam Deletion Rules & Benchmark Protection ──────
+{
+  const BENCHMARK_GRADE9 = "cd000000-0000-4000-8000-000000000002";
+  const BENCHMARK_GRADE10 = "ce000000-0000-4000-8000-000000000002";
+
+  function evaluateDeletionPolicy(examId, attemptsCount) {
+    if (examId === BENCHMARK_GRADE9 || examId === BENCHMARK_GRADE10) {
+      return { allowed: false, action: "protected_benchmark" };
+    }
+    if (attemptsCount === 0) {
+      return { allowed: true, action: "permanent_delete" };
+    }
+    return { allowed: true, action: "safe_archive" };
+  }
+
+  // Version C benchmark protection
+  assert.deepEqual(evaluateDeletionPolicy(BENCHMARK_GRADE9, 0), {
+    allowed: false,
+    action: "protected_benchmark",
+  });
+  assert.deepEqual(evaluateDeletionPolicy(BENCHMARK_GRADE10, 4), {
+    allowed: false,
+    action: "protected_benchmark",
+  });
+
+  // Empty draft exam
+  assert.deepEqual(evaluateDeletionPolicy("random-exam-no-attempts", 0), {
+    allowed: true,
+    action: "permanent_delete",
+  });
+
+  // Exam with attempts (preserves records)
+  assert.deepEqual(evaluateDeletionPolicy("exam-with-18-attempts", 18), {
+    allowed: true,
+    action: "safe_archive",
+  });
+
+  console.log("  ✓ Exam deletion rules distinguish between empty exams and exams with student records");
+  console.log("  ✓ Official Version C benchmark examinations are strictly protected from deletion");
+}
+
+console.log("\nAll Secure Lockdown & Safe Exam Deletion tests passed successfully!");

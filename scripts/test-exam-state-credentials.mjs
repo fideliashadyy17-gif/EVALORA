@@ -27,7 +27,8 @@ Module._load=function(request,parent){
   if(request==='@/lib/examDeadline') return {submissionWindow:(exam,attempt)=>attemptWindow(exam,attempt),attemptDeadlineInstant:()=>Date.now()+600000,deadlineReached:()=>false};
   if(request==='@/lib/examSubmission') return {applyDeadlineSubmission:async()=>({outcome:'already_closed',status:'in_progress',submittedAt:null,deadline:new Date(Date.now()+600000).toISOString(),autoSubmitted:false,score:null,max:null,window:attemptWindow(context.exam,context.attempt)})};
   if(request==='@/lib/examHintsServer') return {loadPublishedHints:async()=>new Map()};
- if(request==='@/lib/examFormulas') return {parseFormulaSheet:()=>null};
+  if(request==='@/lib/examFormulas') return {parseFormulaSheet:()=>null};
+  if(request==='@/lib/lockdown') return {parseLockdownSettings:(s)=>s??null, DEFAULT_EXAM_LOCKDOWN:{enabled:false,require_app:false}};
   if(request==='@/lib/supabase/server') return {createAdminClient:()=>admin};
   if(request==='next/server') return {NextResponse:{json:(body,options)=>({body,status:options?.status??200,headers:options?.headers??{}})}};
  }

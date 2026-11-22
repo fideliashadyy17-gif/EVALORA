@@ -92,18 +92,21 @@ export function Field({
   hint,
   children,
   className,
+  as = "label",
 }: {
   label: string;
   hint?: string;
   children: ReactNode;
   className?: string;
+  as?: "label" | "div";
 }) {
+  const Component = as;
   return (
-    <label className={cn("block", className)}>
+    <Component className={cn("block", className)}>
       <span className="mb-1.5 block text-sm font-medium text-evergreen-900">{label}</span>
       {children}
       {hint && <span className="mt-1 block text-xs text-ink-soft">{hint}</span>}
-    </label>
+    </Component>
   );
 }
 

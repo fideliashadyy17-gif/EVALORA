@@ -58,6 +58,7 @@ const { StatsView } = loadComponent("src/components/stats/StatsView.tsx", {
 });
 const { DataTableView } = loadComponent("src/components/stats/DataTableView.tsx", {
   "@/lib/dataTableSpec": tables,
+  "@/components/MathText": { MathText: ({ text }) => React.createElement("span", null, text) },
 });
 
 const render = (element) => {

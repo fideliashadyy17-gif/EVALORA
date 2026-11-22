@@ -1,4 +1,5 @@
 import { dataTableSummary, normaliseDataTableSpec, type DataTableSpec } from "@/lib/dataTableSpec";
+import { MathText } from "@/components/MathText";
 
 /**
  * Read-only structured table. Server-component safe and printable: a marker
@@ -28,7 +29,7 @@ export function DataTableView({
             <tr>
               {clean.columns.map((column, index) => (
                 <th key={`head-${index}`} scope="col">
-                  {column || (clean.rowHeaders && index === 0 ? "" : `Column ${index + 1}`)}
+                  {column ? <MathText text={column} /> : (clean.rowHeaders && index === 0 ? "" : `Column ${index + 1}`)}
                 </th>
               ))}
             </tr>
@@ -38,9 +39,9 @@ export function DataTableView({
               <tr key={`row-${rowIndex}`}>
                 {row.map((cell, columnIndex) => {
                   if (clean.rowHeaders && columnIndex === 0) {
-                    return <th key={`cell-${rowIndex}-${columnIndex}`} scope="row">{cell}</th>;
+                    return <th key={`cell-${rowIndex}-${columnIndex}`} scope="row"><MathText text={cell} /></th>;
                   }
-                  return <td key={`cell-${rowIndex}-${columnIndex}`}>{cell}</td>;
+                  return <td key={`cell-${rowIndex}-${columnIndex}`}><MathText text={cell} /></td>;
                 })}
               </tr>
             ))}

@@ -22,6 +22,8 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/integrity')return {parseIntegrityPolicy:raw=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
  if(req==='@/lib/integrityMonitor')return {IntegrityMonitor:class{start(){}stop(){}}};
  if(req==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
+ if(req==='@/lib/lockdown')return {buildLockdownLaunchUrl:()=>'',DEFAULT_EXAM_LOCKDOWN:{enabled:false,require_app:false}};
+ if(req==='@/lib/lockdownClient')return {isSecureBrowserEnvironment:()=>false,persistSecureBrowserState:()=>{}};
  if(req==='@/lib/examSaveQueue')return queue;
  if(req==='./ExamMessenger')return {ExamMessenger:()=>null};
  if(req==='./RetakePanel')return {RetakePanel:()=>null};

@@ -1,0 +1,21 @@
+<!doctype html><meta charset="utf-8"><title>Secure Browser fixture</title>
+<h1>Secure Browser bridge fixture</h1><pre id="result">checking</pre>
+<script>
+(async () => {
+  const api = window.__EVALORA_SECURE_LOCKDOWN__;
+  if (!api || typeof api.getAttestation !== 'function') throw new Error('preload bridge missing');
+  const context = { first_name: 'Test', last_name: 'Candidate', class_id: 'fixture-class', guest_key: 'a'.repeat(32) };
+  const norm = v => typeof v === 'string' ? v.normalize('NFKC').trim().replace(/\s+/g, ' ').toLowerCase() : '';
+  const canonical = JSON.stringify(['EVALORA-CANDIDATE-V2', norm(context.first_name), norm(context.last_name), norm(context.class_id), norm(context.class_name), norm(context.guest_key), norm(context.candidate_code), {}]);
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(canonical));
+  context.candidate_binding = [...new Uint8Array(digest)].map(x => x.toString(16).padStart(2, '0')).join('');
+  const proof = await api.getAttestation('FIXTURE-EXAM', context);
+  const integrity = await api.checkIntegrity();
+  const response = await fetch('/report', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ proof, integrity, context }) });
+  const outcome = await response.json();
+  document.getElementById('result').textContent = JSON.stringify(outcome);
+  if (!response.ok || !outcome.ok) throw new Error(outcome.error || 'fixture failed');
+})().catch(async error => {
+  document.getElementById('result').textContent = `FAIL ${error.stack || error}`;
+});
+</script>

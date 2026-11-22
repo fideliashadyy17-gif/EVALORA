@@ -151,8 +151,8 @@ def build():
                 box_figure((12, 24, 34, 50, 68), title="Battery lifetimes", x_label="Lifetime (hours)"),
                 "What is the **IQR**, and what percentage of batteries lasted **less than 50 hours**?"],
         options=["IQR = 56, 75%", "IQR = 26, 75%", "IQR = 26, 50%", "IQR = 16, 75%"],
-        answer="C",
-        explanation="IQR = Q3 − Q1 = 50 − 24 = 26 hours. Q3 = 50 hours, so 75% of batteries lasted less than 50 hours.",
+        answer="B",
+        explanation="IQR = Q3 − Q1 = 50 − 24 = 26 hours. Q3 = 50 hours, so 75% of batteries lasted less than 50 hours (Option B).",
     ))
     qs.append(choice_question(
         8, sec="A", crit="D", marks=1, lvl="basic", topic="Effect of an outlier", subtopic="mean and median",

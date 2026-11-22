@@ -16,7 +16,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
 import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
@@ -94,6 +94,29 @@ export interface UploadResult {
   error?: string;
 }
 
+const RCE_EXTENSIONS = [
+  StarterKit.configure({ heading: { levels: [2, 3] } }),
+  Underline,
+  TextStyle,
+  Color,
+  Highlight.configure({ multicolor: true }),
+  FontFamily,
+  FontSize,
+  TextAlign.configure({ types: ["heading", "paragraph"] }),
+  Link.configure({ openOnClick: false, autolink: true }),
+  RichImage.configure({ inline: false, allowBase64: false }),
+  Table.configure({ resizable: false }),
+  TableRow,
+  TableHeader,
+  TableCell,
+  MathInline,
+  MathBlock,
+  GraphBlock,
+  GeometryBlock,
+  StatsBlock,
+  DataTableBlock,
+];
+
 export function RichContentEditor({
   value,
   onChange,
@@ -138,6 +161,11 @@ export function RichContentEditor({
   const fileRef = useRef<HTMLInputElement>(null);
   const initialDoc = useMemo(() => value ?? emptyDoc(), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const isInternalUpdateRef = useRef(false);
+  const lastEmittedRef = useRef<string>("");
+
   const openMathEditor = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
     setEditingPos(pos);
     setEditingDisplay(display);
@@ -149,51 +177,79 @@ export function RichContentEditor({
     mfRef.current?.setValue(latex);
   };
 
-  const editor = useEditor({
-    immediatelyRender: false,
-    extensions: [
-      StarterKit.configure({ heading: { levels: [2, 3] } }),
-      Underline,
-      TextStyle,
-      Color,
-      Highlight.configure({ multicolor: true }),
-      FontFamily,
-      FontSize,
-      TextAlign.configure({ types: ["heading", "paragraph"] }),
-      Link.configure({ openOnClick: false, autolink: true }),
-      RichImage.configure({ inline: false, allowBase64: false }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell,
-      MathInline,
-      MathBlock,
-      GraphBlock,
-      GeometryBlock,
-      StatsBlock,
-      DataTableBlock,
-    ],
-    content: initialDoc as never,
-    editorProps: {
+  const openMathEditorRef = useRef(openMathEditor);
+  openMathEditorRef.current = openMathEditor;
+  const openDiagramRef = useRef<(pos: number, kind: DiagramKind, spec: unknown) => void>(() => {});
+  openDiagramRef.current = (pos: number, kind: DiagramKind, spec: unknown) => {
+    setDiagramEdit({ pos, kind, spec: spec as DiagramSpec });
+  };
+
+  const editorProps = useMemo(
+    () => ({
       attributes: {
         "aria-label": ariaLabel ?? "Content editor",
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
         ...(minHeight ? { style: `min-height:${minHeight}` } : {}),
       },
+    }),
+    [ariaLabel, placeholder, minHeight],
+  );
+
+  const editor = useEditor({
+    immediatelyRender: false,
+    extensions: RCE_EXTENSIONS,
+    content: initialDoc as never,
+    editorProps,
+    onUpdate: ({ editor }) => {
+      const json = editor.getJSON() as RichDoc;
+      lastEmittedRef.current = JSON.stringify(json);
+      isInternalUpdateRef.current = true;
+      onChangeRef.current(json);
     },
-    onUpdate: ({ editor }) => onChange(editor.getJSON() as RichDoc),
     onCreate: ({ editor }) => {
       const storage = editor.storage as unknown as Record<string, { onEditRequest?: unknown }>;
-      if (storage.mathInline) storage.mathInline.onEditRequest = openMathEditor;
-      if (storage.mathBlock) storage.mathBlock.onEditRequest = openMathEditor;
-      const openDiagram = (pos: number, kind: DiagramKind, spec: unknown) => {
-        setDiagramEdit({ pos, kind, spec: spec as DiagramSpec });
-      };
+      if (storage.mathInline) {
+        storage.mathInline.onEditRequest = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
+          openMathEditorRef.current?.(pos, latex, display, toMode);
+        };
+      }
+      if (storage.mathBlock) {
+        storage.mathBlock.onEditRequest = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
+          openMathEditorRef.current?.(pos, latex, display, toMode);
+        };
+      }
       for (const name of ["graphBlock", "geometryBlock", "statsBlock", "dataTableBlock"]) {
-        if (storage[name]) storage[name].onEditRequest = openDiagram;
+        if (storage[name]) {
+          storage[name].onEditRequest = (pos: number, kind: DiagramKind, spec: unknown) => {
+            openDiagramRef.current?.(pos, kind, spec);
+          };
+        }
       }
     },
   });
+
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    // CRITICAL: NEVER overwrite or reset editor content while the user has focus / is typing!
+    if (editor.isFocused) return;
+    if (isInternalUpdateRef.current) {
+      isInternalUpdateRef.current = false;
+      return;
+    }
+    if (!value) return;
+    const valueStr = JSON.stringify(value);
+    if (valueStr === lastEmittedRef.current) return;
+    try {
+      const current = editor.getJSON();
+      const currentStr = JSON.stringify(current);
+      if (currentStr !== valueStr) {
+        lastEmittedRef.current = valueStr;
+        editor.commands.setContent(value, false);
+      }
+    } catch {
+      // Ignore serialization differences
+    }
+  }, [value, editor]);
 
   if (!editor) {
     return <div className="rce-shell p-4 text-sm text-ink-soft">Loading editor…</div>;
@@ -631,7 +687,14 @@ export function RichContentEditor({
       )}
 
       {/* The mixed-content document — always visible and editable */}
-      <div className="rce-editor">
+      <div
+        className="rce-editor"
+        onClick={() => {
+          if (editor && !editor.isFocused) {
+            editor.commands.focus("end");
+          }
+        }}
+      >
         <EditorContent editor={editor} />
       </div>
 

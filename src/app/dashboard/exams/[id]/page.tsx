@@ -8,14 +8,17 @@ import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
-import { CheckCircle2, ClipboardList, FileCheck2, Users } from "lucide-react";
+import { CheckCircle2, ClipboardList, FileCheck2, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
+import { CopyResultLinkButton } from "./CopyResultLinkButton";
+import { DeleteExamDialog } from "@/components/DeleteExamDialog";
+import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateWorkspaceExamAccess,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamLockdown, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -31,7 +34,7 @@ export default async function ExamDetailPage({
   const { id } = await params;
   const sp = await searchParams;
   const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "evalora-six.vercel.app";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "evalora-edu.online";
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -46,6 +49,7 @@ export default async function ExamDetailPage({
   if (!exam) notFound();
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  const lockdown = parseLockdownSettings(settings.lockdown);
   const accessLink = String(
     (exam as Record<string, unknown>).access_link
       ?? `/exam/join/${String((exam as Record<string, unknown>).invite_token ?? "")}`,
@@ -56,7 +60,7 @@ export default async function ExamDetailPage({
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
-      .select("*, exam_candidates(full_name), exam_answers(id, is_correct, points_awarded, answer, question_id, grading_method, moderation_status, questions(prompt, prompt_doc, points, type, config))")
+      .select("*, exam_candidates(id, full_name, candidate_ref, email, access_code), exam_answers(id, is_correct, points_awarded, answer, question_id, grading_method, moderation_status, questions(prompt, prompt_doc, points, type, config))")
       .eq("exam_id", id)
       .order("started_at"),
     supabase
@@ -302,16 +306,239 @@ export default async function ExamDetailPage({
                 {settings.results_published ? "Unpublish results" : "Publish results"}
               </Button>
             </form>
-            <form action={deleteExam}>
-              <input type="hidden" name="id" value={id} />
-              <Button type="submit" variant="ghost" className="text-red-700">Delete</Button>
-            </form>
+            <DeleteExamDialog
+              examId={id}
+              examTitle={exam.title}
+              accessCode={exam.access_code}
+              attemptCount={(attempts ?? []).length}
+              candidateCount={(candidates ?? []).length}
+              action={deleteExam}
+            />
           </div>
         </div>
         <p className="mt-3 text-sm text-ink-soft">
           Results are currently <strong>{settings.results_published ? "visible to candidates" : "hidden from candidates"}</strong>.
           Objective questions are marked automatically on submission; written answers appear in the marking queue below.
         </p>
+      </Card>
+
+      {/* Secure Lockdown Environment Configuration */}
+      <Card className="mb-6 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-evergreen-900/10 pb-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                Secure Lockdown Exam Environment
+              </h2>
+              <Badge tone={lockdown.enabled ? "green" : "gray"}>
+                {lockdown.enabled ? "Lockdown Enabled" : "Standard Web Access (Disabled)"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-xs text-ink-soft">
+              {lockdown.enabled
+                ? "This exam requires the official EVALORA Secure Exam Application. Ordinary web browsers cannot be used to start or resume this paper."
+                : "Standard web browsers are permitted. Candidates can take this exam using Google Chrome, Microsoft Edge, Safari, or Firefox."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            {lockdown.enabled && lockdown.require_app && (
+              <a
+                href={buildLockdownLaunchUrl({
+                  token: exam.invite_token,
+                  examCode: exam.access_code,
+                  path: accessLink,
+                })}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-gold-500 px-3 py-1.5 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" /> Launch Secure Browser
+              </a>
+            )}
+            <ButtonLink href="/download/secure-browser" variant="outline" className="text-xs">
+              View Application &amp; Download Links
+            </ButtonLink>
+          </div>
+        </div>
+
+        {can(ctx, org.id, CREATOR_ROLES) && (
+          <form action={updateExamLockdown} className="mt-4 space-y-4">
+            <input type="hidden" name="id" value={id} />
+            <div className="rounded-xl border border-evergreen-900/10 bg-cream/50 p-4">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  name="lockdown_enabled"
+                  defaultChecked={lockdown.enabled}
+                  className="mt-0.5 h-5 w-5 accent-evergreen-700"
+                />
+                <div>
+                  <span className="text-sm font-semibold text-evergreen-950">
+                    Enable Secure Lockdown Environment for this examination
+                  </span>
+                  <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                    Strictly optional per-examination setting. When enabled, student access via standard browsers is
+                    strictly denied, and candidates must satisfy the EVALORA Secure Exam Application verification handshake.
+                  </p>
+                </div>
+              </label>
+
+              <div className="mt-4 grid gap-3 border-t border-evergreen-900/10 pt-3 sm:grid-cols-2">
+                <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="lockdown_strict_multi_display"
+                    defaultChecked={lockdown.strict_multi_display}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Enforce single monitor (block multi-display)
+                </label>
+                <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="lockdown_block_clipboard"
+                    defaultChecked={lockdown.block_clipboard}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Strict in-app clipboard isolation
+                </label>
+              </div>
+            </div>
+            <Button type="submit" variant="primary" className="text-xs">
+              Save Lockdown Settings
+            </Button>
+          </form>
+        )}
+      </Card>
+
+      {/* Results Management & Individual Candidate Links */}
+      <Card className="mb-6 p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-evergreen-900/10 pb-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                Results Management &amp; Individual Candidate Links
+              </h2>
+              <Badge tone={settings.results_published ? "green" : "amber"}>
+                {settings.results_published ? "Results Published (Visible to candidates)" : "Results Withheld (Hidden from candidates)"}
+              </Badge>
+            </div>
+            <p className="mt-1 text-sm text-ink-soft">
+              Retrieve, copy, and distribute individual secure result links to candidates. Each link is uniquely associated with the candidate&apos;s attempt and strictly respects publication authorization.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <form action={publishResults}>
+              <input type="hidden" name="exam_id" value={id} />
+              <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
+              <Button type="submit" variant={settings.results_published ? "outline" : "primary"}>
+                {settings.results_published ? "Unpublish all results" : "Publish all results"}
+              </Button>
+            </form>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg bg-cream/70 p-3.5 text-xs text-ink-soft">
+          <p>
+            <strong>Publication Control:</strong>{" "}
+            {settings.results_published ? (
+              <span className="text-evergreen-900 font-medium">
+                Results are published. Candidates who access their personal link can see their verified marks, percentage score, criterion performance, and question-by-question review.
+              </span>
+            ) : (
+              <span className="text-amber-900 font-medium">
+                Results are currently withheld. Candidates accessing their personal link will see an official confirmation that their paper was received and is awaiting teacher review, with all marks and answers withheld.
+              </span>
+            )}
+          </p>
+        </div>
+
+        <div className="mt-4">
+          {(attempts ?? []).length === 0 ? (
+            <p className="py-4 text-center text-sm text-ink-soft">
+              No examination attempts recorded yet. As students start and submit their papers, their individual result links will appear here.
+            </p>
+          ) : (
+            <DataTable
+              head={[
+                "Student Name & Identifier",
+                "Attempt",
+                "Submission Status",
+                "Score",
+                "Publication Status",
+                "Individual Result Link",
+                "Actions",
+              ]}
+              label="Candidate individual result links"
+            >
+              {(attempts ?? []).map((a) => {
+                const cand = a.exam_candidates as { full_name: string; candidate_ref?: string | null; email?: string | null; access_code?: string | null } | null;
+                const candName = cand?.full_name || "Unknown Candidate";
+                const candId = cand?.candidate_ref || cand?.email || (cand?.access_code ? `Code: ${cand.access_code}` : null);
+                const isSubmitted = a.status === "submitted" || a.status === "auto_submitted" || a.status === "marked";
+                const pct = a.score !== null && a.max_score !== null && Number(a.max_score) > 0
+                  ? ((Number(a.score) / Number(a.max_score)) * 100).toFixed(1)
+                  : null;
+                const resultUrl = `${origin}/exam/result/${a.access_token}`;
+
+                return (
+                  <tr key={a.id}>
+                    <td>
+                      <span className="font-medium text-evergreen-950">{candName}</span>
+                      {candId && <span className="block text-xs text-ink-soft">{candId}</span>}
+                    </td>
+                    <td className="text-xs font-medium text-ink-soft">
+                      Attempt {a.attempt_number ?? 1}
+                    </td>
+                    <td>
+                      <Badge tone={isSubmitted ? "green" : "amber"}>
+                        {a.status.replace(/_/g, " ")}
+                      </Badge>
+                      {a.submitted_at && (
+                        <span className="block text-[11px] text-ink-soft">
+                          {fmtDateTime(a.submitted_at)}
+                        </span>
+                      )}
+                    </td>
+                    <td className="tabular-nums text-sm">
+                      {isSubmitted && a.score !== null ? (
+                        <span className="font-semibold text-evergreen-900">
+                          {Number(a.score)} / {Number(a.max_score)} {pct ? `(${pct}%)` : ""}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-ink-soft">{isSubmitted ? "Grading pending" : "In progress"}</span>
+                      )}
+                    </td>
+                    <td>
+                      <Badge tone={settings.results_published ? "green" : "amber"}>
+                        {settings.results_published ? "Published" : "Withheld"}
+                      </Badge>
+                    </td>
+                    <td className="max-w-xs">
+                      <input
+                        type="text"
+                        readOnly
+                        value={resultUrl}
+                        className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
+                        title={resultUrl}
+                      />
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-1.5">
+                        <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                        <ButtonLink
+                          href={`/exam/result/${a.access_token}`}
+                          variant="ghost"
+                          className="text-xs px-2 py-1"
+                        >
+                          View
+                        </ButtonLink>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </DataTable>
+          )}
+        </div>
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">

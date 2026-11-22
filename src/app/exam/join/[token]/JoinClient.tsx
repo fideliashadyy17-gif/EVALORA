@@ -12,6 +12,8 @@ import {
   type ActiveCandidatePointer,
 } from "@/lib/examCandidateSession";
 import { createClient } from "@/lib/supabase/client";
+import { createLockdownCandidateBinding, isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
+import { Download, ExternalLink, ShieldAlert, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -33,6 +35,8 @@ export function ExamJoinClient({
   requiresAccount,
   language,
   languageLock,
+  lockdownRequired,
+  lockdownLaunchUrl,
 }: {
   token: string;
   title: string;
@@ -48,6 +52,8 @@ export function ExamJoinClient({
   requiresAccount: boolean;
   language: PaperLanguage;
   languageLock: boolean;
+  lockdownRequired?: boolean;
+  lockdownLaunchUrl?: string;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -65,6 +71,31 @@ export function ExamJoinClient({
   const [switchingAccount, setSwitchingAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const [isLockdownClient, setIsLockdownClient] = useState(() => isSecureBrowserEnvironment());
+
+  const [lockdownAlert, setLockdownAlert] = useState<{
+    required: boolean;
+    launchUrl?: string;
+    downloadUrl?: string;
+    reason?: string;
+  } | null>(
+    lockdownRequired && !isSecureBrowserEnvironment()
+      ? {
+          required: true,
+          launchUrl: lockdownLaunchUrl,
+          downloadUrl: "/download/secure-browser",
+        }
+      : null,
+  );
+
+  useEffect(() => {
+    if (isSecureBrowserEnvironment()) {
+      setIsLockdownClient(true);
+      setLockdownAlert(null);
+      persistSecureBrowserState();
+    }
+  }, []);
 
   useEffect(() => {
     const local = typeof window !== "undefined" ? window.localStorage : null;
@@ -102,11 +133,40 @@ export function ExamJoinClient({
       return setError("Complete every required identification field.");
     setBusy(true);
     setError(null);
+    const activeLockdown = isLockdownClient || isSecureBrowserEnvironment();
+    let lockdownAttestation: unknown = null;
+    if (activeLockdown || lockdownRequired) {
+      const lockdownApi = (window as unknown as {
+        __EVALORA_SECURE_LOCKDOWN__?: {
+          getAttestation: (examCode: string, context: { first_name: string; last_name: string; class_id: string; guest_key: string; identity: Record<string, string>; candidate_binding: string }) => Promise<unknown>;
+        };
+      }).__EVALORA_SECURE_LOCKDOWN__;
+      if (lockdownApi) {
+        try {
+          const candidateContext = { first_name: firstName.trim(), last_name: lastName.trim(), class_id: classId, guest_key: guestKey, identity };
+          const candidate_binding = await createLockdownCandidateBinding(candidateContext);
+          lockdownAttestation = await lockdownApi.getAttestation(code.trim().toUpperCase(), { ...candidateContext, candidate_binding });
+        } catch (e) {
+          console.warn("Failed to collect lockdown attestation:", e);
+        }
+      }
+
+      // Never mint or fetch a server-signed client assertion here. The server
+      // admission endpoint accepts only the signature returned by the native
+      // Secure Browser bridge; ordinary browser markers do not create one.
+      if (activeLockdown) {
+        setIsLockdownClient(true);
+        persistSecureBrowserState();
+      }
+    }
+
+    const reqHeaders: Record<string, string> = { "Content-Type": "application/json" };
+
     let res: Response;
     try {
       res = await fetch("/api/exam/link-access", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: reqHeaders,
         body: JSON.stringify({
           invite_token: token,
           access_code: code.trim().toUpperCase(),
@@ -114,7 +174,10 @@ export function ExamJoinClient({
           last_name: lastName.trim(),
           class_id: classId,
           guest_key: guestKey,
-          identity,
+          identity: {
+            ...identity,
+            ...(lockdownAttestation ? { lockdown_attestation: lockdownAttestation } : {}),
+          },
           ...(ignoreAuthSession ? { ignore_auth_session: true } : {}),
           consent: true,
         }),
@@ -125,7 +188,17 @@ export function ExamJoinClient({
     }
     const data = await res.json().catch(() => null);
     setBusy(false);
-    if (!res.ok) return setError(data?.error ?? "Access denied.");
+    if (!res.ok) {
+      if (data?.lockdown_required) {
+        setLockdownAlert({
+          required: true,
+          launchUrl: data.launch_url || lockdownLaunchUrl,
+          downloadUrl: data.download_url || "/download/secure-browser",
+          reason: data.lockdown_reason,
+        });
+      }
+      return setError(data?.error ?? "Access denied.");
+    }
     const saved = saveCandidateAttemptSession(
       typeof window !== "undefined" ? window.localStorage : null,
       typeof window !== "undefined" ? window.sessionStorage : null,
@@ -145,7 +218,10 @@ export function ExamJoinClient({
     if (!saved) {
       return setError("Your browser blocked session storage. Enable it and try again.");
     }
-    router.push(`/take-exam/${data.attempt_id}`);
+    if (activeLockdown || data?.lockdown_verified) {
+      persistSecureBrowserState();
+    }
+    router.push(activeLockdown || data?.lockdown_verified ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
   }
 
   const effectiveRequiresAccount =
@@ -236,11 +312,105 @@ export function ExamJoinClient({
                 <Link className="font-semibold underline" href={`/login?switch=1&next=${encodeURIComponent(`/exam/join/${token}`)}`}>Sign in</Link>, then reopen this link.
               </p>
             )}
+
+            {lockdownAlert?.required && (
+              <div
+                role="alert"
+                aria-label="Secure examination application required"
+                className="mt-4 rounded-2xl border-2 border-evergreen-800 bg-evergreen-950 p-6 text-white shadow-xl"
+              >
+                <div className="flex items-start gap-3">
+                  <span className="shrink-0 rounded-lg bg-gold-500/20 p-2.5 text-gold-400">
+                    <ShieldAlert className="h-6 w-6" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h2 className="font-display text-base font-bold text-white">
+                        EVALORA Secure Exam Browser Required
+                      </h2>
+                      <span className="rounded-full bg-gold-500/20 px-2.5 py-0.5 text-[11px] font-bold text-gold-300">
+                        Lockdown Active
+                      </span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-evergreen-100/90">
+                      This examination has been configured with strict exam lockdown. Standard web browsers (Chrome, Edge, Safari, Firefox) cannot be used to sit this paper.
+                    </p>
+
+                    <div className="mt-4 space-y-2 rounded-xl border border-white/10 bg-black/40 p-3.5 text-xs text-evergreen-100/90">
+                      <div className="flex items-start gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-500 text-[11px] font-bold text-evergreen-950">1</span>
+                        <span><strong>First time on this PC?</strong> Download the setup script or install via the download page.</span>
+                      </div>
+                      <div className="flex items-start gap-2">
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-gold-500 text-[11px] font-bold text-evergreen-950">2</span>
+                        <span><strong>Already installed?</strong> Click <em>&quot;Launch in Secure Browser&quot;</em> and allow your browser to open the application.</span>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap gap-2.5">
+                      {lockdownAlert.launchUrl && (
+                        <a
+                          href={lockdownAlert.launchUrl}
+                          className="inline-flex items-center gap-2 rounded-xl bg-gold-500 px-4 py-2.5 text-xs font-bold text-evergreen-950 shadow transition hover:bg-gold-400"
+                        >
+                          <ExternalLink className="h-4 w-4" /> Launch in Secure Browser
+                        </a>
+                      )}
+                      <a
+                        href="/downloads/EVALORA-Lockdown-Setup.bat"
+                        download
+                        className="inline-flex items-center gap-2 rounded-xl border border-evergreen-700 bg-evergreen-800 px-4 py-2.5 text-xs font-semibold text-white shadow transition hover:bg-evergreen-700"
+                      >
+                        <Download className="h-4 w-4" /> Download Setup Script (.bat)
+                      </a>
+                      <Link
+                        href={lockdownAlert.downloadUrl || "/download/secure-browser"}
+                        className="inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-3.5 py-2.5 text-xs font-semibold text-white transition hover:bg-white/20"
+                      >
+                        All Download Options
+                      </Link>
+                    </div>
+
+                    <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-white/10 pt-3 text-[11px] text-evergreen-200/80">
+                      <span>Application didn&apos;t open or screen flashed?</span>
+                      <div className="flex items-center gap-3">
+                        {lockdownAlert.launchUrl && (
+                          <a
+                            href={lockdownAlert.launchUrl}
+                            className="font-semibold text-gold-300 underline underline-offset-2 hover:text-gold-200"
+                          >
+                            Retry Launch
+                          </a>
+                        )}
+                        <Link
+                          href="/download/secure-browser"
+                          className="font-medium text-evergreen-300 underline underline-offset-2 hover:text-white"
+                        >
+                          Troubleshooting &amp; Setup Help
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {isLockdownClient && (
+              <div
+                role="status"
+                aria-label="Secure environment active"
+                className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-600/25 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-900 shadow-sm"
+              >
+                <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
+                <span>Verified EVALORA Secure Exam Browser Environment Active</span>
+              </div>
+            )}
+
             <form onSubmit={submit} className="mt-5 space-y-4">
               {error && <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
               <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="First name *"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" /></Field>
-                <Field label="Last name *"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" /></Field>
+                <Field label="First Name"><Input value={firstName} onChange={(e) => setFirstName(e.target.value)} required autoComplete="off" placeholder="First name *" /></Field>
+                <Field label="Last Name"><Input value={lastName} onChange={(e) => setLastName(e.target.value)} required autoComplete="off" placeholder="Last name *" /></Field>
               </div>
               {identityFields.map((field) => (
                 <Field key={field.key} label={`${field.label}${field.required ? " *" : ""}`} hint="Required by this examination's organizer.">
@@ -253,7 +423,7 @@ export function ExamJoinClient({
                   />
                 </Field>
               ))}
-              <Field label="Examination access code" hint="Use the code provided with this link. Hyphens, spaces and O/0 look-alikes don't matter — pasting the code works too.">
+              <Field label="Examination Code" hint="Use the code provided with this link. Hyphens, spaces and O/0 look-alikes don't matter — pasting the code works too.">
                 <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="e.g. X8K2P4Q7" className="text-center font-display text-xl font-bold uppercase tracking-[0.2em]" required autoComplete="off" autoCorrect="off" autoCapitalize="characters" spellCheck={false} />
               </Field>
               <Field label="Class" hint={effectiveVerifiedClassId ? "Your verified class is fixed." : "Choose your class. Your AP Calculus course (AB or BC) follows from your class."}>
@@ -267,7 +437,7 @@ export function ExamJoinClient({
                 <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
               </label>
               <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || effectiveRequiresAccount}>
-                {busy ? "Verifying…" : "Verify & begin examination"}
+                {busy ? "Verifying…" : "Verify and Begin"}
               </Button>
               <p className="text-center text-xs text-ink-soft">
                 Returning after a disconnection? Re-enter the same link, code, name, identification fields and class on this browser to resume your saved answers.

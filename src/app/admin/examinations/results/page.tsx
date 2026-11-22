@@ -1,23 +1,27 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
+import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
 import { Award, CheckCircle2, Eye, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
-import { setExamResultsPublishedAsAdmin } from "../actions";
+import { regradeAttemptAsAdmin, regradeExamAsAdmin, setExamResultsPublishedAsAdmin } from "../actions";
 import { MypExportButton } from "@/components/myp/MypExportButton";
 
-export const metadata: Metadata = { title: "Examination results" };
+export const metadata: Metadata = { title: "Results Management & Candidate Links · EVALORA" };
 export const dynamic = "force-dynamic";
 
 const MESSAGES: Record<string, string> = {
-  results_published: "Results published. Candidates can now see their score and authorized worked solutions.",
-  results_unpublished: "Results unpublished and hidden from candidates.",
+  results_published: "Results published. Candidates can now see their score, criteria breakdown, and worked solutions on their personal result link.",
+  results_unpublished: "Results unpublished and withheld from candidates.",
+  regraded: "Candidate attempt regraded successfully. Scores, partial credit, and audit history updated.",
+  exam_regraded: "Examination regraded across all submitted attempts. All scores and grade logs synchronized.",
   exam: "That examination no longer exists.",
   failed: "Result publication could not be changed.",
 };
@@ -40,7 +44,9 @@ interface AttemptRow {
   score: number | null;
   max_score: number | null;
   extension_minutes: number;
-  exam_candidates: { full_name: string; candidate_ref: string | null; email: string | null } | null;
+  attempt_number?: number | null;
+  access_token: string;
+  exam_candidates: { full_name: string; candidate_ref: string | null; email: string | null; access_code?: string | null } | null;
 }
 
 export default async function ExaminationResultsPage({
@@ -53,6 +59,10 @@ export default async function ExaminationResultsPage({
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
   const admin = createAdminClient();
+
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "evalora-edu.online";
+  const origin = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
 
   const { data: rawExams } = await admin
     .from("exams")
@@ -71,7 +81,7 @@ export default async function ExaminationResultsPage({
     const [{ data: rawAttempts }, { count }] = await Promise.all([
       admin
         .from("exam_attempts")
-        .select("id, status, started_at, submitted_at, score, max_score, extension_minutes, exam_candidates(full_name, candidate_ref, email)")
+        .select("id, status, started_at, submitted_at, score, max_score, extension_minutes, attempt_number, access_token, exam_candidates(full_name, candidate_ref, email, access_code)")
         .eq("exam_id", selected.id)
         .order("score", { ascending: false, nullsFirst: false })
         .limit(1000),
@@ -94,13 +104,24 @@ export default async function ExaminationResultsPage({
 
   const csv = selected
     ? toCsv([
-        ["Candidate", "Reference", "Email", "Status", "Score", "Maximum", "Percent", "Outcome", "Extension minutes", "Started", "Submitted"],
+        ["Candidate", "Reference", "Email", "Status", "Score", "Maximum", "Percent", "Outcome", "Publication", "Individual Result Link", "Extension minutes", "Started", "Submitted"],
         ...filtered.map((a) => {
           const pct = a.score != null && a.max_score ? round((Number(a.score) / Number(a.max_score)) * 100) : "";
+          const resultUrl = `${origin}/exam/result/${a.access_token}`;
           return [
-            a.exam_candidates?.full_name ?? "", a.exam_candidates?.candidate_ref ?? "", a.exam_candidates?.email ?? "",
-            a.status, a.score ?? "", a.max_score ?? "", pct, typeof pct === "number" ? (pct >= passMark ? "PASS" : "FAIL") : "PENDING",
-            a.extension_minutes, a.started_at, a.submitted_at ?? "",
+            a.exam_candidates?.full_name ?? "",
+            a.exam_candidates?.candidate_ref ?? "",
+            a.exam_candidates?.email ?? "",
+            a.status,
+            a.score ?? "",
+            a.max_score ?? "",
+            pct,
+            typeof pct === "number" ? (pct >= passMark ? "PASS" : "FAIL") : "PENDING",
+            published ? "Published" : "Withheld",
+            resultUrl,
+            a.extension_minutes,
+            a.started_at,
+            a.submitted_at ?? "",
           ];
         }),
       ])
@@ -111,9 +132,9 @@ export default async function ExaminationResultsPage({
   return (
     <>
       <PageTitle
-        eyebrow="Examinations · Validation & Candidate Publication"
-        title="Examination results"
-        subtitle="Validate marks and control candidate result publication. Until published, scores and worked solutions remain hidden from the candidate result API."
+        eyebrow="Examinations · Results Management & Candidate Links"
+        title="Results Management & Candidate Links"
+        subtitle="Validate scores, control candidate result publication, and copy or distribute individual candidate result links. Until published, scores and worked solutions remain strictly withheld."
         action={selected ? <div className="flex flex-wrap gap-2"><ExportButton filename={`exam-results-${selected.id}.csv`} csv={csv} label="Export results (CSV / Excel)" /><PrintButton /></div> : undefined}
       />
 
@@ -149,19 +170,26 @@ export default async function ExaminationResultsPage({
             <StatCard label="Submitted attempts" value={attempts.filter((a) => a.status !== "in_progress").length} icon={<CheckCircle2 className="h-5 w-5" />} />
             <StatCard label="Average score" value={percentages.length ? `${round(percentages.reduce((a, b) => a + b, 0) / percentages.length)}%` : "—"} icon={<Award className="h-5 w-5" />} />
             <StatCard label="Pass rate" value={scored.length ? `${round((passes / scored.length) * 100)}%` : "—"} hint={`${passes}/${scored.length} at ${passMark}%`} icon={<CheckCircle2 className="h-5 w-5" />} />
-            <StatCard label="Candidate visibility" value={published ? "Published" : "Hidden"} icon={<Eye className="h-5 w-5" />} />
+            <StatCard label="Candidate visibility" value={published ? "Published" : "Withheld"} icon={<Eye className="h-5 w-5" />} />
           </div>
 
           <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-evergreen-900/15 bg-paper p-4">
-            <Badge tone={published ? "green" : "amber"}>{published ? "Results visible to candidates" : "Results under review"}</Badge>
+            <Badge tone={published ? "green" : "amber"}>{published ? "Results Published (Visible to candidates)" : "Results Withheld (Hidden from candidates)"}</Badge>
             <form action={setExamResultsPublishedAsAdmin}>
               <input type="hidden" name="exam_id" value={selected.id} />
               <input type="hidden" name="published" value={published ? "0" : "1"} />
               <input type="hidden" name="back" value={back} />
-              <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish results" : "Validate & publish results"}</Button>
+              <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish all results" : "Validate & publish all results"}</Button>
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
             <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>
+            <form action={regradeExamAsAdmin}>
+              <input type="hidden" name="exam_id" value={selected.id} />
+              <input type="hidden" name="back" value={back} />
+              <Button type="submit" variant="outline" title="Re-evaluate all objective questions with mathematical equivalence rules">
+                Regrade examination
+              </Button>
+            </form>
             <MypExportButton format="pdf" scope="collective" query={`exam=${selected.id}`} label="Collective MYP PDF" compact />
             <MypExportButton format="xlsx" scope="collective" query={`exam=${selected.id}`} label="MYP Excel" compact />
             <form action={enterOrgWorkspace}>
@@ -171,32 +199,91 @@ export default async function ExaminationResultsPage({
             </form>
           </div>
 
-          <Section title={`Candidate results — ${selected.title}`}>
+          <Section
+            title={`Results Management & Candidate Links — ${selected.title}`}
+            hint="Each candidate link is unique and secure. Copy and provide the link to the student to check their verified report."
+          >
             {filtered.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No attempts match this outcome.</p>
             ) : (
               <>
-                <Table head={["Rank", "Candidate", "Attempt", "Score", "%", "Outcome", "Extension", "Submitted", "MYP"]}>
+                <Table head={["Rank", "Candidate Name & Identifier", "Attempt", "Submission Status", "Score", "%", "Publication", "Individual Result Link", "Actions"]}>
                   {filtered.slice((page - 1) * pageSize, page * pageSize).map((a, idx) => {
                     const i = (page - 1) * pageSize + idx;
                     const pct = a.score != null && a.max_score ? (Number(a.score) / Number(a.max_score)) * 100 : null;
+                    const candName = a.exam_candidates?.full_name ?? "Candidate";
+                    const candId = a.exam_candidates?.candidate_ref || a.exam_candidates?.email || (a.exam_candidates?.access_code ? `Code: ${a.exam_candidates.access_code}` : null);
+                    const resultUrl = `${origin}/exam/result/${a.access_token}`;
+
                     return (
                       <tr key={a.id}>
                         <td className="font-display font-bold">{pct === null ? "—" : i + 1}</td>
-                        <td><span className="font-medium">{a.exam_candidates?.full_name ?? "Candidate"}</span><span className="block text-xs text-ink-soft">{a.exam_candidates?.candidate_ref || a.exam_candidates?.email || ""}</span></td>
-                        <td><StatusBadge status={a.status} /></td>
-                        <td className="tabular-nums">{a.score != null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}</td>
-                        <td className="tabular-nums">{pct === null ? "—" : `${round(pct)}%`}</td>
-                        <td>{pct === null ? <Badge tone="gray">Pending</Badge> : <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge>}</td>
-                        <td>{Number(a.extension_minutes) > 0 ? `+${a.extension_minutes} min` : "—"}</td>
-                        <td className="text-ink-soft">{a.submitted_at ? fmtDateTime(a.submitted_at) : `Started ${fmtDateTime(a.started_at)}`}</td>
                         <td>
-                          <Link
-                            href={`/admin/myp-results/${a.id}`}
-                            className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2"
-                          >
-                            Report
-                          </Link>
+                          <span className="font-medium text-evergreen-950">{candName}</span>
+                          {candId && <span className="block text-xs text-ink-soft">{candId}</span>}
+                        </td>
+                        <td className="text-xs font-medium text-ink-soft">
+                          Attempt {a.attempt_number ?? 1}
+                        </td>
+                        <td>
+                          <StatusBadge status={a.status} />
+                          {a.submitted_at && (
+                            <span className="block text-[11px] text-ink-soft">
+                              {fmtDateTime(a.submitted_at)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="tabular-nums font-semibold text-evergreen-900">
+                          {a.score != null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}
+                        </td>
+                        <td className="tabular-nums font-medium">
+                          {pct === null ? "—" : `${round(pct)}%`}
+                        </td>
+                        <td>
+                          <Badge tone={published ? "green" : "amber"}>
+                            {published ? "Published" : "Withheld"}
+                          </Badge>
+                        </td>
+                        <td className="max-w-xs">
+                          <input
+                            type="text"
+                            readOnly
+                            value={resultUrl}
+                            className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
+                            title={resultUrl}
+                          />
+                        </td>
+                        <td>
+                          <div className="flex items-center gap-2">
+                            <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                            <Link
+                              href={`/exam/result/${a.access_token}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2"
+                            >
+                              View
+                            </Link>
+                            <Link
+                              href={`/admin/myp-results/${a.id}`}
+                              className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2"
+                            >
+                              MYP
+                            </Link>
+                            {a.status !== "in_progress" && (
+                              <form action={regradeAttemptAsAdmin} className="inline">
+                                <input type="hidden" name="attempt_id" value={a.id} />
+                                <input type="hidden" name="back" value={back} />
+                                <button
+                                  type="submit"
+                                  className="whitespace-nowrap text-xs font-semibold text-amber-800 underline underline-offset-2 hover:text-amber-900"
+                                  title="Idempotently regrade this attempt using the latest scoring engine"
+                                >
+                                  Regrade
+                                </button>
+                              </form>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

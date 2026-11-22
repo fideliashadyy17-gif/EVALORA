@@ -276,53 +276,212 @@ function evaluateArithmetic(expression: string): number | null {
   return index === tokens.length && result !== null && Number.isFinite(result) ? result : null;
 }
 
-/**
- * Numeric text a student typed, tolerating currency, units, comma decimals,
- * thousands separators, fractions, percentages, a leading label ("mean=21")
- * and worked arithmetic ("18+6=24" → 24). A value to the right of the last
- * "=" wins: the final line of working is the candidate's answer.
- */
-export function parseStudentNumber(raw: unknown): number | null {
-  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
-  if (typeof raw !== "string") return null;
-  let s = raw
-    .trim()
-    .toLowerCase()
-    .replace(/[−–—]/g, "-")
-    .replace(/[\u00a0\u202f\s]+/g, "")
-    .replace(/[$£€]/g, "");
-  if (!s) return null;
-  const equals = s.lastIndexOf("=");
-  if (equals >= 0) {
-    s = s.slice(equals + 1);
-    if (!s) return null;
+export interface NumericParseContext {
+  label?: string;
+  prompt?: string;
+  expected?: number;
+  tolerance?: number;
+}
+
+function parseSingleNumericToken(token: string): number | null {
+  if (!token) return null;
+  let s = token.trim();
+  // Strip currency
+  s = s.replace(/[$£€¥]/g, "").trim();
+
+  // Scientific notation: 2.5 x 10^4, 2.5 * 10^4, 1.5e3, 2.5 x 10^{-3}
+  const sciMatch = /^([+-]?\d+(?:\.\d+)?)\s*(?:[x*]|\s*\*\s*)\s*10\s*\^\s*\{?([+-]?\d+)\}?\s*([a-z°]+)?$/i.exec(s);
+  if (sciMatch) {
+    const base = Number(sciMatch[1]);
+    const exp = Number(sciMatch[2]);
+    if (Number.isFinite(base) && Number.isFinite(exp)) return base * Math.pow(10, exp);
   }
-  s = s.replace(/%$/, "");
-  if (!s) return null;
-  // A single comma followed by one or two digits is a decimal comma (8,75),
-  // not a thousands separator (1,250).
-  if (/^-?\d+,\d{1,2}$/.test(s)) s = s.replace(",", ".");
-  else s = s.replace(/,/g, "");
-  const frac = /^(-?\d+(?:\.\d+)?)\/(-?\d+(?:\.\d+)?)$/.exec(s);
+
+  // Fraction: 3/4, -1/2
+  const frac = /^([+-]?\d+(?:\.\d+)?)\s*\/\s*([+-]?\d+(?:\.\d+)?)\s*([a-z°]+)?$/i.exec(s);
   if (frac) {
+    const num = Number(frac[1]);
     const den = Number(frac[2]);
-    return den === 0 ? null : Number(frac[1]) / den;
+    if (den !== 0 && Number.isFinite(num) && Number.isFinite(den)) return num / den;
   }
-  // Strip a trailing unit made of letters (km/h, cm, students…) — keep digits.
-  s = s.replace(/[a-z/]+$/g, "");
+
+  // Mixed fraction: 1 1/2
+  const mixed = /^([+-]?\d+)\s+(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*([a-z°]+)?$/i.exec(s);
+  if (mixed) {
+    const whole = Number(mixed[1]);
+    const num = Number(mixed[2]);
+    const den = Number(mixed[3]);
+    if (den !== 0 && Number.isFinite(whole) && Number.isFinite(num) && Number.isFinite(den)) {
+      const sign = whole < 0 || Object.is(whole, -0) ? -1 : 1;
+      return whole + sign * (num / den);
+    }
+  }
+
+  // Strip trailing percent
+  s = s.replace(/%$/, "").trim();
+
+  // Decimal comma vs thousands comma
+  // If "8,75" (1 or 2 digits after single comma):
+  if (/^[+-]?\d+,\d{1,2}(?:\s*[a-z°]+)?$/i.test(s)) {
+    s = s.replace(",", ".");
+  } else {
+    // Thousands comma: "1,200", "10,000", "1,000,000"
+    s = s.replace(/,(?=\d{3})/g, "");
+  }
+
+  // Strip trailing unit letters: cm, kg, mm, hours, etc.
+  s = s.replace(/[a-zA-Z°]+$/g, "").trim();
+
+  // Try direct number (also covers 1.5e3)
   const direct = Number(s);
   if (Number.isFinite(direct) && s !== "") return direct;
-  // Worked working such as "18+6" or "4(25)+1". Ranges ("20-30") stay text.
+
+  // Worked arithmetic working
   if (/[+*/^]/.test(s)) return evaluateArithmetic(s);
+
+  return null;
+}
+
+/**
+ * Numeric text a student typed, tolerating currency, units, comma decimals,
+ * thousands separators, fractions, percentages, a leading label ("mean=21", "The minimum is 5")
+ * and worked arithmetic ("18+6=24" → 24).
+ * Supports context-aware multi-part extraction and strict anti-conflicting guards.
+ */
+export function parseStudentNumber(raw: unknown, context: NumericParseContext = {}): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw !== "string") return null;
+  let s = raw.trim();
+  if (!s) return null;
+
+  // Replace Unicode minus/dash characters
+  s = s.replace(/[\u2212\u2013\u2014]/g, "-");
+  // Normalize non-breaking spaces
+  s = s.replace(/[\u00a0\u202f]/g, " ");
+  // Normalize math multiplication signs
+  s = s.replace(/\\times/g, "x").replace(/[\u00d7\u22c5]/g, "*");
+
+  // Check for conflicting values with "or": e.g. "5 or 6"
+  if (/\b(?:or|ou)\b/i.test(s)) {
+    return null;
+  }
+
+  // Negative assertions: e.g. "12 is incorrect", "12 is wrong", "not 12", "12 n'est pas la réponse"
+  if (/\b(?:is\s+incorrect|is\s+wrong|is\s+not|not\s+[+-]?\d+|pas\s+[+-]?\d+|faux|incorrect|wrong|never)\b/i.test(s)) {
+    return null;
+  }
+
+  // Try direct single numeric token first
+  const direct = parseSingleNumericToken(s);
+  if (direct !== null) return direct;
+
+  // Check for labeled clauses or multiple expressions
+  const clauses = s.split(/(?:[;,]|\band\b|\bet\b|\n)+/).map((c) => c.trim()).filter(Boolean);
+  const parsedClauses: { label: string; valStr: string; value: number }[] = [];
+
+  for (const clause of clauses) {
+    const match = /^(.*?)(?:=|:|\bis\b|\bare\b|\bequals\b|\bvaut\b|\best\b)\s*([^=:].*)$/i.exec(clause);
+    if (match) {
+      const label = match[1].trim().toLowerCase();
+      const valStr = match[2].trim();
+      const equalsIdx = valStr.lastIndexOf("=");
+      const finalValStr = equalsIdx >= 0 ? valStr.slice(equalsIdx + 1).trim() : valStr;
+      const num = parseSingleNumericToken(finalValStr);
+      if (num !== null) {
+        parsedClauses.push({ label, valStr: finalValStr, value: num });
+      }
+    } else {
+      const num = parseSingleNumericToken(clause);
+      if (num !== null) {
+        parsedClauses.push({ label: "", valStr: clause, value: num });
+      } else {
+        const leadMatch = /^(?:the\s+)?([a-z_0-9]+)\s+([+-]?\d+(?:\.\d+)?.*)$/i.exec(clause);
+        if (leadMatch) {
+          const num2 = parseSingleNumericToken(leadMatch[2]);
+          if (num2 !== null) {
+            parsedClauses.push({ label: leadMatch[1].toLowerCase(), valStr: leadMatch[2], value: num2 });
+          }
+        }
+      }
+    }
+  }
+
+  if (parsedClauses.length === 1) {
+    return parsedClauses[0].value;
+  }
+
+  if (parsedClauses.length > 1) {
+    // Prioritize an explicit final answer label if present
+    const explicitFinal = parsedClauses.find((c) =>
+      /\b(?:final|answer|ans|result|total|therefore|donc)\b/i.test(c.label),
+    );
+    if (explicitFinal) {
+      return explicitFinal.value;
+    }
+
+    const ctxLabel = (context.label || "").toLowerCase().trim();
+    const ctxPrompt = (context.prompt || "").toLowerCase().trim();
+    const targetKey = ctxLabel || ctxPrompt;
+
+    if (targetKey) {
+      const best = parsedClauses.find((c) =>
+        (c.label && (targetKey.includes(c.label) || c.label.includes(targetKey))) ||
+        (c.label && (
+          (c.label.includes("med") && targetKey.includes("med")) ||
+          (c.label.includes("mode") && targetKey.includes("mode")) ||
+          (c.label.includes("mean") && targetKey.includes("mean")) ||
+          (c.label.includes("min") && targetKey.includes("min")) ||
+          (c.label.includes("max") && targetKey.includes("max")) ||
+          (c.label.includes("range") && targetKey.includes("range")) ||
+          (c.label.includes("iqr") && targetKey.includes("iqr")) ||
+          (c.label.includes("var") && targetKey.includes("var")) ||
+          (c.label.includes("std") && targetKey.includes("std")) ||
+          (c.label === "d" && targetKey.includes("d")) ||
+          (c.label.includes("u_10") && targetKey.includes("u_10")) ||
+          (c.label.includes("u10") && targetKey.includes("u10")) ||
+          (c.label.includes("u_6") && targetKey.includes("u_6")) ||
+          (c.label.includes("u6") && targetKey.includes("u6")) ||
+          (c.label.includes("u_1") && targetKey.includes("u_1")) ||
+          (c.label.includes("u1") && targetKey.includes("u1"))
+        )),
+      );
+      if (best) return best.value;
+    }
+
+    if (context.expected !== undefined && context.expected !== null) {
+      const tol = context.tolerance ?? 0;
+      const matchingExpected = parsedClauses.filter((c) => Math.abs(c.value - context.expected!) <= tol);
+      if (matchingExpected.length === 1) {
+        return matchingExpected[0].value;
+      }
+    }
+
+    // Conflicting multiple values without context match
+    return null;
+  }
+
+  // Fallback: if there is exactly one isolated number in the string
+  const numberTokens = s.match(/[+-]?\d+(?:\.\d+)?/g);
+  if (numberTokens && numberTokens.length === 1) {
+    const val = Number(numberTokens[0]);
+    if (Number.isFinite(val)) return val;
+  }
+
   return null;
 }
 
 const normAnswerText = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
-/** Drop a leading "modal class =", "mean =" or "[label] =" from an answer. */
+/** Drop a leading "modal class =", "mean =", "answer:" or "[label] =" from an answer. */
 const stripAnswerLabel = (s: string): string => {
-  const match = /^[^=]{1,40}=\s*(.+)$/.exec(s.trim());
-  return match ? match[1].trim() : s.trim();
+  const trimmed = s.trim();
+  const eqMatch = /^[^=]{1,40}=\s*(.+)$/.exec(trimmed);
+  if (eqMatch) return eqMatch[1].trim();
+  const colonMatch = /^[a-zA-Z0-9_\s]{1,40}:\s*(.+)$/.exec(trimmed);
+  if (colonMatch) return colonMatch[1].trim();
+  const isMatch = /^(?:the\s+)?[a-zA-Z0-9_\s]{1,30}\s+(?:is|are|equals)\s+(.+)$/i.exec(trimmed);
+  if (isMatch) return isMatch[1].trim();
+  return trimmed;
 };
 
 const editDistanceAtMostOne = (a: string, b: string): boolean => {
@@ -358,6 +517,33 @@ export function spellingMatches(given: string, accepted: string): boolean {
   return differences === 1;
 }
 
+function evalAlgebraicExpr(expr: string, val: number): number | null {
+  let s = String(expr ?? "").trim().toLowerCase();
+  s = s.replace(/^[a-z][a-z0-9_]*=/, "");
+  s = s.replace(/[−–—]/g, "-").replace(/×/g, "*").replace(/÷/g, "/");
+  s = s.replace(/\s+/g, "");
+  s = s.replace(/[xntuabk]/g, `(${val})`);
+  s = s.replace(/(\d)\(/g, "$1*(").replace(/\)(\d)/g, ")*$1").replace(/\)\(/g, ")*(");
+  s = s.replace(/(\d)([a-z(])/g, "$1*$2");
+  return evaluateArithmetic(s);
+}
+
+export function algebraicEquivalent(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const testPoints = [2, 3, 5, -1, 0.5, 7];
+  let validEvals = 0;
+  for (const p of testPoints) {
+    const v1 = evalAlgebraicExpr(a, p);
+    const v2 = evalAlgebraicExpr(b, p);
+    if (v1 === null || v2 === null || !Number.isFinite(v1) || !Number.isFinite(v2)) {
+      continue;
+    }
+    if (Math.abs(v1 - v2) > 1e-6) return false;
+    validEvals++;
+  }
+  return validEvals >= 4;
+}
+
 /**
  * Written-answer equivalence used by every text-bearing question type:
  * case/spacing-insensitive exact match, a label-stripped variant
@@ -371,6 +557,8 @@ export function textAnswersMatch(given: string, accepted: string, options: { exp
   const a = normAnswerText(accepted);
   if (!g || !a) return false;
   if (g === a) return true;
+  // Conflicting choices with "or" should not match a single expected value
+  if (/\b(?:or|ou)\b/i.test(g) && !/\b(?:or|ou)\b/i.test(a)) return false;
   const gStripped = normAnswerText(stripAnswerLabel(g));
   const aStripped = normAnswerText(stripAnswerLabel(a));
   if (gStripped === aStripped) return true;
@@ -383,7 +571,10 @@ export function textAnswersMatch(given: string, accepted: string, options: { exp
     if (/%$/.test(gStripped) && !/%$/.test(aStripped) && Math.abs(gNumber / 100 - aNumber) < 1e-9) return true;
     if (/%$/.test(aStripped) && !/%$/.test(gStripped) && Math.abs(aNumber / 100 - gNumber) < 1e-9) return true;
   }
-  if (options.expression && canonicalExpression(g) === canonicalExpression(a)) return true;
+  if (options.expression) {
+    if (canonicalExpression(g) === canonicalExpression(a)) return true;
+    if (algebraicEquivalent(g, a)) return true;
+  }
   if (spellingMatches(gStripped, aStripped)) return true;
   // "1/2, 0.5, 4/8, 50%" is a list of equivalent values, not one value.
   if (/[,;]/.test(g)) {
@@ -410,11 +601,25 @@ export function scoreAssessParts(parts: AssessPart[], answer: unknown, maxOverri
     const given = payload[part.id];
     let correct = false;
     if (part.kind === "numeric") {
-      const got = parseStudentNumber(given);
-      correct = got !== null && part.answer !== undefined && Math.abs(got - part.answer) <= (part.tolerance ?? 0);
+      const got = parseStudentNumber(given, {
+        label: part.label,
+        prompt: part.prompt,
+        expected: part.answer,
+        tolerance: part.tolerance,
+      });
+      const tol = part.tolerance ?? 0;
+      correct = got !== null && part.answer !== undefined && (
+        Math.abs(got - part.answer) <= tol ||
+        (/%/.test(String(given ?? "")) && Math.abs(got / 100 - part.answer) <= tol) ||
+        (part.unit === "%" && Math.abs(got * 100 - part.answer) <= tol)
+      );
     } else if (part.kind === "expression") {
-      const got = typeof given === "string" ? canonicalExpression(given) : "";
-      correct = got.length > 0 && (part.accepted ?? []).some((a) => canonicalExpression(a) === got);
+      const rawGiven = typeof given === "string" ? given.trim() : "";
+      const got = canonicalExpression(rawGiven);
+      correct = got.length > 0 && (part.accepted ?? []).some((a) => {
+        if (canonicalExpression(a) === got) return true;
+        return algebraicEquivalent(rawGiven, a);
+      });
     } else if (part.keywords?.length) {
       // Keyword rubric: credit an accepted variant (or a single typo), or when
       // enough concept groups are present, so a correct justification in the

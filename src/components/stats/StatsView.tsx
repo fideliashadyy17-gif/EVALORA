@@ -164,9 +164,11 @@ export function StatsView({
 
   const empty = clean.chart === "bar_chart"
     ? clean.categories.filter((category) => category.label.trim() || category.value).length === 0
-    : grouped
-      ? !(clean.groups ?? []).some((group) => group.frequency > 0) || (clean.groups ?? []).length === 0
-      : clean.values.length === 0;
+    : clean.chart === "box_plot"
+      ? clean.values.length === 0 && !clean.fiveNumberSummary
+      : grouped
+        ? !(clean.groups ?? []).some((group) => group.frequency > 0) || (clean.groups ?? []).length === 0
+        : clean.values.length === 0;
   const computed = clean.chart === "bar_chart" ? null : statsSummary(clean.values);
 
   return (
@@ -217,6 +219,17 @@ export function StatsView({
             </li>
           ))}
           <li><span>n</span> <strong>{computed.count}</strong></li>
+        </ul>
+      )}
+
+      {summary && !grouped && clean.chart === "box_plot" && clean.fiveNumberSummary && (!computed || computed.count === 0) && (
+        <ul className="stats-summary" aria-label="Five-number summary">
+          <li><span>Min</span> <strong>{formatNumber(clean.fiveNumberSummary.min)}</strong></li>
+          <li><span>Q1</span> <strong>{formatNumber(clean.fiveNumberSummary.q1)}</strong></li>
+          <li><span>Median</span> <strong>{formatNumber(clean.fiveNumberSummary.median)}</strong></li>
+          <li><span>Q3</span> <strong>{formatNumber(clean.fiveNumberSummary.q3)}</strong></li>
+          <li><span>Max</span> <strong>{formatNumber(clean.fiveNumberSummary.max)}</strong></li>
+          <li><span>IQR</span> <strong>{formatNumber(clean.fiveNumberSummary.q3 - clean.fiveNumberSummary.q1)}</strong></li>
         </ul>
       )}
 

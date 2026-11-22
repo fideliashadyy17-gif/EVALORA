@@ -173,6 +173,46 @@ export default async function CreateExaminationPage({
                   </label>
                 </div>
 
+                <div className="rounded-2xl border border-evergreen-900/15 bg-paper p-4">
+                  <div className="flex items-start gap-3">
+                    <input
+                      type="checkbox"
+                      id="admin_lockdown_enabled"
+                      name="lockdown_enabled"
+                      className="mt-1 h-5 w-5 accent-evergreen-700"
+                    />
+                    <div>
+                      <label htmlFor="admin_lockdown_enabled" className="block text-sm font-semibold text-evergreen-950">
+                        Require EVALORA Secure Exam Application (Lockdown Mode)
+                      </label>
+                      <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+                        Optional per-examination setting. When enabled, student access via standard web browsers is
+                        denied. Students must enter via the verified EVALORA Secure Exam Application for Windows/desktop.
+                      </p>
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                          <input
+                            type="checkbox"
+                            name="lockdown_strict_multi_display"
+                            defaultChecked
+                            className="h-4 w-4 accent-evergreen-700"
+                          />
+                          Enforce single display (block multi-monitor)
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-medium text-evergreen-900">
+                          <input
+                            type="checkbox"
+                            name="lockdown_block_clipboard"
+                            defaultChecked
+                            className="h-4 w-4 accent-evergreen-700"
+                          />
+                          Strict clipboard isolation
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 <div className="flex flex-wrap items-center gap-3">
                   <Button type="submit" variant="gold" className="px-6 py-3">Create examination & register candidates →</Button>
                   <p className="text-xs text-ink-soft">A unique exam access code is generated automatically. Each candidate receives a separate personal code.</p>
