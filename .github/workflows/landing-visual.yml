@@ -1,0 +1,137 @@
+name: Landing page visual verification
+
+# Renders the public landing page in a real Chromium at desktop, tablet and
+# mobile widths and uploads the screenshots as a build artifact. This exists
+# because the public marketing surface is the one page every visitor sees, and
+# a passing TypeScript build cannot prove a layout does not overflow.
+on:
+  pull_request:
+    paths:
+      - "src/app/page.tsx"
+      - "src/app/globals.css"
+      - "src/components/site/**"
+      - "src/lib/landing.ts"
+      - "scripts/verify-landing.mjs"
+      - "scripts/verify-landing-html.mjs"
+      - ".github/workflows/landing-visual.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      CI: "1"
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      # The runner image already ships Chrome with all of its system libraries.
+      # Installing Playwright's own browser build is attempted first (it matches
+      # the driver), then we fall back to the pre-installed Chrome so a transient
+      # CDN problem never blocks verification.
+      - name: Locate a browser
+        run: |
+          set -e
+          npm i --no-save --no-audit --no-fund playwright@1.55.0
+          if npx playwright install chromium; then
+            echo "PLAYWRIGHT_BROWSER=installed" >> "$GITHUB_ENV"
+          else
+            echo "::warning::Playwright browser download failed; falling back to the runner's Google Chrome."
+            echo "PLAYWRIGHT_BROWSER=system" >> "$GITHUB_ENV"
+          fi
+          npx playwright --version
+
+      - name: Build (production)
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder' }}
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
+        run: |
+          if [ -z "${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}" ]; then
+            echo "::warning::Supabase secrets are not configured; the landing page renders its verified plan fallback."
+          fi
+          npm run build
+
+      - name: Start production server
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder' }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY || 'placeholder' }}
+          NEXT_PUBLIC_APP_URL: http://127.0.0.1:3100
+        run: |
+          nohup npx next start -p 3100 -H 127.0.0.1 > /tmp/next.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:3100/ > /dev/null; then echo "server ready"; exit 0; fi
+            sleep 2
+          done
+          echo "server did not start"; tail -40 /tmp/next.log; exit 1
+
+      - name: Capture screenshots and check layout
+        id: visual
+        env:
+          LANDING_URL: http://127.0.0.1:3100
+        run: |
+          set +e
+          node scripts/verify-landing.mjs 2>&1 | tee /tmp/visual.log
+          echo "visual_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          grep -E "^✓|^✗|PASS|FAIL" /tmp/visual.log >> "$GITHUB_STEP_SUMMARY" || true
+          exit 0
+
+      - name: Server-side checks (links, axe, structure)
+        id: html
+        run: |
+          set +e
+          npm i --no-save --no-audit --no-fund jsdom axe-core
+          node scripts/verify-landing-html.mjs > /tmp/html-check.log 2>&1
+          echo "html_exit=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/html-check.log
+          grep -E "^✗|PASS|FAIL" /tmp/html-check.log >> "$GITHUB_STEP_SUMMARY" || true
+          exit 0
+
+      # The step summary is the only channel that survives the artifact/log
+      # retention policy, so the verdict and the failing checks are written
+      # there explicitly as annotations too.
+      - name: Report result
+        run: |
+          VISUAL="${{ steps.visual.outputs.visual_exit }}"
+          HTML="${{ steps.html.outputs.html_exit }}"
+          {
+            echo "### Landing verification"
+            echo ""
+            echo "| Check | Exit |"
+            echo "| --- | --- |"
+            echo "| Browser (screenshots, layout, interaction) | ${VISUAL} |"
+            echo "| Server-side (links, axe, structure) | ${HTML} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$VISUAL" != "0" ]; then
+            for f in verification/report.md /tmp/visual.log; do
+              [ -f "$f" ] && { echo "::error file=verification/report.md::$(grep -c '^✗' "$f" 2>/dev/null || echo 0) browser check(s) failed"; }
+            done
+          fi
+          if [ "$VISUAL" != "0" ] || [ "$HTML" != "0" ]; then
+            echo "Landing verification failed — open the job summary and the landing-screenshots artifact for the full report." >&2
+            exit 1
+          fi
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: landing-screenshots
+          path: verification/
+          if-no-files-found: warn
+          retention-days: 14

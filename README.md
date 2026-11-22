@@ -55,6 +55,7 @@ Apply the database schema from `supabase/migrations/` to your Supabase project
 - [`docs/INFRASTRUCTURE.md`](docs/INFRASTRUCTURE.md) — free-tier limits, cost model, scaling path
 - [`docs/TESTING.md`](docs/TESTING.md) — test strategy and load-test plan
 - [`docs/PHASE_REPORT.md`](docs/PHASE_REPORT.md) — what was built, phase by phase, and what remains
+- [`docs/LANDING_PAGE.md`](docs/LANDING_PAGE.md) — the public landing page: verified feature inventory, design system, accessibility and verification
 
 ## Brand
 
