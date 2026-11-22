@@ -47,8 +47,8 @@ export function performMathInsertion(
   ins: PlainMathInsertion,
 ): PerformInsertionResult {
   const len = currentValue.length;
-  let start = Math.max(0, Math.min(selection.start, len));
-  let end = Math.max(start, Math.min(selection.end, len));
+  const start = Math.max(0, Math.min(selection.start, len));
+  const end = Math.max(start, Math.min(selection.end, len));
 
   const hasSelection = start < end;
   const selectedText = hasSelection ? currentValue.slice(start, end) : "";

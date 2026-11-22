@@ -36,12 +36,10 @@ import { buildLockdownLaunchUrl, type ExamLockdownSettings } from "@/lib/lockdow
 import { isSecureBrowserEnvironment, persistSecureBrowserState } from "@/lib/lockdownClient";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ExamMessenger } from "./ExamMessenger";
-import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
 import { FormulaPanel } from "./FormulaPanel";
 import { DraggableFloatingMathKeyboard } from "@/components/DraggableFloatingMathKeyboard";
 import { MathInputProvider } from "@/components/math-input/MathInputContext";
-import { mathInputManager } from "@/lib/mathInputManager";
 import type { FormulaSheet } from "@/lib/examFormulas";
 import { PresenceRail } from "@/components/PresenceRail";
 import { DEFAULT_EXAM_EXPERIENCE, type ExamExperience } from "@/lib/examExperience";

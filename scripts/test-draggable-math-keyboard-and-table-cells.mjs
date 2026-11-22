@@ -14,14 +14,12 @@ import { mathInputManager } from "../src/lib/mathInputManager.ts";
 import {
   performMathInsertion,
   handleTemplateSlotKeyDown,
-  restoreInputSelection,
 } from "../src/lib/mathInputOperations.ts";
 import {
   MATH_CATEGORIES,
 } from "../src/components/editor/mathKeyboard.ts";
 import {
   plainInsertionForKey,
-  matrixInsertion,
 } from "../src/components/editor/plainMathKeyboard.ts";
 
 function test(name, fn) {
