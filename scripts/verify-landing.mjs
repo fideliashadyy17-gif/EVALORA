@@ -31,7 +31,14 @@ const record = (ok, label, detail = "") => {
   const line = `${ok ? "✓" : "✗"} ${label}${detail ? ` — ${detail}` : ""}`;
   console.log(line);
   note(line);
-  if (!ok) failures.push(label + (detail ? ` (${detail})` : ""));
+  if (!ok) {
+    failures.push(label + (detail ? ` (${detail})` : ""));
+    // GitHub turns this into a check-run annotation, which survives the log and
+    // artifact retention limits and is readable through the API.
+    if (process.env.GITHUB_ACTIONS) {
+      console.log(`::error title=Landing check failed::${label}${detail ? ` — ${detail}` : ""}`);
+    }
+  }
 };
 
 mkdirSync(OUT, { recursive: true });
