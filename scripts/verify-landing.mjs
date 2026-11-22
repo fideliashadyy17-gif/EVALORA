@@ -150,10 +150,34 @@ record(menuVisible, "mobile menu opens");
 await page.keyboard.press("Escape");
 record(!(await page.locator("#lp-mobile-menu a").first().isVisible()), "Escape closes the mobile menu");
 
-// Keyboard: tab from the top reaches the skip link, then the logo/nav
-await page.keyboard.press("Tab");
-const firstFocus = await page.evaluate(() => document.activeElement?.textContent?.trim() ?? "");
-record(/Skip to main content/.test(firstFocus), "first Tab reaches the skip link", firstFocus);
+// Keyboard: a fresh page, so focus really starts at the document root.
+// (Clicking the mobile menu above leaves focus on that button; pressing Tab
+// from there correctly moves on, which is not what this check is about.)
+const kbPage = await context.newPage();
+await kbPage.setViewportSize({ width: 1440, height: 900 });
+await kbPage.goto(BASE + "/", { waitUntil: "load" });
+await kbPage.waitForTimeout(400);
+await kbPage.keyboard.press("Tab");
+const firstFocus = await kbPage.evaluate(() => {
+  const el = document.activeElement;
+  const rect = el?.getBoundingClientRect();
+  return {
+    text: el?.textContent?.trim() ?? "",
+    onScreen: Boolean(rect && rect.top >= -1 && rect.bottom <= window.innerHeight + 1),
+    href: el?.getAttribute?.("href") ?? "",
+  };
+});
+record(/Skip to main content/i.test(firstFocus.text), "first Tab reaches the skip link", firstFocus.text);
+record(firstFocus.onScreen, "the skip link is visible while focused", `top/visible=${firstFocus.onScreen}`);
+record(firstFocus.href === "#main-content", "the skip link targets the main landmark", firstFocus.href);
+await kbPage.keyboard.press("Enter");
+await kbPage.waitForTimeout(200);
+const movedIntoMain = await kbPage.evaluate(() => {
+  const main = document.getElementById("main-content");
+  return Boolean(main) && (document.activeElement === main || main.contains(document.activeElement) || location.hash === "#main-content");
+});
+record(movedIntoMain, "activating the skip link moves to the main content");
+await kbPage.close();
 
 /* ── 3. Reduced-motion users are not left with hidden content ──────────── */
 const reduced = await browser.newContext({ reducedMotion: "reduce" });
