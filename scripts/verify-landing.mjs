@@ -34,7 +34,19 @@ const record = (ok, label, detail = "") => {
 
 mkdirSync(OUT, { recursive: true });
 
-const browser = await chromium.launch();
+/**
+ * Prefer Playwright's downloaded Chromium; fall back to a system Chrome so the
+ * check still runs on a runner where the browser CDN was unreachable.
+ */
+const launchOptions = {};
+if (process.env.CHROME_PATH) launchOptions.executablePath = process.env.CHROME_PATH;
+let browser;
+try {
+  browser = await chromium.launch(launchOptions);
+} catch (error) {
+  console.warn(`Could not launch Chromium (${error.message}). Trying the system Chrome channel.`);
+  browser = await chromium.launch({ channel: "chrome", ...launchOptions });
+}
 const context = await browser.newContext({ deviceScaleFactor: 1 });
 const consoleErrors = [];
 context.on("console", (msg) => {
