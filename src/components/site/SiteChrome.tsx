@@ -156,7 +156,7 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-12 flex flex-wrap items-center justify-between gap-3 border-t border-white/15 pt-6 text-xs text-evergreen-200">
-          <span>© {new Date().getFullYear()} {BRAND.name}. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} {BRAND.name} · Power by M. SADIKOU. All rights reserved.</span>
           <span>Server-authoritative timing · Tenant-isolated data · Human-reviewed proctoring</span>
         </div>
       </div>

@@ -49,7 +49,7 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
+  exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; logo_url?: string | null; organization_name?: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null; lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -1047,6 +1047,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   const pct = attempt.score !== null && attempt.max_score ? (attempt.score / attempt.max_score) * 100 : null;
 
+  const examLogo =
+    exam.logo_url ??
+    (exam.id === "ce000000-0000-4000-8000-000000000002" ||
+    exam.id === "cd000000-0000-4000-8000-000000000002" ||
+    exam.title.includes("Version C") ||
+    exam.title.includes("MYP 5 (Grade 10)") ||
+    exam.title.includes("MYP 4 (Grade 9)")
+      ? "/brand/oak-logo.png"
+      : null);
+
   const examBody = (
     <div
       lang={paperLanguage}
@@ -1082,7 +1092,23 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       )}
       <header className="exam-header sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
         <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <Logo href={null} iconOnly />
+          <div className="flex items-center gap-2">
+            <Logo href={null} iconOnly />
+            <span className="hidden lg:inline-block text-[10px] font-semibold tracking-wide text-ink-soft/75 border-l border-evergreen-900/15 pl-2">
+              Power by M. SADIKOU
+            </span>
+          </div>
+
+          {examLogo && (
+            <div className="flex items-center gap-2 shrink-0 border-l border-evergreen-900/15 pl-3" data-testid="exam-school-logo-header">
+              <img
+                src={examLogo}
+                alt={exam.organization_name || "Oak International School"}
+                className="h-8 sm:h-9 w-auto max-w-[130px] object-contain"
+              />
+            </div>
+          )}
+
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
@@ -1299,6 +1325,37 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </aside>
 
         <section>
+          {examLogo && (
+            <div
+              className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-evergreen-900/15 bg-cream/80 px-4 py-3 shadow-sm"
+              data-testid="exam-school-banner"
+            >
+              <div className="flex items-center gap-3.5">
+                <img
+                  src={examLogo}
+                  alt={exam.organization_name || "Oak International School"}
+                  className="h-10 sm:h-12 w-auto object-contain"
+                />
+                <div>
+                  <p className="font-display text-sm font-bold text-evergreen-950 sm:text-base">
+                    {exam.organization_name || "Oak International School"}
+                  </p>
+                  <p className="text-xs font-medium text-ink-soft">
+                    Official Examination · {exam.title}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-evergreen-100 px-2.5 py-0.5 text-[11px] font-semibold text-evergreen-900">
+                  Official Paper
+                </span>
+                <span className="hidden sm:inline-block text-[10px] font-semibold text-ink-soft">
+                  Power by M. SADIKOU
+                </span>
+              </div>
+            </div>
+          )}
+
           {warning && (
             <div
               role="alert"
@@ -1542,6 +1599,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               </Card>
             </div>
           )}
+
+          <footer className="mt-8 border-t border-evergreen-900/10 pt-4 text-center text-xs text-ink-soft print:hidden">
+            <p>EVALORA Assessment Platform · Power by M. SADIKOU</p>
+          </footer>
         </section>
       </main>
     </div>
@@ -1581,7 +1642,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-cream px-4 py-10 text-center">
-      <Logo className="mb-6" />
+      <Logo className="mb-2" />
+      <p className="mb-6 text-[11px] font-semibold text-ink-soft">Power by M. SADIKOU</p>
       <Card className="w-full max-w-md p-7">{children}</Card>
     </div>
   );

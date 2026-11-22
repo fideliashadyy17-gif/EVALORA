@@ -256,7 +256,7 @@ export default async function StudentWorkspace() {
     )}
 
       <footer className="student-footer mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-evergreen-900/15 pt-5 text-sm">
-        <p className="text-ink-soft">Need help? Contact your institution for examination codes and instructions.</p>
+        <p className="text-ink-soft">Need help? Contact your institution for examination codes and instructions. · <span className="font-medium text-evergreen-900">EVALORA · Power by M. SADIKOU</span></p>
         <div className="flex flex-wrap items-center gap-4">
           {ctx.memberships.length > 1 && !ctx.tenantSlug && <Link href="/workspaces" className="font-semibold text-evergreen-800 underline underline-offset-4">Switch workspace</Link>}
           <SignOutButton />

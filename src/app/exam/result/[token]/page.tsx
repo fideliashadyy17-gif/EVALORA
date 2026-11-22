@@ -508,7 +508,7 @@ export default async function ExamResultTokenPage({
         )}
 
         <footer className="mt-8 text-center text-xs text-ink-soft">
-          EVALORA Examination Platform · Secure Assessment &amp; Reporting
+          EVALORA Examination Platform · Secure Assessment &amp; Reporting · Power by M. SADIKOU
         </footer>
       </div>
     </main>

@@ -8,6 +8,8 @@ export const BRAND = {
   description:
     "EVALORA is the integrated platform for interactive quizzes, academic assessments, examinations and live video proctoring — built for schools, universities, training centers and examination organizations.",
   supportEmail: "support@evalora.app",
+  creator: "M. SADIKOU",
+  poweredBy: "Power by M. SADIKOU",
   logo: {
     icon: "/brand/evalora-icon.svg",
     horizontalLight: "/brand/evalora-logo-light.svg",

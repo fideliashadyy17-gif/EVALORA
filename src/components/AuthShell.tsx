@@ -43,7 +43,7 @@ export function AuthShell({
           </Card>
           {footer && <div className="mt-5 text-center text-sm text-ink-soft">{footer}</div>}
           <p className="mt-6 text-center text-xs text-ink-soft">
-            Protected by server-side authorization · <Link href="/privacy" className="font-medium underline underline-offset-2">Privacy</Link>
+            Protected by server-side authorization · Power by M. SADIKOU · <Link href="/privacy" className="font-medium underline underline-offset-2">Privacy</Link>
           </p>
         </div>
       </div>

@@ -194,6 +194,21 @@ export async function GET(request: Request) {
       .join("\n"),
   );
 
+  const { data: orgData } = exam.organization_id
+    ? await admin.from("organizations").select("name, logo_url").eq("id", exam.organization_id).maybeSingle()
+    : { data: null };
+
+  const examLogoUrl =
+    (settings.logo_url as string | null) ??
+    orgData?.logo_url ??
+    (exam.organization_id === "0a400000-0000-4000-8000-000000000001" ||
+    exam.id === "ce000000-0000-4000-8000-000000000002" ||
+    exam.id === "cd000000-0000-4000-8000-000000000002" ||
+    exam.title?.includes("Version C") ||
+    orgData?.name === "Oak International School"
+      ? "/brand/oak-logo.png"
+      : null);
+
   return NextResponse.json({
     server_now: new Date(nowMs).toISOString(),
     exam: {
@@ -203,6 +218,8 @@ export async function GET(request: Request) {
       title: exam.title,
       description: exam.description,
       instructions: exam.instructions,
+      logo_url: examLogoUrl,
+      organization_name: orgData?.name ?? (examLogoUrl ? "Oak International School" : null),
       proctoring: Boolean(settings.proctoring),
       require_screen_share: Boolean(settings.require_screen_share),
       pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
