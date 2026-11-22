@@ -39,6 +39,9 @@ import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
 import { FormulaPanel } from "./FormulaPanel";
+import { MathKeyboardPanel } from "@/components/MathKeyboardPanel";
+import { MathInputProvider } from "@/components/math-input/MathInputContext";
+import { mathInputManager } from "@/lib/mathInputManager";
 import type { FormulaSheet } from "@/lib/examFormulas";
 import { PresenceRail } from "@/components/PresenceRail";
 import { DEFAULT_EXAM_EXPERIENCE, type ExamExperience } from "@/lib/examExperience";
@@ -258,6 +261,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   // deadline or the timer, and it is only offered when this examination has a
   // sheet that validates as its own.
   const [formulasOpen, setFormulasOpen] = useState(false);
+  const [mathPaletteOpen, setMathPaletteOpen] = useState(false);
   // Integrity: the browser reports what it can observe (tab hidden, focus lost,
   // full-screen exit, clipboard use); the server records it and owns the count.
   const [warning, setWarning] = useState<IntegrityWarning | null>(null);
@@ -1121,6 +1125,19 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   Formulas
                 </Button>
               )}
+              <Button
+                variant="outline"
+                className="text-xs"
+                aria-expanded={mathPaletteOpen}
+                data-testid="header-math-palette-button"
+                onMouseDown={(e) => e.preventDefault()}
+                onTouchStart={(e) => e.preventDefault()}
+                onClick={() => setMathPaletteOpen((open) => !open)}
+                title="Open platform mathematical keyboard"
+              >
+                <Sigma className="mr-1 h-4 w-4 text-evergreen-700" aria-hidden="true" />
+                Math keyboard
+              </Button>
               <ExamCountdown
                 deadline={attempt.deadline}
                 serverOffsetMs={offset.current}
@@ -1469,27 +1486,29 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 </button>
               </div>
 
-              <QuestionRunner
-                key={`${current.question_id}-${runnerVersion}`}
-                question={current}
-                initial={current.saved_answer}
-                disabled={submitting || manualPause.paused}
-                submitLabel="Save answer"
-                autosave
-                onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
-                onHintUse={(partId, level) => {
-                  if (!token) return;
-                  void fetch("/api/exam/hint/usage", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify({ attempt_id: attemptId, question_id: current.question_id, part_id: partId, level }),
-                  }).catch(() => { /* best-effort formative record */ });
-                }}
-                onDirtyChange={setAnswerDirty}
-                markings={currentMarkings}
-                experience={experience}
-                displayQuestionNumber={index + 1}
-              />
+              <MathInputProvider currentQuestionId={current?.question_id}>
+                <QuestionRunner
+                  key={`${current.question_id}-${runnerVersion}`}
+                  question={current}
+                  initial={current.saved_answer}
+                  disabled={submitting || manualPause.paused}
+                  submitLabel="Save answer"
+                  autosave
+                  onAnswer={(payload) => save(current.question_id, current.quiz_question_id, payload)}
+                  onHintUse={(partId, level) => {
+                    if (!token) return;
+                    void fetch("/api/exam/hint/usage", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                      body: JSON.stringify({ attempt_id: attemptId, question_id: current.question_id, part_id: partId, level }),
+                    }).catch(() => { /* best-effort formative record */ });
+                  }}
+                  onDirtyChange={setAnswerDirty}
+                  markings={currentMarkings}
+                  experience={experience}
+                  displayQuestionNumber={index + 1}
+                />
+              </MathInputProvider>
 
               {answerDirty && <p role="status" className="mt-3 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">This answer has unsaved changes. Select Save answer before leaving or submitting.</p>}
               {answerDirty && <Button variant="outline" className="mt-2" disabled={submitting} onClick={() => {
@@ -1534,6 +1553,36 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       {examBody}
       {!submitted && formulasOpen && exam.formula_sheet ? (
         <FormulaPanel sheet={exam.formula_sheet} onClose={() => setFormulasOpen(false)} />
+      ) : null}
+      {!submitted && mathPaletteOpen ? (
+        <div
+          className="fixed bottom-4 right-4 z-50 w-[min(94vw,28rem)] max-w-full rounded-2xl border border-evergreen-900/25 bg-white p-3 shadow-2xl"
+          data-testid="header-math-palette-popover"
+        >
+          <div className="mb-2 flex items-center justify-between border-b border-evergreen-900/10 pb-1.5">
+            <span className="flex items-center gap-1.5 font-display text-xs font-semibold text-evergreen-950">
+              <Sigma className="h-4 w-4 text-evergreen-700" />
+              Mathematical symbol keyboard
+            </span>
+            <button
+              type="button"
+              className="rounded-md p-1 text-ink-soft hover:bg-cream hover:text-ink"
+              onClick={() => setMathPaletteOpen(false)}
+              aria-label="Close math keyboard"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+          <div className="max-h-[50vh] overflow-y-auto">
+            <MathKeyboardPanel
+              onInsert={(ins) => {
+                mathInputManager.insertIntoActive(ins, undefined, current?.question_id);
+              }}
+              variant="full"
+              label="Platform mathematical keyboard"
+            />
+          </div>
+        </div>
       ) : null}
       {token ? (
         <ExamMessenger

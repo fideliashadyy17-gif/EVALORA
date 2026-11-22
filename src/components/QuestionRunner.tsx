@@ -385,6 +385,8 @@ export function QuestionRunner({
                 disabled={disabled}
                 placeholder="Type your answer… (tap ∑ for math symbols)"
                 ariaLabel="Short answer"
+                questionId={question.question_id}
+                fieldId="short_answer"
                 floatingKeyboard={experience.premiumMathInterface}
                 onChange={(next) => { changed(); setText(next); }}
                 onCommit={() => text.trim() && emit({ text })}
@@ -394,27 +396,44 @@ export function QuestionRunner({
           </div>
         )}
 
-        {t === "numeric" && (
-          <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start">
-            <div className="min-w-0 flex-1">
-              {/* inputMode="decimal" (not type="number") so π, √ and fractions
-                  composed with the math keyboard stay visible and editable;
-                  the emitted payload is still the finite { value } number. */}
-              <MathAnswerInput
-                value={num}
-                disabled={disabled}
-                variant="numeric"
-                inputMode="decimal"
-                placeholder="Enter a number… (tap ∑ for π, √, fractions)"
-                ariaLabel="Numeric answer"
-                floatingKeyboard={experience.premiumMathInterface}
-                onChange={(next) => { changed(); setNum(next); }}
-                onCommit={() => num.trim() && Number.isFinite(parseFloat(num)) && emit({ value: parseFloat(num) })}
-              />
+        {t === "numeric" && (() => {
+          const parseNumeric = (raw: string): number | null => {
+            const s = raw.trim().replace(/[\u2212\u2013\u2014]/g, "-");
+            if (s.includes("/")) {
+              const parts = s.split("/").map((p) => p.trim());
+              if (parts.length === 2) {
+                const [n, d] = parts.map(Number);
+                if (Number.isFinite(n) && Number.isFinite(d) && d !== 0) return n / d;
+              }
+            }
+            const f = parseFloat(s);
+            return Number.isFinite(f) ? f : null;
+          };
+          const numericVal = parseNumeric(num);
+          return (
+            <div className="flex w-full flex-col gap-2 sm:flex-row sm:items-start">
+              <div className="min-w-0 flex-1">
+                {/* inputMode="decimal" (not type="number") so π, √ and fractions
+                    composed with the math keyboard stay visible and editable;
+                    the emitted payload is still the finite { value } number. */}
+                <MathAnswerInput
+                  value={num}
+                  disabled={disabled}
+                  variant="numeric"
+                  inputMode="decimal"
+                  placeholder="Enter a number… (tap ∑ for π, √, fractions)"
+                  ariaLabel="Numeric answer"
+                  questionId={question.question_id}
+                  fieldId="numeric"
+                  floatingKeyboard={experience.premiumMathInterface}
+                  onChange={(next) => { changed(); setNum(next); }}
+                  onCommit={() => numericVal !== null && emit({ value: numericVal })}
+                />
+              </div>
+              <Button className="shrink-0" disabled={disabled || numericVal === null} onClick={() => numericVal !== null && emit({ value: numericVal })}>{submitLabel}</Button>
             </div>
-            <Button className="shrink-0" disabled={disabled || !num.trim() || !Number.isFinite(parseFloat(num))} onClick={() => emit({ value: parseFloat(num) })}>{submitLabel}</Button>
-          </div>
-        )}
+          );
+        })()}
 
         {t === "ordering" && (
           <div>
@@ -675,6 +694,8 @@ export function QuestionRunner({
                       placeholder={part.placeholder ?? (part.kind === "expression" ? "Type your answer (use ^ for powers, e.g. n^2, or tap ∑)" : "Type your answer…")}
                       ariaLabel={`Answer for part ${part.label}`}
                       unit={part.unit}
+                      questionId={question.question_id}
+                      fieldId={part.id}
                       floatingKeyboard={experience.premiumMathInterface}
                       onChange={(next) => { changed(); setPartValues((v) => ({ ...v, [part.id]: next })); }}
                       onCommit={() => emit(hasWorkingWorkspace ? { parts: partValues, working: workingPartsRef.current } : { parts: partValues })}
