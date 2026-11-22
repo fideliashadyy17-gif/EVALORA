@@ -1,4 +1,4 @@
-import { activeOrg, getSessionContext } from "@/lib/auth";
+import { activeOrg, ADMIN_ORG_COOKIE, MEMBER_ORG_COOKIE, getSessionContext } from "@/lib/auth";
 import { postAuthDestination } from "@/lib/roleRouting";
 import { NextResponse } from "next/server";
 
@@ -19,5 +19,10 @@ export async function GET(request: Request) {
       needsSelection: (ctx.memberships.length > 1 && !ctx.workspaceSelected) || (ctx.memberships.length > 0 && !org && !ctx.tenantDenied),
     }, url.searchParams.get("next"));
   }
-  return NextResponse.redirect(new URL(destination, url.origin), { headers: { "Cache-Control": "private, no-store" } });
+  const res = NextResponse.redirect(new URL(destination, url.origin), { headers: { "Cache-Control": "private, no-store" } });
+  if (ctx?.profile.platform_role === "super_admin" && !url.searchParams.get("next")?.startsWith("/dashboard")) {
+    res.cookies?.delete(ADMIN_ORG_COOKIE);
+    res.cookies?.delete(MEMBER_ORG_COOKIE);
+  }
+  return res;
 }

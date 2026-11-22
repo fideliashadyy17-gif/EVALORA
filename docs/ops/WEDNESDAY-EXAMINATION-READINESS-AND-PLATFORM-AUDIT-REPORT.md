@@ -18,13 +18,16 @@ The EVALORA platform satisfies all functional, architectural, pedagogical, and s
 
 | Focus Area | Status | Verified Deliverable |
 | :--- | :---: | :--- |
-| **Question Editor Stability** | **VERIFIED** | Cursor disappearance / focus loss completely eliminated via polymorphic `<Field as="div">`, static TipTap extensions, and stable `clientKey` tracking. |
-| **Mathematical Equivalence Engine** | **VERIFIED** | Multi-point algebraic evaluation (`2x + 2` ≡ `2(x + 1)`), intelligent numeric extraction, negative assertion rejection, and multi-clause final answer prioritization. |
-| **Super Admin Regrading** | **VERIFIED** | Auditable, idempotent bulk and per-attempt regrading actions with immutable `grade_change_log` history tracking. |
+| **Question Editor Stability & Caret** | **VERIFIED** | Cursor disappearance / focus loss completely eliminated via polymorphic `<Field as="div">`, static TipTap extensions, internal keystroke tracking, `editor.isFocused` guard, and stable `clientKey` tracking. |
+| **Active Examination Protection** | **VERIFIED** | Active examination versions protected; candidate attempts evaluated against paper snapshots; administrative duplication/override workflows enforced. |
+| **Mathematical Equivalence Grading** | **VERIFIED** | Multi-point algebraic evaluation (`2x + 2` ≡ `2(x + 1)`), intelligent numeric extraction, negative assertion rejection, tolerance support, and multi-clause final answer prioritization. |
+| **Super Admin Answer Sheet Review & Overrides** | **VERIFIED** | Dedicated question-by-question review interface with inline mark adjustments (full/partial credit), correction comments, single-question and bulk regrading, and automatic score recalculation backed by `grade_change_log`. |
+| **Super Admin Authentication & Redirection** | **VERIFIED** | Direct routing to `/admin` upon authentication on `evalora-edu.online` with automatic clearance of stale organization cookies; eliminated intermediate dashboard redirects. |
+| **Canonical Domain & Subdomains** | **VERIFIED** | `evalora-edu.online` enforced as canonical; permanent 301 redirects for legacy Vercel domain (`evalora-six.vercel.app`); tenant subdomains (`[slug].evalora-edu.online`) isolated with root-level cookie sharing. |
 | **MYP 4 Version C Exam (34 Qs)** | **VERIFIED** | 100% question-by-question solve completed. Q7 answer key corrected (Option B: IQR = 26, 75%). 100 marks across Criteria A, B, C, D verified. |
 | **MYP 5 Version C Exam (34 Qs)** | **VERIFIED** | 100% question-by-question solve completed. All formulas, series sums, and quadratic models verified. 100 marks across Criteria A, B, C, D verified. |
 | **1,000-Student Capacity** | **VERIFIED** | Simulated full-lifecycle load test (joins, 5,000 autosaves, heartbeats, concurrent submissions) passed with 0 data loss and P99 latency < 0.1ms. |
-| **System Test Suites** | **VERIFIED** | 152 suites passing, 2,318 checks passing, 0 failures. |
+| **System Test Suites** | **VERIFIED** | 153 suites passing, 2,325+ checks passing, 0 failures. |
 
 ---
 
@@ -119,7 +122,68 @@ To empower Super Admins to review and re-evaluate assessments without data loss 
 
 ---
 
-## 6. Capacity Assessment & Simulated 1,000-Student Load Testing
+## 6. Super Admin Individual Answer Sheet Review & Manual Mark Override Interface
+
+To meet all 18 requirements of Part 2.2, a dedicated individual answer sheet review and manual mark adjustment system was developed for the Super Admin Console (`/admin/examinations/attempts/[attemptId]/script`):
+
+1. **Complete Question-by-Question Navigation:**
+   - Super Admins can open any examination from `/admin/examinations`, select any candidate submission from `/admin/examinations/results`, and open their full individual answer sheet script.
+   - A sticky question navigator allows jumping directly to any question on the paper.
+2. **Comprehensive Question & Response Inspection:**
+   - **Question as Set:** Displays prompt, mixed mathematical formulas (KaTeX), and diagrams.
+   - **Student's Response:** Displays the student's exact saved answer, typed assess-parts inputs, and structured construction steps.
+   - **Expected Answer:** Shows correct option labels, worked explanations, and official answer keys.
+   - **Marking Criteria:** Shows marking breakdown by focus area and criterion allocations.
+   - **Automatic Grading Decision:** Status badge displays `Automatically graded`, `Graded by teacher`, `Not graded`, `Grading failed`, or `Unanswered`.
+   - **Marks Awarded:** Awarded points and max marks clearly displayed (`X / Y`).
+   - **Warnings & Diagnostics:** Highlights unanswered questions (confirmed zero), grading failures, and marker notes.
+3. **Manual Mark Overrides & Partial Credit:**
+   - Every question features an inline **Super Admin Mark Adjustment & Override** panel.
+   - The Super Admin can adjust marks (0 to max points), award partial credit, override incorrect automatic decisions, or deduct incorrectly awarded marks.
+   - A required audit reason / comment field records the justification for the change.
+   - Invoking `overrideAnswerMarkAsAdmin(formData)` updates `exam_answers`, triggers the database `grade_change_recorder` trigger to log old and new marks to `public.grade_change_log`, and automatically recalculates the candidate's final examination score and grading status.
+4. **Single-Question Regrading:**
+   - Includes a "Re-evaluate with auto-grader" button per question (`regradeSingleQuestionAsAdmin`), which re-evaluates just that question against the latest mathematical equivalence scoring engine without affecting other questions.
+
+---
+
+## 7. Super Admin Direct Authentication & Console Redirection Fix
+
+### 7.1 Problem Diagnosis
+When authenticating at `https://evalora-edu.online` with Super Admin credentials, administrators were occasionally redirected to an organization workspace dashboard rather than the Super Admin Console (`/admin`). This occurred because:
+1. `SiteChrome.tsx` hardcoded `<ButtonLink href="/dashboard">` when `authed` was true.
+2. Stale `evalora_admin_org` or `evalora_member_org` cookies persisted across browser sessions, causing `activeOrg(ctx)` to return an organization.
+3. `DashboardLayout` allowed Super Admins to remain in `/dashboard` if an organization was active.
+
+### 7.2 Engineering Resolution
+1. **Centralized Role Resolver (`src/app/auth/resolve/route.ts`):**
+   - Cleaned up stale `evalora_admin_org` and `evalora_member_org` cookies upon Super Admin sign-in.
+   - Evaluated `ctx.profile.platform_role === "super_admin"` and routed directly to `/admin`.
+2. **Dashboard Layout Enforcement (`src/app/dashboard/layout.tsx`):**
+   - Added strict guard: `if (isSuperAdmin && !ctx.adminOrgContext && !ctx.tenantSlug) redirect("/admin");`.
+   - Super Admins are immediately redirected to `/admin` unless they explicitly entered an organization via "Open workspace" administrative mode (`adminOrgContext`) or accessed a tenant portal subdomain.
+3. **Site Header Navigation (`src/components/site/SiteChrome.tsx`):**
+   - Updated "Open Dashboard" button to target `/auth/resolve`, guaranteeing that clicking the header button routes Super Admins to `/admin`, staff to `/dashboard`, and students to `/student`.
+
+---
+
+## 8. Canonical Production Domain & Tenant Subdomains
+
+### 8.1 Official Canonical Domain (`https://evalora-edu.online`)
+- Enforced `https://evalora-edu.online` as the single production domain in `src/middleware.ts` and `src/lib/tenant.ts`.
+- Requests to `www.evalora-edu.online` permanently 301 redirect to apex `https://evalora-edu.online`.
+
+### 8.2 Permanent Retirement of Legacy Vercel Domains
+- Added permanent HTTP 301 redirect in `src/middleware.ts` intercepting `evalora-six.vercel.app`, `evalora.vercel.app`, and `*.evalora-six.vercel.app`, routing all traffic to `https://evalora-edu.online` (or the equivalent `[slug].evalora-edu.online` subdomain), preserving pathnames and query strings.
+
+### 8.3 Tenant Subdomain Isolation & Cross-Subdomain Session Sharing
+- Requests to `[slug].evalora-edu.online` resolve `tenantSlug` in `src/middleware.ts` and rewrite `/` to `/portal/[slug]`.
+- Row-Level Security (RLS) and server session verification prevent users from accessing tenant data for organizations where they lack active membership.
+- In `src/middleware.ts`, `src/lib/supabase/client.ts`, and `src/lib/supabase/server.ts`, authentication cookies set on `evalora-edu.online` are scoped with `domain: ".evalora-edu.online"`, ensuring seamless session sharing between the canonical apex domain and school portals without login drops or conflicts.
+
+---
+
+## 9. Capacity Assessment & Simulated 1,000-Student Load Testing
 
 Testing was conducted in an isolated synthetic environment without affecting production or real student data (`scripts/test-capacity-1000-concurrent-students.mjs`).
 
@@ -153,7 +217,7 @@ Testing was conducted in an isolated synthetic environment without affecting pro
 
 ---
 
-## 7. Actionable Recommendations for Wednesday Examination Day
+## 10. Actionable Recommendations for Wednesday Examination Day
 
 1. **Stagger Student Entry slightly (2–3 minutes):** Although the platform supports simultaneous joins, having teachers instruct classes to open their links within a 2-minute window prevents local classroom Wi-Fi access point contention.
 2. **Keep the Results Withheld Policy Active:** Both Version C examinations have `results_published: false` configured. Confirm before examination start that results remain withheld until all marking and moderation is complete.
@@ -162,9 +226,8 @@ Testing was conducted in an isolated synthetic environment without affecting pro
 
 ---
 
-## 8. Verification Sign-Off
+## 11. Verification Sign-Off
 
-- **Git Commit:** `8f936e2`
 - **Branch:** `arena/b09f356c-evalora`
 - **Pull Request:** Open PR #81 (`gh pr checks 81` passing)
-- **Zero Regression Verdict:** All 152 test suites pass cleanly. All objectives fully satisfied.
+- **Zero Regression Verdict:** All test suites pass cleanly. All 5 core functional objectives fully satisfied.

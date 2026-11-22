@@ -164,6 +164,7 @@ export function RichContentEditor({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const isInternalUpdateRef = useRef(false);
+  const lastEmittedRef = useRef<string>("");
 
   const openMathEditor = (pos: number, latex: string, display: boolean, toMode: Mode = "math") => {
     setEditingPos(pos);
@@ -200,8 +201,10 @@ export function RichContentEditor({
     content: initialDoc as never,
     editorProps,
     onUpdate: ({ editor }) => {
+      const json = editor.getJSON() as RichDoc;
+      lastEmittedRef.current = JSON.stringify(json);
       isInternalUpdateRef.current = true;
-      onChangeRef.current(editor.getJSON() as RichDoc);
+      onChangeRef.current(json);
     },
     onCreate: ({ editor }) => {
       const storage = editor.storage as unknown as Record<string, { onEditRequest?: unknown }>;
@@ -227,14 +230,20 @@ export function RichContentEditor({
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
+    // CRITICAL: NEVER overwrite or reset editor content while the user has focus / is typing!
+    if (editor.isFocused) return;
     if (isInternalUpdateRef.current) {
       isInternalUpdateRef.current = false;
       return;
     }
     if (!value) return;
+    const valueStr = JSON.stringify(value);
+    if (valueStr === lastEmittedRef.current) return;
     try {
       const current = editor.getJSON();
-      if (JSON.stringify(current) !== JSON.stringify(value)) {
+      const currentStr = JSON.stringify(current);
+      if (currentStr !== valueStr) {
+        lastEmittedRef.current = valueStr;
         editor.commands.setContent(value, false);
       }
     } catch {
@@ -680,8 +689,8 @@ export function RichContentEditor({
       {/* The mixed-content document — always visible and editable */}
       <div
         className="rce-editor"
-        onClick={(e) => {
-          if (e.target === e.currentTarget && editor && !editor.isFocused) {
+        onClick={() => {
+          if (editor && !editor.isFocused) {
             editor.commands.focus("end");
           }
         }}

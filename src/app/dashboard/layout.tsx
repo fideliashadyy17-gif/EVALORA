@@ -32,6 +32,13 @@ export default async function DashboardLayout({
     );
   }
 
+  // Super admins belong in the Super Admin Console (/admin) unless they are explicitly
+  // operating inside an organization via "Open workspace" (adminOrgContext) or viewing
+  // a specific tenant portal subdomain.
+  if (isSuperAdmin && !ctx.adminOrgContext && !ctx.tenantSlug) {
+    redirect("/admin");
+  }
+
   // Super admins may use the console without an organization.
   if (!org && !isSuperAdmin) redirect(ctx.memberships.length ? "/workspaces" : "/onboarding");
   if (!org) redirect("/admin");

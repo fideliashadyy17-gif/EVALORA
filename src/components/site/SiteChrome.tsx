@@ -45,7 +45,7 @@ export function SiteHeader() {
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
           {authed ? (
-            <ButtonLink href="/dashboard">Open Dashboard</ButtonLink>
+            <ButtonLink href="/auth/resolve">Open Console</ButtonLink>
           ) : (
             <>
               <ButtonLink href="/login" variant="ghost">Sign in</ButtonLink>
@@ -76,7 +76,7 @@ export function SiteHeader() {
             ))}
             <div className="mt-2 flex gap-2">
               {authed ? (
-                <ButtonLink href="/dashboard" className="flex-1">Open Dashboard</ButtonLink>
+                <ButtonLink href="/auth/resolve" className="flex-1">Open Console</ButtonLink>
               ) : (
                 <>
                   <ButtonLink href="/login" variant="outline" className="flex-1">Sign in</ButtonLink>

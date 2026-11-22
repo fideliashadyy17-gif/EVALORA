@@ -25,6 +25,7 @@ function createTimeoutFetch(timeoutMs = SUPABASE_SERVER_TIMEOUT_MS): typeof fetc
 
 export async function createClient() {
   const cookieStore = await cookies();
+  const root = process.env.NEXT_PUBLIC_ROOT_DOMAIN || "evalora-edu.online";
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -36,7 +37,12 @@ export async function createClient() {
         getAll: () => cookieStore.getAll(),
         setAll: (cookiesToSet) => {
           try {
-            cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options));
+            cookiesToSet.forEach(({ name, value, options }) => {
+              const mergedOptions = options?.domain?.includes(root)
+                ? options
+                : { ...options, path: "/", sameSite: "lax" as const };
+              cookieStore.set(name, value, mergedOptions);
+            });
           } catch {
             // Server Component render — cookie updates are best-effort outside Route Handlers / Server Actions.
           }

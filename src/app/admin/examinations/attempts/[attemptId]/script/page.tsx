@@ -7,8 +7,9 @@ import { loadExamScript, SCRIPT_STATUS_LABEL, type ScriptStatus } from "@/lib/ex
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
-import { regradeAttemptAsAdmin } from "../../../actions";
+import { overrideAnswerMarkAsAdmin, regradeAttemptAsAdmin, regradeSingleQuestionAsAdmin } from "../../../actions";
 
 export const metadata: Metadata = { title: "Complete examination script — platform" };
 export const dynamic = "force-dynamic";
@@ -303,6 +304,84 @@ export default async function ExaminationScriptPage({
                           </p>
                         </>
                       )}
+                    </div>
+                  </div>
+
+                  {/* Super Admin Individual Question Review, Manual Override & Regrading */}
+                  <div className="mt-5 rounded-xl border border-gold-500/40 bg-gold-50/40 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gold-900/10 pb-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-evergreen-950">
+                        Super Admin Mark Adjustment &amp; Override
+                      </span>
+                      <span className="text-xs text-ink-soft">
+                        Current: <strong>{question.awarded ?? 0}</strong> / {question.max} marks ({SCRIPT_STATUS_LABEL[question.status]})
+                      </span>
+                    </div>
+
+                    <form action={overrideAnswerMarkAsAdmin} className="mt-3 flex flex-wrap items-end gap-3">
+                      <input type="hidden" name="attempt_id" value={script.attempt.id} />
+                      <input type="hidden" name="question_id" value={question.questionId} />
+                      {question.answerId && <input type="hidden" name="answer_id" value={question.answerId} />}
+                      <input type="hidden" name="back" value={`/admin/examinations/attempts/${script.attempt.id}/script#question-${question.number}`} />
+
+                      <div className="w-28">
+                        <label htmlFor={`points-${question.number}`} className="block text-[11px] font-semibold text-evergreen-950">
+                          Marks (0–{question.max})
+                        </label>
+                        <input
+                          id={`points-${question.number}`}
+                          name="points"
+                          type="number"
+                          step="any"
+                          min="0"
+                          max={question.max}
+                          defaultValue={question.awarded ?? 0}
+                          required
+                          className="mt-1 block w-full rounded-lg border border-evergreen-900/20 bg-white px-2.5 py-1.5 text-sm font-semibold text-evergreen-950 focus:border-evergreen-600 focus:outline-none focus:ring-1 focus:ring-evergreen-600"
+                        />
+                      </div>
+
+                      <div className="min-w-[240px] flex-1">
+                        <label htmlFor={`reason-${question.number}`} className="block text-[11px] font-semibold text-evergreen-950">
+                          Correction reason / audit note
+                        </label>
+                        <input
+                          id={`reason-${question.number}`}
+                          name="reason"
+                          type="text"
+                          defaultValue={question.markerNote ?? ""}
+                          placeholder="e.g. Awarded partial credit; recognized equivalent form; corrected auto-grading"
+                          className="mt-1 block w-full rounded-lg border border-evergreen-900/20 bg-white px-3 py-1.5 text-xs text-ink focus:border-evergreen-600 focus:outline-none focus:ring-1 focus:ring-evergreen-600"
+                        />
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Button type="submit" variant="primary" className="py-1.5 text-xs">
+                          Save mark override
+                        </Button>
+                      </div>
+                    </form>
+
+                    <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2 border-t border-gold-900/10 pt-2 text-xs">
+                      <span className="text-[11px] text-ink-soft">
+                        Overrides are auditable, record original and revised marks, and automatically recalculate total attempt scores.
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <form action={regradeSingleQuestionAsAdmin} className="inline">
+                          <input type="hidden" name="attempt_id" value={script.attempt.id} />
+                          <input type="hidden" name="question_id" value={question.questionId} />
+                          <input type="hidden" name="back" value={`/admin/examinations/attempts/${script.attempt.id}/script#question-${question.number}`} />
+                          <Button type="submit" variant="outline" className="py-1 text-xs">
+                            Re-evaluate with auto-grader
+                          </Button>
+                        </form>
+                        <Link
+                          href={`/admin/questions/${question.questionId}`}
+                          className="font-medium text-evergreen-800 underline-offset-2 hover:underline"
+                        >
+                          View question in Studio →
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 </article>
