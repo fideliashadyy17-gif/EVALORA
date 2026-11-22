@@ -20,7 +20,7 @@ export function Logo({
     <span className={cn("inline-flex items-center gap-2.5", className)}>
       <Image
         src={BRAND.logo.icon}
-        alt={BRAND.name}
+        alt={iconOnly ? BRAND.name : ""}
         width={38}
         height={38}
         className="h-9 w-9 shrink-0 sm:h-10 sm:w-10"
@@ -48,8 +48,11 @@ export function Logo({
       )}
     </span>
   );
+  // The wordmark already provides the accessible name; an aria-label here
+  // would mask the visible text (WCAG 2.5.3 / axe label-content-name-mismatch).
+  // Only the icon-only mark needs an explicit name.
   return href ? (
-    <Link href={href} aria-label={BRAND.name}>
+    <Link href={href} aria-label={iconOnly ? BRAND.name : undefined}>
       {content}
     </Link>
   ) : (
