@@ -17,7 +17,7 @@ import { CopyResultLinkButton } from "./CopyResultLinkButton";
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
-  addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
+  addCandidate, addCandidatesBulk, addCandidatesFromClass, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
   pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamLockdown, updateWorkspaceExamAccess,
 } from "../actions";
 
@@ -56,7 +56,7 @@ export default async function ExamDetailPage({
   );
   const shareUrl = `${origin}${accessLink}`;
 
-  const [{ data: candidates }, { data: attempts }, { data: incidents }, { data: paperQuestions }] = await Promise.all([
+  const [{ data: candidates }, { data: attempts }, { data: incidents }, { data: paperQuestions }, { data: orgClasses }] = await Promise.all([
     supabase.from("exam_candidates").select("*").eq("exam_id", id).order("full_name"),
     supabase
       .from("exam_attempts")
@@ -71,6 +71,7 @@ export default async function ExamDetailPage({
     exam.quiz_id
       ? supabase.from("quiz_questions").select("question_id, points").eq("quiz_id", exam.quiz_id)
       : Promise.resolve({ data: [] }),
+    supabase.from("classes").select("id, name, code").eq("organization_id", org.id).eq("status", "active").order("name"),
   ]);
   const paperPoints = new Map((paperQuestions ?? []).map((q) => [q.question_id, q.points]));
   type MarkableAnswer = {
@@ -586,6 +587,25 @@ export default async function ExamDetailPage({
             </Field>
             <Button type="submit" variant="outline" className="mt-2">Add all</Button>
           </form>
+
+          {can(ctx, org.id, CREATOR_ROLES) && (orgClasses ?? []).length > 0 && (
+            <form action={addCandidatesFromClass} className="mt-4 border-t border-evergreen-900/10 pt-4 flex flex-wrap items-end gap-2">
+              <input type="hidden" name="exam_id" value={id} />
+              <div className="flex-1 min-w-[220px]">
+                <Field label="Or register candidates directly from an active class roster">
+                  <Select name="class_id" required>
+                    <option value="">Select a class...</option>
+                    {(orgClasses ?? []).map((cls) => (
+                      <option key={cls.id} value={cls.id}>
+                        {cls.name} {cls.code ? `(${cls.code})` : ""}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              <Button type="submit" variant="outline">Register class roster</Button>
+            </form>
+          )}
         </Card>
 
         <div className="space-y-6">

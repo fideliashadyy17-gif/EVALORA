@@ -119,6 +119,129 @@ export async function registerStudent(input: RegisterStudentInput): Promise<Regi
   return { ok: true, student };
 }
 
+export interface UpdateStudentInput {
+  id: string;
+  full_name: string;
+  email?: string;
+  student_ref?: string;
+  gender?: string;
+  date_of_birth?: string;
+  phone?: string;
+  guardian_name?: string;
+  guardian_contact?: string;
+  class_id?: string;
+  status?: string;
+}
+
+export async function updateStudent(input: UpdateStudentInput): Promise<RegisterStudentResult> {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org) return { ok: false, error: "No active school workspace." };
+  if (!can(ctx, org.id, CREATOR_ROLES)) return { ok: false, error: "You do not have permission to edit students." };
+
+  const id = String(input.id ?? "").trim();
+  if (!id) return { ok: false, error: "Student ID is required." };
+  const fullName = String(input.full_name ?? "").trim().slice(0, 160);
+  if (!fullName) return { ok: false, error: "The student's full name is required." };
+  const email = String(input.email ?? "").trim().toLowerCase();
+  if (email && !isValidEmail(email)) return { ok: false, error: "That email address is not valid." };
+  const dobRaw = String(input.date_of_birth ?? "").trim();
+  const dob = dobRaw ? normalizeDateOfBirth(dobRaw) : null;
+  const studentRef = String(input.student_ref ?? "").trim().slice(0, 60) || null;
+
+  const supabase = await createClient();
+
+  // Verify student exists in this school
+  const { data: existingStudent } = await supabase
+    .from("students")
+    .select("id")
+    .eq("id", id)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+
+  if (!existingStudent) return { ok: false, error: "Student not found in your school." };
+
+  // Duplicate checks excluding self
+  if (studentRef) {
+    const { data } = await supabase.from("students").select("id")
+      .eq("organization_id", org.id).ilike("student_ref", studentRef).neq("id", id).maybeSingle();
+    if (data) return { ok: false, error: `A student with reference “${studentRef}” already exists in your school.` };
+  }
+  if (email) {
+    const { data } = await supabase.from("students").select("id")
+      .eq("organization_id", org.id).ilike("email", email).neq("id", id).maybeSingle();
+    if (data) return { ok: false, error: `A student with email “${email}” already exists in your school.` };
+  }
+
+  const { error } = await supabase.from("students").update({
+    full_name: fullName,
+    email: email || null,
+    student_ref: studentRef,
+    gender: normalizeGender(input.gender ?? ""),
+    date_of_birth: dob,
+    phone: String(input.phone ?? "").trim().slice(0, 40) || null,
+    guardian_name: String(input.guardian_name ?? "").trim().slice(0, 120) || null,
+    guardian_contact: String(input.guardian_contact ?? "").trim().slice(0, 120) || null,
+    status: ["active", "suspended", "graduated", "withdrawn"].includes(input.status ?? "") ? input.status : "active",
+    updated_at: new Date().toISOString(),
+  }).eq("id", id).eq("organization_id", org.id);
+
+  if (error) return { ok: false, error: "The student could not be updated. Please try again." };
+
+  // Update enrollment if class_id provided
+  if (input.class_id) {
+    const { data: cls } = await supabase.from("classes")
+      .select("id, academic_year_id, status")
+      .eq("id", input.class_id).eq("organization_id", org.id).maybeSingle();
+
+    if (cls && cls.status === "active") {
+      // Deactivate old active enrollments
+      await supabase.from("student_enrollments")
+        .update({ status: "transferred" })
+        .eq("organization_id", org.id)
+        .eq("student_id", id)
+        .neq("class_id", cls.id)
+        .eq("status", "active");
+
+      // Upsert new active enrollment
+      await supabase.from("student_enrollments").upsert({
+        organization_id: org.id,
+        student_id: id,
+        class_id: cls.id,
+        academic_year_id: cls.academic_year_id,
+        status: "active",
+      }, { onConflict: "organization_id,student_id,class_id" });
+    }
+  }
+
+  await audit(ctx, "student.updated", "students", id, org.id);
+  revalidatePath("/dashboard/students");
+  revalidatePath("/dashboard/academics/classes");
+  return { ok: true, student: { id, full_name: fullName } };
+}
+
+export async function updateStudentForm(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  const full_name = String(formData.get("full_name") ?? "");
+  const email = String(formData.get("email") ?? "");
+  const student_ref = String(formData.get("student_ref") ?? "");
+  const gender = String(formData.get("gender") ?? "");
+  const date_of_birth = String(formData.get("date_of_birth") ?? "");
+  const phone = String(formData.get("phone") ?? "");
+  const guardian_name = String(formData.get("guardian_name") ?? "");
+  const guardian_contact = String(formData.get("guardian_contact") ?? "");
+  const class_id = String(formData.get("class_id") ?? "");
+  const status = String(formData.get("status") ?? "active");
+
+  const res = await updateStudent({
+    id, full_name, email, student_ref, gender, date_of_birth, phone, guardian_name, guardian_contact, class_id, status
+  });
+  if (!res.ok) {
+    redirect(`/dashboard/students?edit=${encodeURIComponent(id)}&e=${encodeURIComponent(res.error ?? "Update failed")}`);
+  }
+  redirect("/dashboard/students?ok=student_updated");
+}
+
 const str = (fd: FormData, key: string, max = 200) => String(fd.get(key) ?? "").trim().slice(0, max) || null;
 
 export async function setStudentStatus(formData: FormData) {

@@ -10,13 +10,13 @@ import { BookOpen, FileUp, KeyRound, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { transferStudent } from "../academics/actions";
-import { createStudentLogin, setStudentStatus } from "./actions";
+import { createStudentLogin, setStudentStatus, updateStudentForm } from "./actions";
 import { StudentRegistrationForm } from "./StudentRegistrationForm";
 
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
 
-interface SP { q?: string; class?: string; status?: string; ok?: string; e?: string; page?: string }
+interface SP { q?: string; class?: string; status?: string; ok?: string; e?: string; page?: string; edit?: string }
 
 const ERR: Record<string, string> = {
   status: "That status change was not valid.", student: "Student not found in your school.",
@@ -26,6 +26,7 @@ const ERR: Record<string, string> = {
 const OK: Record<string, string> = {
   status: "Student status updated.", transferred: "Student transferred.", unenrolled: "Student removed from class.",
   reset_sent: "Password reset email sent to the student.", login_sent: "Login created — a set-password email was sent to the student.",
+  student_updated: "Student details updated successfully.",
 };
 
 /** Academic Management → Students: register, import, enroll, transfer. */
@@ -136,6 +137,28 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const totalActiveStudents = (allStudents ?? []).filter((s) => s.status === "active").length;
   const totalWithLogin = (allStudents ?? []).filter((s) => Boolean(s.user_id)).length;
 
+  let editingStudent: {
+    id: string;
+    full_name: string;
+    email: string | null;
+    student_ref: string | null;
+    gender: string | null;
+    date_of_birth: string | null;
+    phone: string | null;
+    guardian_name: string | null;
+    guardian_contact: string | null;
+    status: string;
+  } | null = null;
+  if (sp.edit && canEdit) {
+    const { data } = await supabase
+      .from("students")
+      .select("id, full_name, email, student_ref, gender, date_of_birth, phone, guardian_name, guardian_contact, status")
+      .eq("id", sp.edit)
+      .eq("organization_id", org.id)
+      .maybeSingle();
+    editingStudent = data;
+  }
+
   const exportCsv = toCsv([
     ["Full Name", "Student Reference", "Email", "Class", "Status", "Gender", "Date of Birth", "Guardian Name", "Guardian Contact", "Phone", "Portal Login", "Created At"],
     ...(allStudents ?? []).map((s) => [
@@ -224,6 +247,62 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
         </Card>
       )}
 
+      {editingStudent && canEdit && (
+        <Card className="mb-6 border-evergreen-700/30 bg-cream/70 p-6 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                Edit student: {editingStudent.full_name}
+              </h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Update the official name, reference, contacts and class enrollment.
+              </p>
+            </div>
+            <Link href="/dashboard/students" className="text-sm font-medium text-evergreen-800 hover:underline">
+              ✕ Close
+            </Link>
+          </div>
+          <form action={updateStudentForm} className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <input type="hidden" name="id" value={editingStudent.id} />
+            <Field label="Full name *"><Input name="full_name" defaultValue={editingStudent.full_name} required maxLength={160} /></Field>
+            <Field label="Student reference / code"><Input name="student_ref" defaultValue={editingStudent.student_ref ?? ""} maxLength={60} /></Field>
+            <Field label="Email address"><Input name="email" type="email" defaultValue={editingStudent.email ?? ""} /></Field>
+            <Field label="Class">
+              <Select name="class_id" defaultValue={enrollmentByStudent.get(editingStudent.id) ?? ""}>
+                <option value="">Keep current class / none</option>
+                {activeClasses.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Status">
+              <Select name="status" defaultValue={editingStudent.status}>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+                <option value="graduated">Graduated</option>
+                <option value="withdrawn">Withdrawn</option>
+              </Select>
+            </Field>
+            <Field label="Gender">
+              <Select name="gender" defaultValue={editingStudent.gender ?? ""}>
+                <option value="">Not specified</option>
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+                <option value="other">Other</option>
+              </Select>
+            </Field>
+            <Field label="Date of birth"><Input name="date_of_birth" type="date" defaultValue={editingStudent.date_of_birth ?? ""} /></Field>
+            <Field label="Phone"><Input name="phone" defaultValue={editingStudent.phone ?? ""} /></Field>
+            <Field label="Guardian name"><Input name="guardian_name" defaultValue={editingStudent.guardian_name ?? ""} /></Field>
+            <Field label="Guardian contact"><Input name="guardian_contact" defaultValue={editingStudent.guardian_contact ?? ""} /></Field>
+            <div className="flex items-end gap-3 sm:col-span-2 lg:col-span-3 pt-2">
+              <Button type="submit">Update student</Button>
+              <Link href="/dashboard/students" className="text-sm text-ink-soft hover:underline">Cancel</Link>
+            </div>
+          </form>
+        </Card>
+      )}
+
       <Card className="p-6">
         <div className="flex flex-wrap items-baseline justify-between gap-2"><h2 className="font-display text-lg font-semibold text-evergreen-950">Student list</h2><span className="text-sm text-ink-soft">{studentTotal ?? 0} matching students · page {page}</span></div>
         <form method="get" className="mt-4 grid gap-3 sm:grid-cols-4">
@@ -247,6 +326,9 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
                   <td>
                     {canEdit ? (
                       <div className="flex flex-wrap gap-x-3 gap-y-1">
+                        <Link href={`/dashboard/students?edit=${s.id}`} className="text-evergreen-800 underline underline-offset-2">
+                          Edit
+                        </Link>
                         <form action={transferStudent} className="flex gap-1">
                           <input type="hidden" name="back" value="/dashboard/students" /><input type="hidden" name="student_id" value={s.id} />
                           <Select name="class_id" aria-label="Move to class" className="max-w-40">

@@ -333,6 +333,60 @@ export async function addCandidatesBulk(formData: FormData) {
   redirect(`/dashboard/exams/${examId}?added=${rows.length}`);
 }
 
+/** Register all active students from a class cohort as examination candidates. */
+export async function addCandidatesFromClass(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id") ?? "");
+  const classId = String(formData.get("class_id") ?? "");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(examId) || !uuid.test(classId)) redirect("/dashboard/exams");
+
+  const supabase = await createClient();
+  const { data: exam } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (!exam) redirect("/dashboard/exams");
+
+  // Load active students in the selected class
+  const { data: enrollments } = await supabase
+    .from("student_enrollments")
+    .select("student_id, students(id, full_name, email, student_ref, status)")
+    .eq("organization_id", org.id)
+    .eq("class_id", classId)
+    .eq("status", "active");
+
+  // Load existing registered student IDs for this exam to prevent duplicate rows
+  const { data: existing } = await supabase
+    .from("exam_candidates")
+    .select("student_id")
+    .eq("exam_id", examId)
+    .not("student_id", "is", null);
+
+  const existingStudentIds = new Set((existing ?? []).map((c) => c.student_id));
+
+  const rows = (enrollments ?? [])
+    .map((e) => e.students as unknown as { id: string; full_name: string; email: string | null; student_ref: string | null; status: string } | null)
+    .filter((s): s is NonNullable<typeof s> => Boolean(s && s.status === "active" && !existingStudentIds.has(s.id)))
+    .map((s) => ({
+      exam_id: examId,
+      student_id: s.id,
+      class_id: classId,
+      full_name: s.full_name.slice(0, 120),
+      email: s.email?.includes("@") ? s.email.slice(0, 160) : null,
+      candidate_ref: s.student_ref?.slice(0, 60) || null,
+      access_code: genCode(10),
+      source: "admin",
+      status: "registered",
+    }));
+
+  if (rows.length) {
+    await supabase.from("exam_candidates").insert(rows);
+  }
+
+  revalidatePath(`/dashboard/exams/${examId}`);
+  redirect(`/dashboard/exams/${examId}?added=${rows.length}`);
+}
+
 export async function removeCandidate(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
