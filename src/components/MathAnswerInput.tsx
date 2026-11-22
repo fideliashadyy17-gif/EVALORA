@@ -63,7 +63,15 @@ export function MathAnswerInput({
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const pendingRef = useRef<PendingSlot | null>(null);
+  const lastSelectionRef = useRef<{ start: number; end: number }>({ start: 0, end: 0 });
   const [showKeyboard, setShowKeyboard] = useState(false);
+
+  const recordSelection = (el: HTMLInputElement | null) => {
+    if (!el) return;
+    if (typeof el.selectionStart === "number" && typeof el.selectionEnd === "number") {
+      lastSelectionRef.current = { start: el.selectionStart, end: el.selectionEnd };
+    }
+  };
 
   const placeCaret = useCallback((start: number, end?: number) => {
     requestAnimationFrame(() => {
@@ -74,15 +82,19 @@ export function MathAnswerInput({
       const s = Math.max(0, Math.min(start, len));
       const e = Math.max(s, Math.min(end ?? s, len));
       node.setSelectionRange(s, e);
+      lastSelectionRef.current = { start: s, end: e };
     });
   }, []);
 
   const applyInsertion = useCallback(
     (ins: PlainMathInsertion) => {
       const el = inputRef.current;
-      // Fall back to appending when the field is not mounted/focused.
-      const start = el && typeof el.selectionStart === "number" ? el.selectionStart : value.length;
-      const end = el && typeof el.selectionEnd === "number" ? el.selectionEnd : value.length;
+      // Fall back to recorded selection or appending when the field is not actively focused.
+      let start = el && typeof el.selectionStart === "number" ? el.selectionStart : lastSelectionRef.current.start;
+      let end = el && typeof el.selectionEnd === "number" ? el.selectionEnd : lastSelectionRef.current.end;
+      start = Math.max(0, Math.min(start, value.length));
+      end = Math.max(start, Math.min(end, value.length));
+
       const next = value.slice(0, start) + ins.text + value.slice(end);
       onChange(next);
       const slots =
@@ -166,9 +178,16 @@ export function MathAnswerInput({
             placeholder={placeholder}
             aria-label={ariaLabel}
             className={unit ? "pr-12" : undefined}
-            onChange={(e) => onChange(e.target.value)}
+            onChange={(e) => {
+              recordSelection(e.currentTarget);
+              onChange(e.target.value);
+            }}
+            onClick={(e) => recordSelection(e.currentTarget)}
+            onKeyUp={(e) => recordSelection(e.currentTarget)}
+            onBlur={(e) => recordSelection(e.currentTarget)}
             onKeyDown={onKeyDown}
             onSelect={(e) => {
+              recordSelection(e.currentTarget);
               // Any manual caret move abandons the pending slot chain.
               const pending = pendingRef.current;
               const el = e.currentTarget;
