@@ -207,12 +207,17 @@ export function DraggableFloatingMathKeyboard({
             <Sigma className="h-3.5 w-3.5 text-evergreen-700 shrink-0" aria-hidden="true" />
             <span className="truncate">Math Keyboard</span>
           </span>
-          {!isMinimized && activeTargetInfo?.label && (
+          {!isMinimized && (
             <span
-              className="hidden sm:inline-block max-w-[140px] truncate rounded bg-evergreen-100/70 px-1.5 py-0.5 text-[10px] font-medium text-evergreen-900"
-              title={`Target: ${activeTargetInfo.label}`}
+              className={cn(
+                "hidden sm:inline-block max-w-[140px] truncate rounded px-1.5 py-0.5 text-[10px] font-medium transition-colors",
+                activeTargetInfo?.label
+                  ? "bg-evergreen-100/80 text-evergreen-900"
+                  : "bg-amber-100/70 text-amber-900",
+              )}
+              title={activeTargetInfo?.label ? `Target: ${activeTargetInfo.label}` : "Click any cell or answer field"}
             >
-              {activeTargetInfo.label}
+              {activeTargetInfo?.label ?? "Select field"}
             </span>
           )}
         </div>

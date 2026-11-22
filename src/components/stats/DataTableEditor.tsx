@@ -71,6 +71,13 @@ export function DataTableCellInput({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
+  const ariaLabelRef = useRef(ariaLabel);
+  ariaLabelRef.current = ariaLabel;
+  const questionIdRef = useRef(questionId);
+  questionIdRef.current = questionId;
+  const cellIdRef = useRef(cellId);
+  cellIdRef.current = cellId;
+
   const targetId = `table:${tableId}:${cellId}`;
 
   const recordSelection = useCallback((el: HTMLInputElement | null) => {
@@ -127,10 +134,16 @@ export function DataTableCellInput({
 
     const target: MathInputTarget = {
       id: targetId,
-      questionId,
-      fieldId: cellId,
+      get questionId() {
+        return questionIdRef.current;
+      },
+      get fieldId() {
+        return cellIdRef.current;
+      },
       isTable: true,
-      label: ariaLabel,
+      get label() {
+        return ariaLabelRef.current;
+      },
       variant: "full",
       getElement: () => inputRef.current,
       getValue: () => valueRef.current,
@@ -142,7 +155,7 @@ export function DataTableCellInput({
 
     const unregister = mathInputManager.register(target);
     return () => unregister();
-  }, [ariaLabel, cellId, disabled, placeCaret, questionId, readOnly, targetId]);
+  }, [disabled, placeCaret, readOnly, targetId]);
 
   useIsomorphicLayoutEffect(() => {
     if (pendingSelectionRef.current) {
@@ -177,6 +190,9 @@ export function DataTableCellInput({
     <input
       ref={inputRef}
       value={value}
+      data-math-input-id={targetId}
+      data-question-id={questionId}
+      data-table-cell={cellId}
       aria-label={ariaLabel}
       placeholder={placeholder}
       className={className}
@@ -185,6 +201,14 @@ export function DataTableCellInput({
       onChange={(e) => {
         onChange(e.target.value);
         recordSelection(e.target);
+      }}
+      onClick={(e) => {
+        recordSelection(e.currentTarget);
+        mathInputManager.setActiveTarget(targetId);
+      }}
+      onPointerUp={(e) => {
+        recordSelection(e.currentTarget);
+        mathInputManager.setActiveTarget(targetId);
       }}
       onSelect={(e) => recordSelection(e.currentTarget)}
       onKeyUp={(e) => recordSelection(e.currentTarget)}
@@ -227,7 +251,7 @@ export function DataTableEditor({
   questionId?: string;
 }) {
   const autoTableId = useId();
-  const tableId = explicitTableId ?? autoTableId;
+  const tableId = explicitTableId ?? (questionId ? `table_${questionId}` : autoTableId);
   const clean = normaliseDataTableSpec(spec);
 
   if (readOnly) return <DataTableView spec={clean} />;

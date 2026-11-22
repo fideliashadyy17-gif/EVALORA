@@ -208,13 +208,26 @@ export function MathAnswerInput({
   const applyInsertionRef = useRef(applyInsertion);
   applyInsertionRef.current = applyInsertion;
 
+  const ariaLabelRef = useRef(ariaLabel);
+  ariaLabelRef.current = ariaLabel;
+  const questionIdRef = useRef(questionId);
+  questionIdRef.current = questionId;
+  const fieldIdRef = useRef(fieldId);
+  fieldIdRef.current = fieldId;
+
   // Register with platform-wide central math input manager
   useEffect(() => {
     const target: MathInputTarget = {
       id: targetId,
-      questionId,
-      fieldId,
-      label: ariaLabel ?? (questionId ? `Question ${questionId}` : "Answer field"),
+      get questionId() {
+        return questionIdRef.current;
+      },
+      get fieldId() {
+        return fieldIdRef.current;
+      },
+      get label() {
+        return ariaLabelRef.current ?? (questionIdRef.current ? `Question ${questionIdRef.current}` : "Answer field");
+      },
       variant,
       getElement: () => inputRef.current,
       getValue: () => valueRef.current,
@@ -226,7 +239,7 @@ export function MathAnswerInput({
 
     const unregister = mathInputManager.register(target);
     return () => unregister();
-  }, [ariaLabel, fieldId, placeCaret, questionId, targetId, variant]);
+  }, [placeCaret, targetId, variant]);
 
   // Synchronize selection synchronously after DOM commit of new value
   useIsomorphicLayoutEffect(() => {
@@ -326,6 +339,9 @@ export function MathAnswerInput({
             inputMode={inputMode}
             placeholder={placeholder}
             aria-label={ariaLabel}
+            data-math-input-id={targetId}
+            data-question-id={questionId}
+            data-field-id={fieldId}
             className={unit ? "pr-12" : undefined}
             onChange={(e) => {
               recordSelection(e.currentTarget);
