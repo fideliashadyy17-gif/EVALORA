@@ -1,9 +1,11 @@
 import { StudentImportWizard } from "@/components/StudentImportWizard";
+import { ExportButton } from "@/components/ExportTools";
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
+import { toCsv } from "@/lib/utils";
 import { BookOpen, FileUp, KeyRound, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -79,7 +81,7 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
 
   const allStudentsPromise = supabase
     .from("students")
-    .select("full_name, email, student_ref, date_of_birth, status, user_id")
+    .select("id, full_name, email, student_ref, date_of_birth, gender, guardian_name, guardian_contact, phone, status, user_id, created_at")
     .eq("organization_id", org.id)
     .limit(20000);
   const batchesPromise = supabase
@@ -134,13 +136,36 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const totalActiveStudents = (allStudents ?? []).filter((s) => s.status === "active").length;
   const totalWithLogin = (allStudents ?? []).filter((s) => Boolean(s.user_id)).length;
 
+  const exportCsv = toCsv([
+    ["Full Name", "Student Reference", "Email", "Class", "Status", "Gender", "Date of Birth", "Guardian Name", "Guardian Contact", "Phone", "Portal Login", "Created At"],
+    ...(allStudents ?? []).map((s) => [
+      s.full_name,
+      s.student_ref ?? "",
+      s.email ?? "",
+      enrollmentByStudent.get(s.id) ? className.get(enrollmentByStudent.get(s.id)!) ?? "" : "",
+      s.status,
+      s.gender ?? "",
+      s.date_of_birth ?? "",
+      s.guardian_name ?? "",
+      s.guardian_contact ?? "",
+      s.phone ?? "",
+      s.user_id ? "Linked" : "None",
+      s.created_at ?? "",
+    ]),
+  ]);
+
   return (
     <>
       <PageTitle
         eyebrow="People & Academics · Student Register"
         title="Students"
         subtitle="Register students into your school's classes, import registers from CSV, Excel, PDF or Word, and manage enrollments."
-        action={<ButtonLink href="/dashboard/academics/classes" variant="outline">Manage classes</ButtonLink>}
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <ExportButton filename={`${org.slug}-student-register.csv`} csv={exportCsv} label="Export register (CSV)" />
+            <ButtonLink href="/dashboard/academics/classes" variant="outline">Manage classes</ButtonLink>
+          </div>
+        }
       />
       {sp.ok && OK[sp.ok] && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{OK[sp.ok]}</p>}
       {sp.e && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{ERR[sp.e] ?? decodeURIComponent(sp.e)}</p>}

@@ -2,6 +2,7 @@
 
 import { audit } from "@/lib/admin";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { isValidEmail, normalizeDateOfBirth, normalizeGender } from "@/lib/studentImport";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -71,6 +72,19 @@ export async function registerStudent(input: RegisterStudentInput): Promise<Regi
     if (data) return { ok: false, error: `A student with email “${email}” already exists in your school.` };
   }
 
+  // Quota enforcement: check max_students capacity
+  const ent = await getEntitlementFor(supabase, ctx, org.id);
+  const { count: studentCount } = await supabase
+    .from("students")
+    .select("id", { count: "exact", head: true })
+    .eq("organization_id", org.id);
+  if (!withinLimit(ent.limits.max_students, studentCount ?? 0)) {
+    return {
+      ok: false,
+      error: `Your workspace has reached its limit of ${ent.limits.max_students} students for the ${ent.planName} plan. Upgrade in Billing to add more.`,
+    };
+  }
+
   const { data: student, error } = await supabase.from("students").insert({
     organization_id: org.id,
     full_name: fullName,
@@ -83,7 +97,10 @@ export async function registerStudent(input: RegisterStudentInput): Promise<Regi
     guardian_contact: String(input.guardian_contact ?? "").trim().slice(0, 120) || null,
     status: "active",
   }).select("id, full_name").single();
-  if (error || !student) return { ok: false, error: "The student could not be registered. Please try again." };
+  if (error || !student) {
+    if (isPlanLimitError(error)) return { ok: false, error: planLimitMessage(error) };
+    return { ok: false, error: "The student could not be registered. Please try again." };
+  }
 
   if (cls) {
     const { error: enrollError } = await supabase.from("student_enrollments").insert({

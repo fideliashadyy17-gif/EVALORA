@@ -24,6 +24,11 @@ export type CapabilityKey =
   | "central_asset_management"
   | "multi_class_operations"
   | "future_modules"
+  | "attendance_management"
+  | "gradebook_management"
+  | "timetable_management"
+  | "homework_management"
+  | "parent_portal"
   | "premium_exam_experience"
   | "unrestricted_owner_access";
 
@@ -44,6 +49,11 @@ export const CAPABILITY_KEYS: CapabilityKey[] = [
   "central_asset_management",
   "multi_class_operations",
   "future_modules",
+  "attendance_management",
+  "gradebook_management",
+  "timetable_management",
+  "homework_management",
+  "parent_portal",
   "premium_exam_experience",
   "unrestricted_owner_access",
 ];
@@ -88,7 +98,12 @@ export function resolveCapabilities(input: CapabilityInput): CapabilitySet {
     configurable_limits: institutional || limits.configurable_limits === true,
     central_asset_management: institutional || limits.central_asset_management === true,
     multi_class_operations: institutional || limits.multi_class_operations === true,
-    future_modules: false,
+    future_modules: institutional,
+    attendance_management: institutional || limits.attendance_management === true,
+    gradebook_management: institutional || limits.gradebook_management === true,
+    timetable_management: institutional || limits.timetable_management === true,
+    homework_management: institutional || limits.homework_management === true,
+    parent_portal: institutional || limits.parent_portal === true,
     premium_exam_experience: limits.premium_exam_experience === true,
     unrestricted_owner_access: false,
   };
@@ -109,6 +124,11 @@ export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
   central_asset_management: "Centralized Resource Management",
   multi_class_operations: "Multi-class / Multi-user Operations",
   future_modules: "Future Modules",
+  attendance_management: "Attendance & Absence Tracking",
+  gradebook_management: "Academic Gradebook & Transcripts",
+  timetable_management: "Timetable & Teacher Scheduling",
+  homework_management: "Homework & Assignments",
+  parent_portal: "Parent & Guardian Portal",
   premium_exam_experience: "Premium Examination Experience",
   unrestricted_owner_access: "Unrestricted Platform Owner Access",
 };

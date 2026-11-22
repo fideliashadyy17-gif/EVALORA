@@ -41,6 +41,15 @@ export interface PlanLimits {
   floating_calculator: boolean;
   interactive_math_tools: boolean;
   premium_math_interface: boolean;
+  /**
+   * Future school management module gates (attendance, gradebook, scheduling, parent portal).
+   * Centrally defined and extensible without breaking assessment architecture.
+   */
+  attendance_management?: boolean;
+  gradebook_management?: boolean;
+  timetable_management?: boolean;
+  homework_management?: boolean;
+  parent_portal?: boolean;
 }
 
 export const FREE_LIMITS: PlanLimits = {
@@ -64,6 +73,11 @@ export const FREE_LIMITS: PlanLimits = {
   floating_calculator: false,
   interactive_math_tools: false,
   premium_math_interface: false,
+  attendance_management: false,
+  gradebook_management: false,
+  timetable_management: false,
+  homework_management: false,
+  parent_portal: false,
 };
 
 export interface Entitlement {
@@ -102,6 +116,11 @@ export const UNLIMITED_LIMITS: PlanLimits = {
   floating_calculator: true,
   interactive_math_tools: true,
   premium_math_interface: true,
+  attendance_management: true,
+  gradebook_management: true,
+  timetable_management: true,
+  homework_management: true,
+  parent_portal: true,
 };
 
 /**

@@ -2,6 +2,7 @@
 
 import { audit } from "@/lib/admin";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -217,6 +218,18 @@ export async function saveClassInline(input: ClassInput): Promise<ClassResult> {
   };
   // Avoid accidental duplicates: same name in same school + year.
   if (!input.id) {
+    const ent = await getEntitlementFor(supabase, ctx, org.id);
+    const { count: classCount } = await supabase
+      .from("classes")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", org.id);
+    if (!withinLimit(ent.limits.max_classes, classCount ?? 0)) {
+      return {
+        ok: false,
+        error: `Your workspace has reached its limit of ${ent.limits.max_classes} classes for the ${ent.planName} plan. Upgrade in Billing to add more.`,
+      };
+    }
+
     let dup = supabase.from("classes").select("id").eq("organization_id", org.id).ilike("name", name);
     dup = payload.academic_year_id ? dup.eq("academic_year_id", payload.academic_year_id) : dup.is("academic_year_id", null);
     const { data: existing } = await dup.maybeSingle();
@@ -228,6 +241,7 @@ export async function saveClassInline(input: ClassInput): Promise<ClassResult> {
     : await supabase.from("classes").insert(payload)
         .select("id, name, code, academic_year_id, level_id, department_id, status").single();
   if (error || !data) {
+    if (isPlanLimitError(error)) return { ok: false, error: planLimitMessage(error) };
     return { ok: false, error: error?.code === "23505" ? "That class code is already used in this academic year." : "The class could not be saved. Please try again." };
   }
   await audit(ctx, input.id ? "class.updated" : "class.created", "classes", data.id, org.id, { name, code: payload.code });

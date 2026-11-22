@@ -1,6 +1,6 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { ssoProviderStatus } from "@/lib/sso";
 import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import type { Metadata } from "next";
@@ -9,6 +9,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Settings" };
+
+async function uploadLogo(orgId: string, file: File | null): Promise<string | null> {
+  if (!file || file.size === 0) return null;
+  if (file.size > 2 * 1024 * 1024 || !file.type.startsWith("image/")) return null;
+  const admin = createAdminClient();
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+  const path = `${orgId}/logo-${Date.now()}.${ext}`;
+  const { error } = await admin.storage.from("org-logos").upload(path, file, { upsert: true });
+  if (error) return null;
+  return admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+}
 
 async function updateProfile(formData: FormData) {
   "use server";
@@ -24,12 +35,42 @@ async function updateOrg(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings");
-  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
+  const name = String(formData.get("name") ?? "").trim().slice(0, 160);
   const type = String(formData.get("type") ?? "school");
-  if (!name) redirect("/dashboard/settings");
+  const description = String(formData.get("description") ?? "").trim().slice(0, 1000) || null;
+  const contactEmail = String(formData.get("contact_email") ?? "").trim().slice(0, 200).toLowerCase() || null;
+  const contactPhone = String(formData.get("contact_phone") ?? "").trim().slice(0, 60) || null;
+  const country = String(formData.get("country") ?? "").trim().slice(0, 120) || null;
+  const city = String(formData.get("city") ?? "").trim().slice(0, 120) || null;
+  const address = String(formData.get("address") ?? "").trim().slice(0, 300) || null;
+  if (!name) redirect("/dashboard/settings?e=name");
+
+  const patch: Record<string, unknown> = {
+    name,
+    type,
+    description,
+    contact_email: contactEmail,
+    contact_phone: contactPhone,
+    country,
+    city,
+    address,
+  };
+
+  const removeLogo = formData.get("remove_logo") === "on";
+  if (removeLogo) {
+    patch.logo_url = null;
+  } else {
+    const logoFile = formData.get("logo") as File | null;
+    if (logoFile && logoFile.size > 0) {
+      const logoUrl = await uploadLogo(org.id, logoFile);
+      if (logoUrl) patch.logo_url = logoUrl;
+    }
+  }
+
   const supabase = await createClient();
-  await supabase.from("organizations").update({ name, type }).eq("id", org.id);
+  await supabase.from("organizations").update(patch).eq("id", org.id);
   revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
   redirect("/dashboard/settings?saved=org");
 }
 
@@ -94,9 +135,24 @@ export default async function SettingsPage({
         </Card>
 
         <Card className="p-6">
-          <h2 className="font-display text-lg font-semibold text-evergreen-950">Organization</h2>
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Organization &amp; Branding</h2>
           {isManager ? (
-            <form action={updateOrg} className="mt-4 space-y-3">
+            <form action={updateOrg} className="mt-4 space-y-3" encType="multipart/form-data">
+              {orgFull?.logo_url && (
+                <div className="rounded-xl border border-evergreen-900/10 bg-cream/60 p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-ink-soft">Current Organization Logo</p>
+                  <div className="mt-2 flex items-center gap-4">
+                    <img src={orgFull.logo_url} alt={orgFull.name} className="h-12 w-auto max-w-[180px] object-contain rounded bg-white p-1 border border-evergreen-900/10 shadow-sm" />
+                    <label className="flex items-center gap-2 text-xs font-medium text-red-800 cursor-pointer">
+                      <input type="checkbox" name="remove_logo" className="h-4 w-4 accent-red-700" />
+                      <span>Remove logo / reset to default</span>
+                    </label>
+                  </div>
+                </div>
+              )}
+              <Field label="Upload new school logo" hint="PNG, JPEG, WebP or SVG (max 2 MB)">
+                <Input name="logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+              </Field>
               <Field label="Organization name">
                 <Input name="name" defaultValue={orgFull?.name ?? org.name} required />
               </Field>
@@ -109,6 +165,28 @@ export default async function SettingsPage({
                   <option value="independent">Independent educator</option>
                   <option value="other">Other</option>
                 </Select>
+              </Field>
+              <Field label="Description">
+                <Input name="description" defaultValue={orgFull?.description ?? ""} placeholder="Educational philosophy, mission or details" />
+              </Field>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="Contact email">
+                  <Input name="contact_email" type="email" defaultValue={orgFull?.contact_email ?? ""} placeholder="admin@school.edu" />
+                </Field>
+                <Field label="Contact phone">
+                  <Input name="contact_phone" defaultValue={orgFull?.contact_phone ?? ""} placeholder="+1 234 567 890" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <Field label="City">
+                  <Input name="city" defaultValue={orgFull?.city ?? ""} />
+                </Field>
+                <Field label="Country">
+                  <Input name="country" defaultValue={orgFull?.country ?? ""} />
+                </Field>
+              </div>
+              <Field label="Address">
+                <Input name="address" defaultValue={orgFull?.address ?? ""} />
               </Field>
               <Field label="Platform identifier">
                 <Input value={orgFull?.slug ? tenantPortalLabel(orgFull.slug) : ""} disabled />
