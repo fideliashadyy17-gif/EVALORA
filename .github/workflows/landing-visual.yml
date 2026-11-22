@@ -81,15 +81,33 @@ jobs:
           echo "server did not start"; tail -40 /tmp/next.log; exit 1
 
       - name: Capture screenshots and check layout
+        id: visual
         env:
           LANDING_URL: http://127.0.0.1:3100
-          CHROME_PATH: ${{ env.PLAYWRIGHT_BROWSER == 'system' && '/usr/bin/google-chrome' || '' }}
-        run: node scripts/verify-landing.mjs
+        run: |
+          set +e
+          node scripts/verify-landing.mjs
+          echo "visual_exit=$?" >> "$GITHUB_OUTPUT"
+          exit 0
 
       - name: Server-side checks (links, axe, structure)
+        id: html
         run: |
+          set +e
           npm i --no-save --no-audit --no-fund jsdom axe-core
-          node scripts/verify-landing-html.mjs
+          node scripts/verify-landing-html.mjs > /tmp/html-check.log 2>&1
+          echo "html_exit=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/html-check.log
+          grep -E "^✗|PASS|FAIL" /tmp/html-check.log >> "$GITHUB_STEP_SUMMARY" || true
+          exit 0
+
+      - name: Report result
+        run: |
+          echo "visual=${{ steps.visual.outputs.visual_exit }} html=${{ steps.html.outputs.html_exit }}"
+          if [ "${{ steps.visual.outputs.visual_exit }}" != "0" ] || [ "${{ steps.html.outputs.html_exit }}" != "0" ]; then
+            echo "Landing verification failed — see the summary above and the screenshots artifact." >&2
+            exit 1
+          fi
 
       - name: Upload screenshots
         if: always()
