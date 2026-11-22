@@ -113,10 +113,6 @@ export function StructuredResponseEditor({
   const [tab, setTab] = useState<Tab>(() => {
     const desired = workspace.defaultTool;
     if (desired === "graph" || desired === "geometry" || desired === "statistics" || desired === "data_table" || desired === "venn" || desired === "probability_tree" || desired === "stem_leaf") return desired;
-    const saved = initial;
-    if (tableOn && saved?.data_table && dataTableHasWork(normaliseDataTableSpec(saved.data_table)) && !docHasWork(initialDoc)) {
-      return "data_table";
-    }
     return workspace.tools.includes("rich_text") ? "written" : "graph";
   });
   const [dirty, setDirty] = useState(false);
