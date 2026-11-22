@@ -39,7 +39,7 @@ import { ExamMessenger } from "./ExamMessenger";
 import { RetakePanel } from "./RetakePanel";
 import { HintPanel, type CandidateHint } from "./HintPanel";
 import { FormulaPanel } from "./FormulaPanel";
-import { MathKeyboardPanel } from "@/components/MathKeyboardPanel";
+import { DraggableFloatingMathKeyboard } from "@/components/DraggableFloatingMathKeyboard";
 import { MathInputProvider } from "@/components/math-input/MathInputContext";
 import { mathInputManager } from "@/lib/mathInputManager";
 import type { FormulaSheet } from "@/lib/examFormulas";
@@ -1130,8 +1130,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 className="text-xs"
                 aria-expanded={mathPaletteOpen}
                 data-testid="header-math-palette-button"
+                onPointerDown={(e) => {
+                  if (e.pointerType === "mouse") e.preventDefault();
+                }}
                 onMouseDown={(e) => e.preventDefault()}
-                onTouchStart={(e) => e.preventDefault()}
                 onClick={() => setMathPaletteOpen((open) => !open)}
                 title="Open platform mathematical keyboard"
               >
@@ -1555,34 +1557,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         <FormulaPanel sheet={exam.formula_sheet} onClose={() => setFormulasOpen(false)} />
       ) : null}
       {!submitted && mathPaletteOpen ? (
-        <div
-          className="fixed bottom-4 right-4 z-50 w-[min(94vw,28rem)] max-w-full rounded-2xl border border-evergreen-900/25 bg-white p-3 shadow-2xl"
-          data-testid="header-math-palette-popover"
-        >
-          <div className="mb-2 flex items-center justify-between border-b border-evergreen-900/10 pb-1.5">
-            <span className="flex items-center gap-1.5 font-display text-xs font-semibold text-evergreen-950">
-              <Sigma className="h-4 w-4 text-evergreen-700" />
-              Mathematical symbol keyboard
-            </span>
-            <button
-              type="button"
-              className="rounded-md p-1 text-ink-soft hover:bg-cream hover:text-ink"
-              onClick={() => setMathPaletteOpen(false)}
-              aria-label="Close math keyboard"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="max-h-[50vh] overflow-y-auto">
-            <MathKeyboardPanel
-              onInsert={(ins) => {
-                mathInputManager.insertIntoActive(ins, undefined, current?.question_id);
-              }}
-              variant="full"
-              label="Platform mathematical keyboard"
-            />
-          </div>
-        </div>
+        <DraggableFloatingMathKeyboard
+          open={mathPaletteOpen}
+          onClose={() => setMathPaletteOpen(false)}
+          currentQuestionId={current?.question_id}
+          variant="full"
+        />
       ) : null}
       {token ? (
         <ExamMessenger

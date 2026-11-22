@@ -48,6 +48,7 @@ export function StructuredResponseEditor({
   emit,
   onDirtyChange,
   onPayloadChange,
+  questionId,
 }: {
   workspace: ResponseWorkspace;
   initial: Record<string, unknown> | null;
@@ -60,6 +61,7 @@ export function StructuredResponseEditor({
   onDirtyChange?: (dirty: boolean) => void;
   /** Receives the latest local construction before it has been saved. */
   onPayloadChange?: (payload: Record<string, unknown>) => void;
+  questionId?: string;
 }) {
   const initialDoc = useMemo<RichDoc>(() => {
     const raw = initial?.doc;
@@ -439,6 +441,7 @@ export function StructuredResponseEditor({
             readOnly={disabled}
             allowStructure={!disabled}
             title={workspace.dataTable.title || "Data table"}
+            questionId={questionId}
           />
           {!disabled && (
             <div className="mt-2 flex flex-wrap items-center gap-2">

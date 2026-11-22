@@ -364,8 +364,10 @@ export function MathAnswerInput({
           aria-expanded={showKeyboard}
           aria-label={showKeyboard ? "Hide the math keyboard" : "Show the math keyboard"}
           title="Mathematical keyboard"
+          onPointerDown={(e) => {
+            if (e.pointerType === "mouse") e.preventDefault();
+          }}
           onMouseDown={(e) => e.preventDefault()}
-          onTouchStart={(e) => e.preventDefault()}
           onClick={handleToggleKeyboard}
           className={`shrink-0 rounded-xl border px-3 py-2 text-lg font-bold leading-none transition disabled:opacity-40 ${
             showKeyboard
@@ -387,6 +389,7 @@ export function MathAnswerInput({
               onInsert={applyInsertion}
               variant={variant}
               targetId={targetId}
+              questionId={questionId}
               label={ariaLabel ? `Mathematical symbols for ${ariaLabel}` : "Mathematical symbols"}
             />
           </div>

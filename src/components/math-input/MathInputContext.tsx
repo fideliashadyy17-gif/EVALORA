@@ -50,6 +50,12 @@ export function MathInputProvider({
   );
 
   useEffect(() => {
+    if (currentQuestionId !== undefined) {
+      mathInputManager.setCurrentQuestionId(currentQuestionId);
+    }
+  }, [currentQuestionId]);
+
+  useEffect(() => {
     return mathInputManager.subscribe(() => {
       setActiveTargetId(mathInputManager.getActiveTargetId());
     });

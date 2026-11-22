@@ -712,6 +712,7 @@ export function QuestionRunner({
                         initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
                         disabled={disabled}
                         autosave={autosave}
+                        questionId={question.question_id}
                         submitLabel="Save working"
                         emit={(payload) => {
                           const nextWorking = { ...workingPartsRef.current, [part.id]: payload };
@@ -760,6 +761,7 @@ export function QuestionRunner({
             initial={initial ?? null}
             disabled={disabled}
             autosave={autosave}
+            questionId={question.question_id}
             submitLabel={submitLabel}
             emit={(payload) => {
               const accepted = emit(payload);

@@ -36,6 +36,7 @@ export function MathKeyboardPanel({
   variant = "full",
   label = "Mathematical symbols",
   targetId,
+  questionId,
 }: {
   /** Called with the plain-text insertion the host field must apply at its cursor. */
   onInsert: (insertion: PlainMathInsertion) => void;
@@ -44,6 +45,8 @@ export function MathKeyboardPanel({
   label?: string;
   /** Optional ID of the host input field that owns this keyboard instance. */
   targetId?: string;
+  /** Optional question ID context for target resolution. */
+  questionId?: string;
 }) {
   const categories = variant === "numeric" ? [NUMERIC_MATH_CATEGORY] : MATH_CATEGORIES;
   const [categoryId, setCategoryId] = useState(categories[0].id);
@@ -65,7 +68,7 @@ export function MathKeyboardPanel({
   const cat = categories.find((c) => c.id === categoryId) ?? categories[0];
 
   const handleInsertion = (ins: PlainMathInsertion) => {
-    const inserted = mathInputManager.insertIntoActive(ins, targetId);
+    const inserted = mathInputManager.insertIntoActive(ins, targetId, questionId);
     if (!inserted) {
       onInsert(ins);
     }
@@ -100,8 +103,10 @@ export function MathKeyboardPanel({
               type="button"
               role="tab"
               aria-selected={cat.id === c.id}
+              onPointerDown={(e) => {
+                if (e.pointerType === "mouse") e.preventDefault();
+              }}
               onMouseDown={(e) => e.preventDefault()}
-              onTouchStart={(e) => e.preventDefault()}
               onClick={() => setCategoryId(c.id)}
               className={`whitespace-nowrap rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                 cat.id === c.id
@@ -159,8 +164,10 @@ export function MathKeyboardPanel({
           <button
             type="button"
             className="rounded-lg bg-evergreen-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-evergreen-800"
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") e.preventDefault();
+            }}
             onMouseDown={(e) => e.preventDefault()}
-            onTouchStart={(e) => e.preventDefault()}
             onClick={() => handleInsertion(matrixInsertion(rows, columns, matrixStyle))}
           >
             Insert {rows}×{columns} matrix
@@ -176,9 +183,11 @@ export function MathKeyboardPanel({
             className="rce-kbd-btn"
             title={`${key.t} — inserts at the cursor`}
             aria-label={key.t}
-            // Keep focus (and the caret) in the answer field while tapping keys.
+            // Keep focus (and the caret) in the answer field while tapping keys without suppressing touch clicks
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") e.preventDefault();
+            }}
             onMouseDown={(e) => e.preventDefault()}
-            onTouchStart={(e) => e.preventDefault()}
             onClick={() => press(key)}
             dangerouslySetInnerHTML={{ __html: renderLatex(key.d, false) }}
           />
