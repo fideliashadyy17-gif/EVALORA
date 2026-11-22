@@ -86,8 +86,9 @@ jobs:
           LANDING_URL: http://127.0.0.1:3100
         run: |
           set +e
-          node scripts/verify-landing.mjs
-          echo "visual_exit=$?" >> "$GITHUB_OUTPUT"
+          node scripts/verify-landing.mjs 2>&1 | tee /tmp/visual.log
+          echo "visual_exit=${PIPESTATUS[0]}" >> "$GITHUB_OUTPUT"
+          grep -E "^✓|^✗|PASS|FAIL" /tmp/visual.log >> "$GITHUB_STEP_SUMMARY" || true
           exit 0
 
       - name: Server-side checks (links, axe, structure)
@@ -101,11 +102,28 @@ jobs:
           grep -E "^✗|PASS|FAIL" /tmp/html-check.log >> "$GITHUB_STEP_SUMMARY" || true
           exit 0
 
+      # The step summary is the only channel that survives the artifact/log
+      # retention policy, so the verdict and the failing checks are written
+      # there explicitly as annotations too.
       - name: Report result
         run: |
-          echo "visual=${{ steps.visual.outputs.visual_exit }} html=${{ steps.html.outputs.html_exit }}"
-          if [ "${{ steps.visual.outputs.visual_exit }}" != "0" ] || [ "${{ steps.html.outputs.html_exit }}" != "0" ]; then
-            echo "Landing verification failed — see the summary above and the screenshots artifact." >&2
+          VISUAL="${{ steps.visual.outputs.visual_exit }}"
+          HTML="${{ steps.html.outputs.html_exit }}"
+          {
+            echo "### Landing verification"
+            echo ""
+            echo "| Check | Exit |"
+            echo "| --- | --- |"
+            echo "| Browser (screenshots, layout, interaction) | ${VISUAL} |"
+            echo "| Server-side (links, axe, structure) | ${HTML} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$VISUAL" != "0" ]; then
+            for f in verification/report.md /tmp/visual.log; do
+              [ -f "$f" ] && { echo "::error file=verification/report.md::$(grep -c '^✗' "$f" 2>/dev/null || echo 0) browser check(s) failed"; }
+            done
+          fi
+          if [ "$VISUAL" != "0" ] || [ "$HTML" != "0" ]; then
+            echo "Landing verification failed — open the job summary and the landing-screenshots artifact for the full report." >&2
             exit 1
           fi
 
