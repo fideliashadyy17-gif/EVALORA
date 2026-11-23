@@ -1,5 +1,5 @@
 // Platform-wide route, table-accessibility, navigation, and bug-regression suite
-// covering all 150 Next.js App Router page.tsx routes across Super Admin (/admin),
+// covering all 155 Next.js App Router page.tsx routes across Super Admin (/admin),
 // Organization Workspace (/dashboard), Student & Candidate Assessment flows,
 // Multi-tenant Portals, Live Screens, and Public/Auth surfaces.
 
@@ -30,11 +30,11 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 154 page.tsx routes (82 admin, 37 dashboard, 35 public/auth/student/portal)", () => {
+check("route inventory accounts for all 155 page.tsx routes (82 admin, 38 dashboard, 35 public/auth/student/portal)", () => {
   assert.equal(adminPages.length, 82, `expected 82 admin pages, found ${adminPages.length}`);
-  assert.equal(dashboardPages.length, 37, `expected 37 dashboard pages, found ${dashboardPages.length}`);
+  assert.equal(dashboardPages.length, 38, `expected 38 dashboard pages, found ${dashboardPages.length}`);
   assert.equal(otherPages.length, 35, `expected 35 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 154);
+  assert.equal(allPages.length, 155);
 });
 
 for (const pagePath of adminPages) {

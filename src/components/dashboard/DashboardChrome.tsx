@@ -9,6 +9,7 @@ import type { CapabilityKey, CapabilitySet } from "@/lib/capability-rules";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
+  Activity,
   BarChart3,
   BookOpenCheck,
   CreditCard,
@@ -41,6 +42,8 @@ interface NavItem {
   exact?: boolean;
   /** Defaults to "all"; administration entries are managers-only. */
   audience?: NavAudience;
+  /** Optional exact role allowlist for specialist operations such as exam supervision. */
+  roles?: readonly string[];
   capability?: CapabilityKey;
 }
 
@@ -63,6 +66,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff", capability: "quiz_management" },
       { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff", capability: "examinations" },
+      { href: "/dashboard/monitoring", label: "Live Exam Monitoring", icon: Activity, audience: "staff", roles: ["owner", "admin", "teacher", "supervisor", "corrector"], capability: "examinations" },
       { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff", capability: "question_bank" },
       { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff", capability: "live_competitions" },
       { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks, audience: "staff" },
@@ -149,6 +153,7 @@ export function DashboardChrome({
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
     items: filterNavItems(section.items, orgRole)
+      .filter((item) => !item.roles || item.roles.includes(orgRole ?? ""))
       .filter((item) => !item.capability || capabilities[item.capability]),
   })).filter((section) => section.items.length > 0);
 
