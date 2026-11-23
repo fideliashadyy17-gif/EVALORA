@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
@@ -402,6 +403,7 @@ export function AdminShell({
             <LayoutDashboard className="h-5 w-5 shrink-0" />
             {!collapsed && "My workspace"}
           </Link>
+          {!collapsed && <PlatformCredit className="mt-3 px-1 pb-1" />}
         </div>
       </aside>
 

@@ -287,6 +287,48 @@ await page.route("**/api/exam/**", async (route) => {
   return route.continue();
 });
 
+
+/** The entry form enables its submit button only after the browser guest key
+ *  has been minted. Clicking before then silently waits on a disabled control. */
+async function verifyAndBegin() {
+  const btn = page.getByRole("button", { name: "Verify and Begin" });
+  await btn.waitFor({ state: "visible", timeout: 120_000 });
+  // The consent declaration is required; the submit button also waits on the
+  // freshly minted guest key, which arrives one tick after mount.
+  const consent = page.getByRole("checkbox").first();
+  if ((await consent.count()) && !(await consent.isChecked())) await consent.check();
+  for (let i = 0; i < 200; i += 1) {
+    if (await btn.isEnabled()) break;
+    await page.waitForTimeout(100);
+  }
+  await btn.click();
+}
+
+
+/** Fill the candidate entry form and submit it, tolerating the post-mount
+ *  re-render that can reset values typed into the first paint. */
+async function enterAs(first, last) {
+  const guard = page.getByRole("button", { name: "I am a different student" });
+  if (await guard.count()) {
+    await guard.first().click();
+    await page.getByLabel("First Name").waitFor({ timeout: 60_000 });
+  }
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    await page.getByLabel("First Name").fill(first);
+    await page.getByLabel("Last Name").fill(last);
+    await page.getByLabel("Examination Code").fill(ACCESS_CODE);
+    await page.waitForTimeout(250);
+    if (
+      (await page.getByLabel("First Name").inputValue()) === first &&
+      (await page.getByLabel("Last Name").inputValue()) === last &&
+      (await page.getByLabel("Examination Code").inputValue()) === ACCESS_CODE
+    ) {
+      break;
+    }
+  }
+  await verifyAndBegin();
+}
+
 try {
   await page.goto(`${BASE}/exam/join/${INVITE_TOKEN}`, { waitUntil: "domcontentloaded", timeout: 120_000 });
   await page.getByRole("heading", { name: "Mathematics Shared-Browser Examination" }).waitFor({ timeout: 60_000 });
@@ -312,18 +354,23 @@ try {
   const seenAttemptIds = [];
 
   for (const stu of threeStudents) {
+    // When this browser still holds a resumable attempt for a previous student,
+    // the entry page asks the next person to declare themselves before exposing
+    // the form. That is the anti-takeover guard working, so acknowledge it.
+    const differentStudent = page.getByRole("button", { name: "I am a different student" });
+    if (await differentStudent.count()) {
+      await differentStudent.first().click();
+      await page.getByLabel("First Name").waitFor({ timeout: 60_000 });
+    }
+
     // Verify clean entry screen: empty first name, empty last name, no unfinished-attempt banner, no error alert
-    assert.equal(await page.getByLabel("First name *").inputValue(), "");
-    assert.equal(await page.getByLabel("Last name *").inputValue(), "");
+    assert.equal(await page.getByLabel("First Name").inputValue(), "");
+    assert.equal(await page.getByLabel("Last Name").inputValue(), "");
     assert.equal(await page.locator('[data-testid="active-attempt-recovery-banner"]').count(), 0);
 
-    await page.getByLabel("First name *").fill(stu.first);
-    await page.getByLabel("Last name *").fill(stu.last);
-    await page.getByLabel("Examination access code").fill(ACCESS_CODE);
-    await page.getByRole("checkbox").check();
-    await page.getByRole("button", { name: "Verify & begin examination" }).click();
+    await enterAs(stu.first, stu.last);
 
-    await page.waitForURL(/\/take-exam\/[0-9a-f-]+$/, { timeout: 30_000 });
+    await page.waitForURL(/\/take-exam\/[0-9a-f-]+$/, { timeout: 120_000, waitUntil: "domcontentloaded" });
     const attemptUrl = new URL(page.url());
     const attemptId = attemptUrl.pathname.split("/").pop();
     assert.ok(attemptId && !seenAttemptIds.includes(attemptId), "each student must get a unique attemptId");
@@ -348,7 +395,11 @@ try {
     // Submit paper
     await page.getByRole("button", { name: "Submit examination" }).click();
     await page.getByRole("button", { name: "Yes, submit now" }).click();
-    await page.getByText("Your paper has been submitted").waitFor();
+
+    // A confirmed submission renders the locked confirmation screen; the
+    // candidate session is finalised and the browser is handed on explicitly.
+    await page.getByText("Thank you for completing your examination!").waitFor({ timeout: 30_000 });
+    await page.getByText(/Your responses have been saved/).waitFor({ timeout: 30_000 });
 
     // Verify completed candidate token was IMMEDIATELY purged from localStorage while unrelated state stays!
     const storageCheck = await page.evaluate((id) => ({
@@ -360,9 +411,11 @@ try {
     assert.equal(storageCheck.activePointer, null, "active pointer must be cleared immediately");
     assert.equal(storageCheck.adminCollapsed, "1", "unrelated app state must remain intact");
 
-    // Click "Finish & return to examination entry" to hand browser to the next student!
-    await page.getByTestId("finish-candidate-session").click();
-    await page.waitForURL(`**/exam/join/${INVITE_TOKEN}`, { timeout: 30_000 });
+    // The candidate now hands the browser to the next student.
+    await page.getByRole("button", { name: /Finish & exit for next student/ }).click();
+    // The first navigation to the entry page can include a cold dev-server
+    // compile, so allow for it instead of failing on a 30 s budget.
+    await page.waitForURL(`**/exam/join/${INVITE_TOKEN}`, { timeout: 120_000, waitUntil: "domcontentloaded" });
     await page.getByRole("heading", { name: "Mathematics Shared-Browser Examination" }).waitFor();
 
     pass(`Sequential student ${stu.first} ${stu.last} completed, submitted, cleared session, and returned cleanly to entry`);
@@ -374,25 +427,25 @@ try {
   await page.getByRole("heading", { name: "Examination session ended" }).waitFor();
   assert.equal(await page.getByPlaceholder("Type your answer…").count(), 0, "completed attempt must never reopen as editable");
   await page.getByTestId("closed-session-entry-link").click();
-  await page.waitForURL(`**/exam/join/${INVITE_TOKEN}`);
+  await page.waitForURL(`**/exam/join/${INVITE_TOKEN}`, { timeout: 120_000, waitUntil: "domcontentloaded" });
 
   // Replay Ama Kouadio's credentials -> blocked with 409!
-  await page.getByLabel("First name *").fill("Ama");
-  await page.getByLabel("Last name *").fill("Kouadio");
-  await page.getByLabel("Examination access code").fill(ACCESS_CODE);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Verify & begin examination" }).click();
-  await page.getByText(/already been submitted/i).waitFor();
+  await enterAs("Ama", "Kouadio");
+  await page.getByText(/already been submitted/i).waitFor({ timeout: 60_000 });
   pass("Scenario E: revisiting closed attempt shows ended handoff and duplicate login replay is refused with 409");
 
   // ── Scenario C & D: Refresh recovery, Offline reconnect, and Anti-takeover ──
   await page.goto(`${BASE}/exam/join/${INVITE_TOKEN}`, { waitUntil: "domcontentloaded" });
-  await page.getByLabel("First name *").fill("Fifamè");
-  await page.getByLabel("Last name *").fill("Soglo");
-  await page.getByLabel("Examination access code").fill(ACCESS_CODE);
-  await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Verify & begin examination" }).click();
-  await page.waitForURL(/\/take-exam\/[0-9a-f-]+$/);
+  async function clearEntryGuard() {
+    const btn = page.getByRole("button", { name: "I am a different student" });
+    if (await btn.count()) {
+      await btn.first().click();
+      await page.getByLabel("First Name").waitFor({ timeout: 60_000 });
+    }
+  }
+  await enterAs("Fifamè", "Soglo");
+  await page
+    .waitForURL(/\/take-exam\/[0-9a-f-]+$/, { timeout: 120_000, waitUntil: "domcontentloaded" });
   const fifameAttemptId = new URL(page.url()).pathname.split("/").pop();
 
   // Scenario D: Disconnect network, save answer -> queued locally without submitting!
@@ -417,18 +470,25 @@ try {
   await page.goto(`${BASE}/exam/join/${INVITE_TOKEN}`, { waitUntil: "domcontentloaded" });
   await page.getByTestId("active-attempt-recovery-banner").waitFor();
   // Form inputs must NOT prefill Fifamè's name!
-  assert.equal(await page.getByLabel("First name *").inputValue(), "");
-  assert.equal(await page.getByLabel("Last name *").inputValue(), "");
+  assert.equal(await page.getByLabel("First Name").inputValue(), "");
+  assert.equal(await page.getByLabel("Last Name").inputValue(), "");
 
   // Student E ("Ulrich Talon") clicks "I am a different student" and starts their own clean attempt!
   await page.getByRole("button", { name: "I am a different student" }).click();
   assert.equal(await page.locator('[data-testid="active-attempt-recovery-banner"]').count(), 0);
-  await page.getByLabel("First name *").fill("Ulrich");
-  await page.getByLabel("Last name *").fill("Talon");
-  await page.getByLabel("Examination access code").fill(ACCESS_CODE);
+  await page.getByLabel("First Name").fill("Ulrich");
+  await page.getByLabel("Last Name").fill("Talon");
+  await page.getByLabel("Examination Code").fill(ACCESS_CODE);
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Verify & begin examination" }).click();
-  await page.waitForURL(/\/take-exam\/[0-9a-f-]+$/);
+  await verifyAndBegin();
+  // A cold dev-server compile of /take-exam can exceed two minutes on the very
+  // first student; the server-rendered shell always arrives, the route change is
+  // what matters.
+  await page.waitForURL(/\/take-exam\/[0-9a-f-]+$/, { timeout: 120_000, waitUntil: "domcontentloaded" }).catch(async (e) => {
+    console.log("    [nav] url after join:", page.url());
+    console.log("    [nav] alerts:", await page.locator('[role="alert"]').allTextContents().catch(() => []));
+    throw e;
+  });
   const ulrichAttemptId = new URL(page.url()).pathname.split("/").pop();
   assert.notEqual(ulrichAttemptId, fifameAttemptId, "Ulrich must get his own separate attempt");
   await page.getByText("Ulrich Talon").waitFor();

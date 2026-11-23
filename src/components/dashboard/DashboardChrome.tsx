@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAccess";
@@ -207,6 +208,7 @@ export function DashboardChrome({
           <button onClick={signOut} className={cn(navLink, "mt-2 w-full", navIdle)}>
             <LogOut className="h-5 w-5" /> Sign out
           </button>
+          <PlatformCredit className="mt-3 px-1 pb-1" />
         </div>
       </aside>
 
@@ -227,6 +229,7 @@ export function DashboardChrome({
           <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
             <LogOut className="h-5 w-5" /> Sign out
           </button>
+          <PlatformCredit className="mt-4 px-3 pb-1" />
         </div>
         <main id="workspace-main" className="workspace-content mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-9 lg:py-10">{children}</main>
       </div>
