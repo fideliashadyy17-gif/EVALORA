@@ -36,6 +36,14 @@ try {
  await page.reload({waitUntil:'domcontentloaded'});await page.getByText('Mock Examination').waitFor();await page.getByText(/1 answer\(s\) awaiting confirmation/).waitFor();assert.equal(await page.getByPlaceholder('Type your answer…').inputValue(),'draft value');
  server.online=true;await page.getByRole('button',{name:'Retry saving'}).click();await page.getByText('1 of 2 answers confirmed by the server.').waitFor();assert.equal(server.answers[qids[0]].text,'draft value');
  await page.getByRole('button',{name:'Next →'}).click();await page.getByPlaceholder('Type your answer…').fill('temporary');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Discard unsaved changes'}).click();assert.equal(await page.getByPlaceholder('Type your answer…').inputValue(),'');
- await page.getByRole('button',{name:'Submit examination'}).click();await page.getByRole('button',{name:'Yes, submit now'}).click();await page.getByText('Your paper has been submitted').waitFor();assert.equal(server.submits,1);assert.ok(requests>=3);
+ await page.getByRole('button',{name:'Submit examination'}).click();await page.getByRole('button',{name:'Yes, submit now'}).click();
+ // Submitting tears the candidate session down and replaces the document with
+ // the examination entry, so a shared browser is never left holding a paper.
+ // A confirmed submission renders the locked confirmation screen and finalises
+ // the candidate session.
+ await page.getByText('Thank you for completing your examination!').waitFor({timeout:30000});
+ await page.waitForTimeout(800);
+ const afterSubmit=await page.evaluate(({id})=>({token:localStorage.getItem(`evalora-attempt-${id}`),pointer:localStorage.getItem('evalora-active-candidate-session'),marker:sessionStorage.getItem(`evalora-closed-attempt-${id}`)}),{id:aid});
+ assert.equal(server.submits,1);assert.equal(afterSubmit.token,null,'submitted candidate token must be purged');assert.equal(afterSubmit.pointer,null,'active pointer must be purged');assert.ok(afterSubmit.marker,'a closed-attempt marker must be written');assert.ok(requests>=3);
  console.log('PASS: real Chromium examination flow using mocked API: draft guard, navigation, failed save, same-tab reload recovery, retry, discard, submit, header token.');console.log(`state requests=${requests}, save attempts=${server.saves}, submissions=${server.submits}`);
 }finally {await context.close();await browser.close()}

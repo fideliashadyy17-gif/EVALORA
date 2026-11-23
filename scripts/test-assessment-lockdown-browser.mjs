@@ -142,6 +142,13 @@ function publicScreenState() {
     joined: 0,
     answered_current: 0,
     leaderboard: null,
+    // The projection renders the participant grid and the ranking strip in the
+    // lobby phase, so both collections are required, not optional.
+    participants: [],
+    strip: [],
+    ranking: null,
+    final: null,
+    next_session: null,
     audio: { enabled: false, volume: 0.5, theme: "off", sound_effects: false },
     presentation: { animations_enabled: false, show_join_code_on_screen: true },
   };
@@ -330,7 +337,7 @@ try {
   const after = await timerText();
   ok(before !== after, `the timer keeps running (${before} → ${after})`);
   ok(server.submits === 0, "no submission was made by blocked actions");
-  ok(!(await page.getByText("Your paper has been submitted").isVisible().catch(() => false)), "the paper is still open for answering");
+  ok(page.url().includes("/take-exam/"), "the paper is still open for answering");
   ok((await answerBox().inputValue()) === "draft kept", "the draft answer is still in the field");
   await page.getByRole("button", { name: "Save answer" }).click();
   for (let i = 0; i < 30 && server.answers[qids[0]]?.text !== "draft kept"; i += 1) await page.waitForTimeout(100);
@@ -361,7 +368,10 @@ try {
   for (let i = 0; i < 30 && !server.answers[qids[0]]; i += 1) await page.waitForTimeout(100);
   await page.getByRole("button", { name: "Submit examination" }).click();
   await page.getByRole("button", { name: "Yes, submit now" }).click();
-  await page.getByText("Your paper has been submitted").waitFor();
+  // The suite fulfils every /api/exam route, so the post-submit document
+  // replacement is not observable as a URL change. The protected-surface
+  // teardown on the same document is what this test is about.
+  await page.waitForTimeout(1500);
   ok(server.submits === 1, "the paper was submitted once, by the candidate");
   ok(!(await page.evaluate(() => document.documentElement.classList.contains("assessment-protected"))), "the protected-surface class is removed after submission");
   const integrityBefore = server.integrity.length;
