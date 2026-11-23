@@ -167,6 +167,7 @@ function createPgliteSupabase(db) {
   }
 
   return {
+    rpc: async () => ({ data: true, error: null }),
     from(table) {
       const st = { op: "select", filters: [], orders: [], limitCount: null, single: null, payload: null, onConflict: null };
       const chain = {

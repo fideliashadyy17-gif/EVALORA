@@ -76,7 +76,7 @@ function table(name) {
   };
   return api;
 }
-const admin = { from: table };
+const admin = { from: table, rpc: async () => ({ data: true, error: null }) };
 
 /* ── module loader (real route + real pure libs, infra overridden) ── */
 function load(source, overrides = {}) {

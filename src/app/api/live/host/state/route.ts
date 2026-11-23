@@ -1,4 +1,5 @@
 import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import {
   answerReveal,
   effectivePhase,
@@ -37,6 +38,8 @@ export async function GET(request: Request) {
   if (!can(ctx, session.organization_id, CREATOR_ROLES)) {
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
   }
+  if (!(await hasCapability(admin, ctx, session.organization_id, "live_competitions")))
+    return NextResponse.json({ error: "Live competitions are not included in this workspace plan." }, { status: 403 });
 
   const [{ data: competition }, { data: quiz }, rows, { data: rawParticipants }, { data: answers }] =
     await Promise.all([

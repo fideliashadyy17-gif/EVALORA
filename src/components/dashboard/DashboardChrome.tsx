@@ -5,6 +5,7 @@ import { PlatformCredit } from "@/components/PlatformCredit";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAccess";
+import type { CapabilityKey, CapabilitySet } from "@/lib/capability-rules";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
@@ -40,6 +41,7 @@ interface NavItem {
   exact?: boolean;
   /** Defaults to "all"; administration entries are managers-only. */
   audience?: NavAudience;
+  capability?: CapabilityKey;
 }
 
 const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
@@ -47,10 +49,10 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Institutional Management",
     items: [
-      { href: "/dashboard/students", label: "Students", icon: GraduationCap, audience: "staff" },
+      { href: "/dashboard/students", label: "Students", icon: GraduationCap, audience: "staff", capability: "student_management" },
       { href: "/dashboard/teachers", label: "Teachers", icon: BookOpenCheck, audience: "staff" },
       { href: "/dashboard/team", label: "Staff & Members", icon: Users, audience: "staff" },
-      { href: "/dashboard/academics/classes", label: "Classes", icon: School, audience: "staff" },
+      { href: "/dashboard/academics/classes", label: "Classes", icon: School, audience: "staff", capability: "class_management" },
       { href: "/dashboard/academics", label: "Academic Structure", icon: Layers3, exact: true, audience: "staff" },
       { href: "/dashboard/accounts", label: "Accounts & Permissions", icon: KeyRound, audience: "managers" },
       { href: "/dashboard/settings", label: "Organization Settings", icon: Settings, audience: "managers" },
@@ -59,14 +61,14 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Assessment",
     items: [
-      { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff" },
-      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff" },
-      { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff" },
-      { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff" },
+      { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff", capability: "quiz_management" },
+      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff", capability: "examinations" },
+      { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff", capability: "question_bank" },
+      { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff", capability: "live_competitions" },
       { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks, audience: "staff" },
-      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck, audience: "staff" },
-      { href: "/dashboard/reports", label: "Results & Reports", icon: BarChart3, audience: "staff" },
-      { href: "/dashboard/myp-results", label: "MYP Results", icon: GraduationCap, audience: "staff" },
+      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck, audience: "staff", capability: "proctoring" },
+      { href: "/dashboard/reports", label: "Results & Reports", icon: BarChart3, audience: "staff", capability: "reports_analytics" },
+      { href: "/dashboard/myp-results", label: "MYP Results", icon: GraduationCap, audience: "staff", capability: "reports_analytics" },
     ],
   },
   {
@@ -105,6 +107,7 @@ export function DashboardChrome({
   isDemo,
   orgRole,
   canSwitchWorkspace,
+  capabilities,
   userName,
   children,
 }: {
@@ -113,6 +116,7 @@ export function DashboardChrome({
   isDemo?: boolean;
   orgRole?: string;
   canSwitchWorkspace?: boolean;
+  capabilities: CapabilitySet;
   userName: string;
   children: ReactNode;
 }) {
@@ -144,7 +148,8 @@ export function DashboardChrome({
   // actions enforce the same rules independently.
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: filterNavItems(section.items, orgRole),
+    items: filterNavItems(section.items, orgRole)
+      .filter((item) => !item.capability || capabilities[item.capability]),
   })).filter((section) => section.items.length > 0);
 
   const nav = (

@@ -14,6 +14,7 @@
  */
 import { audit } from "@/lib/admin";
 import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import {
   MAX_PARTICIPANT_EXTRA_TIME_MS,
   normalizeExtraTimeMs,
@@ -57,6 +58,8 @@ export async function POST(request: Request) {
   const isHost = session.host_id === ctx.user.id;
   if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES))
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
+  if (!(await hasCapability(admin, ctx, session.organization_id, "live_competitions")))
+    return NextResponse.json({ error: "Live competitions are not included in this workspace plan." }, { status: 403 });
 
   // Extra time extends a shared per-question window. A self-paced session has
   // no shared window to extend, so granting one there would be a silent no-op

@@ -22,6 +22,7 @@ try{content._compile(ts.transpileModule(readFileSync('src/lib/content.ts','utf8'
 const helperFile=path.resolve('scripts/__question_options.cjs'),helper=new Module(helperFile);helper.filename=helperFile;helper.paths=Module._nodeModulePaths(path.dirname(helperFile));const beforeHelper=Module._load;Module._load=function(req,parent){if(parent?.filename===helperFile&&req==='./content')return content.exports;return beforeHelper.apply(this,arguments)};try{helper._compile(ts.transpileModule(readFileSync('src/lib/questionOptions.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,helperFile)}finally{Module._load=beforeHelper};
 const original=Module._load;
 Module._load=function(request,parent){if(parent?.filename===file){
+ if(request==='@/lib/capabilities')return {hasCapability:async()=>true};
  if(request==='@/lib/auth')return {requireUser:async()=>({user:{id:'user'}}),activeOrg:()=>org,can:()=>canEdit,CREATOR_ROLES:['owner','admin','teacher','organizer']};
  if(request==='@/lib/entitlements')return {};
  if(request==='@/lib/questionOptions')return helper.exports;

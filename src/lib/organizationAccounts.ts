@@ -108,6 +108,24 @@ export function canManageAccount(input: AccountActionInput): AccountActionCheck 
   return { ok: true };
 }
 
+/** Super Admin credential tools are limited to actual tenant owners/admins. */
+export function canManageOrganizationAdminCredential(input: {
+  actorPlatformRole: string | null | undefined;
+  targetRole: string | null | undefined;
+  targetPlatformRole: string | null | undefined;
+}): AccountActionCheck {
+  if (input.actorPlatformRole !== "super_admin") {
+    return { ok: false, error: "Only the EVALORA Super Admin can manage organization administrator credentials." };
+  }
+  if (input.targetPlatformRole === "super_admin") {
+    return { ok: false, error: "Platform administrator credentials cannot be changed here." };
+  }
+  if (input.targetRole !== "owner" && input.targetRole !== "admin") {
+    return { ok: false, error: "Credential management is limited to organization owners and administrators." };
+  }
+  return { ok: true };
+}
+
 /** Whether a role may be granted through the account screens. */
 export function isAssignableStaffRole(role: string | null | undefined): role is AssignableStaffRole {
   return ASSIGNABLE_STAFF_ROLES.includes(String(role ?? "") as AssignableStaffRole);

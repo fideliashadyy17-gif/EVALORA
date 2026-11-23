@@ -2,6 +2,7 @@
 
 import { audit } from "@/lib/admin";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { isPlanLimitError, planLimitMessage } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -228,7 +229,14 @@ export async function saveClassInline(input: ClassInput): Promise<ClassResult> {
     : await supabase.from("classes").insert(payload)
         .select("id, name, code, academic_year_id, level_id, department_id, status").single();
   if (error || !data) {
-    return { ok: false, error: error?.code === "23505" ? "That class code is already used in this academic year." : "The class could not be saved. Please try again." };
+    return {
+      ok: false,
+      error: isPlanLimitError(error)
+        ? planLimitMessage(error)
+        : error?.code === "23505"
+          ? "That class code is already used in this academic year."
+          : "The class could not be saved. Please try again.",
+    };
   }
   await audit(ctx, input.id ? "class.updated" : "class.created", "classes", data.id, org.id, { name, code: payload.code });
   revalidateAcademics();

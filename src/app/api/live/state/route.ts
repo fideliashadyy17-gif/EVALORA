@@ -16,6 +16,7 @@ import { loadRankingView } from "@/lib/liveControlServer";
 import { revealedPodium, withMovement } from "@/lib/liveRanking";
 import { buildRoster, PRESENCE_HEARTBEAT_MS, type PresenceSourceRow } from "@/lib/presence";
 import { createAdminClient } from "@/lib/supabase/server";
+import { hasOrganizationCapability } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 
 /**
@@ -61,6 +62,8 @@ export async function GET(request: Request) {
     .eq("id", participant.session_id)
     .single();
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
+  if (!(await hasOrganizationCapability(admin, session.organization_id, "live_competitions")))
+    return NextResponse.json({ error: "Live competitions are not included in this workspace plan." }, { status: 403 });
 
   const now = new Date();
   const previousSeen = participant.last_seen_at ? new Date(participant.last_seen_at).getTime() : 0;

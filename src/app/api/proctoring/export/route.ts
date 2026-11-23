@@ -1,4 +1,5 @@
 import { activeOrg, can, getSessionContext, PROCTOR_ROLES } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import { isUuid, loadReviewHistory, reviewHistoryCsv } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -26,6 +27,8 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "proctoring")))
+    return NextResponse.json({ error: "Proctoring is not included in this workspace plan." }, { status: 403 });
 
   const rows = await loadReviewHistory(supabase, {
     organizationId: org.id,

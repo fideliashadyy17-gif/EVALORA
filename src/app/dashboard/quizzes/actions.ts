@@ -1,6 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import { isFeatureEnabledFor } from "@/lib/platform";
@@ -29,6 +30,8 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   if (!parsed.success) return { error: "Please check the form." };
   const q = parsed.data;
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "quiz_management")))
+    return { error: "Quiz management is not included in this workspace plan." };
 
   if (!q.id) {
     const ent = await getEntitlementFor(supabase, ctx, org.id);
@@ -87,6 +90,7 @@ export async function duplicateQuiz(formData: FormData) {
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
   const id = String(formData.get("id"));
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "quiz_management"))) redirect("/dashboard/quizzes?e=module");
   const { data: src } = await supabase.from("quizzes").select("*").eq("id", id).eq("organization_id", org.id).single();
   if (!src) redirect("/dashboard/quizzes");
   const { data: copy } = await supabase
@@ -116,6 +120,7 @@ export async function deleteQuiz(formData: FormData) {
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "quiz_management"))) redirect("/dashboard/quizzes?e=module");
   await supabase.from("quizzes").delete().eq("id", String(formData.get("id"))).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
 }
@@ -125,6 +130,7 @@ export async function setQuizStatus(formData: FormData) {
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "quiz_management"))) redirect("/dashboard/quizzes?e=module");
   await supabase.from("quizzes").update({ status: String(formData.get("status")) }).eq("id", String(formData.get("id"))).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
 }
@@ -138,6 +144,7 @@ export async function startSession(formData: FormData) {
   const quizId = String(formData.get("quiz_id"));
   const mode = String(formData.get("mode") ?? "synchronized");
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "live_competitions"))) redirect("/dashboard/quizzes?e=module");
 
   const { data: quiz } = await supabase.from("quizzes").select("*").eq("id", quizId).eq("organization_id", org.id).single();
   if (!quiz) redirect("/dashboard/quizzes");

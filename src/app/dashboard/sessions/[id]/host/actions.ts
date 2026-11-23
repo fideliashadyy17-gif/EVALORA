@@ -1,6 +1,7 @@
 "use server";
 
 import { can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import { applyLiveCommand, type LiveCommand } from "@/lib/liveControl";
 import { createNextRoundSession, loadControlTiming, saveRankingSnapshot } from "@/lib/liveControlServer";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
@@ -16,6 +17,7 @@ async function loadOwnedSession(sessionId: string) {
   const { data } = await supabase.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
   if (!data) return null;
   if (!can(ctx, data.organization_id, CREATOR_ROLES) && data.host_id !== ctx.user.id) return null;
+  if (!(await hasCapability(supabase, ctx, data.organization_id, "live_competitions"))) return null;
   return { supabase, session: data, ctx };
 }
 

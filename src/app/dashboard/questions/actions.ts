@@ -1,6 +1,7 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
 import { questionOptionsUnchanged } from "@/lib/questionOptions";
@@ -60,6 +61,8 @@ export async function saveQuestion(raw: QuestionInput) {
   }
 
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank")))
+    return { error: "The Question Bank is not included in this workspace plan." };
 
   if (!q.id) {
     const ent = await getEntitlementFor(supabase, ctx, org.id);
@@ -168,6 +171,7 @@ export async function deleteQuestion(formData: FormData) {
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/questions");
   const id = String(formData.get("id"));
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank"))) redirect("/dashboard/questions?e=module");
   await supabase.from("questions").delete().eq("id", id).eq("organization_id", org.id);
   revalidatePath("/dashboard/questions");
 }
@@ -179,6 +183,7 @@ export async function setQuestionStatus(formData: FormData) {
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank"))) redirect("/dashboard/questions?e=module");
   if (status === "published") {
     const { data: question } = await supabase
       .from("questions")
@@ -204,6 +209,7 @@ export async function createCategory(formData: FormData) {
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   if (!name) redirect("/dashboard/questions");
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank"))) redirect("/dashboard/questions?e=module");
   await supabase.from("question_categories").insert({ organization_id: org.id, name });
   revalidatePath("/dashboard/questions");
 }
@@ -245,6 +251,8 @@ export async function importQuestionsCsv(csv: string) {
 
   const validTypes = ["single_choice", "multiple_select", "true_false", "short_answer", "numeric", "ordering", "poll", "open_ended"];
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank")))
+    return { error: "The Question Bank is not included in this workspace plan." };
 
   const ent = await getEntitlementFor(supabase, ctx, org.id);
   const { count: existing } = await supabase
@@ -339,6 +347,8 @@ export async function uploadQuestionImage(formData: FormData): Promise<{ url?: s
   if (file.size > 5 * 1024 * 1024) return { error: "Images must be 5 MB or smaller." };
 
   const supabase = await createClient();
+  if (!(await hasCapability(supabase, ctx, org.id, "question_bank")))
+    return { error: "Question media upload is not available on this plan." };
   const path = `${org.id}/${crypto.randomUUID()}.${ext}`;
   const { error } = await supabase.storage
     .from("question-media")

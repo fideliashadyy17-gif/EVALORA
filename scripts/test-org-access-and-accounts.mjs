@@ -156,6 +156,15 @@ await test('account actions are refused for non-managers, owners, super admins a
   assert.match(accounts.canManageAccount({ ...base, targetPlatformRole: 'super_admin' }).error ?? '', /platform administrator/);
 });
 
+await test('Super Admin credential tools are restricted to tenant owners and administrators', () => {
+  const check = accounts.canManageOrganizationAdminCredential;
+  assert.equal(check({ actorPlatformRole: 'super_admin', targetRole: 'admin', targetPlatformRole: 'user' }).ok, true);
+  assert.equal(check({ actorPlatformRole: 'super_admin', targetRole: 'owner', targetPlatformRole: 'user' }).ok, true);
+  assert.equal(check({ actorPlatformRole: 'user', targetRole: 'admin', targetPlatformRole: 'user' }).ok, false);
+  assert.equal(check({ actorPlatformRole: 'super_admin', targetRole: 'teacher', targetPlatformRole: 'user' }).ok, false);
+  assert.equal(check({ actorPlatformRole: 'super_admin', targetRole: 'admin', targetPlatformRole: 'super_admin' }).ok, false);
+});
+
 await test('assignable staff roles exclude owner and learner roles', () => {
   for (const role of ['admin', 'teacher', 'organizer', 'supervisor', 'corrector']) {
     assert.equal(accounts.isAssignableStaffRole(role), true, role);

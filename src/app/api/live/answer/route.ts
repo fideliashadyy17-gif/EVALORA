@@ -9,6 +9,7 @@ import {
 } from "@/lib/live";
 import { scoreAnswer, type AnswerPayload } from "@/lib/scoring";
 import { createAdminClient } from "@/lib/supabase/server";
+import { hasOrganizationCapability } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -54,6 +55,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Your entry is waiting for organizer approval." }, { status: 403 });
 
   const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", participant.session_id).single();
+  if (!(await hasOrganizationCapability(admin, session.organization_id, "live_competitions")))
+    return NextResponse.json({ error: "Live competitions are not included in this workspace plan." }, { status: 403 });
   if (session.status !== "live")
     return NextResponse.json({ error: "The session is not live." }, { status: 409 });
   // Organizer answer lock: submissions are refused while the presentation

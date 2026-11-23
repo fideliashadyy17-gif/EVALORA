@@ -267,6 +267,16 @@ export async function loadAttemptContext(admin: SupabaseClient, attemptId: strin
     .maybeSingle();
   if (!attempt) return null;
   const { data: exam } = await admin.from("exams").select("*").eq("id", attempt.exam_id).single();
+  if (!exam) return null;
+  // Attempt-token APIs use the service role, so RLS alone cannot enforce the
+  // customer's examination entitlement. Re-check the tenant feature on every
+  // state/save/submit/message/integrity request; fail closed if the RPC is not
+  // installed or the entitlement lookup fails.
+  const { data: entitled, error: entitlementError } = await admin.rpc("org_has_feature", {
+    p_org: exam.organization_id,
+    p_feature: "examinations",
+  });
+  if (entitlementError || entitled !== true) return null;
   const { data: candidate } = await admin
     .from("exam_candidates")
     .select("*")

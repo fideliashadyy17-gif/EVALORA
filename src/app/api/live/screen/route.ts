@@ -14,6 +14,7 @@ import { loadRankingView } from "@/lib/liveControlServer";
 import { historyPoints, revealedPodium, withMovement, type RankingRow } from "@/lib/liveRanking";
 import { publicScreenPath, verifyDisplayToken } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
+import { hasOrganizationCapability } from "@/lib/capabilities";
 import { NextResponse } from "next/server";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -66,6 +67,8 @@ export async function GET(request: Request) {
   }
 
   if (!session) return NextResponse.json({ error: "Screen not found." }, { status: 404 });
+  if (!(await hasOrganizationCapability(admin, session.organization_id, "live_competitions")))
+    return NextResponse.json({ error: "Live competitions are not included in this workspace plan." }, { status: 403 });
   if (!verifyDisplayToken(token, session.id, Number(session.display_token_version ?? 1))) {
     return NextResponse.json(
       { error: "This screen link is invalid, expired or has been revoked." },

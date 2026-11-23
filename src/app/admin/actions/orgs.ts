@@ -2,6 +2,7 @@
 
 import { audit, fint, fstr, requireSuperAdmin, uniqueOrgSlug } from "@/lib/admin";
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
+import { normalizeAccountEmail, validateInitialPassword, canManageOrganizationAdminCredential } from "@/lib/organizationAccounts";
 import { ORG_TYPES } from "@/lib/brand";
 import { generateSetupCode, hashSetupCode, setupExpiryFrom, SETUP_CODE_TTL_HOURS } from "@/lib/orgAdminSetup";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -12,6 +13,7 @@ import { redirect } from "next/navigation";
 
 const ORG_TYPE_VALUES = ORG_TYPES.map((t) => t.value) as readonly string[];
 const MEMBER_ROLES = ["owner", "admin", "teacher", "organizer", "supervisor", "corrector", "participant", "candidate", "parent", "student"];
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function uploadLogo(orgId: string, file: File | null): Promise<string | null> {
   if (!file || file.size === 0) return null;
@@ -288,6 +290,100 @@ export async function addOrgMember(formData: FormData) {
   });
   await audit(ctx, "organization.member_invited", "invitations", orgId, orgId, { email, role });
   redirect(`/admin/organizations/${orgId}?tab=members&ok=invited`);
+}
+
+/** Provision a new organization administrator with a password set in Supabase Auth. */
+export async function provisionOrganizationAdministrator(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const orgId = String(formData.get("organization_id") ?? "");
+  const back = `/admin/organizations/${encodeURIComponent(orgId)}?tab=members`;
+  if (!UUID_RE.test(orgId)) redirect("/admin/organizations");
+
+  const email = normalizeAccountEmail(String(formData.get("email") ?? ""));
+  const fullName = String(formData.get("full_name") ?? "").trim().slice(0, 160);
+  const password = String(formData.get("password") ?? "");
+  if (!email) redirect(`${back}&e=email`);
+  if (!fullName) redirect(`${back}&e=name`);
+  const passwordCheck = validateInitialPassword(password, { email, name: fullName });
+  if (!passwordCheck.ok) redirect(`${back}&e=password`);
+  if (password !== String(formData.get("confirm_password") ?? "")) redirect(`${back}&e=password_confirm`);
+
+  const admin = createAdminClient();
+  const { data: org } = await admin.from("organizations").select("id, status").eq("id", orgId).maybeSingle();
+  if (!org || org.status === "archived") redirect(`${back}&e=organization`);
+
+  const { data: existing } = await admin.from("profiles").select("id").ilike("email", email).maybeSingle();
+  if (existing) redirect(`${back}&e=account_exists`);
+
+  const { data: created, error: authError } = await admin.auth.admin.createUser({
+    email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: fullName },
+  });
+  const createdUserId = created?.user?.id;
+  if (authError || !createdUserId) redirect(`${back}&e=account_create_failed`);
+
+  const { error: memberError } = await admin.from("organization_members").insert({
+    organization_id: orgId,
+    user_id: createdUserId,
+    role: "admin",
+    status: "active",
+  });
+  if (memberError) {
+    // Do not leave a usable orphan credential if tenant membership could not be granted.
+    await admin.auth.admin.deleteUser(createdUserId);
+    redirect(`${back}&e=membership_failed`);
+  }
+
+  await admin.from("profiles").update({ full_name: fullName }).eq("id", createdUserId);
+  await audit(ctx, "organization.admin_account_provisioned", "organization_members", createdUserId, orgId, {
+    email,
+    role: "admin",
+    credential_method: "configured_initial_password",
+  });
+  revalidatePath(`/admin/organizations/${orgId}`);
+  redirect(`${back}&ok=admin_created`);
+}
+
+/** Set a tenant owner/admin password directly through server-only Supabase Auth. */
+export async function setOrganizationAdminPassword(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const orgId = String(formData.get("organization_id") ?? "");
+  const memberId = String(formData.get("member_id") ?? "");
+  const back = `/admin/organizations/${encodeURIComponent(orgId)}?tab=members`;
+  const fail = (code: string): never => redirect(`${back}&e=${code}`);
+  if (!UUID_RE.test(orgId) || !UUID_RE.test(memberId)) redirect("/admin/organizations");
+
+  const admin = createAdminClient();
+  const { data: member } = await admin
+    .from("organization_members")
+    .select("id, user_id, role, organization_id, profiles(id, email, full_name, platform_role)")
+    .eq("id", memberId)
+    .eq("organization_id", orgId)
+    .maybeSingle();
+  const profile = member?.profiles as unknown as { id: string; email: string | null; full_name: string | null; platform_role: string } | null;
+  if (!member || !profile) redirect(`${back}&e=member_missing`);
+
+  const allowed = canManageOrganizationAdminCredential({
+    actorPlatformRole: ctx.profile.platform_role,
+    targetRole: member.role,
+    targetPlatformRole: profile.platform_role,
+  });
+  if (!allowed.ok) fail("credential_forbidden");
+  const password = String(formData.get("password") ?? "");
+  const passwordCheck = validateInitialPassword(password, { email: profile.email, name: profile.full_name });
+  if (!passwordCheck.ok) redirect(`${back}&e=password`);
+  if (password !== String(formData.get("confirm_password") ?? "")) redirect(`${back}&e=password_confirm`);
+
+  const { error } = await admin.auth.admin.updateUserById(member.user_id, { password });
+  if (error) redirect(`${back}&e=password_update_failed`);
+  await audit(ctx, "organization.admin_password_set", "organization_members", member.id, orgId, {
+    email: profile.email,
+    role: member.role,
+  });
+  revalidatePath(`/admin/organizations/${orgId}`);
+  redirect(`${back}&ok=password_set`);
 }
 
 export async function updateOrgMember(formData: FormData) {

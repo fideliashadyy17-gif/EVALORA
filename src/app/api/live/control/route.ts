@@ -1,5 +1,6 @@
 import { audit } from "@/lib/admin";
 import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { hasCapability } from "@/lib/capabilities";
 import {
   applyLiveCommand,
   isResultsStage,
@@ -145,6 +146,8 @@ async function authorize(sessionId: string): Promise<
   if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
     return { ok: false, status: 403, error: "Organizer access required." };
   }
+  if (!(await hasCapability(admin, ctx, session.organization_id, "live_competitions")))
+    return { ok: false, status: 403, error: "Live competitions are not included in this workspace plan." };
   return { ok: true, loaded: { session: session as LoadedSession["session"], admin }, ctx };
 }
 
@@ -199,6 +202,8 @@ export async function GET(request: Request) {
   if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
     return NextResponse.json({ authorized: false, signed_in: true, reason: "not_organizer" }, { status: 200 });
   }
+  if (!(await hasCapability(admin, ctx, session.organization_id, "live_competitions")))
+    return NextResponse.json({ authorized: false, signed_in: true, reason: "module_disabled" }, { status: 200 });
 
   const timing = await loadControlTiming(admin, session.quiz_id);
   const index = Number(session.current_question_index ?? -1);

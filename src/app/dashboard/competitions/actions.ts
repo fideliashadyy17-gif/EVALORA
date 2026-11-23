@@ -2,8 +2,9 @@
 
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
+import { getCapabilities } from "@/lib/capabilities";
 import { audit } from "@/lib/admin";
-import { createAdminClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -11,6 +12,11 @@ const FORMATS = COMPETITION_FORMATS.map((f) => f.value) as readonly string[];
 const STATUSES = COMPETITION_STATUSES as readonly string[];
 
 const text = (fd: FormData, key: string, max = 200) => String(fd.get(key) ?? "").trim().slice(0, max) || null;
+
+async function requireCompetitionCapability(ctx: Awaited<ReturnType<typeof requireUser>>, orgId: string) {
+  const { capabilities } = await getCapabilities(await createClient(), ctx, orgId);
+  if (!capabilities.live_competitions) redirect("/dashboard/competitions?e=module");
+}
 
 async function accessCode(): Promise<string> {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -33,6 +39,7 @@ export async function createOrgCompetition(formData: FormData) {
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  await requireCompetitionCapability(ctx, org.id);
 
   const admin = createAdminClient();
   const title = text(formData, "title", 160);
@@ -89,6 +96,7 @@ export async function setOrgCompetitionStatus(formData: FormData) {
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  await requireCompetitionCapability(ctx, org.id);
 
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
@@ -133,6 +141,7 @@ export async function deleteDraftCompetition(formData: FormData) {
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
   if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  await requireCompetitionCapability(ctx, org.id);
 
   const id = String(formData.get("id") ?? "");
   const admin = createAdminClient();

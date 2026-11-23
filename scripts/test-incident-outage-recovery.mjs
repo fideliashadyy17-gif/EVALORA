@@ -283,6 +283,7 @@ function createFakeExamDb({ status = "in_progress", pendingSaves = 2, rejectAuto
   const events = [];
 
   const db = {
+    rpc: async () => ({ data: true, error: null }),
     attempt,
     presence,
     answers,

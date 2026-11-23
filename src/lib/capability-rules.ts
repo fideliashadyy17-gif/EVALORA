@@ -75,12 +75,12 @@ export function resolveCapabilities(input: CapabilityInput): CapabilitySet {
   const institutionalAdmin = institutional;
 
   return {
-    class_management: true,
-    student_management: true,
-    question_bank: live,
-    quiz_management: live,
+    class_management: limits.max_classes !== 0,
+    student_management: limits.max_students !== 0,
+    question_bank: limits.max_questions !== 0,
+    quiz_management: limits.max_quizzes !== 0,
     examinations,
-    live_competitions: live,
+    live_competitions: live && limits.max_quizzes !== 0 && limits.max_participants_per_session !== 0,
     proctoring,
     reports_analytics: reports,
     imports_exports: institutional || reports,

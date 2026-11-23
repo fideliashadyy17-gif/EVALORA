@@ -11,7 +11,7 @@ type CopyState = "idle" | "ok" | "error";
  *
  * The URL is passed in from the server (never re-derived in the browser), so
  * what an administrator copies is exactly the address the platform reports —
- * including path-mode URLs such as `/portal/oak-international-school` when
+ * including path-mode URLs such as `/portal/ois` when
  * wildcard subdomains are not deployed yet.
  */
 export function PlatformUrlActions({

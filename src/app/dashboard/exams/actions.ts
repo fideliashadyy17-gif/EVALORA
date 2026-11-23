@@ -10,6 +10,13 @@ import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+async function requireExamsCapability(ctx: Awaited<ReturnType<typeof requireUser>>) {
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, [...CREATOR_ROLES, ...MARKER_ROLES, ...PROCTOR_ROLES])) return;
+  const { capabilities } = await getCapabilities(await createClient(), ctx, org.id);
+  if (!capabilities.examinations) redirect("/dashboard/exams?e=module");
+}
+
 export async function createExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
@@ -106,6 +113,7 @@ export async function createExam(formData: FormData) {
 
 export async function setExamStatus(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
@@ -138,6 +146,7 @@ export async function setExamStatus(formData: FormData) {
  */
 export async function pauseExam(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   const id = String(formData.get("id") ?? "");
@@ -177,6 +186,7 @@ export async function pauseExam(formData: FormData) {
 
 export async function updateExamLockdown(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
@@ -212,6 +222,7 @@ export async function updateExamLockdown(formData: FormData) {
 
 export async function deleteExam(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
@@ -289,6 +300,7 @@ export async function deleteExam(formData: FormData) {
 
 export async function addCandidate(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   const examId = String(formData.get("exam_id"));
@@ -310,6 +322,7 @@ export async function addCandidate(formData: FormData) {
 /** Bulk candidates: one per line "Full Name, email, ref". Returns a report via redirect params. */
 export async function addCandidatesBulk(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   const examId = String(formData.get("exam_id"));
@@ -335,6 +348,7 @@ export async function addCandidatesBulk(formData: FormData) {
 
 export async function removeCandidate(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
@@ -354,6 +368,7 @@ export async function removeCandidate(formData: FormData) {
 /** Manual marking of a written answer; recomputes the attempt total. */
 export async function markAnswer(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
@@ -509,6 +524,7 @@ async function loadRubricMarkingContext(
  */
 export async function markWithRubric(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
@@ -582,6 +598,7 @@ export async function markWithRubric(formData: FormData) {
  */
 export async function moderateAnswer(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
@@ -642,6 +659,7 @@ export async function moderateAnswer(formData: FormData) {
 
 export async function publishResults(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
   const examId = String(formData.get("exam_id") ?? "");
@@ -673,6 +691,7 @@ export async function publishResults(formData: FormData) {
 /** Record an observation without allowing a workspace to target another exam. */
 export async function logIncident(formData: FormData): Promise<{ ok: boolean; message: string }> {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const fail = (message: string) => ({ ok: false, message });
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES)) return fail("Your workspace cannot record this observation.");
@@ -706,6 +725,7 @@ export async function logIncident(formData: FormData): Promise<{ ok: boolean; me
 /** Review only an incident belonging to the verified workspace examination. */
 export async function reviewIncident(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const examId = String(formData.get("exam_id") ?? "");
   const incidentId = String(formData.get("id") ?? "");
@@ -738,6 +758,7 @@ export async function reviewIncident(formData: FormData) {
 /** Limited organizer invitation controls. Other advanced settings remain in the global console. */
 export async function updateWorkspaceExamAccess(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   const id = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams");
@@ -778,6 +799,7 @@ export async function updateWorkspaceExamAccess(formData: FormData) {
  */
 export async function proposeAiMarks(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
@@ -853,6 +875,7 @@ export async function proposeAiMarks(formData: FormData) {
  */
 export async function decideAiProposal(formData: FormData) {
   const ctx = await requireUser();
+  await requireExamsCapability(ctx);
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
   const proposalId = String(formData.get("proposal_id") ?? "");

@@ -155,6 +155,7 @@ const route = compile("src/app/api/live/control/route.ts", "scripts/__live_contr
   "@/lib/liveControlServer": serverStub,
   "@/lib/supabase/server": adminStub,
   "@/lib/auth": authStub,
+  "@/lib/capabilities": { hasCapability: async () => true },
   "@/lib/admin": adminLibStub,
   "next/server": nextServerStub,
 });

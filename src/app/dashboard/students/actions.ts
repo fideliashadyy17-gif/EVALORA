@@ -2,6 +2,7 @@
 
 import { audit } from "@/lib/admin";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { isPlanLimitError, planLimitMessage } from "@/lib/entitlements";
 import { isValidEmail, normalizeDateOfBirth, normalizeGender } from "@/lib/studentImport";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -83,7 +84,14 @@ export async function registerStudent(input: RegisterStudentInput): Promise<Regi
     guardian_contact: String(input.guardian_contact ?? "").trim().slice(0, 120) || null,
     status: "active",
   }).select("id, full_name").single();
-  if (error || !student) return { ok: false, error: "The student could not be registered. Please try again." };
+  if (error || !student) {
+    return {
+      ok: false,
+      error: isPlanLimitError(error)
+        ? planLimitMessage(error)
+        : "The student could not be registered. Please try again.",
+    };
+  }
 
   if (cls) {
     const { error: enrollError } = await supabase.from("student_enrollments").insert({

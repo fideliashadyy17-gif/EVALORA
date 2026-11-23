@@ -1,11 +1,14 @@
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { ORG_ROLES } from "@/lib/brand";
+import { MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import Link from "next/link";
 import {
   addOrgMember,
+  provisionOrganizationAdministrator,
   revokeOrgInvitation,
+  setOrganizationAdminPassword,
   transferOwnership,
   updateOrgMember,
 } from "../../../actions/orgs";
@@ -46,6 +49,18 @@ export async function MembersTab({ orgId, sp }: { orgId: string; sp: { ok?: stri
           owner_remove: "Transfer ownership before removing the current owner.",
           owner: "Enter the new owner's email.",
           owner_failed: "Could not resolve that owner account.",
+          admin_created: "Organization administrator account created. Share the password securely out-of-band; it is not shown or stored by EVALORA.",
+          password_set: "Administrator password updated in Supabase Auth. No first-login password change is required.",
+          name: "Enter the administrator's full name.",
+          password: "Choose a password with at least 10 characters, including letters and numbers; avoid the person's name or email.",
+          password_confirm: "The password and confirmation do not match.",
+          account_exists: "That email already has an EVALORA account. Add the existing user instead; this form only provisions new accounts.",
+          account_create_failed: "Could not create the Auth account. Verify the email and try again.",
+          membership_failed: "The account could not be attached to this organization. Contact the platform team to check for a provisional account before retrying.",
+          organization: "Archived organizations cannot receive new administrator accounts.",
+          member_missing: "The selected organization member no longer exists.",
+          credential_forbidden: "Only organization owners and administrators can be managed here; platform admin credentials are protected.",
+          password_update_failed: "Supabase Auth could not update the password. No change was reported.",
         }}
       />
 
@@ -72,6 +87,27 @@ export async function MembersTab({ orgId, sp }: { orgId: string; sp: { ok?: stri
           </form>
         </Card>
       </div>
+
+      <Card className="mt-4 p-5">
+        <h2 className="font-display text-base font-semibold text-evergreen-950">Provision an organization administrator</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Creates a new, confirmed Supabase Auth account and grants the Administrator role only in this organization.
+          The initial password is sent only to Auth and is never stored in EVALORA or shown after submission. Share it
+          with the administrator through a separate secure channel. No first-login password change is required.
+        </p>
+        <form action={provisionOrganizationAdministrator} className="mt-4 grid gap-3 sm:grid-cols-2">
+          <input type="hidden" name="organization_id" value={orgId} />
+          <Field label="Full name"><Input name="full_name" required maxLength={160} autoComplete="name" /></Field>
+          <Field label="Email address"><Input name="email" type="email" required autoComplete="off" /></Field>
+          <Field label="Initial password" hint={`At least ${MIN_INITIAL_PASSWORD_LENGTH} characters, including letters and numbers.`}>
+            <Input name="password" type="password" required autoComplete="new-password" minLength={MIN_INITIAL_PASSWORD_LENGTH} />
+          </Field>
+          <Field label="Confirm password">
+            <Input name="confirm_password" type="password" required autoComplete="new-password" minLength={MIN_INITIAL_PASSWORD_LENGTH} />
+          </Field>
+          <div className="sm:col-span-2"><Button type="submit">Create administrator account</Button></div>
+        </form>
+      </Card>
 
       <h2 className="mt-8 font-display text-lg font-semibold text-evergreen-950">Members ({members?.length ?? 0})</h2>
       <div className="mt-3">
@@ -108,6 +144,24 @@ export async function MembersTab({ orgId, sp }: { orgId: string; sp: { ok?: stri
                   <td><StatusBadge status={m.status} /></td>
                   <td className="text-xs text-ink-soft">{fmtDate(m.created_at)}</td>
                   <td>
+                    {(m.role === "owner" || m.role === "admin") && profile?.platform_role !== "super_admin" && (
+                      <details className="mb-2">
+                        <summary className="cursor-pointer text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                          Set / reset password
+                        </summary>
+                        <form action={setOrganizationAdminPassword} className="mt-2 min-w-64 space-y-2 rounded-lg bg-cream p-3">
+                          <input type="hidden" name="organization_id" value={orgId} />
+                          <input type="hidden" name="member_id" value={m.id} />
+                          <Field label="New password" hint={`At least ${MIN_INITIAL_PASSWORD_LENGTH} characters, with letters and numbers.`}>
+                            <Input name="password" type="password" required autoComplete="new-password" minLength={MIN_INITIAL_PASSWORD_LENGTH} />
+                          </Field>
+                          <Field label="Confirm new password">
+                            <Input name="confirm_password" type="password" required autoComplete="new-password" minLength={MIN_INITIAL_PASSWORD_LENGTH} />
+                          </Field>
+                          <Button type="submit" variant="outline">Set password</Button>
+                        </form>
+                      </details>
+                    )}
                     {m.role !== "owner" && (
                       <div className="flex gap-3">
                         <form action={updateOrgMember}>

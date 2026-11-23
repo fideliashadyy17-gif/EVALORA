@@ -1,5 +1,6 @@
 import { AVATAR_KEYS } from "@/lib/avatars";
-import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { getSessionContext } from "@/lib/auth";
+import { createAdminClient } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -121,9 +122,8 @@ export async function POST(request: Request) {
   const { code, display_name, participant_ref, qualification_token, avatar_key } = parsed.data;
 
   const admin = createAdminClient();
-  const supabase = await createClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const authUserId = auth.user?.id ?? null;
+  const sessionCtx = await getSessionContext();
+  const authUserId = sessionCtx?.profile.status === "active" ? sessionCtx.user.id : null;
   const resolved = await resolveCode(admin, code.trim().toUpperCase());
   if ("error" in resolved) return NextResponse.json({ error: resolved.error }, { status: resolved.status });
   const { session, competition, accessCodeId, restrictionOrgId, restrictionClassId } = resolved.target;
@@ -137,14 +137,6 @@ export async function POST(request: Request) {
     );
 
   const participantStatus = session.require_approval ? "pending" : "admitted";
-  const maxP = Number((session.settings as Record<string, unknown> | null)?.max_participants ?? 200);
-  const { count } = await admin
-    .from("session_participants")
-    .select("id", { count: "exact", head: true })
-    .eq("session_id", session.id)
-    .not("status", "in", '("rejected","blocked")');
-  if ((count ?? 0) >= maxP)
-    return NextResponse.json({ error: "This session is full." }, { status: 403 });
 
   // Server-side phase admission. Hidden UI, localStorage, URL or Realtime
   // channel manipulation cannot substitute for an approved qualification.
@@ -164,21 +156,31 @@ export async function POST(request: Request) {
       tokenHash = createHash("sha256").update(qualification_token.trim(), "utf8").digest("hex");
   }
 
-  const { data: participant, error } = await admin
-    .from("session_participants")
-    .insert({
-      session_id: session.id,
-      display_name,
-      participant_ref: participant_ref || null,
-      user_id: authUserId,
-      qualification_token_hash: tokenHash,
-      avatar_key,
-      status: participantStatus,
-    })
-    .select("id, access_token, avatar_key, status")
-    .single();
-  if (error || !participant)
+  const actorUserId = sessionCtx?.profile.status === "active" && sessionCtx.profile.platform_role === "super_admin"
+    ? sessionCtx.user.id
+    : null;
+  const { data: admittedRows, error } = await admin.rpc("admit_live_participant", {
+    p_session_id: session.id,
+    p_display_name: display_name,
+    p_participant_ref: participant_ref || null,
+    p_user_id: authUserId,
+    p_qualification_token_hash: tokenHash,
+    p_avatar_key: avatar_key,
+    p_status: participantStatus,
+    p_actor_user_id: actorUserId,
+  });
+  const participant = Array.isArray(admittedRows) ? admittedRows[0] : null;
+  if (error || !participant) {
+    const detail = `${error?.details ?? ""} ${error?.message ?? ""}`;
+    if (detail.includes("PLAN_LIMIT:") || detail.includes("FEATURE_DISABLED:")) {
+      return NextResponse.json({ error: error?.message ?? "This feature is not available on this plan." }, { status: 403 });
+    }
+    if (detail.includes("SESSION_FULL"))
+      return NextResponse.json({ error: "This session is full." }, { status: 403 });
+    if (/Admission is closed|session has ended/i.test(detail))
+      return NextResponse.json({ error: "This session is no longer accepting participants." }, { status: 403 });
     return NextResponse.json({ error: "Could not join the session." }, { status: 500 });
+  }
 
   // Record the competition registration (code usage accounting +
   // complete participant registry for organizers).

@@ -17,7 +17,7 @@ const accessClient = await read("src/app/exam-access/ExamAccessClient.tsx");
 const stateRoute = await read("src/app/api/exam/state/route.ts");
 const takeClient = await read("src/app/take-exam/[attemptId]/TakeExamClient.tsx");
 const resultPage = await read("src/app/exam/result/[token]/page.tsx");
-const migration = await read("supabase/migrations/20261123140000_restore_oak_organization_exam_branding.sql");
+const migration = await read("supabase/migrations/20261123135246_restore_oak_organization_exam_branding.sql");
 const logoPath = new URL("public/brand/oak-international-school-logo.webp", root);
 const logo = await readFile(logoPath);
 
@@ -32,7 +32,7 @@ check("legacy code entry includes organization identity when an exam is resolved
 check("authenticated attempt state fetches branding from its own exam organization", /eq\("id", exam\.organization_id\)/.test(stateRoute) && /    organization,/.test(stateRoute));
 check("active, question navigation, review and submission use a persistent identity header", /exam-header sticky top-0[\s\S]*?ExamBrandHeader[\s\S]*?organization=\{state\.organization\}/.test(takeClient));
 check("submitted candidate results inherit organization branding", /ExamBrandHeader organization=\{organization\}/.test(resultPage));
-check("migration updates only the existing Oak organization branding fields", /where id = '0a400000-0000-4000-8000-000000000001'::uuid[\s\S]*?and slug = 'oak-international-school'/.test(migration) && /set name = 'Oak International School',[\s\S]*?logo_url = '\/brand\/oak-international-school-logo\.webp'/.test(migration) && !/update public\.(exams|exam_attempts|questions|exam_answers)/.test(migration));
+check("migration brands only the existing Oak organization by immutable ID and preserves its current slug", /where id = '0a400000-0000-4000-8000-000000000001'::uuid/.test(migration) && !/slug\s*=/.test(migration) && /set name = 'Oak International School',[\s\S]*?logo_url = '\/brand\/oak-international-school-logo\.webp'/.test(migration) && !/update public\.(exams|exam_attempts|questions|exam_answers)/.test(migration));
 check("organization header is multi-tenant and contains no Oak-specific name or path", !/Oak International School|oak-international-school/.test(brandComponent));
 
 console.log(`${checks.length} checks passed`);

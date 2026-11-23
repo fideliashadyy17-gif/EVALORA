@@ -1,4 +1,5 @@
 import { audit } from "@/lib/admin";
+import { isPlanLimitError, planLimitMessage } from "@/lib/entitlements";
 import { activeOrg, can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
 import {
   identityKey, normalizeDateOfBirth, normalizeGender, resolveClass, validateImportRecord,
@@ -201,7 +202,10 @@ export async function POST(request: Request) {
     const { data: inserted, error } = await supabase.from("students")
       .insert(chunk.map((c) => c.payload)).select("id");
     if (error || !inserted || inserted.length !== chunk.length) {
-      chunk.forEach((c) => flipReport(c.rec.row, "failed", "Database rejected this batch (possible duplicate reference). No rows from this batch were saved."));
+      const message = isPlanLimitError(error)
+        ? planLimitMessage(error)
+        : "Database rejected this batch (possible duplicate reference). No rows from this batch were saved.";
+      chunk.forEach((c) => flipReport(c.rec.row, "failed", message));
       continue;
     }
     const enrollments = inserted.map((s, idx) => ({

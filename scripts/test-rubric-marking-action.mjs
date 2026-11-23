@@ -137,7 +137,7 @@ const stub = {
   },
   '@/lib/entitlements': {withinLimit: () => true},
   '@/lib/ai-marking': {describeAiMarking: () => ({configured: false, reason: 'not configured'})},
-  '@/lib/capabilities': {getCapabilities: async () => ({entitlement: {}, capabilities: {}})},
+  '@/lib/capabilities': {getCapabilities: async () => ({entitlement: {}, capabilities: { examinations: true }})},
   '@/lib/supabase/server': {createClient: async () => db, createAdminClient: () => db},
   '@/lib/utils': {genCode: () => 'CODE1234'},
   'next/cache': {revalidatePath: () => {}},

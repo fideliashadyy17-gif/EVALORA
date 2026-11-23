@@ -580,7 +580,7 @@ export function PortalPreview() {
     <div className="lp-frame bg-white">
       <div className="lp-frame-bar">
         <span className="lp-frame-lights"><span /><span /><span /></span>
-        <span className="lp-frame-url">oak-international.evalora-edu.online</span>
+        <span className="lp-frame-url">ois.evalora-edu.online</span>
         <Lock className="h-2.5 w-2.5 text-ink-soft" aria-hidden />
       </div>
       <div>

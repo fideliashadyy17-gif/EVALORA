@@ -175,7 +175,7 @@ const db = { from };
 const stub = {
   '@/lib/auth': {},
   '@/lib/entitlements': { withinLimit: () => true, isPlanLimitError: () => false },
-  '@/lib/capabilities': { getCapabilities: async () => ({ entitlement: {}, capabilities: {} }) },
+  '@/lib/capabilities': { getCapabilities: async () => ({ entitlement: {}, capabilities: { examinations: true } }) },
   '@/lib/supabase/server': { createClient: async () => db, createAdminClient: () => db },
   '@/lib/utils': { genCode: () => 'CODE1234' },
   '@/lib/ai-marking': {

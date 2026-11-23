@@ -6,7 +6,7 @@ import {
   type CapabilitySet,
   type FeatureFlags,
 } from "./capability-rules";
-import { getEntitlementFor, type Entitlement } from "./entitlements";
+import { getEntitlement, getEntitlementFor, type Entitlement } from "./entitlements";
 import { getFeatureFlags } from "./platform";
 import { redirect } from "next/navigation";
 
@@ -27,11 +27,32 @@ export async function getCapabilities(
   ctx: SessionContext,
   organizationId: string,
 ): Promise<CapabilityResult> {
+  const isSuperAdmin = ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin";
   const [entitlement, featureFlags] = await Promise.all([
     getEntitlementFor(supabase, ctx, organizationId),
     getFeatureFlags(),
   ]);
-  const isSuperAdmin = ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin";
+  return resolveCapabilityResult(entitlement, featureFlags, isSuperAdmin);
+}
+
+/** Resolve customer capabilities for public/API flows that have no user session. */
+export async function getCapabilitiesForOrganization(
+  supabase: SupabaseClient,
+  organizationId: string,
+): Promise<CapabilityResult> {
+  const isSuperAdmin = false;
+  const [entitlement, featureFlags] = await Promise.all([
+    getEntitlement(supabase, organizationId),
+    getFeatureFlags(),
+  ]);
+  return resolveCapabilityResult(entitlement, featureFlags, isSuperAdmin);
+}
+
+function resolveCapabilityResult(
+  entitlement: Entitlement,
+  featureFlags: FeatureFlags,
+  isSuperAdmin: boolean,
+): CapabilityResult {
   const capabilities = resolveCapabilities({
     isSuperAdmin,
     planSlug: entitlement.planSlug,
@@ -39,6 +60,25 @@ export async function getCapabilities(
     featureFlags,
   });
   return { entitlement, featureFlags, capabilities, isSuperAdmin };
+}
+
+export async function hasCapability(
+  supabase: SupabaseClient,
+  ctx: SessionContext,
+  organizationId: string,
+  capability: CapabilityKey,
+): Promise<boolean> {
+  const result = await getCapabilities(supabase, ctx, organizationId);
+  return result.capabilities[capability];
+}
+
+export async function hasOrganizationCapability(
+  supabase: SupabaseClient,
+  organizationId: string,
+  capability: CapabilityKey,
+): Promise<boolean> {
+  const result = await getCapabilitiesForOrganization(supabase, organizationId);
+  return result.capabilities[capability];
 }
 
 /** Redirect-based guard for server actions; returns the resolved result. */

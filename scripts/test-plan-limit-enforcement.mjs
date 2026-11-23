@@ -117,6 +117,8 @@ try {
     create table public.quizzes(id uuid primary key default gen_random_uuid(), organization_id uuid not null, title text);
     create table public.questions(id uuid primary key default gen_random_uuid(), organization_id uuid not null);
     create table public.exams(id uuid primary key default gen_random_uuid(), organization_id uuid not null, title text);
+    create table public.classes(id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id));
+    create table public.students(id uuid primary key default gen_random_uuid(), organization_id uuid not null references public.organizations(id));
 
     grant select, insert, update, delete on all tables in schema public to authenticated;
 
@@ -129,8 +131,9 @@ try {
       ('${UNLIMITED}', 'institution', 'Institution', '{"max_quizzes":-1,"max_exams":-1,"max_questions":-1,"max_members":-1}'::jsonb);
   `);
 
-  // The migration under test.
+  // The migrations under test (including the new school-record quota trigger).
   await db.exec(readFileSync('supabase/migrations/0037_plan_limit_enforcement.sql', 'utf8'));
+  await db.exec(readFileSync('supabase/migrations/20261123174539_enforce_class_student_plan_quotas.sql', 'utf8'));
 
   // ── Checks ───────────────────────────────────────────────────────────────
   await test('a free workspace is held to the free plan limit', async () => {
@@ -146,6 +149,37 @@ try {
     );
     assert.match(error.message, /plan limit for quizzes \(5\)/i, 'the message must explain itself to a person');
     assert.match(error.hint, /upgrade the plan/i, 'and say what to do about it');
+  });
+
+  await test('class and student quotas are enforced by PostgreSQL and report useful quota details', async () => {
+    const org = await newOrg('school-quota', { planId: PREMIUM, status: 'active', override: { max_classes: 1, max_students: 1 } });
+    await asAdmin();
+    await db.query('insert into public.classes(organization_id) values ($1)', [org]);
+    await rejects('insert into public.classes(organization_id) values ($1)', [org], /PLAN_LIMIT:max_classes:1/);
+    await db.query('insert into public.students(organization_id) values ($1)', [org]);
+    await rejects('insert into public.students(organization_id) values ($1)', [org], /PLAN_LIMIT:max_students:1/);
+    const counts = await one(
+      `select (select count(*)::int from public.classes where organization_id = $1) as classes,
+              (select count(*)::int from public.students where organization_id = $1) as students`,
+      [org],
+    );
+    assert.deepEqual(counts, { classes: 1, students: 1 });
+  });
+
+  await test('class and student quotas use the same explicit service-role bypass as the existing counters', async () => {
+    const org = await newOrg('school-quota-service', { planId: PREMIUM, status: 'active', override: { max_classes: 1, max_students: 1 } });
+    await asAdmin();
+    await db.query('insert into public.classes(organization_id) values ($1)', [org]);
+    await db.query('insert into public.students(organization_id) values ($1)', [org]);
+    await asService();
+    await db.query('insert into public.classes(organization_id) values ($1)', [org]);
+    await db.query('insert into public.students(organization_id) values ($1)', [org]);
+    const counts = await one(
+      `select (select count(*)::int from public.classes where organization_id = $1) as classes,
+              (select count(*)::int from public.students where organization_id = $1) as students`,
+      [org],
+    );
+    assert.deepEqual(counts, { classes: 2, students: 2 });
   });
 
   await test('an active subscription raises the ceiling', async () => {
@@ -392,7 +426,7 @@ try {
     );
   });
 
-  console.log(`\n${n} plan-limit enforcement checks passed (migration 0037 in isolated PGlite).`);
+  console.log(`\n${n} plan-limit enforcement checks passed (migrations 0037 and 20261123174539 in isolated PGlite).`);
 } finally {
   await db.close();
 }

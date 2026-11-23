@@ -2,7 +2,7 @@
 
 import { audit } from "@/lib/admin";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor, isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import {
   canManageAccount,
   isAssignableStaffRole,
@@ -164,6 +164,7 @@ export async function createStaffAccount(formData: FormData) {
   const { data: existingProfile } = await admin.from("profiles").select("id, platform_role").eq("email", email).maybeSingle();
 
   let userId = existingProfile?.id ?? null;
+  let createdAuthUser = false;
   if (userId) {
     // The person already has an EVALORA account: never overwrite its password.
     // Grant membership and send a password-setup email instead.
@@ -187,13 +188,21 @@ export async function createStaffAccount(formData: FormData) {
         : await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: fullName } });
     if (error || !data?.user) redirect(`${back}?e=failed`);
     userId = data!.user.id;
+    createdAuthUser = true;
   }
 
-  const { error: memberError } = await admin.from("organization_members").upsert(
+  // Write membership with the caller's authenticated client, not the service
+  // role. This makes the database quota trigger authoritative (and atomic under
+  // concurrent account creation) while the RLS policy verifies manager access.
+  const { error: memberError } = await supabase.from("organization_members").insert(
     { organization_id: org.id, user_id: userId!, role, status: "active" },
-    { onConflict: "organization_id,user_id" },
   );
-  if (memberError) redirect(`${back}?e=failed`);
+  if (memberError) {
+    // Do not leave an unusable Auth-only account behind when a quota or RLS
+    // check rejects the membership write. Existing accounts are never deleted.
+    if (createdAuthUser) await admin.auth.admin.deleteUser(userId!);
+    redirect(`${back}?e=${isPlanLimitError(memberError) ? "limit" : "failed"}`);
+  }
 
   // Keep the profile name in step with what the administrator typed.
   await admin.from("profiles").update({ full_name: fullName }).eq("id", userId!);

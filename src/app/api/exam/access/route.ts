@@ -44,6 +44,13 @@ export async function POST(request: Request) {
   }
   if (!exam) return NextResponse.json({ error: "Examination not found. Check the exam code." }, { status: 404 });
 
+  const { data: entitled, error: entitlementError } = await admin.rpc("org_has_feature", {
+    p_org: exam.organization_id,
+    p_feature: "examinations",
+  });
+  if (entitlementError || entitled !== true)
+    return NextResponse.json({ error: "Examinations are not included in this workspace plan." }, { status: 403 });
+
   // Guard against accessing archived or deleted examinations
   if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
     return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410 });

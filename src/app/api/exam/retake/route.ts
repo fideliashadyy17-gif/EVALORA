@@ -50,6 +50,13 @@ interface Context {
  */
 async function resolveContext(input: z.infer<typeof Body>): Promise<{ ok: true; ctx: Context } | { ok: false; error: string; status: number }> {
   const admin = createAdminClient();
+  const examinationsEnabled = async (organizationId: string) => {
+    const { data, error } = await admin.rpc("org_has_feature", {
+      p_org: organizationId,
+      p_feature: "examinations",
+    });
+    return !error && data === true;
+  };
 
   if (input.attempt_id && input.token) {
     const { data: attempt } = await admin
@@ -62,6 +69,8 @@ async function resolveContext(input: z.infer<typeof Body>): Promise<{ ok: true; 
     const { data: exam } = await admin.from("exams").select("*").eq("id", attempt.exam_id).maybeSingle();
     const { data: candidate } = await admin.from("exam_candidates").select("*").eq("id", attempt.candidate_id).maybeSingle();
     if (!exam || !candidate) return { ok: false, error: "Examination record is unavailable.", status: 500 };
+    if (!(await examinationsEnabled(exam.organization_id)))
+      return { ok: false, error: "Examinations are not included in this workspace plan.", status: 403 };
     return { ok: true, ctx: { exam: exam as RetakeExamRow, candidate: candidate as RetakeCandidateRow, attempt: attempt as AttemptRow } };
   }
 
@@ -78,6 +87,8 @@ async function resolveContext(input: z.infer<typeof Body>): Promise<{ ok: true; 
     exam = (codedExams ?? []).find((row) => accessCodeMatches(examCode, row.access_code as string | null)) ?? null;
   }
   if (!exam) return { ok: false, error: "Examination not found.", status: 404 };
+  if (!(await examinationsEnabled(exam.organization_id)))
+    return { ok: false, error: "Examinations are not included in this workspace plan.", status: 403 };
   const { data: exactCandidate } = await admin
     .from("exam_candidates")
     .select("*")

@@ -1,5 +1,7 @@
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities } from "@/lib/capabilities";
+import { createClient } from "@/lib/supabase/server";
 import Link from "next/link";
 import { isLearnerRole } from "@/lib/roleRouting";
 import { redirect } from "next/navigation";
@@ -44,6 +46,7 @@ export default async function DashboardLayout({
   if (!org) redirect("/admin");
   if (!isSuperAdmin && ctx.memberships.length > 1 && !ctx.workspaceSelected) redirect("/workspaces");
   if (!isSuperAdmin && isLearnerRole(org.role)) redirect("/student");
+  const { capabilities } = await getCapabilities(await createClient(), ctx, org.id);
 
   // Suspended/archived workspaces are closed to their members — but the
   // platform owner can still enter to inspect or repair them.
@@ -93,6 +96,7 @@ export default async function DashboardLayout({
         isDemo={Boolean(org.is_demo)}
         orgRole={org.role}
         canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
+        capabilities={capabilities}
         userName={ctx.profile.full_name || ctx.profile.email}
       >
         {children}

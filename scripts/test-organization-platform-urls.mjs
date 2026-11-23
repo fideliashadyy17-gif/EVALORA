@@ -231,6 +231,18 @@ await test('organization slugs already in production stay valid and stable', () 
   }
 });
 
+await test('Oak canonical hostname resolves to the new tenant label and not the retired label', () => {
+  subdomainMode('evalora-edu.online');
+  assert.equal(tenant.validateSubdomain('ois').ok, true);
+  assert.equal(tenant.getTenantSlugFromHost('ois.evalora-edu.online', 'evalora-edu.online'), 'ois');
+  assert.equal(tenant.organizationPlatformAccess({
+    slug: 'ois', status: 'active', portal_enabled: true, platform_domain_status: 'active',
+  }).url, 'https://ois.evalora-edu.online');
+  // The retired hostname still parses to its retired label, never to the new tenant label.
+  assert.equal(tenant.getTenantSlugFromHost('oak-international-school.evalora-edu.online', 'evalora-edu.online'), 'oak-international-school');
+  withoutOrigin();
+});
+
 await test('the host resolver and the URL builder agree on the same tenant', () => {
   assert.equal(tenant.getTenantSlugFromHost('oak.evalora.com', 'evalora.com'), 'oak');
   assert.equal(tenant.getTenantSlugFromHost('oak-international-school.evalora.com', 'evalora.com'), 'oak-international-school');
