@@ -1,8 +1,31 @@
 import { Prose, StaticPage } from "@/components/site/StaticPage";
 import { ButtonLink } from "@/components/ui";
+import { ORG_ROLES, QUESTION_TYPES } from "@/lib/brand";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Features" };
+
+// Derived from the same constants the application uses to render its creator
+// and role pickers. Hard-coded counts here had already drifted ("Ten question
+// types", "nine roles") while the product shipped eleven and ten, so the page
+// would have kept advertising the wrong thing indefinitely.
+const QUESTION_TYPE_COUNT = QUESTION_TYPES.length;
+const ROLE_COUNT = ORG_ROLES.length;
+/** "Multiple choice (single answer)" -> "single choice", etc. */
+const TYPE_LABELS = QUESTION_TYPES.map((type) =>
+  type.label
+    .replace(" (single answer)", "")
+    .replace(" (no correct answer)", "")
+    .replace(" (manually marked)", "")
+    .replace("Assess Prep multi-part (typed answers)", "multi-part papers")
+    .replace("Multiple choice", "single choice")
+    .replace("True / False", "true/false")
+    .toLowerCase()
+    // Lowercasing first means this matches the singular label it is replacing;
+    // matching before toLowerCase() silently left "presentation slide".
+    .replace("presentation slide", "presentation slides"),
+);
+const LAST_LABEL = TYPE_LABELS[TYPE_LABELS.length - 1];
 
 export default function FeaturesPage() {
   return (
@@ -14,7 +37,10 @@ export default function FeaturesPage() {
       <Prose>
         <h2>Quiz creation studio</h2>
         <ul>
-          <li><strong>Ten question types:</strong> single &amp; multiple choice, true/false, short answer, numerical, ordering, matching, polls, open-ended and presentation slides.</li>
+          <li>
+            <strong>{QUESTION_TYPE_COUNT} question types:</strong>{" "}
+            {TYPE_LABELS.slice(0, -1).join(", ")} and {LAST_LABEL}.
+          </li>
           <li><strong>Real mathematics:</strong> LaTeX rendering with KaTeX — fractions, powers, roots, equations, matrices and symbols, inline or as display blocks.</li>
           <li><strong>Media-rich questions:</strong> attach images, audio or video to any question.</li>
           <li><strong>Question bank:</strong> categories, topics, tags, difficulty levels, explanations and points — reuse questions across quizzes and exams.</li>
@@ -51,7 +77,7 @@ export default function FeaturesPage() {
 
         <h2>Organization &amp; platform administration</h2>
         <ul>
-          <li>Multi-tenant organizations with nine roles and explicit, server-enforced permissions.</li>
+          <li>Multi-tenant organizations with {ROLE_COUNT} roles and explicit, server-enforced permissions.</li>
           <li>Freemium + Premium plans with configurable limits, trials and entitlements checked on the server.</li>
           <li>Manual payment workflow: submit a reference, upload proof, activation only after Super Admin approval.</li>
           <li>In-app notifications, audit logs, support tickets and a complete Super Admin console.</li>
