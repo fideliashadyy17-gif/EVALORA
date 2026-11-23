@@ -46,14 +46,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --no-audit --no-fund
 
+      # The suites drive @sparticuz/chromium's Amazon Linux 2023 build through
+      # playwright-core, so Playwright's own downloader is not used. This script
+      # installs those two test-only packages and unpacks the 12 NSS/expat
+      # libraries the binary links against, which the runner does not ship.
       - name: Install Chromium
+        run: node scripts/setup-browser.mjs
+
+      # NEXT_PUBLIC_* values are inlined into the server bundle at build time, so
+      # the mock Supabase origin must be present *here*, not only in `next start`.
+      # Building against a different origin makes /exam/join/<token> query the
+      # wrong host and render "This examination link is invalid" — a failure that
+      # looks like a product bug but is only a stale build.
+      - name: Build
         run: |
           set -e
-          npm i --no-save --no-audit --no-fund playwright@1.55.0
-          npx playwright install --with-deps chromium
-
-      - name: Build
-        run: npm run build
+          test "$NEXT_PUBLIC_SUPABASE_URL" = "http://127.0.0.1:54399" || {
+            echo "::error::build must use the mock Supabase origin, got $NEXT_PUBLIC_SUPABASE_URL"
+            exit 1
+          }
+          npm run build
+          grep -rqs "127.0.0.1:54399" .next/server || {
+            echo "::error::the built bundle does not contain the mock Supabase origin"
+            exit 1
+          }
 
       - name: Start servers
         run: |

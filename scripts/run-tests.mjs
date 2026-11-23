@@ -15,8 +15,12 @@ const all = process.argv.includes("--all");
 // silently: this prints the exact command that runs them.
 const BROWSER_HINT =
   "The browser suites need three production servers on :3101-:3103 and Chromium.\n" +
-  "  npm ci && npm run build\n" +
-  "  NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 ... npx next start -p 3101\n" +
+  "  node scripts/setup-browser.mjs          # Chromium + Amazon Linux libs\n" +
+  "  NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 npm run build\n" +
+  "  #   ^ must be set for the BUILD, not just `next start`: NEXT_PUBLIC_* is\n" +
+  "  #   inlined at build time, so a bundle built against another origin makes\n" +
+  "  #   /exam/join/<token> render \"This examination link is invalid\".\n" +
+  "  NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 npx next start -p 3101\n" +
   "  npm test -- --all\n" +
   "(Docker-free CI equivalent: .github/workflows/exam-browser.yml)";
 const files = readdirSync("scripts")
