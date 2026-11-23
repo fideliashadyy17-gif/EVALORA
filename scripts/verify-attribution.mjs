@@ -11,8 +11,24 @@
 // Routes that legitimately do not carry it on a fresh request are documented
 // below rather than silently ignored.
 
-const BASE = process.env.BASE ?? "http://127.0.0.1:3200";
 const EXPECTED = "Powered by M. SADIKOU";
+
+// The origin must be supplied. Defaulting to a port of my own choosing is how
+// this check silently passed nothing in CI: the workflow serves on :3100, the
+// script assumed :3200, every fetch failed to connect and every route reported
+// "HTTP 0" — a green step that had verified nothing.
+const BASE = (process.env.LANDING_URL ?? process.env.BASE ?? "").replace(/\/$/, "");
+if (!BASE) {
+  console.error("✗ set BASE (or LANDING_URL) to the server origin, e.g. BASE=http://127.0.0.1:3100");
+  process.exit(2);
+}
+try {
+  const probe = await fetch(BASE + "/login", { redirect: "manual" });
+  if (!probe.ok) throw new Error(`HTTP ${probe.status}`);
+} catch (error) {
+  console.error(`✗ nothing is answering at ${BASE} (${error.message}) — start the server or fix BASE`);
+  process.exit(2);
+}
 
 /** Public routes that must render the attribution directly. */
 const PUBLIC_ROUTES = [

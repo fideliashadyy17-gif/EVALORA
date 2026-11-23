@@ -107,6 +107,8 @@ jobs:
       # there explicitly as annotations too.
       - name: Platform attribution
         id: credit
+        env:
+          LANDING_URL: http://127.0.0.1:3100
         run: |
           set +e
           node scripts/verify-attribution.mjs > /tmp/credit.log 2>&1
