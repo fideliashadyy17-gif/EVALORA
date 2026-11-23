@@ -18,7 +18,7 @@ export async function SubscriptionTab({
   back: string;
 }) {
   const admin = createAdminClient();
-  const [ent, { data: subs }, { data: plans }, { data: payments }] = await Promise.all([
+  const [ent, { data: subs }, { data: plans }, { data: payments }, { count: quizCount }, { count: questionCount }, { count: examCount }, { count: classCount }, { count: studentCount }] = await Promise.all([
     getEntitlement(admin, orgId),
     admin
       .from("subscriptions")
@@ -33,8 +33,20 @@ export async function SubscriptionTab({
       .eq("organization_id", orgId)
       .order("created_at", { ascending: false })
       .limit(10),
+    admin.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+    admin.from("questions").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+    admin.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+    admin.from("classes").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
+    admin.from("students").select("id", { count: "exact", head: true }).eq("organization_id", orgId),
   ]);
 
+  const usageRows: [string, number | null, number][] = [
+    ["Questions", questionCount, ent.limits.max_questions],
+    ["Quizzes / papers", quizCount, ent.limits.max_quizzes],
+    ["Examinations", examCount, ent.limits.max_exams],
+    ["Classes", classCount, ent.limits.max_classes],
+    ["Students", studentCount, ent.limits.max_students],
+  ];
   const limitRows: [string, string][] = [
     ["Quizzes", String(ent.limits.max_quizzes)],
     ["Questions", String(ent.limits.max_questions)],
@@ -111,6 +123,17 @@ export async function SubscriptionTab({
               <p className="mt-0.5 font-display text-base font-semibold text-evergreen-950">{value === "-1" ? "Unlimited" : value}</p>
             </div>
           ))}
+        </div>
+        <div className="mt-5 border-t border-evergreen-900/10 pt-4">
+          <h3 className="font-semibold text-evergreen-950">Organization usage</h3>
+          <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {usageRows.map(([label, used, limit]) => (
+              <div key={label} className="rounded-xl border border-evergreen-900/10 bg-white p-3">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-ink-soft">{label}</p>
+                <p className="mt-1 font-display text-lg font-semibold text-evergreen-950">{used === null ? "—" : used} <span className="text-xs font-normal text-ink-soft">/ {limit === -1 ? "Unlimited" : limit}</span></p>
+              </div>
+            ))}
+          </div>
         </div>
         <p className="mt-3 text-xs text-ink-soft">
           When you operate this workspace yourself, your platform-owner access is unlimited regardless of these customer limits.

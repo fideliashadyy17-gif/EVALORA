@@ -7,7 +7,11 @@ import { saveQuestion, uploadQuestionImage } from "../actions";
 
 export const metadata: Metadata = { title: "New question" };
 
-export default async function NewQuestionPage() {
+export default async function NewQuestionPage({ searchParams }: { searchParams: Promise<{ return_to?: string }> }) {
+  const sp = await searchParams;
+  const candidateReturn = sp.return_to ?? "";
+  const returnTo = /^\/dashboard\/papers\/[0-9a-f-]{36}$/i.test(candidateReturn) ? candidateReturn : "/dashboard/questions";
+  const successHref = returnTo === "/dashboard/questions" ? returnTo : `${returnTo}?addQuestion={id}`;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
@@ -34,7 +38,7 @@ export default async function NewQuestionPage() {
         categories={categories ?? []}
         save={saveQuestion as unknown as QuestionSaveFn}
         uploadImage={uploadQuestionImage}
-        successHref="/dashboard/questions"
+        successHref={successHref}
         subjectOptions={subjectOptions ?? []}
         classOptions={classOptions ?? []}
         curriculumOptions={programmes ?? []}

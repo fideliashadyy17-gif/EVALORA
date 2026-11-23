@@ -66,6 +66,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
     items: [
       { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff", capability: "quiz_management" },
       { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff", capability: "examinations" },
+      { href: "/dashboard/papers", label: "Question Paper Builder", icon: BookOpenCheck, audience: "staff", capability: "examinations" },
       { href: "/dashboard/monitoring", label: "Live Exam Monitoring", icon: Activity, audience: "staff", roles: ["owner", "admin", "teacher", "supervisor", "corrector"], capability: "examinations" },
       { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff", capability: "question_bank" },
       { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff", capability: "live_competitions" },

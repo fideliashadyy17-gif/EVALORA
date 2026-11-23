@@ -19,6 +19,8 @@ const MESSAGES: Record<string, string> = {
   confirm: "Tick the confirmation box before regenerating an examination code.",
   candidate: "That candidate no longer exists.",
   submitted: "A submitted candidate's code cannot be regenerated.",
+  active_attempt: "Codes cannot be rotated while an examination is open/paused or a candidate attempt is in progress. Close and finish the assessment first.",
+  availability: "Active attempts could not be checked safely, so no code was changed. Retry later.",
   exam: "That examination no longer exists.",
   failed: "The code could not be regenerated.",
 };
@@ -103,7 +105,7 @@ export default async function ExaminationCodesPage({
         )}
       </form>
 
-      <Section title="Examination codes" hint="Regenerating an exam code immediately invalidates the old code for every candidate who has not yet entered. Existing attempt tokens remain bound to their attempt and deadline.">
+      <Section title="Examination codes" hint="Regenerating an exam code invalidates the old code. Rotation is blocked while the exam is open/paused or any attempt is in progress.">
         {(exams ?? []).length === 0 ? (
           <p className="text-sm text-ink-soft">No examinations match.</p>
         ) : (
@@ -120,7 +122,7 @@ export default async function ExaminationCodesPage({
                     <input type="hidden" name="exam_id" value={e.id} />
                     <input type="hidden" name="back" value={back} />
                     <ConfirmField label="Invalidate old exam code" />
-                    <Button type="submit" variant="outline" className="px-3 py-2 text-xs">Regenerate exam code</Button>
+                    <Button type="submit" variant="outline" className="px-3 py-2 text-xs" disabled={e.status === "open" || e.status === "paused"}>Regenerate exam code</Button>
                   </form>
                 </td>
               </tr>
@@ -129,7 +131,7 @@ export default async function ExaminationCodesPage({
         )}
       </Section>
 
-      <Section title="Candidate personal codes" hint="A personal code is unique within its examination. Regeneration is blocked after submission so completed evidence cannot be detached from the candidate record.">
+      <Section title="Candidate personal codes" hint="Personal codes can only be rotated before an examination opens and before the candidate starts an attempt; completed and active candidate sessions are protected.">
         {(candidates ?? []).length === 0 ? (
           <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-10 text-center text-sm text-ink-soft">No candidate codes match.</p>
         ) : (
@@ -149,7 +151,7 @@ export default async function ExaminationCodesPage({
                         <form action={regenerateCandidateCodeAsAdmin}>
                           <input type="hidden" name="candidate_id" value={c.id} />
                           <input type="hidden" name="back" value={back} />
-                          <Button type="submit" variant="outline" className="px-3 py-2 text-xs" disabled={c.status === "submitted"}>Regenerate</Button>
+                          <Button type="submit" variant="outline" className="px-3 py-2 text-xs" disabled={c.status === "submitted" || c.status === "in_progress" || exam?.status === "open" || exam?.status === "paused"}>Regenerate</Button>
                         </form>
                         <Link href={`/admin/examinations/candidates?exam=${c.exam_id}`} className="font-medium text-evergreen-700 hover:underline">Candidate record</Link>
                       </div>

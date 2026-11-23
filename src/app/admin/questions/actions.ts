@@ -91,6 +91,17 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
     }
     organizationId = existing.organization_id;
     hadPromptHash = Boolean(existing.prompt_hash);
+    const { data: links, error: linksError } = await admin.from("quiz_questions").select("quiz_id").eq("question_id", q.id);
+    if (linksError) return { error: "Question usage could not be checked safely. Please retry." };
+    const quizIds = [...new Set((links ?? []).map((row) => row.quiz_id as string).filter(Boolean))];
+    if (quizIds.length) {
+      const [{ count: exams, error: examError }, { count: sessions, error: sessionError }] = await Promise.all([
+        admin.from("exams").select("id", { count: "exact", head: true }).in("quiz_id", quizIds),
+        admin.from("quiz_sessions").select("id", { count: "exact", head: true }).in("quiz_id", quizIds),
+      ]);
+      if (examError || sessionError) return { error: "Question usage could not be checked safely. Please retry." };
+      if ((exams ?? 0) > 0 || (sessions ?? 0) > 0) return { error: "This question is used by an examination or live session and is protected. Duplicate it to make changes without affecting existing work." };
+    }
   }
 
   if (!organizationId) return { error: "Choose the organization that owns this question." };
@@ -343,12 +354,14 @@ export async function saveQuestionCategoryAsAdmin(formData: FormData) {
   if (duplicate && duplicate.id !== id) categoryDest(formData, "e=category_exists");
 
   if (id) {
-    const { error } = await admin
+    const { data, error } = await admin
       .from("question_categories")
       .update({ name })
       .eq("id", id)
-      .eq("organization_id", organizationId!);
-    if (error) categoryDest(formData, "e=category_failed");
+      .eq("organization_id", organizationId!)
+      .select("id")
+      .maybeSingle();
+    if (error || !data) categoryDest(formData, "e=category_failed");
     await audit(ctx, "question_category.updated", "question_categories", id, organizationId, { name });
   } else {
     const { data, error } = await admin
@@ -370,12 +383,14 @@ export async function deleteQuestionCategoryAsAdmin(formData: FormData) {
   const id = fstr(formData, "id", 60);
   if (!organizationId || !id || formData.get("confirm") !== "on") categoryDest(formData, "e=confirm");
 
-  const { error } = await admin
+  const { data, error } = await admin
     .from("question_categories")
     .delete()
     .eq("id", id!)
-    .eq("organization_id", organizationId!);
-  if (error) categoryDest(formData, "e=category_failed");
+    .eq("organization_id", organizationId!)
+    .select("id")
+    .maybeSingle();
+  if (error || !data) categoryDest(formData, "e=category_failed");
   await audit(ctx, "question_category.deleted", "question_categories", id!, organizationId);
   revalidatePath("/admin/questions/categories");
   categoryDest(formData, "ok=category_deleted");

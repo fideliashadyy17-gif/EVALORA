@@ -1,24 +1,30 @@
-import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createExam } from "../actions";
+import { PaperSelectionFields } from "./PaperSelectionFields";
 
 export const metadata: Metadata = { title: "New examination" };
 
-export default async function NewExamPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
+export default async function NewExamPage({ searchParams }: { searchParams: Promise<{ e?: string; paper?: string }> }) {
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
   const { data: quizzes } = await supabase
     .from("quizzes")
-    .select("id, title")
+    .select("id, title, settings")
     .eq("organization_id", org.id)
     .eq("status", "published")
     .order("title");
+  const paperOptions = (quizzes ?? []).map((paper) => {
+    const settings = (paper.settings as Record<string, unknown> | null) ?? {};
+    const meta = (settings.paper_builder as Record<string, unknown> | undefined) ?? {};
+    return { id: paper.id, title: paper.title, instructions: typeof meta.instructions === "string" ? meta.instructions : "" };
+  });
   const ent = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
@@ -37,23 +43,15 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
         create: "The examination could not be confirmed. Check the examination list before retrying to avoid a duplicate.",
       }[sp.e] ?? "The examination could not be created. Please try again."}</p>}
       <Card className="max-w-3xl p-6">
-        {(quizzes ?? []).length === 0 ? (
-          <p className="text-sm text-ink-soft">
-            You need a <strong>published quiz</strong> to use as the examination paper.{" "}
-            <Link href="/dashboard/quizzes/new" className="font-semibold text-evergreen-700 underline underline-offset-2">Create and publish one first</Link>.
-          </p>
-        ) : (
+          <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+            <div><h2 className="font-display text-lg font-semibold text-evergreen-950">Examination details</h2><p className="mt-1 text-sm text-ink-soft">Select a published paper or create a new one without leaving the examination workflow.</p></div>
+            <ButtonLink href="/dashboard/papers/new?return_to=examination" variant="outline">Open Question Paper Builder</ButtonLink>
+          </div>
           <form action={createExam} className="space-y-4">
             <Field label="Examination title">
               <Input name="title" required placeholder="Term 2 Mathematics Final — Grade 9" />
             </Field>
-            <Field label="Question paper (published quiz)">
-              <Select name="quiz_id" required>
-                {(quizzes ?? []).map((q) => (
-                  <option key={q.id} value={q.id}>{q.title}</option>
-                ))}
-              </Select>
-            </Field>
+            <PaperSelectionFields papers={paperOptions} initialPaperId={sp.paper ?? ""} />
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Duration (minutes)">
                 <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={60} required />
@@ -72,9 +70,6 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             </div>
             <Field label="Description">
               <Textarea name="description" rows={2} placeholder="Shown to candidates before they start." />
-            </Field>
-            <Field label="Instructions">
-              <Textarea name="instructions" rows={3} placeholder="Rules, permitted materials, integrity notice…" />
             </Field>
             <div className="grid gap-2 rounded-xl bg-cream p-4 sm:grid-cols-2">
               {[
@@ -144,7 +139,6 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             )}
             <Button type="submit" variant="gold" className="px-6">Create examination</Button>
           </form>
-        )}
       </Card>
     </>
   );

@@ -30,6 +30,7 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
     ["/dashboard/quizzes/new", "Create a quiz"],
     ["/dashboard/questions/new", "Add questions"],
     ["/dashboard/exams/new", "Create an examination"],
+    ["/dashboard/papers", "Question Paper Builder"],
     ["/dashboard/reports", "Reports & results"],
     ["/dashboard/team", "Team & roles"],
   ];

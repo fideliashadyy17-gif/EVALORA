@@ -537,7 +537,10 @@ export function QuestionForm({
     });
     setBusy(false);
     if (res.error) return setError(res.error);
-    router.push(successHref);
+    const destination = successHref.includes("{id}")
+      ? successHref.replace("{id}", encodeURIComponent(res.id ?? ""))
+      : successHref;
+    router.push(destination);
     router.refresh();
   }
 

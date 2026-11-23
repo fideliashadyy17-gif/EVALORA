@@ -47,6 +47,22 @@ const QuestionSchema = z.object({
 
 export type QuestionInput = z.infer<typeof QuestionSchema>;
 
+/** Questions used by any exam/live session are immutable; duplicate them for edits. */
+async function questionIsInUse(supabase: Awaited<ReturnType<typeof createClient>>, questionId: string) {
+  const { data: links, error: linksError } = await supabase.from("quiz_questions").select("quiz_id").eq("question_id", questionId);
+  if (linksError) return { protected: true, error: "Question usage could not be checked safely. Please retry." };
+  const quizIds = [...new Set((links ?? []).map((row) => row.quiz_id as string).filter(Boolean))];
+  if (!quizIds.length) return { protected: false, error: null };
+  const [{ count: exams, error: examError }, { count: sessions, error: sessionError }] = await Promise.all([
+    supabase.from("exams").select("id", { count: "exact", head: true }).in("quiz_id", quizIds),
+    supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).in("quiz_id", quizIds),
+  ]);
+  if (examError || sessionError) return { protected: true, error: "Question usage could not be checked safely. Please retry." };
+  return (exams ?? 0) > 0 || (sessions ?? 0) > 0
+    ? { protected: true, error: "This question is used by an examination or live session and is protected. Duplicate it to make changes without affecting existing work." }
+    : { protected: false, error: null };
+}
+
 export async function saveQuestion(raw: QuestionInput) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
@@ -95,6 +111,11 @@ export async function saveQuestion(raw: QuestionInput) {
   if (q.subject_id) {
     const { data: subject } = await supabase.from("subjects").select("id").eq("id", q.subject_id).eq("organization_id", org.id).maybeSingle();
     if (!subject) return { error: "The selected subject does not belong to this organization." };
+  }
+
+  if (q.id) {
+    const use = await questionIsInUse(supabase, q.id);
+    if (use.protected) return { error: use.error ?? "This question is protected from edits." };
   }
 
   const payload = {
@@ -172,6 +193,8 @@ export async function deleteQuestion(formData: FormData) {
   const id = String(formData.get("id"));
   const supabase = await createClient();
   if (!(await hasCapability(supabase, ctx, org.id, "question_bank"))) redirect("/dashboard/questions?e=module");
+  const use = await questionIsInUse(supabase, id);
+  if (use.protected) redirect("/dashboard/questions?e=used_in_exam");
   await supabase.from("questions").delete().eq("id", id).eq("organization_id", org.id);
   revalidatePath("/dashboard/questions");
 }
@@ -184,6 +207,8 @@ export async function setQuestionStatus(formData: FormData) {
   const status = String(formData.get("status"));
   const supabase = await createClient();
   if (!(await hasCapability(supabase, ctx, org.id, "question_bank"))) redirect("/dashboard/questions?e=module");
+  const use = await questionIsInUse(supabase, id);
+  if (use.protected) redirect("/dashboard/questions?e=used_in_exam");
   if (status === "published") {
     const { data: question } = await supabase
       .from("questions")

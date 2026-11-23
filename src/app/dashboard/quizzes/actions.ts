@@ -11,6 +11,17 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
+async function quizIsInUse(supabase: Awaited<ReturnType<typeof createClient>>, quizId: string) {
+  const [{ count: exams, error: examError }, { count: sessions, error: sessionError }] = await Promise.all([
+    supabase.from("exams").select("id", { count: "exact", head: true }).eq("quiz_id", quizId),
+    supabase.from("quiz_sessions").select("id", { count: "exact", head: true }).eq("quiz_id", quizId),
+  ]);
+  if (examError || sessionError) return { protected: true, error: "Paper usage could not be checked safely. Please retry." };
+  return (exams ?? 0) > 0 || (sessions ?? 0) > 0
+    ? { protected: true, error: "This quiz/paper is referenced by an examination or live session. Duplicate it to make a separate version." }
+    : { protected: false, error: null };
+}
+
 const QuizSchema = z.object({
   id: z.string().optional(),
   title: z.string().min(1).max(160),
@@ -38,6 +49,9 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
     const { count } = await supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
     if (!withinLimit(ent.limits.max_quizzes, count ?? 0))
       return { error: `Your ${ent.planName} plan allows ${ent.limits.max_quizzes} quizzes. Upgrade in Billing.` };
+  } else {
+    const use = await quizIsInUse(supabase, q.id);
+    if (use.protected) return { error: use.error ?? "This quiz/paper is protected from edits." };
   }
 
   const payload = {
@@ -121,7 +135,10 @@ export async function deleteQuiz(formData: FormData) {
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
   const supabase = await createClient();
   if (!(await hasCapability(supabase, ctx, org.id, "quiz_management"))) redirect("/dashboard/quizzes?e=module");
-  await supabase.from("quizzes").delete().eq("id", String(formData.get("id"))).eq("organization_id", org.id);
+  const id = String(formData.get("id") ?? "");
+  const use = await quizIsInUse(supabase, id);
+  if (use.protected) redirect("/dashboard/quizzes?e=used_in_exam");
+  await supabase.from("quizzes").delete().eq("id", id).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
 }
 
@@ -131,7 +148,10 @@ export async function setQuizStatus(formData: FormData) {
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
   const supabase = await createClient();
   if (!(await hasCapability(supabase, ctx, org.id, "quiz_management"))) redirect("/dashboard/quizzes?e=module");
-  await supabase.from("quizzes").update({ status: String(formData.get("status")) }).eq("id", String(formData.get("id"))).eq("organization_id", org.id);
+  const id = String(formData.get("id") ?? "");
+  const use = await quizIsInUse(supabase, id);
+  if (use.protected) redirect("/dashboard/quizzes?e=used_in_exam");
+  await supabase.from("quizzes").update({ status: String(formData.get("status")) }).eq("id", id).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
 }
 

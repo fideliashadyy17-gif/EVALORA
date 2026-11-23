@@ -468,11 +468,20 @@ export async function regenerateCandidateCodeAsAdmin(formData: FormData) {
   const back = safeBack(formData, "/admin/examinations/codes");
   const { data: candidate } = await admin
     .from("exam_candidates")
-    .select("*, exams(organization_id)")
+    .select("*, exams(organization_id,status)")
     .eq("id", candidateId)
     .maybeSingle();
   if (!candidate) go(back, "e=candidate");
   if (candidate!.status === "submitted") go(back, "e=submitted");
+  const relatedExam = candidate!.exams as unknown as { organization_id: string; status: string } | null;
+  if (candidate!.status === "in_progress" || relatedExam?.status === "open" || relatedExam?.status === "paused") go(back, "e=active_attempt");
+  const { count: activeAttemptCount, error: activeAttemptError } = await admin
+    .from("exam_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("candidate_id", candidateId)
+    .eq("status", "in_progress");
+  if (activeAttemptError) go(back, "e=availability");
+  if ((activeAttemptCount ?? 0) > 0) go(back, "e=active_attempt");
 
   const code = await uniqueCandidateCode(admin, candidate!.exam_id, new Set(), candidateId);
   const { error } = await admin.from("exam_candidates").update({ access_code: code }).eq("id", candidateId);
@@ -496,6 +505,14 @@ export async function regenerateExamCodeAsAdmin(formData: FormData) {
   if (formData.get("confirm") !== "on") go(back, "e=confirm");
   const exam = await loadExam(admin, examId);
   if (!exam) go(back, "e=exam");
+  if (exam!.status === "open" || exam!.status === "paused") go(back, "e=active_attempt");
+  const { count: activeAttemptCount, error: activeAttemptError } = await admin
+    .from("exam_attempts")
+    .select("id", { count: "exact", head: true })
+    .eq("exam_id", examId)
+    .eq("status", "in_progress");
+  if (activeAttemptError) go(back, "e=availability");
+  if ((activeAttemptCount ?? 0) > 0) go(back, "e=active_attempt");
 
   const code = await uniqueExamCode(admin, examId);
   const { error } = await admin.from("exams").update({ access_code: code }).eq("id", examId);
