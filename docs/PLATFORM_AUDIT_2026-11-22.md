@@ -106,3 +106,111 @@ organisation's rows, because every query is additionally scoped with
   share a version prefix; reconciling that requires a decision about which body
   reflects production, and no migration body may be replayed blindly against a
   database holding 176 live attempts.
+
+## 6. Function privileges (`SECURITY DEFINER` review)
+
+Executable privileges were reviewed from `pg_proc.proacl` rather than assumed
+from the source migrations.
+
+**Result: no `anon`-executable function can read or write data.**
+
+39 `SECURITY DEFINER` functions in `public` carry an `anon=X` grant. Every one
+returns `SECURITY DEFINER` + `RETURNS trigger`, and PostgreSQL refuses to invoke
+a trigger function directly ("trigger functions can only be called as
+triggers"). Verified explicitly:
+
+```sql
+-- returns 0 rows
+select proname from pg_proc ...
+ where prosecdef and prorettype <> 'trigger'::regtype
+   and (proacl is null or has anon/ PUBLIC grant);
+```
+
+The only non-trigger, non-privileged function reachable by `anon` is
+`exam_attempt_deadline_at(...)`, an `IMMUTABLE` SQL function that performs pure
+arithmetic on its arguments and touches no table. It must remain callable
+because generated columns use it.
+
+Genuinely sensitive helpers are correctly restricted:
+
+| Function | Execute granted to |
+| --- | --- |
+| `evalora_can_manage` | `postgres`, `service_role` |
+| `org_limit` | `postgres`, `service_role` |
+| `evalora_hash_secret` | `postgres`, `service_role` |
+| `exam_attempt_add_extension_minutes` | `postgres`, `service_role` |
+| `exam_attempt_set_pause` | `postgres`, `service_role` |
+
+`is_super_admin`, `class_org` and `event_org` are executable by `authenticated`
+only — correct, because they are used inside RLS policy expressions.
+
+## 7. Storage buckets
+
+| Bucket | Public | Size cap | MIME restricted |
+| --- | --- | --- | --- |
+| `org-logos` | **yes** | none | no |
+| `payment-proofs` | no | 10 MB | no |
+| `question-media` | **yes** | 5 MB | yes |
+| `student-imports` | no | 10 MB | no |
+
+`payment-proofs` and `student-imports` are private, which is correct — both
+carry personal or financial material. `question-media` is public with a MIME
+allow-list and a size cap.
+
+`org-logos` is public with **no size limit and no MIME restriction**. That is
+the weakest bucket in the deployment: anyone who can write to it can publish an
+arbitrarily large file of any content type at a durable public URL. Writing is
+still gated by `storage.objects` RLS, so this is not an open upload endpoint,
+but the bucket policy should be tightened to an image allow-list plus a size cap.
+
+## 8. Migration ledger reconciliation
+
+The production ledger holds 130 recorded migrations. The repository holds 152
+migration files. Comparing by **name** (the version number is not comparable
+across the two naming schemes — local files use `0001_`…`0121_`, production uses
+timestamps):
+
+### Applied in production, no local file (28)
+
+Including a complete security-hardening set that exists nowhere in the repo:
+
+- `harden_public_storage_and_test_helpers`, `tenant_scope_question_media_uploads`,
+  `cap_private_upload_buckets`, `restrict_privileged_rpc_execution`,
+  `restrict_org_admin_setup_table_acl`, `tighten_public_security_definer_helpers`,
+  `restrict_public_exam_code_generator`, `restrict_legacy_public_code_generators`
+- `protect_owner_membership`, `restrict_platform_settings_reads`,
+  `restrict_support_ticket_insert`, `workspace_query_indexes`
+- `shared_live_quiz_integrity`, `shared_assessment_integrity_and_submission_provenance`,
+  `result_publication_modes_and_grading_state`, `sommetisation_assessment_grade10`,
+  `summative_grade9_and_grade10_repairs`, `grade10_myp5_summative_assessment_recreation`
+- `qualification_schema_part_a`, `compute_phase_qualification_function`,
+  `qualification_admission_functions_policies`,
+  `question_pool_validate_curriculum_counts_fix`, `ap_limits_exam_0058`,
+  `ap_exam_track_and_classes_0059`, `myp2_q36_two_sports_prompt_fix`,
+  `myp_mock_workspace_activation`, `0006_tenants_classes_imports`,
+  `0007_academic_structure_fields`
+
+The production state is **ahead of the repository**. The live database has been
+hardened more than the code suggests, which is the safe direction, but it means
+a database rebuild from these files would not reproduce production.
+
+### Local file never recorded in production (56)
+
+Mostly assessment content (`summative_grade*_questions_*`, `myp*_mock_*`,
+`grade4_*`, `g10_examination`) and `safe_exam_lifecycle_and_lockdown`. These
+appear to be content or draft migrations that were applied by another route or
+superseded by the tournament-style recreation migrations.
+
+### Duplicate version prefix
+
+Two files share `20261119100000`:
+`myp4_grade9_first_term_summative_version_d.sql` and
+`version_c_audit_corrections_and_randomization.sql`. A `supabase db push` would
+not be able to order these deterministically.
+
+### Decision
+
+**No migration was run and no migration file was deleted or renamed.** Writing
+"missing" files from memory would fabricate history; replaying any of these
+bodies against a database holding 176 live attempts risks overwriting
+assessment content. The discrepancy is documented here and blocks nothing else.
