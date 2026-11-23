@@ -9,6 +9,16 @@ import { spawnSync } from "node:child_process";
 import { readdirSync } from "node:fs";
 
 const all = process.argv.includes("--all");
+
+// The eight browser suites need three production servers on fixed ports plus a
+// Chromium build, so they stay opt-in — but a suite must never be "skipped"
+// silently: this prints the exact command that runs them.
+const BROWSER_HINT =
+  "The browser suites need three production servers on :3101-:3103 and Chromium.\n" +
+  "  npm ci && npm run build\n" +
+  "  NEXT_PUBLIC_SUPABASE_URL=http://127.0.0.1:54399 ... npx next start -p 3101\n" +
+  "  npm test -- --all\n" +
+  "(Docker-free CI equivalent: .github/workflows/exam-browser.yml)";
 const files = readdirSync("scripts")
   .filter((name) => /^test-.*\.mjs$/.test(name))
   .sort();
@@ -64,6 +74,6 @@ const passed = results.length - failed.length - skipped;
 console.log(
   `\n${passed} suites passed, ${failed.length} failed, ${skipped} skipped` +
     (checks > 0 ? ` — ${checks} individual checks passed` : "") +
-    (skipped ? `\n(${[...browserSuites].join(", ")} skipped: run with --all once Playwright is installed)` : ""),
+    (skipped ? `\n\n${skipped} browser suites were not run.\n${BROWSER_HINT}\nSkipped: ${[...browserSuites].join(", ")}` : ""),
 );
 process.exit(failed.length === 0 ? 0 : 1);
