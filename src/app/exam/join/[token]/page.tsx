@@ -1,4 +1,4 @@
-import { Logo } from "@/components/Logo";
+import { ExamBrandHeader, type ExamOrganizationBrand } from "@/components/ExamBrandHeader";
 import { Card } from "@/components/ui";
 import Link from "next/link";
 import {
@@ -42,6 +42,15 @@ export default async function SharedExamJoinPage({
     .maybeSingle();
   if (!exam)
     return <Shell title="This examination link is invalid." body="It may have been regenerated. Ask your institution for the current link." />;
+
+  const { data: organizationRow } = await admin
+    .from("organizations")
+    .select("name, logo_url")
+    .eq("id", exam.organization_id)
+    .maybeSingle();
+  const organization: ExamOrganizationBrand | null = organizationRow
+    ? { name: String(organizationRow.name), logo_url: (organizationRow.logo_url as string | null) ?? null }
+    : null;
 
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const access = parseExamAccessSettings(examSettings);
@@ -167,6 +176,7 @@ export default async function SharedExamJoinPage({
       languageLock={experience.languageLock}
       lockdownRequired={lockdownRequired}
       lockdownLaunchUrl={lockdownLaunchUrl}
+      organization={organization}
     />
   );
 }
@@ -175,8 +185,8 @@ function Shell({ title, body }: { title: string; body: string }) {
   return (
     <main className="exam-entry flex min-h-screen items-center px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto w-full max-w-xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <Logo />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <ExamBrandHeader />
           <span className="exam-entry-secure">Candidate access</span>
         </div>
         <Card className="exam-entry-card overflow-hidden">

@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { ExamBrandHeader } from "@/components/ExamBrandHeader";
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
@@ -52,6 +53,7 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 interface ExamState {
   server_now: string;
   exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
+  organization: { name: string; logo_url: string | null } | null;
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null; lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -1083,8 +1085,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         </div>
       )}
       <header className="exam-header sticky top-0 z-40 border-b border-evergreen-900/15 bg-paper print:hidden">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
-          <Logo href={null} iconOnly />
+        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2 sm:px-6">
+          <ExamBrandHeader
+            organization={state.organization}
+            compact
+            className="w-full border-b border-evergreen-900/10 pb-2"
+          />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>

@@ -46,6 +46,7 @@ Module._load=function(request,parent) {
   if(request==='./RetakePanel') return {RetakePanel:()=>null};
   if(request==='./HintPanel') return {HintPanel:()=>null};
   if(request==='./FormulaPanel') return {FormulaPanel:()=>null};
+  if(request==='@/components/ExamBrandHeader') return {ExamBrandHeader:({organization})=>React.createElement('div',{'data-testid':'exam-brand-header'},React.createElement('span',null,'EVALORA'),organization?React.createElement('span',null,React.createElement('img',{src:organization.logo_url,alt:organization.name+' logo'}),organization.name):null,React.createElement('span',null,'Powered by M. SADIKOU'))};
   if(request==='@/components/PresenceRail') return {PresenceRail:()=>null};
   if(request==='@/lib/hintAttention') return {answerStateFor:({hasSavedAnswer,isCorrect})=>!hasSavedAnswer?'unanswered':isCorrect===true?'correct':isCorrect===false?'incorrect':'answered'};
   if(request==='@/lib/presence') return {PRESENCE_HEARTBEAT_MS:20000,PRESENCE_REFRESH_MS:15000};
@@ -64,7 +65,7 @@ globalThis.localStorage={getItem:()=>JSON.stringify({token:'test'})};
 const events={}; let confirm=false;
 globalThis.window={addEventListener:(k,f)=>{events[k]=f},removeEventListener:(k)=>{delete events[k]},confirm:()=>confirm};
 const q=(id)=>({question_id:id,quiz_question_id:'qq'+id,type:'short_answer',prompt:id,options:[],points:1,media_url:null,media_type:null,saved_answer:null,result:null});
-const state={server_now:new Date().toISOString(),exam:{id:'exam',title:'Test',description:null,instructions:null,proctoring:false,require_screen_share:false,pass_mark_percent:50},candidate:{name:'Candidate',ref:null},attempt:{id:'attempt',status:'in_progress',deadline:new Date(Date.now()+600000).toISOString(),flagged:[],score:null,max_score:null,results_published:false},questions:[q('a'),q('b')]};
+const state={server_now:new Date().toISOString(),organization:{name:'Oak International School',logo_url:'/brand/oak-international-school-logo.webp'},exam:{id:'exam',title:'Test',description:null,instructions:null,proctoring:false,require_screen_share:false,pass_mark_percent:50},candidate:{name:'Candidate',ref:null},attempt:{id:'attempt',status:'in_progress',deadline:new Date(Date.now()+600000).toISOString(),flagged:[],score:null,max_score:null,results_published:false},questions:[q('a'),q('b')]};
 let saves=0, submits=0;
 globalThis.fetch=async (url,options)=>{if(url.startsWith('/api/exam/state')) {assert.ok(!url.includes('token='));assert.equal(options.headers.Authorization,'Bearer test');assert.equal(options.cache,'no-store');return {ok:true,json:async()=>structuredClone(state)};} if(url==='/api/exam/save') {saves++;return {ok:true};} if(url==='/api/exam/submit'){submits++;return {ok:true};} throw Error('unexpected fetch '+url);};
 let tree; await act(async()=>{tree=TestRenderer.create(React.createElement(TakeExamClient,{attemptId:'attempt'}));});

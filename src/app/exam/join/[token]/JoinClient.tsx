@@ -1,7 +1,7 @@
 "use client";
 
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
-import { Logo } from "@/components/Logo";
+import { ExamBrandHeader, type ExamOrganizationBrand } from "@/components/ExamBrandHeader";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import type { AccessMode, IdentityField } from "@/lib/exam-access";
 import type { PaperLanguage } from "@/lib/examLanguage";
@@ -37,6 +37,7 @@ export function ExamJoinClient({
   languageLock,
   lockdownRequired,
   lockdownLaunchUrl,
+  organization,
 }: {
   token: string;
   title: string;
@@ -54,6 +55,7 @@ export function ExamJoinClient({
   languageLock: boolean;
   lockdownRequired?: boolean;
   lockdownLaunchUrl?: string;
+  organization?: ExamOrganizationBrand | null;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -231,8 +233,8 @@ export function ExamJoinClient({
     <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12" lang={language}>
       <ExamLanguageShield language={language} enabled={languageLock} />
       <div className="mx-auto w-full max-w-2xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <Logo />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <ExamBrandHeader organization={organization} />
           <span className="exam-entry-secure">Secure examination access</span>
         </div>
         <Card className="exam-entry-card overflow-hidden">

@@ -64,6 +64,13 @@ export default async function ExamAccessPage({
     redirect(`/exam/join/${matchedExam.invite_token}?${qs.toString()}`);
   }
 
+  const { data: organizationRow } = matchedExam?.organization_id
+    ? await admin.from("organizations").select("name, logo_url").eq("id", matchedExam.organization_id).maybeSingle()
+    : { data: null };
+  const organization = organizationRow
+    ? { name: String(organizationRow.name), logo_url: (organizationRow.logo_url as string | null) ?? null }
+    : null;
+
   // Fetch available classes for the organization so students can select their class
   const { data: classesData } = await admin
     .from("classes")
@@ -95,6 +102,7 @@ export default async function ExamAccessPage({
         classes={classes}
         codeToClassMap={codeToClassMap}
         defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
+        organization={organization}
       />
     </main>
   );

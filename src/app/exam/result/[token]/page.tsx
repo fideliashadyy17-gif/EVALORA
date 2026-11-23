@@ -1,5 +1,5 @@
 import { Badge, ButtonLink, Card } from "@/components/ui";
-import { Logo } from "@/components/Logo";
+import { ExamBrandHeader, type ExamOrganizationBrand } from "@/components/ExamBrandHeader";
 import { RichContent } from "@/components/RichContent";
 import { MathText } from "@/components/MathText";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -37,7 +37,7 @@ export default async function ExamResultTokenPage({
     return (
       <main className="min-h-screen bg-cream px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <header className="mb-6"><Logo href="/" /></header>
+          <header className="mb-6"><ExamBrandHeader /></header>
           <Card className="p-8 text-center">
             <h1 className="font-display text-2xl font-semibold text-evergreen-950">Invalid result token</h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
@@ -60,7 +60,7 @@ export default async function ExamResultTokenPage({
     return (
       <main className="min-h-screen bg-cream px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <header className="mb-6"><Logo href="/" /></header>
+          <header className="mb-6"><ExamBrandHeader /></header>
           <Card className="p-8 text-center">
             <h1 className="font-display text-2xl font-semibold text-evergreen-950">Examination attempt not found</h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
@@ -79,7 +79,7 @@ export default async function ExamResultTokenPage({
     return (
       <main className="min-h-screen bg-cream px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <header className="mb-6"><Logo href="/" /></header>
+          <header className="mb-6"><ExamBrandHeader /></header>
           <Card className="p-8 text-center">
             <h1 className="font-display text-2xl font-semibold text-evergreen-950">Data unavailable</h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
@@ -91,12 +91,21 @@ export default async function ExamResultTokenPage({
     );
   }
 
+  const { data: organizationRow } = await admin
+    .from("organizations")
+    .select("name, logo_url")
+    .eq("id", exam.organization_id)
+    .maybeSingle();
+  const organization: ExamOrganizationBrand | null = organizationRow
+    ? { name: String(organizationRow.name), logo_url: (organizationRow.logo_url as string | null) ?? null }
+    : null;
+
   const isSubmitted = attempt.status !== "in_progress";
   if (!isSubmitted) {
     return (
       <main className="min-h-screen bg-cream px-4 py-8 sm:px-6">
         <div className="mx-auto max-w-3xl">
-          <header className="mb-6"><Logo href="/" /></header>
+          <header className="mb-6"><ExamBrandHeader organization={organization} /></header>
           <Card className="p-8 text-center">
             <h1 className="font-display text-2xl font-semibold text-evergreen-950">Examination in progress</h1>
             <p className="mx-auto mt-2 max-w-md text-sm text-ink-soft">
@@ -255,7 +264,7 @@ export default async function ExamResultTokenPage({
     <main className="min-h-screen bg-cream px-4 py-8 sm:px-6">
       <div className="mx-auto max-w-4xl">
         <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
-          <Logo href="/" />
+          <ExamBrandHeader organization={organization} />
           <div className="rounded-full border border-evergreen-900/10 bg-white px-4 py-1.5 text-right shadow-sm">
             <p className="text-xs font-semibold uppercase tracking-wider text-evergreen-950">
               Official Candidate Result

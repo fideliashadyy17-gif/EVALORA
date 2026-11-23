@@ -1,7 +1,6 @@
 "use client";
 
-import { Logo } from "@/components/Logo";
-import { PlatformCredit } from "@/components/PlatformCredit";
+import { ExamBrandHeader, type ExamOrganizationBrand } from "@/components/ExamBrandHeader";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import {
   ensureBrowserGuestKey,
@@ -25,11 +24,13 @@ export function ExamAccessClient({
   classes = [],
   codeToClassMap = {},
   defaultClassId = null,
+  organization = null,
 }: {
   initialExamCode?: string;
   classes?: ClassOption[];
   codeToClassMap?: Record<string, string>;
   defaultClassId?: string | null;
+  organization?: ExamOrganizationBrand | null;
 }) {
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
@@ -196,8 +197,8 @@ export function ExamAccessClient({
   return (
     <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
       <div className="mx-auto w-full max-w-xl">
-        <div className="mb-6 flex items-center justify-between gap-4">
-          <Logo />
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <ExamBrandHeader organization={organization} />
           <span className="exam-entry-secure">Secure examination access</span>
         </div>
         <Card className="exam-entry-card overflow-hidden">
@@ -441,7 +442,6 @@ export function ExamAccessClient({
         <p className="mt-5 text-center text-xs text-ink-soft">
           Your attempt is verified and timed by EVALORA&apos;s secure examination service.
         </p>
-        <PlatformCredit className="mt-4 text-center" />
       </div>
     </main>
   );

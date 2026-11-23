@@ -7,8 +7,8 @@ import ts from 'typescript';
 const file=path.resolve('scripts/__virtual_exam_state.cjs');
 let observed=[];
 const attemptWindow=()=>({deadlineMs:Date.now()+600000,deadline:new Date(Date.now()+600000).toISOString(),reached:false,remainingMs:600000,boundBy:'duration',nowMs:Date.now()});
-const context={attempt:{id:'a',status:'in_progress',started_at:new Date().toISOString(),extension_minutes:0,flagged:[],score:null,max_score:null},exam:{id:'e',title:'Exam',settings:{}},candidate:{id:'c',full_name:'Candidate'}};
-const admin={from:()=>({select:()=>({eq:async()=>({data:[]})})})};
+const context={attempt:{id:'a',status:'in_progress',started_at:new Date().toISOString(),extension_minutes:0,flagged:[],score:null,max_score:null},exam:{id:'e',organization_id:'org',title:'Exam',settings:{}},candidate:{id:'c',full_name:'Candidate'}};
+const admin={from:(table)=>table==='organizations'?({select(){return {eq(){return {maybeSingle:async()=>({data:{name:'Test Organization',logo_url:null}})}}}}}):({select:()=>({eq:async()=>({data:[]})})})};
 const original=Module._load;
 Module._load=function(request,parent){
  if(parent?.filename===file){
@@ -39,7 +39,7 @@ const {GET}=mod.exports;
 function req(query,auth){return new Request('https://example.test/api/exam/state?'+query,{headers:auth?{Authorization:auth}:{}});}
 let checks=0;
 async function test(name,fn){await fn();checks++;console.log(`  ✓ ${name}`);}
-await test('bearer header authenticates and response cannot be cached',async()=>{const r=await GET(req('attempt_id=a','Bearer right'));assert.equal(r.status,200);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.deepEqual(observed.at(-1),{id:'a',token:'right'});});
+await test('bearer header authenticates and response cannot be cached',async()=>{const r=await GET(req('attempt_id=a','Bearer right'));assert.equal(r.status,200);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(r.body.organization.name,'Test Organization');assert.deepEqual(observed.at(-1),{id:'a',token:'right'});});
 await test('legacy query token remains supported',async()=>{assert.equal((await GET(req('attempt_id=a&token=right'))).status,200);});
 await test('header takes precedence over query token',async()=>{const r=await GET(req('attempt_id=a&token=right','Bearer wrong'));assert.equal(r.status,404);assert.equal(r.headers['Cache-Control'],'private, no-store');assert.equal(observed.at(-1).token,'wrong');});
 await test('invalid authorization does not fall back to query token',async()=>{const before=observed.length;const r=await GET(req('attempt_id=a&token=right','Basic right'));assert.equal(r.status,400);assert.equal(observed.length,before);assert.equal(r.headers['Cache-Control'],'private, no-store');});

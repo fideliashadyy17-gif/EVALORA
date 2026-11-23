@@ -43,6 +43,14 @@ export async function GET(request: Request) {
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers });
   const { attempt, exam, candidate } = ctx;
   if (!exam || !candidate) return NextResponse.json({ error: "Examination data is unavailable." }, { status: 500, headers });
+  const { data: organizationRow } = await admin
+    .from("organizations")
+    .select("name, logo_url")
+    .eq("id", exam.organization_id)
+    .maybeSingle();
+  const organization = organizationRow
+    ? { name: String(organizationRow.name), logo_url: (organizationRow.logo_url as string | null) ?? null }
+    : null;
   if (exam.deleted_at || (exam.settings as Record<string, unknown> | null)?.archived)
     return NextResponse.json({ error: "This examination has been archived or removed and is no longer accessible." }, { status: 410, headers });
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
@@ -196,6 +204,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     server_now: new Date(nowMs).toISOString(),
+    organization,
     exam: {
       id: exam.id,
       access_code: (exam.access_code as string | null) ?? null,
