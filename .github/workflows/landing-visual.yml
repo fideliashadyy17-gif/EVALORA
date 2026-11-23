@@ -105,10 +105,21 @@ jobs:
       # The step summary is the only channel that survives the artifact/log
       # retention policy, so the verdict and the failing checks are written
       # there explicitly as annotations too.
+      - name: Platform attribution
+        id: credit
+        run: |
+          set +e
+          node scripts/verify-attribution.mjs > /tmp/credit.log 2>&1
+          echo "credit_exit=$?" >> "$GITHUB_OUTPUT"
+          cat /tmp/credit.log
+          grep -E "^✗|PASS|FAIL" /tmp/credit.log >> "$GITHUB_STEP_SUMMARY" || true
+          exit 0
+
       - name: Report result
         run: |
           VISUAL="${{ steps.visual.outputs.visual_exit }}"
           HTML="${{ steps.html.outputs.html_exit }}"
+          CREDIT="${{ steps.credit.outputs.credit_exit }}"
           {
             echo "### Landing verification"
             echo ""
@@ -116,13 +127,14 @@ jobs:
             echo "| --- | --- |"
             echo "| Browser (screenshots, layout, interaction) | ${VISUAL} |"
             echo "| Server-side (links, axe, structure) | ${HTML} |"
+            echo "| Platform attribution on every surface | ${CREDIT} |"
           } >> "$GITHUB_STEP_SUMMARY"
           if [ "$VISUAL" != "0" ]; then
             for f in verification/report.md /tmp/visual.log; do
               [ -f "$f" ] && { echo "::error file=verification/report.md::$(grep -c '^✗' "$f" 2>/dev/null || echo 0) browser check(s) failed"; }
             done
           fi
-          if [ "$VISUAL" != "0" ] || [ "$HTML" != "0" ]; then
+          if [ "$VISUAL" != "0" ] || [ "$HTML" != "0" ] || [ "$CREDIT" != "0" ]; then
             echo "Landing verification failed — open the job summary and the landing-screenshots artifact for the full report." >&2
             exit 1
           fi
