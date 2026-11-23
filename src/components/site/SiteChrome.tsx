@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import { ButtonLink } from "@/components/ui";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
@@ -181,6 +182,7 @@ export function SiteFooter() {
         </div>
         <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t border-white/12 pt-5 text-[0.7rem] text-evergreen-200/70">
           <span>© {new Date().getFullYear()} {BRAND.name}. All rights reserved.</span>
+          <PlatformCredit tone="inverse" className="text-evergreen-200/70" />
           <span>Hosted on Vercel · Data in Supabase · Video by LiveKit</span>
         </div>
       </div>

@@ -1,4 +1,5 @@
 import { Logo } from "./Logo";
+import { PlatformCredit } from "./PlatformCredit";
 import { Card } from "./ui";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -45,6 +46,7 @@ export function AuthShell({
           <p className="mt-6 text-center text-xs text-ink-soft">
             Protected by server-side authorization · <Link href="/privacy" className="font-medium underline underline-offset-2">Privacy</Link>
           </p>
+          <PlatformCredit className="mt-4 text-center" />
         </div>
       </div>
     </main>

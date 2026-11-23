@@ -1,4 +1,5 @@
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import {
   BillingToggle,
   EngineShowcase,
@@ -1010,6 +1011,7 @@ export default async function HomePage() {
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-[0.7rem] text-evergreen-200/70">
             <span>© {new Date().getFullYear()} {BRAND.name}. All rights reserved.</span>
+            <PlatformCredit tone="inverse" className="text-evergreen-200/70" />
             <span className="flex items-center gap-2">
               Hosted on Vercel · Data in Supabase · Video by LiveKit
             </span>

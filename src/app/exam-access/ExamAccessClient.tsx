@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import {
   ensureBrowserGuestKey,
@@ -440,6 +441,7 @@ export function ExamAccessClient({
         <p className="mt-5 text-center text-xs text-ink-soft">
           Your attempt is verified and timed by EVALORA&apos;s secure examination service.
         </p>
+        <PlatformCredit className="mt-4 text-center" />
       </div>
     </main>
   );
