@@ -1,0 +1,110 @@
+name: Exam browser suites
+
+# The eight browser suites in scripts/test-*-browser.mjs drive the real
+# examination UI in Chromium. They were previously reported as "skipped" and had
+# drifted stale for weeks without anyone noticing. This job runs them on every
+# change to the examination surface and uploads the evidence.
+on:
+  pull_request:
+    paths:
+      - "src/app/take-exam/**"
+      - "src/app/exam/**"
+      - "src/app/live/**"
+      - "src/app/play/**"
+      - "src/app/dashboard/exams/**"
+      - "src/lib/exam*.ts"
+      - "src/lib/lockdown*.ts"
+      - "src/lib/useAssessmentLockdown.ts"
+      - "src/lib/integrity*.ts"
+      - "scripts/test-*-browser.mjs"
+      - ".github/workflows/exam-browser.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  exam-browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      CI: "1"
+      # Every suite intercepts its own API traffic; these values only satisfy
+      # module initialisation, so no real Supabase project is ever contacted.
+      NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54399
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: mock-anon-key
+      SUPABASE_SERVICE_ROLE_KEY: mock-service-key
+      NEXT_PUBLIC_APP_URL: http://127.0.0.1:3101
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        run: |
+          set -e
+          npm i --no-save --no-audit --no-fund playwright@1.55.0
+          npx playwright install --with-deps chromium
+
+      - name: Build
+        run: npm run build
+
+      - name: Start servers
+        run: |
+          set -e
+          nohup npx next start -p 3101 -H 127.0.0.1 > /tmp/next-3101.log 2>&1 &
+          CRON_SECRET=0123456789abcdef0123456789abcdef01234567 \
+            nohup npx next start -p 3102 -H 127.0.0.1 > /tmp/next-3102.log 2>&1 &
+          nohup npx next start -p 3103 -H 127.0.0.1 > /tmp/next-3103.log 2>&1 &
+          for port in 3101 3102 3103; do
+            for i in $(seq 1 60); do
+              if curl -sf "http://127.0.0.1:$port/login" > /dev/null; then echo "$port ready"; break; fi
+              sleep 2
+            done
+          done
+
+      - name: Run browser suites
+        run: |
+          set -o pipefail
+          fail=0
+          for suite in \
+            test-exam-browser \
+            test-assessment-lockdown-browser \
+            test-exam-premature-submit-browser \
+            test-exam-messaging-browser \
+            test-shared-browser-sequential-browser
+          do
+            echo "::group::$suite"
+            if node "scripts/$suite.mjs" 2>&1 | tee "/tmp/$suite.log"; then
+              echo "✓ $suite"
+            else
+              echo "::error title=Browser suite failed::$suite"
+              fail=1
+            fi
+            echo "::endgroup::"
+          done
+          grep -E "PASS|✓|Timeout|Error" /tmp/test-*.log >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          exit $fail
+
+      - name: Printable paper (needs a rendered fixture)
+        run: |
+          PAPER_TEST_HTML=/tmp/evalora-paper.html node scripts/test-printable-paper-page.mjs
+          node scripts/test-printable-paper-browser.mjs
+
+      - name: Route suites
+        run: |
+          BASE=http://127.0.0.1:3102 SERVER_HAS_SECRET=1 node scripts/test-exam-messaging-routes.mjs
+          BASE=http://127.0.0.1:3102 SERVER_HAS_SECRET=1 \
+            CRON_SECRET_TEST=0123456789abcdef0123456789abcdef01234567 \
+            node scripts/test-cron-sweep-routes.mjs
+          BASE=http://127.0.0.1:3103 SERVER_HAS_SECRET=0 node scripts/test-cron-sweep-routes.mjs
+
+      - name: Server logs on failure
+        if: failure()
+        run: tail -60 /tmp/next-3101.log /tmp/next-3102.log /tmp/next-3103.log || true
