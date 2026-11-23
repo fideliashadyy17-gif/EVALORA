@@ -18,6 +18,10 @@ Module._load=function(request,parent) {
  if(parent?.filename===file) {
   if(request==='@/components/QuestionRunner') return {QuestionRunner:StubRunner};
   if(request==='@/components/Calculator') return {CalculatorLauncher:()=>null};
+  if(request==='@/components/MathKeyboardPanel') return {MathKeyboardPanel:()=>null};
+  if(request==='@/components/math-input/MathInputContext') return {MathInputProvider:({children})=>children,useMathInput:()=>({request:()=>{},target:null})};
+  if(request==='@/lib/mathInputManager') return {mathInputManager:{open:()=>{},close:()=>{},subscribe:()=>()=>{}}};
+  if(request==='@/lib/content') return {plainText:(v)=>String(v??'')};
   if(request==='@/components/Logo') return {Logo:()=>null};
   if(request==='@/components/RichContent') return {RichContent:()=>null};
   if(request==='@/components/ExamCorrige') return {ExamCorrige:()=>null};
@@ -34,7 +38,7 @@ Module._load=function(request,parent) {
       topics:[],criteria:[],strongTopics:[],weakTopics:[],pendingManual:false,pendingCount:0,message:'summary'})};
   if(request==='@/lib/integrity') return {parseIntegrityPolicy:(raw)=>({...raw,enabled:true,tabSwitch:true,focusLoss:true,fullscreen:true,clipboard:true,sound:true,warnAfter:3,reviewAfter:5})};
   if(request==='@/lib/integrityMonitor') return {IntegrityMonitor:class{start(){}stop(){}}};
-  if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{}};
+  if(request==='@/lib/useAssessmentLockdown') return {useProtectedSurface:()=>{},useAssessmentLockdown:()=>{}};
   if(request==='@/lib/lockdown')return {buildLockdownLaunchUrl:()=>'',DEFAULT_EXAM_LOCKDOWN:{enabled:false,require_app:false}};
   if(request==='@/lib/lockdownClient')return {isSecureBrowserEnvironment:()=>false,persistSecureBrowserState:()=>{}};
   if(request==='@/lib/examSaveQueue') return queue;
@@ -45,12 +49,12 @@ Module._load=function(request,parent) {
   if(request==='@/components/PresenceRail') return {PresenceRail:()=>null};
   if(request==='@/lib/hintAttention') return {answerStateFor:({hasSavedAnswer,isCorrect})=>!hasSavedAnswer?'unanswered':isCorrect===true?'correct':isCorrect===false?'incorrect':'answered'};
   if(request==='@/lib/presence') return {PRESENCE_HEARTBEAT_MS:20000,PRESENCE_REFRESH_MS:15000};
-  if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p)};
+  if(request==='@/components/ui') return {Button:(p)=>React.createElement('button',p),ButtonLink:(p)=>React.createElement('a',p),Input:(p)=>React.createElement('input',p),Textarea:(p)=>React.createElement('textarea',p),Select:(p)=>React.createElement('select',p),Field:({label,children})=>React.createElement('div',null,children),Card:(p)=>React.createElement('div',p),Badge:(p)=>React.createElement('span',p),PageTitle:()=>null,DataTable:()=>null,EmptyState:()=>null,StatCard:()=>null};
   if(request==='@/lib/utils') return {cn:(...args)=>args.filter(Boolean).join(' '),mmss:()=> '10:00'};
   if(request==='@livekit/components-styles') return {};
   if(request==='@livekit/components-react') return {};
   if(request==='livekit-client') return {Track:{Source:{}}};
-  if(request==='lucide-react') return {Flag:()=>null,ShieldAlert:()=>null,X:()=>null};
+  if(request==='lucide-react') return {Flag:()=>null,ShieldAlert:()=>null,ShieldCheck:()=>null,X:()=>null,Sigma:()=>null};
  }
  return original.apply(this,arguments);
 };
