@@ -16,11 +16,20 @@ export default async function NewQuestionPage() {
     .select("id, name")
     .eq("organization_id", org.id)
     .order("name");
-  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }] = await Promise.all([
+  const [{ data: classOptions }, { data: programmes }, { data: subjectOptions }, { data: mySubjects }] = await Promise.all([
     supabase.from("classes").select("id, name").eq("organization_id", org.id).eq("status", "active").order("grade_order").order("name"),
     supabase.from("curriculum_programmes").select("key, name").eq("organization_id", org.id).eq("is_active", true).order("name"),
     supabase.from("subjects").select("id, name").eq("organization_id", org.id).order("name"),
+    // The author's assigned subjects (teacher_subjects): the first one is the
+    // default subject for a NEW question — specialization, not a hard filter.
+    supabase
+      .from("teacher_subjects")
+      .select("subject_id")
+      .eq("organization_id", org.id)
+      .eq("profile_id", ctx.user.id)
+      .limit(1),
   ]);
+  const defaultSubjectId = (mySubjects ?? [])[0]?.subject_id ?? "";
 
   return (
     <>
@@ -36,6 +45,7 @@ export default async function NewQuestionPage() {
         uploadImage={uploadQuestionImage}
         successHref="/dashboard/questions"
         subjectOptions={subjectOptions ?? []}
+        initial={defaultSubjectId ? { subject_id: defaultSubjectId } : undefined}
         classOptions={classOptions ?? []}
         curriculumOptions={programmes ?? []}
       />

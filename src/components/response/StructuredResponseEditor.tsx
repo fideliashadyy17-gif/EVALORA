@@ -48,6 +48,8 @@ export function StructuredResponseEditor({
   emit,
   onDirtyChange,
   onPayloadChange,
+  questionId,
+  fieldId,
 }: {
   workspace: ResponseWorkspace;
   initial: Record<string, unknown> | null;
@@ -60,6 +62,13 @@ export function StructuredResponseEditor({
   onDirtyChange?: (dirty: boolean) => void;
   /** Receives the latest local construction before it has been saved. */
   onPayloadChange?: (payload: Record<string, unknown>) => void;
+  /**
+   * Identity for the central math-keyboard routing: the written editor inside
+   * this workspace registers as `${questionId}:${fieldId}` so symbol
+   * insertions land in THIS answer, never in another field of the question.
+   */
+  questionId?: string;
+  fieldId?: string;
 }) {
   const initialDoc = useMemo<RichDoc>(() => {
     const raw = initial?.doc;
@@ -282,6 +291,9 @@ export function StructuredResponseEditor({
               value={doc}
               onChange={(next) => { setDoc(next); markDirty(); }}
               ariaLabel="Your written answer"
+              questionId={questionId}
+              fieldId={fieldId}
+              targetLabel={questionId ? undefined : "Your written answer"}
               // Inline graphs, constructions, charts and data tables can be
               // embedded in the written answer itself: the doc carries their
               // full structured specification, so one answer can combine text,

@@ -40,10 +40,22 @@ export interface Rubric {
   title: string;
   description: string | null;
   framework: string | null;
+  curriculum?: string | null;
+  grade_label?: string | null;
+  version?: number;
+  parent_id?: string | null;
   total_marks: number;
   status: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface RubricPerformanceLevel {
+  level: number;
+  label: string;
+  description?: string;
+  min_marks: number;
+  max_marks: number;
 }
 
 export interface RubricCriterion {
@@ -55,6 +67,8 @@ export interface RubricCriterion {
   label: string;
   description: string | null;
   max_marks: number;
+  levels?: RubricPerformanceLevel[] | null;
+  weight?: number | null;
 }
 
 export async function loadRubrics(

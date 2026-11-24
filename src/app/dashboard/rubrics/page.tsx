@@ -1,4 +1,4 @@
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, StatCard, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
 import { loadRubrics } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
@@ -6,7 +6,7 @@ import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, ClipboardList, ListChecks } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { createRubric } from "./actions";
+import { createRubric, duplicateRubric } from "./actions";
 
 export const metadata: Metadata = { title: "Grading rubrics" };
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ const STATUS_TONE: Record<string, "amber" | "green" | "gray"> = {
 export default async function RubricsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ e?: string; ok?: string }>;
+  searchParams: Promise<{ e?: string; ok?: string ; curriculum?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -28,6 +28,10 @@ export default async function RubricsPage({
   const canMark = can(ctx, org.id, MARKER_ROLES);
   const supabase = await createClient();
   const rubrics = await loadRubrics(supabase, org.id);
+  const curriculumFilter = typeof sp.curriculum === "string" && sp.curriculum ? sp.curriculum : "";
+  const visibleRubrics = curriculumFilter
+    ? rubrics.filter((r) => (r as { curriculum?: string | null }).curriculum === curriculumFilter)
+    : rubrics;
 
   const { data: criteria } = await supabase
     .from("grading_rubric_criteria")
@@ -71,14 +75,34 @@ export default async function RubricsPage({
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.6fr_1fr]">
           <div>
-            {rubrics.length === 0 ? (
+            <form method="get" className="mb-3 flex flex-wrap items-end gap-2">
+              <label className="text-sm font-medium text-evergreen-900">
+                Curriculum family
+                <Select name="curriculum" defaultValue={curriculumFilter} className="mt-1 block min-w-48">
+                  <option value="">All families</option>
+                  <option value="cambridge">Cambridge International</option>
+                  <option value="british">British Curriculum</option>
+                  <option value="myp">IB MYP</option>
+                  <option value="ap">AP</option>
+                  <option value="beninese">Beninese</option>
+                  <option value="custom">Custom</option>
+                </Select>
+              </label>
+              <Button type="submit" variant="outline">Apply</Button>
+              {curriculumFilter && (
+                <Link href="/dashboard/rubrics" className="inline-flex min-h-11 items-center text-sm text-evergreen-800 underline underline-offset-2">
+                  Clear
+                </Link>
+              )}
+            </form>
+            {visibleRubrics.length === 0 ? (
               <EmptyState
-                title="No rubrics yet"
+                title={curriculumFilter ? "No rubrics in this family" : "No rubrics yet"}
                 body="A rubric splits a question into criteria, each with its own maximum. Once attached to an examination, markers score every criterion and the total becomes the mark."
               />
             ) : (
               <div className="space-y-3">
-                {rubrics.map((rubric) => (
+                {visibleRubrics.map((rubric) => (
                   <Card key={rubric.id} className="flex flex-wrap items-center justify-between gap-3 p-5">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -86,16 +110,27 @@ export default async function RubricsPage({
                           {rubric.title}
                         </Link>
                         <Badge tone={STATUS_TONE[rubric.status] ?? "gray"}>{rubric.status}</Badge>
+                        {(rubric as { curriculum?: string | null }).curriculum && (
+                          <Badge tone="green">{(rubric as { curriculum?: string }).curriculum}</Badge>
+                        )}
+                        <Badge tone="gold">v{Number((rubric as { version?: number }).version ?? 1)}</Badge>
                       </div>
                       <p className="mt-1 text-sm text-ink-soft">
                         {Number(rubric.total_marks)} marks across {counts.get(rubric.id) ?? 0} criteria
                         {rubric.framework ? ` · ${rubric.framework}` : ""}
+                        {(rubric as { grade_label?: string | null }).grade_label ? ` · ${(rubric as { grade_label?: string }).grade_label}` : ""}
                       </p>
                       <p className="text-xs text-ink-soft">Updated {fmtDateTime(rubric.updated_at)}</p>
                     </div>
-                    <ButtonLink href={`/dashboard/rubrics/${rubric.id}`} variant="outline">
-                      Open
-                    </ButtonLink>
+                    <div className="flex gap-2">
+                      <ButtonLink href={`/dashboard/rubrics/${rubric.id}`} variant="outline">
+                        Open
+                      </ButtonLink>
+                      <form action={duplicateRubric}>
+                        <input type="hidden" name="id" value={rubric.id} />
+                        <Button type="submit" variant="ghost" className="text-xs">Duplicate</Button>
+                      </form>
+                    </div>
                   </Card>
                 ))}
               </div>

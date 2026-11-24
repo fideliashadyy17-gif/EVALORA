@@ -198,6 +198,33 @@ export async function createStaffAccount(formData: FormData) {
   // Keep the profile name in step with what the administrator typed.
   await admin.from("profiles").update({ full_name: fullName }).eq("id", userId!);
 
+  // Teacher subject assignments chosen on the creation form (multiple
+  // subject_ids). Only teaching roles can carry subjects — the database
+  // guard rejects any other role — and every subject must belong to THIS
+  // organization (tenant isolation).
+  if (role === "teacher" || role === "organizer") {
+    const subjectIds = [...new Set(formData.getAll("subject_ids").map(String))]
+      .filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
+      .slice(0, 30);
+    if (subjectIds.length) {
+      const { data: orgSubjects } = await admin
+        .from("subjects")
+        .select("id")
+        .eq("organization_id", org.id)
+        .in("id", subjectIds);
+      const valid = new Set((orgSubjects ?? []).map((row) => row.id));
+      const rows = subjectIds
+        .filter((subjectId) => valid.has(subjectId))
+        .map((subjectId) => ({
+          organization_id: org.id,
+          profile_id: userId!,
+          subject_id: subjectId,
+          assigned_by: ctx.user.id,
+        }));
+      if (rows.length) await admin.from("teacher_subjects").insert(rows);
+    }
+  }
+
   if (mode === "invite") await admin.auth.resetPasswordForEmail(email);
   await audit(ctx, "member.account_created", "organization_members", userId!, org.id, { email, role, mode });
   revalidatePath("/dashboard/accounts");

@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createStaffAccount } from "../accounts/actions";
+import { setTeacherSubjects } from "./actions";
 
 export const metadata: Metadata = { title: "Teachers" };
 export const dynamic = "force-dynamic";
@@ -57,7 +58,7 @@ export default async function TeachersPage({
   const { data: members, count: teacherTotal } = await teacherQuery.range((page - 1) * pageSize, page * pageSize - 1);
 
   const teacherIds = (members ?? []).map((m) => m.user_id);
-  const [{ data: profiles }, { data: classes }, { data: exams }, { count: activeTeacherTotal }] = await Promise.all([
+  const [{ data: profiles }, { data: classes }, { data: exams }, { count: activeTeacherTotal }, { data: orgSubjects }, { data: subjectRows }] = await Promise.all([
     teacherIds.length
       ? supabase.from("profiles").select("id, full_name, email").in("id", teacherIds)
       : Promise.resolve({ data: [] as { id: string; full_name: string | null; email: string | null }[] }),
@@ -66,7 +67,21 @@ export default async function TeachersPage({
       ? supabase.from("exams").select("id, created_by, status").eq("organization_id", org.id).in("created_by", teacherIds)
       : Promise.resolve({ data: [] as { id: string; created_by: string | null; status: string | null }[] }),
     supabase.from("organization_members").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("role", "teacher").eq("status", "active"),
+    supabase.from("subjects").select("id, name").eq("organization_id", org.id).order("name"),
+    supabase
+      .from("teacher_subjects")
+      .select("profile_id, subject_id, subjects(id, name)")
+      .eq("organization_id", org.id),
   ]);
+
+  // Teacher → subject names (organization-scoped assignments).
+  const subjectsByTeacher = new Map<string, { id: string; name: string }[]>();
+  for (const row of (subjectRows ?? []) as unknown as { profile_id: string; subjects: { id: string; name: string } | null }[]) {
+    if (!row.subjects) continue;
+    const list = subjectsByTeacher.get(row.profile_id) ?? [];
+    list.push(row.subjects);
+    subjectsByTeacher.set(row.profile_id, list);
+  }
 
   const profileById = new Map((profiles ?? []).map((p) => [p.id, p]));
   const classesByTeacher = new Map<string, string[]>();
@@ -116,6 +131,11 @@ export default async function TeachersPage({
           it after signing in.
         </p>
       )}
+      {sp.ok === "subjects" && (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          Teacher subject assignments saved.
+        </p>
+      )}
       {sp.ok === "invitation_sent" && (
         <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
           Teacher account created and a password-setup email was requested. Ask them to check their inbox.
@@ -160,7 +180,7 @@ export default async function TeachersPage({
             </p>
           ) : (
             <div className="mt-4">
-              <DataTable head={["Teacher", "Status", "Classes", "Examinations", "Added"]} label="Teaching staff">
+              <DataTable head={["Teacher", "Subjects", "Status", "Classes", "Examinations", "Added"]} label="Teaching staff">
                 {(members ?? []).map((member) => {
                   const profile = profileById.get(member.user_id);
                   const teacherClasses = classesByTeacher.get(member.user_id) ?? [];
@@ -171,6 +191,45 @@ export default async function TeachersPage({
                       <td>
                         <p className="font-medium text-evergreen-950">{profile?.full_name ?? "Unnamed teacher"}</p>
                         <p className="text-xs text-ink-soft">{profile?.email ?? "no email on file"}</p>
+                      </td>
+                      <td className="text-ink-soft">
+                        {(subjectsByTeacher.get(member.user_id) ?? []).length === 0 ? (
+                          <span className="text-xs">no subjects</span>
+                        ) : (
+                          <div className="flex max-w-[180px] flex-wrap gap-1">
+                            {(subjectsByTeacher.get(member.user_id) ?? []).map((subj) => (
+                              <Badge key={subj.id} tone="green">{subj.name}</Badge>
+                            ))}
+                          </div>
+                        )}
+                        {isManager && (
+                          <details className="mt-1.5">
+                            <summary className="cursor-pointer text-[11px] font-semibold text-evergreen-700 hover:underline">
+                              Edit subjects
+                            </summary>
+                            <form action={setTeacherSubjects} className="mt-1.5 space-y-1.5 rounded-lg border border-evergreen-900/15 bg-cream/60 p-2">
+                              <input type="hidden" name="profile_id" value={member.user_id} />
+                              {(orgSubjects ?? []).map((subj) => (
+                                <label key={subj.id} className="flex items-center gap-1.5 text-[11px] text-evergreen-900">
+                                  <input
+                                    type="checkbox"
+                                    name="subject_ids"
+                                    value={subj.id}
+                                    defaultChecked={(subjectsByTeacher.get(member.user_id) ?? []).some((s) => s.id === subj.id)}
+                                    className="h-3.5 w-3.5 accent-evergreen-700"
+                                  />
+                                  {subj.name}
+                                </label>
+                              ))}
+                              {(orgSubjects ?? []).length === 0 && (
+                                <p className="text-[11px] text-ink-soft">No subjects configured yet — add them in Academic Structure first.</p>
+                              )}
+                              <button type="submit" className="w-full rounded-md bg-evergreen-700 px-2 py-1 text-[11px] font-semibold text-white hover:bg-evergreen-800">
+                                Save subjects
+                              </button>
+                            </form>
+                          </details>
+                        )}
                       </td>
                       <td>
                         <Badge tone={suspended ? "red" : "gold"}>{suspended ? "suspended" : "active"}</Badge>
@@ -224,6 +283,22 @@ export default async function TeachersPage({
               <Field label="Initial password" hint="At least 10 characters, with letters and numbers. Used only when setting a password.">
                 <Input name="password" type="password" autoComplete="new-password" minLength={10} />
               </Field>
+              <Field label="Subjects taught" hint="Hold Ctrl/Cmd to select several. Stored on this teacher's profile for this institution.">
+                <select
+                  name="subject_ids"
+                  multiple
+                  size={Math.min(6, Math.max(3, (orgSubjects ?? []).length))}
+                  className="w-full rounded-lg border border-evergreen-900/20 bg-white px-3 py-2 text-sm"
+                  aria-label="Subjects taught by this teacher"
+                >
+                  {(orgSubjects ?? []).map((subj) => (
+                    <option key={subj.id} value={subj.id}>{subj.name}</option>
+                  ))}
+                </select>
+              </Field>
+              {(orgSubjects ?? []).length === 0 && (
+                <p className="text-xs text-ink-soft">No subjects yet — create them in Academic Structure to assign specializations.</p>
+              )}
               <Button type="submit" className="w-full">Create teacher account</Button>
             </form>
           </Card>

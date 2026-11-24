@@ -116,13 +116,46 @@ class MathInputRegistry {
   }
 
   /**
+   * The registered target that owns the DOM element currently holding focus
+   * (walks up from document.activeElement via each target's `data-target-id`
+   * marker). This is the authoritative answer while the candidate is working
+   * inside an editor — a recorded active id can be stale after re-renders,
+   * tab switches or mounting a second field (the classic "symbol lands in
+   * the wrong box" bug).
+   */
+  getFocusedTarget(): MathInputTarget | null {
+    if (typeof document === "undefined") return null;
+    let el: Element | null = document.activeElement;
+    while (el) {
+      const id = typeof (el as HTMLElement).getAttribute === "function"
+        ? (el as HTMLElement).getAttribute("data-target-id")
+        : null;
+      if (id) {
+        const target = this.targets.get(id);
+        if (target) return target;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  /**
    * Find the most appropriate active target:
-   * 1. The currently focused or recorded active target.
-   * 2. If fallbackTargetId is provided and registered, that target.
-   * 3. The first registered target in the active question (if questionId given).
-   * 4. Any registered target.
+   * 1. The target that owns the DOM-focused element (authoritative).
+   * 2. The recorded active target.
+   * 3. If fallbackTargetId is provided and registered, that target.
+   * 4. The first registered target in the active question (if questionId given).
+   * 5. Any registered target.
    */
   resolveTarget(fallbackTargetId?: string, questionId?: string): MathInputTarget | null {
+    const focusedTarget = this.getFocusedTarget();
+    if (focusedTarget) {
+      if (this.activeTargetId !== focusedTarget.id) {
+        this.activeTargetId = focusedTarget.id;
+        this.notify();
+      }
+      return focusedTarget;
+    }
     const active = this.getActiveTarget();
     if (active) return active;
 
@@ -145,6 +178,10 @@ class MathInputRegistry {
 
     const all = Array.from(this.targets.values());
     if (all.length > 0) {
+      // With an explicit question scope, NEVER fall through to an arbitrary
+      // field (the first registered target may belong to a previous question
+      // after navigation — the classic cross-talk bug).
+      if (questionId) return null;
       const first = all[0];
       this.activeTargetId = first.id;
       this.notify();
@@ -159,7 +196,23 @@ class MathInputRegistry {
    * If no field is currently active, resolves using fallbackTargetId or the active question.
    */
   insertIntoActive(ins: PlainMathInsertion, fallbackTargetId?: string, questionId?: string): boolean {
-    const target = this.resolveTarget(fallbackTargetId, questionId);
+    let target = this.resolveTarget(fallbackTargetId, questionId);
+
+    // A recorded active target can be stale after navigating to another
+    // question. When the caller declares the current question, re-route to a
+    // field of THAT question — or refuse rather than write cross-question.
+    if (target && questionId && target.questionId && target.questionId !== questionId) {
+      target = null;
+      for (const candidate of this.targets.values()) {
+        if (candidate.questionId === questionId) {
+          target = candidate;
+          this.activeTargetId = candidate.id;
+          this.notify();
+          break;
+        }
+      }
+      if (!target) return false;
+    }
     if (!target) return false;
 
     target.applyInsertion(ins);

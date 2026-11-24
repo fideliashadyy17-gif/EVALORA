@@ -115,6 +115,8 @@ export const en = {
     questionBank: "Question Bank",
     competitions: "Live Competitions",
     rubrics: "Rubrics",
+    formulas: "Formula Library",
+    gradingSystems: "Grading Systems",
     proctoring: "Proctoring",
     resultsReports: "Results & Reports",
     mypResults: "MYP Results",

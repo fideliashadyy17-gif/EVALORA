@@ -1,6 +1,8 @@
 "use client";
 
-import { emptyDoc, renderLatex, validateLatex, type RichDoc } from "@/lib/content";
+import { emptyDoc, renderLatex, textToDoc, validateLatex, type RichDoc } from "@/lib/content";
+import { mathInputManager, type MathInputTarget } from "@/lib/mathInputManager";
+import type { PlainMathInsertion } from "./plainMathKeyboard";
 import { Extension } from "@tiptap/core";
 import Color from "@tiptap/extension-color";
 import FontFamily from "@tiptap/extension-font-family";
@@ -16,7 +18,7 @@ import TextStyle from "@tiptap/extension-text-style";
 import Underline from "@tiptap/extension-underline";
 import { BubbleMenu, EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { MathField, type MathFieldHandle } from "./MathField";
 import { MATH_CATEGORIES, stripPlaceholders, templateToPlaceholderLatex, type MathKey } from "./mathKeyboard";
 import { MathBlock, MathInline } from "./mathNodes";
@@ -128,6 +130,10 @@ export function RichContentEditor({
   allowLinks = true,
   placeholder,
   minHeight,
+  targetId: explicitTargetId,
+  questionId,
+  fieldId,
+  targetLabel,
 }: {
   value: RichDoc | null;
   onChange: (doc: RichDoc) => void;
@@ -140,7 +146,19 @@ export function RichContentEditor({
   allowLinks?: boolean;
   placeholder?: string;
   minHeight?: string;
+  /**
+   * Central math-keyboard routing (candidate written answers): this editor
+   * registers as an active target so the shared symbol keyboard inserts at
+   * ITS caret instead of falling through to another field of the question.
+   */
+  targetId?: string;
+  questionId?: string;
+  fieldId?: string;
+  targetLabel?: string;
 }) {
+  const autoTargetId = useId();
+  const resolvedTargetId =
+    explicitTargetId ?? (questionId && fieldId ? `${questionId}:${fieldId}` : (fieldId ?? autoTargetId));
   const [mode, setMode] = useState<Mode>("text");
   const [showKeyboard, setShowKeyboard] = useState(false);
   const [kbCategory, setKbCategory] = useState(MATH_CATEGORIES[1].id);
@@ -206,6 +224,11 @@ export function RichContentEditor({
       isInternalUpdateRef.current = true;
       onChangeRef.current(json);
     },
+    onFocus: () => {
+      // The candidate is working HERE: make this editor the authoritative
+      // target for the shared mathematical keyboard.
+      mathInputManager.setActiveTarget(resolvedTargetId);
+    },
     onCreate: ({ editor }) => {
       const storage = editor.storage as unknown as Record<string, { onEditRequest?: unknown }>;
       if (storage.mathInline) {
@@ -227,6 +250,51 @@ export function RichContentEditor({
       }
     },
   });
+
+  // Plain-text insertion for the shared math keyboard: insert at the live
+  // ProseMirror selection (tiptap replaces any active selection with the
+  // content), then leave the caret after the inserted run so text and math
+  // keep interleaving at the cursor.
+  const applyRichInsertion = useCallback(
+    (ins: PlainMathInsertion) => {
+      if (!editor || editor.isDestroyed) return;
+      editor.chain().focus().insertContent({ type: "text", text: ins.text }).run();
+    },
+    [editor],
+  );
+  const applyRichInsertionRef = useRef(applyRichInsertion);
+  applyRichInsertionRef.current = applyRichInsertion;
+
+  // Register with the platform-wide central math input manager (see
+  // src/lib/mathInputManager.ts). Unregisters on unmount so navigation
+  // between questions can never leave a stale target behind.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    const target: MathInputTarget = {
+      id: resolvedTargetId,
+      questionId,
+      fieldId,
+      label: targetLabel ?? ariaLabel ?? "Written answer",
+      variant: "full",
+      getElement: () => editor.view.dom as unknown as HTMLTextAreaElement,
+      getValue: () => editor.getText(),
+      setValue: (next) => {
+        const doc = textToDoc(next);
+        isInternalUpdateRef.current = true;
+        lastEmittedRef.current = JSON.stringify(doc);
+        editor.commands.setContent(doc, false);
+        onChangeRef.current(doc);
+      },
+      applyInsertion: (ins) => applyRichInsertionRef.current(ins),
+      focus: (start, end) => {
+        const chain = editor.chain().focus();
+        if (typeof start === "number") chain.setTextSelection({ from: start, to: end ?? start });
+        chain.run();
+      },
+      getSelection: () => ({ start: editor.state.selection.from, end: editor.state.selection.to }),
+    };
+    return mathInputManager.register(target);
+  }, [editor, resolvedTargetId, questionId, fieldId, targetLabel, ariaLabel]);
 
   useEffect(() => {
     if (!editor || editor.isDestroyed) return;
@@ -410,7 +478,7 @@ export function RichContentEditor({
   const cat = MATH_CATEGORIES.find((c) => c.id === kbCategory) ?? MATH_CATEGORIES[0];
 
   return (
-    <div className={`rce-shell ${compact ? "rce-compact" : ""}`}>
+    <div className={`rce-shell ${compact ? "rce-compact" : ""}`} data-target-id={resolvedTargetId}>
       {/* Mode selector */}
       <div className="flex flex-wrap items-center gap-2 border-b border-evergreen-900/10 bg-cream/60 px-3 py-2">
         <div className="inline-flex rounded-lg border border-evergreen-900/20 bg-white p-0.5" role="tablist" aria-label="Editing mode">

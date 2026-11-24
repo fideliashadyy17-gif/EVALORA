@@ -1,4 +1,4 @@
-import { criterionSharePoints, type CriterionShare } from "./criterionShares";
+import { criterionSharePoints, type CriterionShare } from "./criterionShares.ts";
 
 /**
  * MYP criterion results and the overall 1–7 grade — one authoritative engine.

@@ -60,6 +60,9 @@ export function parseFormulaSheet(value: unknown, examId: string): FormulaSheet 
   const raw = value as Record<string, unknown>;
   if (raw.version !== undefined && raw.version !== 1) return null;
   if (typeof raw.exam_id !== "string" || raw.exam_id !== examId) return null;
+  // Per-examination switch: a disabled sheet keeps its groups in settings so
+  // the teacher can re-enable it, but the candidate never receives it.
+  if (raw.enabled === false) return null;
   const title = clean(raw.title, MAX_TITLE) ?? "Formulas for this paper";
   if (!Array.isArray(raw.groups) || raw.groups.length === 0 || raw.groups.length > MAX_GROUPS) return null;
 

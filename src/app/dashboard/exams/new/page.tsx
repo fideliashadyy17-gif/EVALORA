@@ -13,7 +13,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
-  const [{ data: quizzes }, { data: templates }] = await Promise.all([
+  const [{ data: quizzes }, { data: templates }, { data: mySubjectRows }] = await Promise.all([
     supabase
       .from("quizzes")
       .select("id, title")
@@ -25,7 +25,23 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
       .select("id, name, is_default")
       .eq("organization_id", org.id)
       .order("is_default", { ascending: false }),
+    // The author's first assigned subject → default Subject on a new exam.
+    supabase
+      .from("teacher_subjects")
+      .select("subjects(name)")
+      .eq("organization_id", org.id)
+      .eq("profile_id", ctx.user.id)
+      .limit(1),
   ]);
+  const firstSubjectRel = (mySubjectRows ?? [])[0] as unknown as
+    | { subjects: { name: string }[] | { name: string } | null }
+    | undefined;
+  const firstSubjectList = Array.isArray(firstSubjectRel?.subjects)
+    ? firstSubjectRel.subjects
+    : firstSubjectRel?.subjects
+      ? [firstSubjectRel.subjects]
+      : [];
+  const defaultSubjectName = firstSubjectList[0]?.name ?? "";
   const ent = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
@@ -105,7 +121,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                 <Input name="grade_label" placeholder="MYP4" />
               </Field>
               <Field label="Subject">
-                <Input name="subject" placeholder="Mathematics" />
+                <Input name="subject" defaultValue={defaultSubjectName} placeholder="Mathematics" />
               </Field>
             </div>
             <Field label="Official paper template">

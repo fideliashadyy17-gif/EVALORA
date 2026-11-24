@@ -1,6 +1,7 @@
 import { Badge, Button, ButtonLink, Card, PageTitle, Select } from "@/components/ui";
 import { isMypLearner, mypAccess } from "@/lib/mypAccess";
 import { MYP_CRITERION_PRESETS, presetForSubject } from "@/lib/myp";
+import { MYP_SUBJECT_GROUP_REFERENCE, MYP_REFERENCE_GAPS } from "@/lib/mypReference";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -346,6 +347,73 @@ export default async function MypGradingSettingsPage({
           </Card>
         </div>
       )}
+
+      {/* ── Official reference browser: ALL MYP subject groups ─────────── */}
+      <div className="mt-6">
+        <Card className="p-5" data-testid="myp-reference-library">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">
+            MYP assessment reference — all subject groups
+          </h2>
+          <p className="mt-1 text-xs leading-relaxed text-ink-soft">
+            Browse every subject group&apos;s official criteria (A–D) and the strand structure of each criterion. Criterion
+            titles and descriptions follow the published IB MYP subject briefs; strand descriptions are concise summaries
+            of the guide structure — never presented as verbatim official wording. Select only the criteria your paper
+            assesses via the per-subject configuration above; unselected criteria stay available for future assessments.
+          </p>
+          <div className="mt-3 space-y-2">
+            {MYP_SUBJECT_GROUP_REFERENCE.map((group) => (
+              <details key={group.key} className="rounded-lg border border-evergreen-900/15 bg-white">
+                <summary className="cursor-pointer px-3 py-2 text-sm font-semibold text-evergreen-950">
+                  {group.group}
+                  <span className="ml-2 text-[11px] font-normal text-ink-soft">4 criteria</span>
+                </summary>
+                <div className="space-y-2 border-t border-evergreen-900/10 px-3 py-2">
+                  <p className="text-[11px] text-ink-soft">
+                    Source:{" "}
+                    <a href={group.sourceUrl} target="_blank" rel="noreferrer" className="underline">
+                      {group.source}
+                    </a>
+                  </p>
+                  {group.criteria.map((criterion) => (
+                    <details key={criterion.code} className="rounded-lg border border-evergreen-900/10 bg-cream/50">
+                      <summary className="cursor-pointer px-2.5 py-1.5 text-xs font-semibold text-evergreen-900">
+                        Criterion {criterion.code} — {criterion.title}
+                      </summary>
+                      <div className="border-t border-evergreen-900/10 px-2.5 py-2">
+                        <p className="text-[11px] leading-relaxed text-ink">{criterion.description}</p>
+                        <ul className="mt-1.5 space-y-1">
+                          {criterion.strands.map((strand) => (
+                            <li key={strand.code} className="rounded bg-white px-2 py-1.5 text-[11px]">
+                              <span className="font-semibold text-evergreen-950">{strand.code} {strand.title}</span>
+                              <span className="mt-0.5 block leading-relaxed text-ink-soft">{strand.description}</span>
+                              <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-ink-soft">
+                                {strand.provenance === "official-subject-brief" ? "Official subject brief" : "Summary of published guide structure"}
+                              </span>
+                            </li>
+                          ))}
+                          {criterion.strands.length === 0 && (
+                            <li className="text-[11px] italic text-ink-soft">No strand table reproduced for this criterion.</li>
+                          )}
+                        </ul>
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-900">Known gaps — not fabricated</p>
+            <ul className="mt-1 space-y-1 text-[11px] leading-relaxed text-amber-950">
+              {MYP_REFERENCE_GAPS.map((gap) => (
+                <li key={gap.scope}>
+                  <strong>{gap.scope}:</strong> {gap.gap} <span className="opacity-80">({gap.where})</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </Card>
+      </div>
     </>
   );
 }

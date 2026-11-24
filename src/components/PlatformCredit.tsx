@@ -1,3 +1,4 @@
+import type { HTMLAttributes } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -11,13 +12,15 @@ import { cn } from "@/lib/utils";
 export function PlatformCredit({
   className,
   tone = "muted",
+  ...rest
 }: {
   className?: string;
   /** "muted" on light surfaces, "inverse" on the dark evergreen surfaces. */
   tone?: "muted" | "inverse";
-}) {
+} & HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
+      {...rest}
       className={cn(
         "platform-credit text-[11px] leading-none tracking-[0.14em] uppercase",
         tone === "inverse" ? "text-emerald-100/70" : "text-ink-soft",
