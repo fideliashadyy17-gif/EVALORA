@@ -13,12 +13,15 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
+import { deriveResultStage } from "@/lib/resultLifecycle";
+import { ResultLifecycle } from "@/components/exam/ResultLifecycle";
+import { getI18n } from "@/lib/i18n/server";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateWorkspaceExamAccess,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateWorkspaceExamAccess, validateResults, unvalidateResults,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -29,7 +32,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; e?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; e?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; validation_error?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -114,6 +117,18 @@ export default async function ExamDetailPage({
   const rubricLinks = (rubricLinksData ?? []) as unknown as ExamRubricLink[];
   const rubricIds = [...new Set(rubricLinks.map((l) => l.rubric_id))];
   const shownAnswerIds = [...awaitingMarking, ...gradedWritten].map((entry) => entry.ans.id);
+
+  // Mandatory publication workflow state (Draft → … → Published).
+  const { t } = await getI18n();
+  const submittedCount = (attempts ?? []).filter((a) => a.status !== "in_progress").length;
+  const lifecycle = deriveResultStage({
+    examStatus: exam.status,
+    attemptCount: (attempts ?? []).length,
+    submittedCount,
+    awaitingMarking: awaitingMarking.length,
+    resultsValidated: settings.results_validated === true,
+    resultsPublished: settings.results_published === true,
+  });
   const [{ data: rubricCriteriaData }, { data: answerScoresData }] = await Promise.all([
     rubricIds.length
       ? supabase.from("grading_rubric_criteria").select("*").in("rubric_id", rubricIds).order("position")
@@ -213,8 +228,13 @@ export default async function ExamDetailPage({
       {sp.candidate_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The candidate could not be removed. Candidates with recorded attempts are protected; check permissions and try again only if appropriate.</p>}
       {sp.access_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Examination access updated.</p>}
       {sp.access_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.access_error === "audit" ? "Access changed, but the audit entry could not be confirmed. Do not retry a rotation until you check the current link and code; contact an administrator." : "Access could not be updated. Check your permissions and retry."}</p>}
-      {sp.publish_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
+      {sp.publish_error === "validation" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{t("results.validationFirstError")}</p>}
+      {sp.publish_error && sp.publish_error !== "validation" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
+      {sp.ok === "validated" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{t("results.validatedMsg")}</p>}
+      {sp.ok === "unvalidated" && <p role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{t("results.unvalidatedMsg")}</p>}
+      {sp.validation_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.validation_error === "empty" ? "There are no attempts to validate yet." : sp.validation_error === "published" ? "Results are published — unpublish before reopening validation." : "Validation could not be confirmed. Reload and try again."}</p>}
+      {sp.e === "module" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{t("errors.moduleDisabled")}</p>}
       {sp.mark_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{markErrors[sp.mark_error] ?? "The mark could not be saved."}</p>}
       {sp.mark_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">{sp.mark_ok === "rubric" ? "Criterion marks saved, answer mark recalculated and the change added to the grade history." : "Mark saved and attempt total recalculated."}</p>}
       {sp.ai_ok && (
@@ -307,9 +327,16 @@ export default async function ExamDetailPage({
             <form action={publishResults}>
               <input type="hidden" name="exam_id" value={id} />
               <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
-              <Button type="submit" variant="outline">
+              <Button
+                type="submit"
+                variant="outline"
+                disabled={!settings.results_published && settings.results_validated !== true}
+              >
                 {settings.results_published ? "Unpublish results" : "Publish results"}
               </Button>
+              {!settings.results_published && settings.results_validated !== true && (
+                <p className="mt-1.5 text-xs text-amber-800">{t("results.publishGated")}</p>
+              )}
             </form>
             <DeleteExamDialog
               examId={id}
@@ -471,6 +498,7 @@ export default async function ExamDetailPage({
 
       {/* Results Management & Individual Candidate Links */}
       <Card className="mb-6 p-6">
+        <ResultLifecycle stage={lifecycle.stage} index={lifecycle.index} />
         <div className="flex flex-wrap items-start justify-between gap-4 border-b border-evergreen-900/10 pb-4">
           <div>
             <div className="flex flex-wrap items-center gap-2.5">
@@ -485,13 +513,37 @@ export default async function ExamDetailPage({
               Retrieve, copy, and distribute individual secure result links to candidates. Each link is uniquely associated with the candidate&apos;s attempt and strictly respects publication authorization.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {settings.results_validated === true && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-semibold text-emerald-800">
+                ✓ {t("results.validatedBadge")}
+              </span>
+            )}
+            {(attempts ?? []).length > 0 && settings.results_validated !== true && !settings.results_published && (
+              <form action={validateResults}>
+                <input type="hidden" name="exam_id" value={id} />
+                <Button type="submit" variant="primary">{t("results.validateBtn")}</Button>
+              </form>
+            )}
+            {settings.results_validated === true && !settings.results_published && (
+              <form action={unvalidateResults}>
+                <input type="hidden" name="exam_id" value={id} />
+                <Button type="submit" variant="outline">{t("results.unvalidateBtn")}</Button>
+              </form>
+            )}
             <form action={publishResults}>
               <input type="hidden" name="exam_id" value={id} />
               <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
-              <Button type="submit" variant={settings.results_published ? "outline" : "primary"}>
+              <Button
+                type="submit"
+                variant={settings.results_published ? "outline" : "primary"}
+                disabled={!settings.results_published && settings.results_validated !== true}
+              >
                 {settings.results_published ? "Unpublish all results" : "Publish all results"}
               </Button>
+              {!settings.results_published && settings.results_validated !== true && (
+                <p className="mt-1.5 max-w-[16rem] text-xs text-amber-800">{t("results.publishGated")}</p>
+              )}
             </form>
           </div>
         </div>
@@ -499,6 +551,9 @@ export default async function ExamDetailPage({
         <div className="mt-4 rounded-lg bg-cream/70 p-3.5 text-xs text-ink-soft">
           <p>
             <strong>Publication Control:</strong>{" "}
+            {settings.results_validated !== true && !settings.results_published && (
+              <span className="mr-2 text-amber-900 font-medium">{t("results.validateNote")}</span>
+            )}
             {settings.results_published ? (
               <span className="text-evergreen-900 font-medium">
                 Results are published. Candidates who access their personal link can see their verified marks, percentage score, criterion performance, and question-by-question review.

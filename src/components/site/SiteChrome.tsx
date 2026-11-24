@@ -3,6 +3,8 @@
 import { Logo } from "@/components/Logo";
 import { PlatformCredit } from "@/components/PlatformCredit";
 import { ButtonLink } from "@/components/ui";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { BRAND } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/client";
 import { Menu, X } from "lucide-react";
@@ -10,15 +12,16 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 const NAV = [
-  { href: "/features", label: "Features" },
-  { href: "/how-it-works", label: "How it works" },
-  { href: "/use-cases", label: "Use cases" },
-  { href: "/pricing", label: "Pricing" },
-  { href: "/faq", label: "FAQ" },
-  { href: "/join", label: "Join a quiz" },
+  { href: "/features", labelKey: "nav.features" },
+  { href: "/how-it-works", labelKey: "nav.howItWorks" },
+  { href: "/use-cases", labelKey: "nav.useCases" },
+  { href: "/pricing", labelKey: "nav.pricing" },
+  { href: "/faq", labelKey: "nav.faq" },
+  { href: "/join", labelKey: "nav.joinQuiz" },
 ];
 
 export function SiteHeader() {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const [authed, setAuthed] = useState(false);
 
@@ -40,22 +43,23 @@ export function SiteHeader() {
               href={n.href}
               className="rounded-lg px-3 py-2 text-[0.85rem] font-medium text-evergreen-100 transition hover:bg-white/10 hover:text-white"
             >
-              {n.label}
+              {t(n.labelKey)}
             </Link>
           ))}
         </nav>
         <div className="hidden items-center gap-2 lg:flex">
+          <LanguageSwitcher variant="dark" compact />
           {authed ? (
             <Link href="/auth/resolve" className="lp-btn lp-btn--gold !min-h-0 !px-4 !py-2 !text-[0.82rem]">
-              Open console
+              {t("actions.openConsole")}
             </Link>
           ) : (
             <>
               <Link href="/login" className="lp-btn lp-btn--onDark !min-h-0 !px-4 !py-2 !text-[0.82rem]">
-                Sign in
+                {t("nav.signIn")}
               </Link>
               <Link href="/register" className="lp-btn lp-btn--gold !min-h-0 !px-4 !py-2 !text-[0.82rem]">
-                Get started free
+                {t("nav.getStarted")}
               </Link>
             </>
           )}
@@ -73,28 +77,31 @@ export function SiteHeader() {
       {open && (
         <div id="site-mobile-menu" className="border-t border-white/10 bg-[#042315] px-4 py-3 lg:hidden">
           <div className="flex flex-col">
-            {[...NAV, { href: "/exam-access", label: "Enter an examination" }].map((n) => (
+            {[...NAV, { href: "/exam-access", labelKey: "nav.enterExam" }].map((n) => (
               <Link
                 key={n.href}
                 href={n.href}
                 onClick={() => setOpen(false)}
                 className="rounded-lg px-3 py-2.5 text-sm font-medium text-evergreen-100 hover:bg-white/10 hover:text-white"
               >
-                {n.label}
+                {t(n.labelKey)}
               </Link>
             ))}
+            <div className="mt-3 flex items-center gap-2">
+              <LanguageSwitcher variant="dark" />
+            </div>
             <div className="mt-2 flex gap-2">
               {authed ? (
                 <ButtonLink href="/auth/resolve" variant="gold" className="flex-1">
-                  Open console
+                  {t("actions.openConsole")}
                 </ButtonLink>
               ) : (
                 <>
                   <ButtonLink href="/login" variant="outline" className="flex-1">
-                    Sign in
+                    {t("nav.signIn")}
                   </ButtonLink>
                   <ButtonLink href="/register" variant="gold" className="flex-1">
-                    Get started free
+                    {t("nav.getStarted")}
                   </ButtonLink>
                 </>
               )}
@@ -107,39 +114,40 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
-  const cols: { title: string; links: { href: string; label: string }[] }[] = [
+  const { t } = useI18n();
+  const cols: { title: string; links: { href: string; labelKey: string }[] }[] = [
     {
-      title: "Platform",
+      title: t("public.footerProduct"),
       links: [
-        { href: "/features", label: "Features" },
-        { href: "/how-it-works", label: "How It Works" },
-        { href: "/use-cases", label: "Use Cases" },
-        { href: "/pricing", label: "Pricing" },
+        { href: "/features", labelKey: "nav.features" },
+        { href: "/how-it-works", labelKey: "nav.howItWorks" },
+        { href: "/use-cases", labelKey: "nav.useCases" },
+        { href: "/pricing", labelKey: "nav.pricing" },
       ],
     },
     {
-      title: "Get started",
+      title: t("actions.getStarted"),
       links: [
-        { href: "/register", label: "Create an account" },
-        { href: "/login", label: "Sign in" },
-        { href: "/join", label: "Join a live quiz" },
-        { href: "/exam-access", label: "Enter an examination" },
+        { href: "/register", labelKey: "actions.register" },
+        { href: "/login", labelKey: "nav.signIn" },
+        { href: "/join", labelKey: "nav.joinQuiz" },
+        { href: "/exam-access", labelKey: "nav.enterExam" },
       ],
     },
     {
-      title: "Support",
+      title: t("public.help"),
       links: [
-        { href: "/help", label: "Help Center" },
-        { href: "/faq", label: "FAQ" },
-        { href: "/contact", label: "Contact us" },
+        { href: "/help", labelKey: "public.help" },
+        { href: "/faq", labelKey: "nav.faq" },
+        { href: "/contact", labelKey: "public.contact" },
       ],
     },
     {
-      title: "Legal",
+      title: t("public.footerLegal"),
       links: [
-        { href: "/privacy", label: "Privacy Policy" },
-        { href: "/terms", label: "Terms & Conditions" },
-        { href: "/cookies", label: "Cookie Policy" },
+        { href: "/privacy", labelKey: "public.privacy" },
+        { href: "/terms", labelKey: "public.terms" },
+        { href: "/cookies", labelKey: "public.cookies" },
       ],
     },
   ];
@@ -172,7 +180,7 @@ export function SiteFooter() {
                       href={l.href}
                       className="text-[0.8rem] text-evergreen-100/85 transition hover:text-white hover:underline hover:underline-offset-4"
                     >
-                      {l.label}
+                      {t(l.labelKey)}
                     </Link>
                   </li>
                 ))}
@@ -181,7 +189,7 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t border-white/12 pt-5 text-[0.7rem] text-evergreen-200/70">
-          <span>© {new Date().getFullYear()} {BRAND.name}. All rights reserved.</span>
+          <span>© {new Date().getFullYear()} {BRAND.name}. {t("public.footerRights")}</span>
           <PlatformCredit tone="inverse" className="text-evergreen-200/70" />
           <span>Hosted on Vercel · Data in Supabase · Video by LiveKit</span>
         </div>

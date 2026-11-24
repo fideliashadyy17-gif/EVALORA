@@ -1,6 +1,8 @@
 import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
 import { Logo } from "@/components/Logo";
 import { SignOutButton } from "@/components/SignOutButton";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { getI18n } from "@/lib/i18n/server";
 import { Badge, Card } from "@/components/ui";
 import { LocalTime } from "@/components/LocalTime";
 import { activeOrg, requireUser } from "@/lib/auth";
@@ -54,6 +56,7 @@ interface RequestRow {
 
 /** Student hub for the authenticated learner's own examinations and live activities. */
 export default async function StudentWorkspace() {
+  const { t } = await getI18n();
   const ctx = await requireUser();
   if (ctx.profile.platform_role === "super_admin") redirect("/admin");
   if (ctx.tenantDenied) redirect("/dashboard");
@@ -121,9 +124,12 @@ export default async function StudentWorkspace() {
       {pendingRequestIds.length > 0 && <RetakeDecisionWatcher pendingIds={pendingRequestIds} />}
       <header className="mb-5 flex flex-wrap items-center justify-between gap-3">
         <Logo href="/student" />
-        <div className="rounded-full border border-evergreen-900/10 bg-white px-4 py-2 text-right shadow-sm">
+        <div className="flex items-center gap-2">
+          <LanguageSwitcher />
+          <div className="rounded-full border border-evergreen-900/10 bg-white px-4 py-2 text-right shadow-sm">
           <p className="max-w-[16rem] truncate text-sm font-semibold text-evergreen-950">{org.name}</p>
-          <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-soft">Student portal</p>
+            <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-ink-soft">{t("student.studentPortal")}</p>
+          </div>
         </div>
       </header>
 
@@ -131,13 +137,13 @@ export default async function StudentWorkspace() {
         <div className="student-hero-orbit" aria-hidden="true" />
         <div className="relative z-10 max-w-2xl">
           <p className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em] text-gold-200">
-            <Sparkles aria-hidden="true" className="h-3.5 w-3.5" /> Your learning space
+            <Sparkles aria-hidden="true" className="h-3.5 w-3.5" /> {t("student.learningSpace")}
           </p>
           <h1 className="mt-4 font-display text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">
-            Welcome back, {ctx.profile.full_name?.split(" ")[0] || "student"}.
+            {t("student.welcomeBackName", { name: ctx.profile.full_name?.split(" ")[0] || "student" })}
           </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-evergreen-100 sm:text-base">
-            Continue an examination or join a live activity. Your institution will provide the codes and instructions you need.
+            {t("student.heroBody")}
           </p>
         </div>
         <div className="student-hero-mark" aria-hidden="true">E</div>
@@ -147,29 +153,29 @@ export default async function StudentWorkspace() {
         <Card className="student-entry-card group flex items-start gap-4 p-5 sm:p-6">
           <span className="student-entry-icon"><FileCheck2 aria-hidden="true" className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-semibold text-evergreen-950">Examination access</h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Enter your examination access code, or open an invitation link from your teacher.</p>
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">{t("student.examAccess")}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">{t("student.examAccessBody")}</p>
             <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
-              <Link href="/exam-access" className="inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Enter code <span aria-hidden="true">→</span></Link>
-              <Link href="/exam" className="inline-flex items-center gap-1 text-sm font-medium text-ink-soft underline-offset-4 hover:text-evergreen-800 hover:underline">Paste invitation link</Link>
+              <Link href="/exam-access" className="inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">{t("student.enterCode")} <span aria-hidden="true">→</span></Link>
+              <Link href="/exam" className="inline-flex items-center gap-1 text-sm font-medium text-ink-soft underline-offset-4 hover:text-evergreen-800 hover:underline">{t("student.pasteInvite")}</Link>
             </div>
           </div>
         </Card>
         <Card className="student-entry-card group flex items-start gap-4 p-5 sm:p-6">
           <span className="student-entry-icon student-entry-icon-gold"><Radio aria-hidden="true" className="h-5 w-5" /></span>
           <div className="min-w-0 flex-1">
-            <h2 className="font-display text-lg font-semibold text-evergreen-950">Live activity</h2>
-            <p className="mt-1 text-sm leading-relaxed text-ink-soft">Use your organizer’s join code to enter a live quiz.</p>
-            <Link href="/join" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">Join with a code <span aria-hidden="true">→</span></Link>
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">{t("student.liveActivity")}</h2>
+            <p className="mt-1 text-sm leading-relaxed text-ink-soft">{t("student.liveActivityBody")}</p>
+            <Link href="/join" className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-evergreen-800 underline-offset-4 hover:underline">{t("student.joinWithCode")} <span aria-hidden="true">→</span></Link>
           </div>
         </Card>
       </div>
 
       {attempts.length > 0 && (
       <section className="mt-8">
-        <h2 className="font-display text-xl font-semibold text-evergreen-950">Your examination records</h2>
+        <h2 className="font-display text-xl font-semibold text-evergreen-950">{t("student.records")}</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          Submitted papers are permanently locked. A retake is only possible after you request one and a Super Admin approves it.
+          {t("student.recordsBody")}
         </p>
         <div className="mt-4 space-y-3">
           {attempts.map((attempt) => {
@@ -185,16 +191,16 @@ export default async function StudentWorkspace() {
               <Card key={attempt.id} className="p-5">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <p className="font-medium text-evergreen-950">{attempt.exams?.title ?? "Examination"}</p>
+                    <p className="font-medium text-evergreen-950">{attempt.exams?.title ?? t("student.examFallback")}</p>
                     <p className="text-xs text-ink-soft">
                       {attemptLabel(Number(attempt.attempt_number ?? 1))}
-                      {submitted ? <> · submitted <LocalTime iso={attempt.submitted_at} /></> : <> · in progress</>}
+                      {submitted ? <> · {t("student.submittedWord")} <LocalTime iso={attempt.submitted_at} /></> : <> · {t("student.inProgress").toLowerCase()}</>}
                       {Boolean(attempt.exams?.settings?.results_published) && attempt.score !== null
                         ? ` · ${attempt.score} / ${attempt.max_score ?? "—"}`
                         : ""}
                     </p>
                   </div>
-                  <Badge tone={submitted ? "gray" : "green"}>{submitted ? "Submitted & locked" : "In progress"}</Badge>
+                  <Badge tone={submitted ? "gray" : "green"}>{submitted ? t("student.submittedLocked") : t("student.inProgress")}</Badge>
                 </div>
 
                 {pending && (

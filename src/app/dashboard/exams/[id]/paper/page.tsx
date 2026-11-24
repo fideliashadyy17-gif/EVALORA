@@ -9,6 +9,7 @@ import {
   type CriteriaByRubric, type PaperItem, type RubricCriterionRow,
 } from "@/lib/printablePackets";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { formatDuration, parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "@/lib/examPaper";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -34,6 +35,10 @@ export default async function PrintableExam({
   const org = activeOrg(ctx);
   if (!org || !can(ctx, org.id, CREATOR_ROLES)) notFound();
   const db = await createClient();
+  // Printable papers are a separately entitled module (Plan & Module
+  // Management) — enforced on the server, independent of any menu entry.
+  const { entitlement: printableEnt } = await getCapabilities(db, ctx, org.id);
+  requireModule(printableEnt, "exam_printable", `/dashboard/exams/${id}?e=module`);
   const { data: exam, error } = await db.from("exams")
     .select("id, organization_id, quiz_id, title, instructions, duration_minutes, settings")
     .eq("id", id).eq("organization_id", org.id).maybeSingle();

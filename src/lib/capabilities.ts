@@ -7,6 +7,7 @@ import {
   type FeatureFlags,
 } from "./capability-rules";
 import { getEntitlementFor, type Entitlement } from "./entitlements";
+import { MODULE_CAPABILITY_GATES, moduleEnabled } from "./modules";
 import { getFeatureFlags } from "./platform";
 import { redirect } from "next/navigation";
 
@@ -38,7 +39,30 @@ export async function getCapabilities(
     limits: entitlement.limits,
     featureFlags,
   });
+  // Module entitlements (Plan & Module Management) are ANDed into the same
+  // capability set every page and server action already consults — disabling
+  // a module therefore takes effect server-side everywhere at once, not just
+  // in a menu. Role checks keep applying independently on top.
+  for (const [moduleKey, capabilityKey] of Object.entries(MODULE_CAPABILITY_GATES)) {
+    if (!moduleEnabled(entitlement.modules, moduleKey)) {
+      (capabilities as Record<string, boolean>)[capabilityKey] = false;
+    }
+  }
   return { entitlement, featureFlags, capabilities, isSuperAdmin };
+}
+
+/**
+ * Redirect guard for a fine-grained module (validation, publication, links,
+ * hints, templates, printable papers, calculator…). Use inside server pages
+ * and actions AFTER requireUser/capability checks so roles and entitlements
+ * are both enforced.
+ */
+export function requireModule(
+  entitlement: Entitlement,
+  moduleKey: string,
+  redirectTo: string,
+): void {
+  if (!moduleEnabled(entitlement.modules, moduleKey)) redirect(redirectTo);
 }
 
 /** Redirect-based guard for server actions; returns the resolved result. */
