@@ -2,6 +2,9 @@
 
 import { Logo } from "@/components/Logo";
 import { PlatformCredit } from "@/components/PlatformCredit";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
+import { moduleEnabled } from "@/lib/modules";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
 import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAccess";
@@ -37,48 +40,76 @@ import { useEffect, useState, type ReactNode } from "react";
 interface NavItem {
   href: string;
   label: string;
+  /** Dictionary key for the interface locale; falls back to `label`. */
+  labelKey?: string;
   icon: typeof LayoutDashboard;
   exact?: boolean;
   /** Defaults to "all"; administration entries are managers-only. */
   audience?: NavAudience;
 }
 
-const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
-  { items: [{ href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true }] },
+const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = [
+  { items: [{ href: "/dashboard", label: "Overview", labelKey: "nav.overview", icon: LayoutDashboard, exact: true }] },
   {
-    title: "Institutional Management",
+    title: "Institutional Management", titleKey: "nav.institutionalManagement",
     items: [
-      { href: "/dashboard/students", label: "Students", icon: GraduationCap, audience: "staff" },
-      { href: "/dashboard/teachers", label: "Teachers", icon: BookOpenCheck, audience: "staff" },
-      { href: "/dashboard/team", label: "Staff & Members", icon: Users, audience: "staff" },
-      { href: "/dashboard/academics/classes", label: "Classes", icon: School, audience: "staff" },
-      { href: "/dashboard/academics", label: "Academic Structure", icon: Layers3, exact: true, audience: "staff" },
-      { href: "/dashboard/accounts", label: "Accounts & Permissions", icon: KeyRound, audience: "managers" },
-      { href: "/dashboard/settings", label: "Organization Settings", icon: Settings, audience: "managers" },
+      { href: "/dashboard/students", label: "Students", labelKey: "nav.students", icon: GraduationCap, audience: "staff" },
+      { href: "/dashboard/teachers", label: "Teachers", labelKey: "nav.teachers", icon: BookOpenCheck, audience: "staff" },
+      { href: "/dashboard/team", label: "Staff & Members", labelKey: "nav.team", icon: Users, audience: "staff" },
+      { href: "/dashboard/academics/classes", label: "Classes", labelKey: "nav.classes", icon: School, audience: "staff" },
+      { href: "/dashboard/academics", label: "Academic Structure", labelKey: "nav.academicStructure", icon: Layers3, exact: true, audience: "staff" },
+      { href: "/dashboard/accounts", label: "Accounts & Permissions", labelKey: "nav.accountsPermissions", icon: KeyRound, audience: "managers" },
+      { href: "/dashboard/settings", label: "Organization Settings", labelKey: "nav.organizationSettings", icon: Settings, audience: "managers" },
     ],
   },
   {
-    title: "Assessment",
+    title: "Assessment", titleKey: "nav.assessments",
     items: [
-      { href: "/dashboard/paper-builder", label: "Question Paper Builder", icon: FileText, audience: "staff" },
-      { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff" },
-      { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff" },
-      { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff" },
-      { href: "/dashboard/competitions", label: "Live Competitions", icon: Trophy, audience: "staff" },
-      { href: "/dashboard/rubrics", label: "Rubrics", icon: ListChecks, audience: "staff" },
-      { href: "/dashboard/proctoring", label: "Proctoring", icon: ShieldCheck, audience: "staff" },
-      { href: "/dashboard/reports", label: "Results & Reports", icon: BarChart3, audience: "staff" },
-      { href: "/dashboard/myp-results", label: "MYP Results", icon: GraduationCap, audience: "staff" },
+      { href: "/dashboard/paper-builder", label: "Question Paper Builder", labelKey: "nav.paperBuilder", icon: FileText, audience: "staff" },
+      { href: "/dashboard/quizzes", label: "Quizzes", labelKey: "nav.quizzes", icon: PenSquare, audience: "staff" },
+      { href: "/dashboard/exams", label: "Examinations", labelKey: "nav.examinations", icon: FileCheck2, audience: "staff" },
+      { href: "/dashboard/questions", label: "Question Bank", labelKey: "nav.questionBank", icon: Library, audience: "staff" },
+      { href: "/dashboard/competitions", label: "Live Competitions", labelKey: "nav.competitions", icon: Trophy, audience: "staff" },
+      { href: "/dashboard/rubrics", label: "Rubrics", labelKey: "nav.rubrics", icon: ListChecks, audience: "staff" },
+      { href: "/dashboard/proctoring", label: "Proctoring", labelKey: "nav.proctoring", icon: ShieldCheck, audience: "staff" },
+      { href: "/dashboard/reports", label: "Results & Reports", labelKey: "nav.resultsReports", icon: BarChart3, audience: "staff" },
+      { href: "/dashboard/myp-results", label: "MYP Results", labelKey: "nav.mypResults", icon: GraduationCap, audience: "staff" },
     ],
   },
   {
-    title: "Organization",
+    title: "Organization", titleKey: "nav.organization",
     items: [
-      { href: "/dashboard/platform", label: "My Platform", icon: Link2, audience: "managers" },
-      { href: "/dashboard/billing", label: "Billing & Plan", icon: CreditCard, audience: "managers" },
+      { href: "/dashboard/platform", label: "My Platform", labelKey: "nav.myPlatform", icon: Link2, audience: "managers" },
+      { href: "/dashboard/billing", label: "Billing & Plan", labelKey: "nav.billingPlan", icon: CreditCard, audience: "managers" },
     ],
   },
 ];
+
+/**
+ * Plan/module entitlement for each workspace destination (Plan & Module
+ * Management). The sidebar hides modules the organization's entitlement does
+ * not include; server pages and actions enforce the same map independently.
+ */
+const MODULE_FOR_HREF: Record<string, string> = {
+  "/dashboard/students": "students",
+  "/dashboard/teachers": "teachers",
+  "/dashboard/team": "team",
+  "/dashboard/academics/classes": "classes",
+  "/dashboard/academics": "academics",
+  "/dashboard/accounts": "accounts",
+  "/dashboard/settings": "org_settings",
+  "/dashboard/paper-builder": "paper_builder",
+  "/dashboard/quizzes": "quizzes",
+  "/dashboard/exams": "examinations",
+  "/dashboard/questions": "question_bank",
+  "/dashboard/competitions": "competitions",
+  "/dashboard/rubrics": "rubrics",
+  "/dashboard/proctoring": "proctoring",
+  "/dashboard/reports": "org_reports",
+  "/dashboard/myp-results": "exam_reports",
+  "/dashboard/platform": "platform",
+  "/dashboard/billing": "billing",
+};
 
 const navLink =
   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition";
@@ -109,6 +140,7 @@ export function DashboardChrome({
   orgRole,
   canSwitchWorkspace,
   userName,
+  modules,
   children,
 }: {
   orgName: string;
@@ -118,10 +150,13 @@ export function DashboardChrome({
   orgRole?: string;
   canSwitchWorkspace?: boolean;
   userName: string;
+  /** Effective plan modules; missing = all-true (pre-module fallback). */
+  modules?: Record<string, boolean>;
   children: ReactNode;
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   // Highlight the destination immediately on click instead of waiting for the
   // server round-trip to change `pathname`. Cleared when the route settles (or
@@ -148,7 +183,10 @@ export function DashboardChrome({
   // actions enforce the same rules independently.
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: filterNavItems(section.items, orgRole),
+    items: filterNavItems(section.items, orgRole).filter((item) => {
+      const moduleKey = MODULE_FOR_HREF[item.href];
+      return moduleKey ? moduleEnabled(modules, moduleKey) : true;
+    }),
   })).filter((section) => section.items.length > 0);
 
   const nav = (
@@ -157,7 +195,7 @@ export function DashboardChrome({
         <div key={section.title ?? "top"} className="flex flex-col gap-1">
           {section.title && (
             <p className="mt-4 px-3 text-[11px] font-bold uppercase tracking-wider text-evergreen-700/80">
-              {section.title}
+              {section.titleKey ? t(section.titleKey) : section.title}
             </p>
           )}
           {section.items.map((n) => {
@@ -175,7 +213,7 @@ export function DashboardChrome({
                 className={cn(navLink, active ? "bg-evergreen-700 text-white shadow-sm" : navIdle)}
               >
                 <n.icon className="h-5 w-5 shrink-0" />
-                {n.label}
+                {n.labelKey ? t(n.labelKey) : n.label}
                 <NavPendingIndicator />
               </Link>
             );
@@ -183,17 +221,17 @@ export function DashboardChrome({
         </div>
       ))}
 
-      {canSwitchWorkspace && <Link href="/workspaces" className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> Switch workspace</Link>}
+      {canSwitchWorkspace && <Link href="/workspaces" className={cn(navLink, "mt-3", navIdle)}><School className="h-5 w-5 shrink-0" /> {t("nav.switchWorkspace")}</Link>}
       <Link href="/" className={cn(navLink, "mt-3", navIdle)}>
         <BookOpenCheck className="h-5 w-5 shrink-0" />
-        Public website
+        {t("nav.publicWebsite")}
       </Link>
     </nav>
   );
 
   return (
     <div className="dashboard-chrome min-h-screen lg:grid lg:grid-cols-[264px_1fr]">
-      <a href="#workspace-main" className="skip-link">Skip to workspace</a>
+      <a href="#workspace-main" className="skip-link">{t("common.skipToContent")}</a>
       {/* Sidebar — desktop */}
       <aside className="dashboard-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex" aria-label="Organization workspace navigation">
         <div className="dashboard-brand"><Logo variant="light" href="/dashboard" /></div>
@@ -216,8 +254,11 @@ export function DashboardChrome({
         <div className="mt-4 border-t border-evergreen-900/10 pt-4">
           <p className="truncate px-1 text-sm font-medium text-ink">{userName}</p>
           <button onClick={signOut} className={cn(navLink, "mt-2 w-full", navIdle)}>
-            <LogOut className="h-5 w-5" /> Sign out
+            <LogOut className="h-5 w-5" /> {t("nav.signOut")}
           </button>
+          <div className="mt-3 px-1">
+            <LanguageSwitcher />
+          </div>
           <PlatformCredit className="mt-3 px-1 pb-1" />
         </div>
       </aside>
@@ -227,6 +268,7 @@ export function DashboardChrome({
         <header className="dashboard-mobile-header sticky top-0 z-40 flex h-[64px] items-center justify-between border-b border-evergreen-900/15 bg-paper/95 px-4 backdrop-blur lg:hidden">
           <Logo variant="light" href="/dashboard" />
           <div className="flex items-center gap-1">
+            <LanguageSwitcher compact />
             <NotificationBell variant="icon" />
             <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu" aria-expanded={open} aria-controls="workspace-mobile-navigation">
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
@@ -237,8 +279,11 @@ export function DashboardChrome({
           <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
           {nav}
           <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
-            <LogOut className="h-5 w-5" /> Sign out
+            <LogOut className="h-5 w-5" /> {t("nav.signOut")}
           </button>
+          <div className="mt-3 px-3">
+            <LanguageSwitcher />
+          </div>
           <PlatformCredit className="mt-4 px-3 pb-1" />
         </div>
         <main id="workspace-main" className="workspace-content mx-auto w-full max-w-[1500px] px-4 py-7 sm:px-6 lg:px-9 lg:py-10">{children}</main>

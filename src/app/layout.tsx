@@ -1,4 +1,7 @@
 import { BRAND } from "@/lib/brand";
+import { I18nProvider } from "@/components/i18n/I18nProvider";
+import { getDictionary } from "@/lib/i18n";
+import { getRequestLocale } from "@/lib/i18n/server";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/public-sans";
 import "katex/dist/katex.min.css";
@@ -22,12 +25,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  // Interface locale — the language of the application shell only. It is
+  // resolved from the persistent preference cookie (authenticated or not)
+  // and NEVER alters examination content, which keeps its authored language.
+  const locale = await getRequestLocale();
+  const dict = getDictionary(locale);
+
   return (
-    <html lang="en">
-      <body>{children}</body>
+    <html lang={locale}>
+      <body>
+        <I18nProvider locale={locale} dict={dict}>
+          {children}
+        </I18nProvider>
+      </body>
     </html>
   );
 }

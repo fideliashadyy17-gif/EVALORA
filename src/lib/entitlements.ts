@@ -2,6 +2,21 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { SessionContext } from "./auth";
 
 /**
+ * Merge stored module maps WITHOUT importing src/lib/modules.ts: this file is
+ * also imported directly as ESM by the test harness, which cannot resolve
+ * extensionless relative imports. Semantics stay owned by modules.ts — a
+ * missing key means "inherit the module default (on)" via moduleEnabled().
+ */
+function coerceStoredModules(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const out: Record<string, boolean> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof v === "boolean") out[k] = v;
+  }
+  return out;
+}
+
+/**
  * Plan entitlements are resolved and enforced on the SERVER.
  * Limits use -1 for "unlimited". The active entitlement comes from the
  * organization's latest active/trialing subscription; if none (or the
@@ -72,6 +87,13 @@ export interface Entitlement {
   status: string;
   source: string;
   limits: PlanLimits;
+  /**
+   * Effective module map for the organization: plan defaults ← plans.modules
+   * ← subscriptions.modules_override (owner sessions are all-true). Every
+   * pre-existing plan resolves all-true until the Super Admin disables a
+   * module explicitly — see src/lib/modules.ts.
+   */
+  modules: Record<string, boolean>;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
 }
@@ -128,6 +150,8 @@ export async function getEntitlement(
       status: "owner",
       source: "owner",
       limits: UNLIMITED_LIMITS,
+      // Empty map = every module inherits its default (all-on) — see moduleEnabled.
+      modules: {},
       currentPeriodEnd: null,
       trialEndsAt: null,
     };
@@ -163,6 +187,10 @@ export async function getEntitlement(
           ...(sub.plans.limits as Partial<PlanLimits>),
           ...(((sub as { limits_override?: Partial<PlanLimits> | null }).limits_override ?? {}) as Partial<PlanLimits>),
         },
+        modules: {
+          ...coerceStoredModules((sub.plans as { modules?: unknown } | null)?.modules),
+          ...coerceStoredModules((sub as { modules_override?: unknown }).modules_override),
+        },
         currentPeriodEnd: sub.current_period_end,
         trialEndsAt: sub.trial_ends_at,
       };
@@ -175,6 +203,7 @@ export async function getEntitlement(
     status: sub ? "expired" : "free",
     source: "free",
     limits: free ? { ...FREE_LIMITS, ...(free.limits as Partial<PlanLimits>) } : FREE_LIMITS,
+    modules: coerceStoredModules((free as { modules?: unknown } | null)?.modules),
     currentPeriodEnd: null,
     trialEndsAt: null,
   };

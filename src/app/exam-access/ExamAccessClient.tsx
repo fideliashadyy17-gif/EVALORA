@@ -1,6 +1,8 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { PlatformCredit } from "@/components/PlatformCredit";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import {
@@ -31,6 +33,7 @@ export function ExamAccessClient({
   codeToClassMap?: Record<string, string>;
   defaultClassId?: string | null;
 }) {
+  const { t } = useI18n();
   const router = useRouter();
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -198,21 +201,24 @@ export function ExamAccessClient({
       <div className="mx-auto w-full max-w-xl">
         <div className="mb-6 flex items-center justify-between gap-4">
           <Logo />
-          <span className="exam-entry-secure">Secure examination access</span>
+          <div className="flex items-center gap-2">
+            <LanguageSwitcher compact />
+            <span className="exam-entry-secure">{t("examAccess.secureAccess")}</span>
+          </div>
         </div>
         <Card className="exam-entry-card overflow-hidden">
           <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
-            <p className="exam-entry-kicker">Student check-in</p>
-            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">Enter your examination</h1>
+            <p className="exam-entry-kicker">{t("examAccess.studentCheckIn")}</p>
+            <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">{t("examAccess.title")}</h1>
             <p className="mt-2 max-w-lg text-sm leading-6 text-emerald-50/80">
-              Enter your name, examination code, and class to verify your identity and begin your examination.
+              {t("examAccess.subtitle")}
             </p>
           </div>
           <div className="p-6 sm:p-9">
             <div className="exam-entry-assurance mb-5 grid gap-3 sm:grid-cols-3">
-              <div><span>01</span><p>Server-timed session</p></div>
-              <div><span>02</span><p>Answers autosaved</p></div>
-              <div><span>03</span><p>Resume after reconnect</p></div>
+              <div><span>01</span><p>{t("examAccess.serverTimed")}</p></div>
+              <div><span>02</span><p>{t("examAccess.answersAutosaved")}</p></div>
+              <div><span>03</span><p>{t("examAccess.resumeReconnect")}</p></div>
             </div>
 
             {isLockdownClient && (
@@ -222,7 +228,7 @@ export function ExamAccessClient({
                 className="mb-5 flex items-center gap-2 rounded-xl border border-emerald-600/25 bg-emerald-50 px-4 py-3 text-xs font-semibold text-emerald-900 shadow-sm"
               >
                 <ShieldCheck className="h-4 w-4 text-emerald-700 shrink-0" />
-                <span>Verified EVALORA Secure Exam Browser Environment Active</span>
+                <span>{t("examAccess.lockdownActive")}</span>
               </div>
             )}
 
@@ -234,10 +240,12 @@ export function ExamAccessClient({
                 className="mb-5 rounded-xl border border-amber-400/50 bg-amber-50 px-4 py-3.5 text-sm text-amber-950"
               >
                 <p className="font-semibold">
-                  An unfinished examination{activePointer.candidate_name ? ` for ${activePointer.candidate_name}` : ""} is still in progress on this browser.
+                  {activePointer.candidate_name
+                    ? t("examAccess.recoveryTitleFor", { name: activePointer.candidate_name })
+                    : t("examAccess.recoveryTitle")}
                 </p>
                 <p className="mt-1 text-xs leading-5 text-amber-900/90">
-                  If that paper is yours, resume where you left off. If you are a different student, enter your details below.
+                  {t("examAccess.recoveryBody")}
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <Button
@@ -355,7 +363,7 @@ export function ExamAccessClient({
                   <Input
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="First name"
+                    placeholder={t("examAccess.firstName")}
                     autoComplete="given-name"
                     required
                   />
@@ -364,7 +372,7 @@ export function ExamAccessClient({
                   <Input
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    placeholder="Last name"
+                    placeholder={t("examAccess.lastName")}
                     autoComplete="family-name"
                     required
                   />
@@ -429,7 +437,7 @@ export function ExamAccessClient({
                 className="w-full py-3 text-base"
                 disabled={busy || !consent}
               >
-                {busy ? "Verifying…" : "Verify and Begin"}
+                {busy ? t("examAccess.verifying") : t("examAccess.verifyBegin")}
               </Button>
 
               <p className="text-center text-xs text-ink-soft">

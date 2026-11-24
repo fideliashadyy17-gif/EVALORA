@@ -3,6 +3,8 @@
 import { Logo } from "@/components/Logo";
 import { PlatformCredit } from "@/components/PlatformCredit";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils";
 import {
@@ -54,139 +56,142 @@ import { enterOrgWorkspace } from "./actions/orgs";
 interface NavItem {
   href: string;
   label: string;
+  labelKey?: string;
   icon: ComponentType<{ className?: string }>;
   exact?: boolean;
   badgeKey?: string;
 }
 interface NavGroup {
   title: string;
+  titleKey?: string;
   items: NavItem[];
 }
 
 const GROUPS: NavGroup[] = [
   {
-    title: "A. Overview",
+    title: "A. Overview", titleKey: "admin.secA",
     items: [
-      { href: "/admin", label: "Global Dashboard", icon: LayoutDashboard, exact: true },
-      { href: "/admin/statistics", label: "Platform Statistics", icon: TrendingUp },
-      { href: "/admin/audit", label: "Activity Monitoring", icon: Activity },
-      { href: "/admin/activity", label: "Recent Operations", icon: ScrollText },
+      { href: "/admin", label: "Global Dashboard", labelKey: "admin.globalDashboard", icon: LayoutDashboard, exact: true },
+      { href: "/admin/statistics", label: "Platform Statistics", labelKey: "admin.platformStatistics", icon: TrendingUp },
+      { href: "/admin/audit", label: "Activity Monitoring", labelKey: "admin.activityMonitoring", icon: Activity },
+      { href: "/admin/activity", label: "Recent Operations", labelKey: "admin.recentOperations", icon: ScrollText },
     ],
   },
   {
-    title: "B. Organizations & Schools",
+    title: "B. Organizations & Schools", titleKey: "admin.secB",
     items: [
-      { href: "/admin/organizations", label: "All Organizations", icon: Building2 },
-      { href: "/admin/organizations/access", label: "Organization Platform Access", icon: Link2 },
-      { href: "/admin/classes", label: "Class Management", icon: GraduationCap },
-      { href: "/admin/organizations/new", label: "Create Organization", icon: Plus },
-      { href: "/admin/organizations/admins", label: "Organization Administrators", icon: UserCog },
-      { href: "/admin/subscriptions", label: "Organization Subscriptions", icon: Repeat },
+      { href: "/admin/organizations", label: "All Organizations", labelKey: "admin.allOrganizations", icon: Building2 },
+      { href: "/admin/organizations/access", label: "Organization Platform Access", labelKey: "admin.orgPlatformAccess", icon: Link2 },
+      { href: "/admin/classes", label: "Class Management", labelKey: "admin.classManagement", icon: GraduationCap },
+      { href: "/admin/organizations/new", label: "Create Organization", labelKey: "admin.createOrganization", icon: Plus },
+      { href: "/admin/organizations/admins", label: "Organization Administrators", labelKey: "admin.orgAdministrators", icon: UserCog },
+      { href: "/admin/subscriptions", label: "Organization Subscriptions", labelKey: "admin.orgSubscriptions", icon: Repeat },
       { href: "/admin/organizations/settings", label: "Organization Settings", icon: Settings },
-      { href: "/admin/demo", label: "DEMO School & Migration", icon: Sparkles },
+      { href: "/admin/demo", label: "DEMO School & Migration", labelKey: "admin.demoSchoolMigration", icon: Sparkles },
     ],
   },
   {
-    title: "C. Students & Users",
+    title: "C. Students & Users", titleKey: "admin.secC",
     items: [
-      { href: "/admin/students", label: "All Students", icon: GraduationCap },
-      { href: "/admin/users/teachers", label: "Teachers", icon: Users },
-      { href: "/admin/users/school-admins", label: "School Administrators", icon: UserCog },
-      { href: "/admin/users", label: "Platform Users", icon: Users },
-      { href: "/admin/users/roles", label: "Roles & Permissions", icon: ShieldCheck },
-      { href: "/admin/students/new", label: "Individual Student Registration", icon: Plus },
-      { href: "/admin/students/bulk", label: "Bulk Student Registration", icon: Upload },
-      { href: "/admin/students/bulk?mode=import-export", label: "Student Import & Export", icon: Upload },
-      { href: "/admin/students/access", label: "Student Access Management", icon: KeyRound },
+      { href: "/admin/students", label: "All Students", labelKey: "admin.allStudents", icon: GraduationCap },
+      { href: "/admin/users/teachers", label: "Teachers", labelKey: "admin.teachers", icon: Users },
+      { href: "/admin/users/school-admins", label: "School Administrators", labelKey: "admin.schoolAdministrators", icon: UserCog },
+      { href: "/admin/users", label: "Platform Users", labelKey: "admin.platformUsers", icon: Users },
+      { href: "/admin/users/roles", label: "Roles & Permissions", labelKey: "admin.rolesPermissions", icon: ShieldCheck },
+      { href: "/admin/students/new", label: "Individual Student Registration", labelKey: "admin.individualStudentRegistration", icon: Plus },
+      { href: "/admin/students/bulk", label: "Bulk Student Registration", labelKey: "admin.bulkStudentRegistration", icon: Upload },
+      { href: "/admin/students/bulk?mode=import-export", label: "Student Import & Export", labelKey: "admin.studentImportExport", icon: Upload },
+      { href: "/admin/students/access", label: "Student Access Management", labelKey: "admin.studentAccessManagement", icon: KeyRound },
     ],
   },
   {
-    title: "D. Live Competition",
+    title: "D. Live Competition", titleKey: "admin.secD",
     items: [
-      { href: "/admin/competitions", label: "All Competitions", icon: Trophy },
-      { href: "/admin/competitions/new", label: "Create Competition", icon: Plus },
-      { href: "/admin/competitions/configuration", label: "Competition Configuration", icon: Settings },
-      { href: "/admin/competitions/participants", label: "Participants", icon: Users },
-      { href: "/admin/competitions/register", label: "Participant Registration", icon: UserCog },
-      { href: "/admin/competitions/codes", label: "Access Codes", icon: KeyRound },
-      { href: "/admin/competitions/questions", label: "Competition Questions", icon: Library },
-      { href: "/admin/competitions/events", label: "Event Phases & Monitor", icon: Layers },
-      { href: "/admin/competitions/pools", label: "Question Pools", icon: Tags },
-      { href: "/admin/competitions/qualifications", label: "Qualification Review", icon: ClipboardCheck },
-      { href: "/admin/competitions/live", label: "Live Monitoring", icon: Activity },
-      { href: "/admin/competitions/results", label: "Rankings & Results", icon: Trophy },
-      { href: "/admin/competitions/reports", label: "Competition Reports", icon: TrendingUp },
+      { href: "/admin/competitions", label: "All Competitions", labelKey: "admin.allCompetitions", icon: Trophy },
+      { href: "/admin/competitions/new", label: "Create Competition", labelKey: "admin.createCompetition", icon: Plus },
+      { href: "/admin/competitions/configuration", label: "Competition Configuration", labelKey: "admin.competitionConfiguration", icon: Settings },
+      { href: "/admin/competitions/participants", label: "Participants", labelKey: "admin.participants", icon: Users },
+      { href: "/admin/competitions/register", label: "Participant Registration", labelKey: "admin.participantRegistration", icon: UserCog },
+      { href: "/admin/competitions/codes", label: "Access Codes", labelKey: "admin.accessCodes", icon: KeyRound },
+      { href: "/admin/competitions/questions", label: "Competition Questions", labelKey: "admin.competitionQuestions", icon: Library },
+      { href: "/admin/competitions/events", label: "Event Phases & Monitor", labelKey: "admin.eventPhasesMonitor", icon: Layers },
+      { href: "/admin/competitions/pools", label: "Question Pools", labelKey: "admin.questionPools", icon: Tags },
+      { href: "/admin/competitions/qualifications", label: "Qualification Review", labelKey: "admin.qualificationReview", icon: ClipboardCheck },
+      { href: "/admin/competitions/live", label: "Live Monitoring", labelKey: "admin.liveMonitoring", icon: Activity },
+      { href: "/admin/competitions/results", label: "Rankings & Results", labelKey: "admin.rankingsResults", icon: Trophy },
+      { href: "/admin/competitions/reports", label: "Competition Reports", labelKey: "admin.competitionReports", icon: TrendingUp },
     ],
   },
   {
-    title: "E. Quiz & Questions",
+    title: "E. Quiz & Questions", titleKey: "admin.secE",
     items: [
-      { href: "/admin/quizzes", label: "Quiz Dashboard / Manage Quizzes", icon: PenSquare },
-      { href: "/admin/quizzes/new", label: "Create Quiz", icon: Plus },
-      { href: "/dashboard/paper-builder", label: "Question Paper Builder", icon: FileCheck2 },
-      { href: "/admin/questions", label: "Question Bank", icon: Library },
-      { href: "/admin/questions/new", label: "Create Question", icon: Plus },
-      { href: "/admin/questions/categories", label: "Question Categories", icon: Tags },
-      { href: "/admin/questions/types", label: "Question Types", icon: ClipboardList },
-      { href: "/admin/questions/solutions", label: "Answers & Solutions", icon: FileCheck2 },
-      { href: "/admin/quizzes/assignments", label: "Quiz Assignments", icon: Users },
-      { href: "/admin/quizzes/results", label: "Quiz Results", icon: TrendingUp },
+      { href: "/admin/quizzes", label: "Quiz Dashboard / Manage Quizzes", labelKey: "admin.manageQuizzes", icon: PenSquare },
+      { href: "/admin/quizzes/new", label: "Create Quiz", labelKey: "admin.createQuiz", icon: Plus },
+      { href: "/dashboard/paper-builder", label: "Question Paper Builder", labelKey: "admin.paperBuilder", icon: FileCheck2 },
+      { href: "/admin/questions", label: "Question Bank", labelKey: "admin.questionBank", icon: Library },
+      { href: "/admin/questions/new", label: "Create Question", labelKey: "admin.createQuestion", icon: Plus },
+      { href: "/admin/questions/categories", label: "Question Categories", labelKey: "admin.questionCategories", icon: Tags },
+      { href: "/admin/questions/types", label: "Question Types", labelKey: "admin.questionTypes", icon: ClipboardList },
+      { href: "/admin/questions/solutions", label: "Answers & Solutions", labelKey: "admin.answersSolutions", icon: FileCheck2 },
+      { href: "/admin/quizzes/assignments", label: "Quiz Assignments", labelKey: "admin.quizAssignments", icon: Users },
+      { href: "/admin/quizzes/results", label: "Quiz Results", labelKey: "admin.quizResults", icon: TrendingUp },
     ],
   },
   {
-    title: "F. Examinations",
+    title: "F. Examinations", titleKey: "admin.secF",
     items: [
-      { href: "/admin/examinations", label: "Examination Dashboard / Manage", icon: FileCheck2 },
-      { href: "/admin/examinations/new", label: "Create Examination", icon: Plus },
-      { href: "/admin/examinations/questions", label: "Examination Questions", icon: Library },
-      { href: "/admin/examinations/candidates", label: "Examination Candidates", icon: Users },
-      { href: "/admin/examinations/register", label: "Candidate Registration", icon: UserCog },
-      { href: "/admin/examinations/codes", label: "Candidate Access Codes", icon: KeyRound },
-      { href: "/admin/examinations/invitations", label: "Share Links & Access Codes", icon: Link2 },
-      { href: "/admin/examinations/links", label: "Exam Link Expiration", icon: CalendarClock },
-      { href: "/admin/examinations/retakes", label: "Retake Requests", icon: ClipboardCheck },
-      { href: "/admin/examinations/hints", label: "Examination Hints", icon: Lightbulb },
-      { href: "/admin/examinations/schedule", label: "Schedule", icon: CalendarClock },
-      { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", icon: Clock3 },
-      { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", icon: Activity },
-      { href: "/admin/examinations/marking", label: "Marking & Grading", icon: ClipboardList },
-      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", icon: Link2 },
-      { href: "/admin/myp-results", label: "MYP Results & Reports", icon: GraduationCap },
-      { href: "/admin/examinations/reports", label: "Reports & Exports", icon: ScrollText },
-      { href: "/admin/proctoring", label: "Proctoring Oversight", icon: Video, badgeKey: "incidents" },
+      { href: "/admin/examinations", label: "Examination Dashboard / Manage", labelKey: "admin.manageExams", icon: FileCheck2 },
+      { href: "/admin/examinations/new", label: "Create Examination", labelKey: "admin.createExam", icon: Plus },
+      { href: "/admin/examinations/questions", label: "Examination Questions", labelKey: "admin.examQuestions", icon: Library },
+      { href: "/admin/examinations/candidates", label: "Examination Candidates", labelKey: "admin.examCandidates", icon: Users },
+      { href: "/admin/examinations/register", label: "Candidate Registration", labelKey: "admin.candidateRegistration", icon: UserCog },
+      { href: "/admin/examinations/codes", label: "Candidate Access Codes", labelKey: "admin.candidateAccessCodes", icon: KeyRound },
+      { href: "/admin/examinations/invitations", label: "Share Links & Access Codes", labelKey: "admin.shareLinksCodes", icon: Link2 },
+      { href: "/admin/examinations/links", label: "Exam Link Expiration", labelKey: "admin.examLinkExpiration", icon: CalendarClock },
+      { href: "/admin/examinations/retakes", label: "Retake Requests", labelKey: "admin.retakeRequests", icon: ClipboardCheck },
+      { href: "/admin/examinations/hints", label: "Examination Hints", labelKey: "admin.examHints", icon: Lightbulb },
+      { href: "/admin/examinations/schedule", label: "Schedule", labelKey: "admin.schedule", icon: CalendarClock },
+      { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", labelKey: "admin.durationLimits", icon: Clock3 },
+      { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", labelKey: "admin.supervision", icon: Activity },
+      { href: "/admin/examinations/marking", label: "Marking & Grading", labelKey: "admin.markingGrading", icon: ClipboardList },
+      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", labelKey: "admin.resultsManagement", icon: Link2 },
+      { href: "/admin/myp-results", label: "MYP Results & Reports", labelKey: "admin.mypResults", icon: GraduationCap },
+      { href: "/admin/examinations/reports", label: "Reports & Exports", labelKey: "admin.reportsExports", icon: ScrollText },
+      { href: "/admin/proctoring", label: "Proctoring Oversight", labelKey: "admin.proctoring", icon: Video, badgeKey: "incidents" },
     ],
   },
   {
-    title: "G. Payments & Subscriptions",
+    title: "G. Payments & Subscriptions", titleKey: "admin.secG",
     items: [
-      { href: "/admin/payments", label: "Payments", icon: CreditCard, badgeKey: "payments" },
-      { href: "/admin/payments/new", label: "Manual Payment Management", icon: Plus },
-      { href: "/admin/subscriptions", label: "Subscriptions", icon: Repeat },
-      { href: "/admin/plans", label: "Subscription Plans", icon: Tags },
-      { href: "/admin/subscriptions#assign", label: "Subscription Overrides", icon: Settings },
-      { href: "/admin/revenue", label: "Billing History & Revenue", icon: TrendingUp },
+      { href: "/admin/payments", label: "Payments", labelKey: "admin.payments", icon: CreditCard, badgeKey: "payments" },
+      { href: "/admin/payments/new", label: "Manual Payment Management", labelKey: "admin.manualPayments", icon: Plus },
+      { href: "/admin/subscriptions", label: "Subscriptions", labelKey: "admin.subscriptions", icon: Repeat },
+      { href: "/admin/plans", label: "Subscription Plans", labelKey: "admin.subscriptionPlans", icon: Tags },
+      { href: "/admin/plans/modules", label: "Plan & Module Management", labelKey: "nav.planModules", icon: Blocks },
+      { href: "/admin/subscriptions#assign", label: "Subscription Overrides", labelKey: "admin.subscriptionOverrides", icon: Settings },
+      { href: "/admin/revenue", label: "Billing History & Revenue", labelKey: "admin.billingRevenue", icon: TrendingUp },
     ],
   },
   {
-    title: "H. Platform Administration",
+    title: "H. Platform Administration", titleKey: "admin.secH",
     items: [
-      { href: "/admin/users?role=super_admin", label: "Super Admin Users", icon: ShieldCheck },
-      { href: "/admin/users/roles", label: "Roles & Permissions", icon: ShieldCheck },
-      { href: "/admin/settings", label: "Platform Settings", icon: Settings },
-      { href: "/admin/modules", label: "Modules & Features", icon: Blocks },
-      { href: "/admin/audit", label: "Audit Logs", icon: ScrollText },
-      { href: "/admin/system", label: "System Health", icon: Activity },
-      { href: "/admin/notifications", label: "Notifications", icon: Bell, badgeKey: "unread" },
-      { href: "/admin/support", label: "Support Tickets", icon: LifeBuoy, badgeKey: "tickets" },
+      { href: "/admin/users?role=super_admin", label: "Super Admin Users", labelKey: "admin.superAdminUsers", icon: ShieldCheck },
+      { href: "/admin/users/roles", label: "Roles & Permissions", labelKey: "admin.rolesPermissions", icon: ShieldCheck },
+      { href: "/admin/settings", label: "Platform Settings", labelKey: "admin.platformSettingsNav", icon: Settings },
+      { href: "/admin/modules", label: "Modules & Features", labelKey: "admin.modulesFeatures", icon: Blocks },
+      { href: "/admin/audit", label: "Audit Logs", labelKey: "admin.auditLogs", icon: ScrollText },
+      { href: "/admin/system", label: "System Health", labelKey: "admin.systemHealth", icon: Activity },
+      { href: "/admin/notifications", label: "Notifications", labelKey: "admin.notificationsNav", icon: Bell, badgeKey: "unread" },
+      { href: "/admin/support", label: "Support Tickets", labelKey: "admin.supportTickets", icon: LifeBuoy, badgeKey: "tickets" },
     ],
   },
   {
-    title: "I. Operational Workspace",
+    title: "I. Operational Workspace", titleKey: "admin.secI",
     items: [
-      { href: "/admin/operations", label: "Full Customer Workspace Access", icon: LayoutDashboard },
-      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", icon: Link2 },
-      { href: "/admin/classes", label: "Class Management (direct)", icon: GraduationCap },
-      { href: "/admin/examinations/invitations", label: "Exam Links & Codes", icon: Link2 },
+      { href: "/admin/operations", label: "Full Customer Workspace Access", labelKey: "admin.fullWorkspace", icon: LayoutDashboard },
+      { href: "/admin/examinations/results", label: "Results Management & Candidate Links", labelKey: "admin.resultsManagement", icon: Link2 },
+      { href: "/admin/classes", label: "Class Management (direct)", labelKey: "admin.classManagementDirect", icon: GraduationCap },
+      { href: "/admin/examinations/invitations", label: "Exam Links & Codes", labelKey: "admin.examLinksCodes", icon: Link2 },
     ],
   },
 ];
@@ -232,6 +237,7 @@ export function AdminShell({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { t } = useI18n();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -303,7 +309,7 @@ export function AdminShell({
       <Link
         key={`${groupTitle}-${n.label}-${n.href}`}
         href={n.href}
-        title={iconOnly ? n.label : undefined}
+        title={iconOnly ? (n.labelKey ? t(n.labelKey) : n.label) : undefined}
         onClick={() => setMobileOpen(false)}
         className={cn(
           "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
@@ -314,7 +320,7 @@ export function AdminShell({
         )}
       >
         <n.icon className="h-5 w-5 shrink-0" />
-        {!iconOnly && <span className="truncate">{n.label}</span>}
+        {!iconOnly && <span className="truncate">{n.labelKey ? t(n.labelKey) : n.label}</span>}
         {!iconOnly && badge > 0 && (
           <span className="ml-auto rounded-full bg-gold-500 px-2 py-0.5 text-xs font-bold text-evergreen-950">{badge}</span>
         )}
@@ -327,14 +333,18 @@ export function AdminShell({
     const groups = GROUPS.map((g) => ({
       ...g,
       items: term
-        ? g.items.filter((item) => `${item.label} ${g.title} ${item.href}`.toLowerCase().includes(term))
+        ? g.items.filter((item) =>
+            `${item.label} ${item.labelKey ? t(item.labelKey) : ""} ${g.title} ${g.titleKey ? t(g.titleKey) : ""} ${item.href}`
+              .toLowerCase()
+              .includes(term),
+          )
         : g.items,
     })).filter((g) => g.items.length > 0);
 
     return (
-      <nav className="flex flex-col gap-4" aria-label="Super Admin modules">
+      <nav className="flex flex-col gap-4" aria-label={t("nav.mainNavigation")}>
         {groups.length === 0 ? (
-          <p className="rounded-lg px-3 py-3 text-sm text-ink-soft" role="status">No modules match “{moduleQuery}”.</p>
+          <p className="rounded-lg px-3 py-3 text-sm text-ink-soft" role="status">{t("admin.noModulesMatch", { query: moduleQuery })}</p>
         ) : groups.map((g) => {
           const open = Boolean(term) || iconOnly || openGroups[g.title] !== false;
           return (
@@ -346,7 +356,7 @@ export function AdminShell({
                   aria-expanded={open}
                   className="mb-1.5 flex w-full items-center justify-between rounded-md px-3 py-1 text-left text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft hover:bg-evergreen-50 hover:text-evergreen-900"
                 >
-                  <span>{g.title}</span>
+                  <span>{g.titleKey ? t(g.titleKey) : g.title}</span>
                   <ChevronDown className={cn("h-4 w-4 transition-transform", !open && "-rotate-90")} />
                 </button>
               )}
@@ -360,9 +370,9 @@ export function AdminShell({
 
   return (
     <div className={cn("admin-console min-h-screen lg:grid", collapsed ? "lg:grid-cols-[84px_1fr]" : "lg:grid-cols-[292px_1fr]")}>
-      <a href="#main-content" className="skip-link">Skip to main content</a>
+      <a href="#main-content" className="skip-link">{t("admin.skipToAdmin")}</a>
       {/* ─── Sidebar (desktop) ─── */}
-      <aside className="admin-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-4 lg:flex" aria-label="Super Admin navigation">
+      <aside className="admin-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-4 lg:flex" aria-label={t("nav.mainNavigation")}>
         <div className={cn("flex items-center", collapsed ? "justify-center" : "justify-between")}>
           {!collapsed && <div className="admin-brand"><Logo href="/admin" /></div>}
           <button
@@ -379,12 +389,12 @@ export function AdminShell({
               <ShieldCheck className="h-3.5 w-3.5" /> {isPrimary ? "Primary Super Admin" : "Super Admin"}
             </p>
             <label className="mt-4 block">
-              <span className="sr-only">Filter Super Admin modules</span>
+              <span className="sr-only">{t("admin.findModule")}</span>
               <input
                 type="search"
                 value={moduleQuery}
                 onChange={(event) => setModuleQuery(event.target.value)}
-                placeholder="Find a module…"
+                placeholder={t("admin.findModule")}
                 className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
               />
             </label>
@@ -395,15 +405,20 @@ export function AdminShell({
           {!collapsed && <p className="truncate px-1 text-xs text-ink-soft">{email}</p>}
           <Link
             href="/dashboard"
-            title={collapsed ? "My workspace" : undefined}
+            title={collapsed ? t("admin.myWorkspace") : undefined}
             className={cn(
               "mt-2 flex items-center gap-3 rounded-lg border border-evergreen-900/25 px-3 py-2.5 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50",
               collapsed && "justify-center px-2",
             )}
           >
             <LayoutDashboard className="h-5 w-5 shrink-0" />
-            {!collapsed && "My workspace"}
+            {!collapsed && t("admin.myWorkspace")}
           </Link>
+          {!collapsed && (
+            <div className="mt-3">
+              <LanguageSwitcher />
+            </div>
+          )}
           {!collapsed && <PlatformCredit className="mt-3 px-1 pb-1" />}
         </div>
       </aside>
@@ -415,7 +430,7 @@ export function AdminShell({
             <button
               onClick={() => setMobileOpen((v) => !v)}
               className="rounded-lg p-2 text-evergreen-900 lg:hidden"
-              aria-label="Toggle Super Admin navigation"
+              aria-label={t("nav.mainNavigation")}
               aria-expanded={mobileOpen}
               aria-controls="admin-mobile-navigation"
             >
@@ -425,8 +440,8 @@ export function AdminShell({
               <Logo href="/admin" />
             </span>
             <div className="hidden min-w-[170px] lg:block">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-evergreen-700">EVALORA · CONTROL PLANE</p>
-              <p className="text-xs font-medium text-ink-soft">Global platform operations</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-evergreen-700">{t("admin.controlPlane")}</p>
+              <p className="text-xs font-medium text-ink-soft">{t("admin.globalOperations")}</p>
             </div>
 
             {/* Global search */}
@@ -441,9 +456,9 @@ export function AdminShell({
               <input
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search users, organizations, competitions, payments…"
+                placeholder={t("admin.globalSearchPlaceholder")}
                 className="w-full rounded-full border border-evergreen-900/20 bg-cream py-2 pl-9 pr-4 text-sm text-ink outline-none placeholder:text-ink-soft focus:border-evergreen-600 focus:bg-white"
-                aria-label="Global search"
+                aria-label={t("admin.globalSearchPlaceholder")}
               />
             </form>
 
@@ -455,23 +470,23 @@ export function AdminShell({
                 aria-haspopup="menu"
                 aria-expanded={quick.open}
               >
-                <Plus className="h-4 w-4" /> <span className="hidden md:inline">Quick create</span>
+                <Plus className="h-4 w-4" /> <span className="hidden md:inline">{t("admin.quickCreate")}</span>
                 <ChevronDown className="h-4 w-4" />
               </button>
               {quick.open && (
                 <div className="absolute right-0 z-50 mt-2 w-72 rounded-xl border border-evergreen-900/15 bg-white p-2 shadow-xl" role="menu">
-                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft">Platform</p>
+                  <p className="px-3 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft">{t("admin.platformGroup")}</p>
                   {[
-                    { href: "/admin/organizations/new", label: "Create organization", icon: Building2 },
-                    { href: "/admin/students/new", label: "Register a student", icon: GraduationCap },
-                    { href: "/admin/competitions/new", label: "Create competition", icon: Trophy },
-                    { href: "/admin/questions/new", label: "Create mathematical question", icon: Library },
-                    { href: "/admin/quizzes/new", label: "Create quiz", icon: PenSquare },
-                    { href: "/admin/examinations/new", label: "Create examination", icon: FileCheck2 },
-                    { href: "/admin/examinations/register", label: "Register exam candidates", icon: Users },
-                    { href: "/admin/payments/new", label: "Add a payment", icon: CreditCard },
-                    { href: "/admin/subscriptions#assign", label: "Assign a subscription", icon: Repeat },
-                    { href: "/admin/users/new", label: "Create user / invite admin", icon: UserCog },
+                    { href: "/admin/organizations/new", label: "Create organization", labelKey: "admin.qk_organization", icon: Building2 },
+                    { href: "/admin/students/new", label: "Register a student", labelKey: "admin.qk_student", icon: GraduationCap },
+                    { href: "/admin/competitions/new", label: "Create competition", labelKey: "admin.qk_competition", icon: Trophy },
+                    { href: "/admin/questions/new", label: "Create mathematical question", labelKey: "admin.qk_math", icon: Library },
+                    { href: "/admin/quizzes/new", label: "Create quiz", labelKey: "admin.qk_quiz", icon: PenSquare },
+                    { href: "/admin/examinations/new", label: "Create examination", labelKey: "admin.qk_exam", icon: FileCheck2 },
+                    { href: "/admin/examinations/register", label: "Register exam candidates", labelKey: "admin.qk_candidates", icon: Users },
+                    { href: "/admin/payments/new", label: "Add a payment", labelKey: "admin.qk_payment", icon: CreditCard },
+                    { href: "/admin/subscriptions#assign", label: "Assign a subscription", labelKey: "admin.qk_subscription", icon: Repeat },
+                    { href: "/admin/users/new", label: "Create user / invite admin", labelKey: "admin.qk_user", icon: UserCog },
                   ].map((a) => (
                     <Link
                       key={a.href}
@@ -479,17 +494,17 @@ export function AdminShell({
                       onClick={() => quick.setOpen(false)}
                       className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50"
                     >
-                      <a.icon className="h-4 w-4 text-evergreen-700" /> {a.label}
+                      <a.icon className="h-4 w-4 text-evergreen-700" /> {a.labelKey ? t(a.labelKey) : a.label}
                     </Link>
                   ))}
                   {platformOrgId && (
                     <>
                       <p className="px-3 pb-1 pt-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-soft">
-                        In EVALORA Platform workspace
+                        {t("admin.inPlatformWorkspace")}
                       </p>
-                      {workspaceForm("/dashboard/quizzes/new", "Create a live quiz", PenSquare)}
-                      {workspaceForm("/dashboard/questions/new", "Add questions in workspace", Library)}
-                      {workspaceForm("/dashboard/exams/new", "Create examination in workspace", FileCheck2)}
+                      {workspaceForm("/dashboard/quizzes/new", t("admin.qkLiveQuiz"), PenSquare)}
+                      {workspaceForm("/dashboard/questions/new", t("admin.qkWorkspaceQuestions"), Library)}
+                      {workspaceForm("/dashboard/exams/new", t("admin.qkExamWorkspace"), FileCheck2)}
                     </>
                   )}
                 </div>
@@ -504,8 +519,13 @@ export function AdminShell({
                 variant="icon"
                 extraCount={counts.payments + counts.tickets + counts.incidents}
                 allHref="/admin/notifications"
-                allLabel="See all platform alerts"
+                allLabel={t("admin.seeAllAlerts")}
               />
+            </div>
+
+            {/* Interface language — desktop & mobile share this header */}
+            <div className="hidden sm:block">
+              <LanguageSwitcher compact />
             </div>
 
             {/* Profile */}
@@ -525,19 +545,22 @@ export function AdminShell({
                 <div className="absolute right-0 z-50 mt-2 w-64 rounded-xl border border-evergreen-900/15 bg-white p-2 shadow-xl" role="menu">
                   <div className="border-b border-evergreen-900/10 px-3 pb-2 pt-1">
                     <p className="truncate text-sm font-semibold text-ink">{email}</p>
-                    <p className="text-xs font-medium text-gold-800">{isPrimary ? "Primary Super Admin" : "Super Admin"}</p>
+                    <p className="text-xs font-medium text-gold-800">{isPrimary ? t("admin.primarySuperAdmin") : t("admin.superAdmin")}</p>
                   </div>
                   <Link href="/dashboard/settings" onClick={() => profile.setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50">
-                    <UserCog className="h-4 w-4 text-evergreen-700" /> Account settings
+                    <UserCog className="h-4 w-4 text-evergreen-700" /> {t("admin.accountSettings")}
                   </Link>
                   <Link href="/admin/settings" onClick={() => profile.setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50">
-                    <Settings className="h-4 w-4 text-evergreen-700" /> Platform settings
+                    <Settings className="h-4 w-4 text-evergreen-700" /> {t("admin.platformSettings")}
                   </Link>
                   <Link href="/admin/audit" onClick={() => profile.setOpen(false)} className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm text-ink hover:bg-evergreen-50">
-                    <ScrollText className="h-4 w-4 text-evergreen-700" /> Security & audit logs
+                    <ScrollText className="h-4 w-4 text-evergreen-700" /> {t("admin.securityAudit")}
                   </Link>
+                  <div className="border-b border-evergreen-900/10 px-3 py-2">
+                    <LanguageSwitcher />
+                  </div>
                   <button onClick={signOut} className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm text-ink hover:bg-red-50 hover:text-red-800">
-                    <LogOut className="h-4 w-4 text-evergreen-700" /> Sign out
+                    <LogOut className="h-4 w-4 text-evergreen-700" /> {t("nav.signOut")}
                   </button>
                 </div>
               )}
@@ -549,12 +572,12 @@ export function AdminShell({
         {/* Mobile nav */}
         <div id="admin-mobile-navigation" className={cn("max-h-[70vh] overflow-y-auto border-b border-evergreen-900/15 bg-paper p-4 lg:hidden", !mobileOpen && "hidden")}>
           <label className="mb-4 block">
-            <span className="sr-only">Filter Super Admin modules</span>
+            <span className="sr-only">{t("admin.findModule")}</span>
             <input
               type="search"
               value={moduleQuery}
               onChange={(event) => setModuleQuery(event.target.value)}
-              placeholder="Find a module…"
+              placeholder={t("admin.findModule")}
               className="w-full rounded-lg border border-evergreen-900/25 bg-white px-3 py-2 text-sm text-ink placeholder:text-ink-soft focus:border-evergreen-700 focus:outline-none focus:ring-2 focus:ring-evergreen-600/25"
             />
           </label>

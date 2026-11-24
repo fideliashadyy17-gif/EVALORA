@@ -83,6 +83,17 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             <Field label="Instructions">
               <Textarea name="instructions" rows={3} placeholder="Rules, permitted materials, integrity notice…" />
             </Field>
+            <Field
+              label="Question-paper content language"
+              hint="The language the paper was authored in. Candidates always see the paper in this language — switching the interface language never translates examination content."
+            >
+              <Select name="language" defaultValue="auto">
+                <option value="auto">Detect from the paper (recommended)</option>
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+              </Select>
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Examination period">
                 <Input name="exam_period" placeholder="First Term Examination" />

@@ -288,6 +288,6 @@ ok("mark one and mark all read stay available", /Mark all read/.test(bell) && /M
 ok("the empty state is explicit", /all caught up/.test(bell));
 ok("the admin console uses the popover", /<NotificationBell/.test(shell) && !/href="\/admin\/notifications"[\s\S]{0,120}aria-label=\{`Notifications/.test(shell));
 ok("platform alerts still count in the badge", /extraCount=\{counts\.payments \+ counts\.tickets \+ counts\.incidents\}/.test(shell));
-ok("the portal to the full console remains", /allHref="\/admin\/notifications"/.test(shell) && /allLabel="See all platform alerts"/.test(shell));
+ok("the portal to the full console remains", /allHref="\/admin\/notifications"/.test(shell) && (/(allLabel="See all platform alerts"|allLabel=\{t\("admin\.seeAllAlerts"\)\})/.test(shell)));
 
 console.log(`\n${passed} checks passed.`);

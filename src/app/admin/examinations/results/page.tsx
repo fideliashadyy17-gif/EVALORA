@@ -11,7 +11,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
-import { regradeAttemptAsAdmin, regradeExamAsAdmin, setExamResultsPublishedAsAdmin } from "../actions";
+import { regradeAttemptAsAdmin, regradeExamAsAdmin, setExamResultsPublishedAsAdmin, validateExamResultsAsAdmin } from "../actions";
 import { MypExportButton } from "@/components/myp/MypExportButton";
 
 export const metadata: Metadata = { title: "Results Management & Candidate Links · EVALORA" };
@@ -24,6 +24,9 @@ const MESSAGES: Record<string, string> = {
   exam_regraded: "Examination regraded across all submitted attempts. All scores and grade logs synchronized.",
   exam: "That examination no longer exists.",
   failed: "Result publication could not be changed.",
+  results_validated: "Results validated. Publication is now enabled.",
+  validation_required: "Validate the results before publishing — validation is a mandatory stage of the publication workflow.",
+  validation_published: "Results are already published — unpublish before reopening validation.",
 };
 const round = (n: number) => Math.round(n * 10) / 10;
 
@@ -74,6 +77,7 @@ export default async function ExaminationResultsPage({
   const settings = selected?.settings ?? {};
   const passMark = Number(settings.pass_mark_percent ?? 50);
   const published = Boolean(settings.results_published);
+  const validated = settings.results_validated === true;
 
   let attempts: AttemptRow[] = [];
   let candidateTotal = 0;
@@ -175,11 +179,29 @@ export default async function ExaminationResultsPage({
 
           <div className="mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-evergreen-900/15 bg-paper p-4">
             <Badge tone={published ? "green" : "amber"}>{published ? "Results Published (Visible to candidates)" : "Results Withheld (Hidden from candidates)"}</Badge>
+            {validated && !published && <Badge tone="green">Validated</Badge>}
+            {!validated && !published && attempts.length > 0 && (
+              <form action={validateExamResultsAsAdmin}>
+                <input type="hidden" name="exam_id" value={selected.id} />
+                <input type="hidden" name="back" value={back} />
+                <Button type="submit" variant="primary">Validate results</Button>
+              </form>
+            )}
             <form action={setExamResultsPublishedAsAdmin}>
               <input type="hidden" name="exam_id" value={selected.id} />
               <input type="hidden" name="published" value={published ? "0" : "1"} />
               <input type="hidden" name="back" value={back} />
-              <Button type="submit" variant={published ? "outline" : "gold"}>{published ? "Unpublish all results" : "Validate & publish all results"}</Button>
+              <Button
+                type="submit"
+                variant={published ? "outline" : "gold"}
+                disabled={!published && !validated}
+                title={!published && !validated ? "Validate the results first" : undefined}
+              >
+                {published ? "Unpublish all results" : "Publish all results"}
+              </Button>
+              {!published && !validated && (
+                <span className="text-xs text-amber-800">Validate the results before publishing.</span>
+              )}
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
             <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>

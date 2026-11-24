@@ -634,16 +634,47 @@ export async function setExamResultsPublishedAsAdmin(formData: FormData) {
   if (!exam) go("/admin/examinations/results", "e=exam");
 
   const published = String(formData.get("published") ?? "") === "1";
+  const currentSettings = ((exam!.settings as Record<string, unknown> | null) ?? {});
+  // Mandatory workflow: publication requires prior validation (stage 6 → 7).
+  if (published && currentSettings.results_validated !== true) {
+    go(back, "e=validation_required");
+  }
   const settings = {
-    ...((exam!.settings as Record<string, unknown>) ?? {}),
+    ...currentSettings,
     results_published: published,
   };
   const { error } = await admin.from("exams").update({ settings }).eq("id", examId);
   if (error) go(back, "e=failed");
 
-  await audit(ctx, published ? "exam.results_published" : "exam.results_unpublished", "exams", examId, exam!.organization_id);
+  await audit(ctx, published ? "exam.results_published" : "exam.results_unpublished", "exams", examId, exam!.organization_id, {
+    source: "admin",
+    validated: currentSettings.results_validated === true,
+  });
   revalidatePath("/admin/examinations/results");
   go(back, published ? "ok=results_published" : "ok=results_unpublished");
+}
+
+/** Stage 6 — Super Admin validation before publication (audited, stamped). */
+export async function validateExamResultsAsAdmin(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const admin = createAdminClient();
+  const examId = String(formData.get("exam_id") ?? "");
+  const back = safeBack(formData, `/admin/examinations/results?exam=${examId}`);
+  const exam = await loadExam(admin, examId);
+  if (!exam) go("/admin/examinations/results", "e=exam");
+  const currentSettings = ((exam!.settings as Record<string, unknown> | null) ?? {});
+  if (currentSettings.results_published === true) go(back, "e=validation_published");
+  const settings = {
+    ...currentSettings,
+    results_validated: true,
+    results_validated_by: ctx.user.id,
+    results_validated_at: new Date().toISOString(),
+  };
+  const { error } = await admin.from("exams").update({ settings }).eq("id", examId);
+  if (error) go(back, "e=failed");
+  await audit(ctx, "exam.results_validated", "exams", examId, exam!.organization_id, { source: "admin" });
+  revalidatePath("/admin/examinations/results");
+  go(back, "ok=results_validated");
 }
 
 export async function reviewProctoringIncidentAsAdmin(formData: FormData) {

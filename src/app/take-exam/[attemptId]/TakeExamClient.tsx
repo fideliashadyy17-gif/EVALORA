@@ -1,6 +1,8 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
@@ -197,6 +199,7 @@ function resultTone(result: { is_correct: boolean | null; answered?: boolean }):
 }
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
+  const { t } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [sessionClosedHref, setSessionClosedHref] = useState<string | null>(null);
   const entryHrefRef = useRef<string>("/exam-access");
@@ -1090,7 +1093,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
               {isLockdownRequired && isLockdownVerified && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
-                  <ShieldCheck className="h-3 w-3" /> Secure Lockdown
+                  <ShieldCheck className="h-3 w-3" /> {t("exam.secureLockdown")}
                 </span>
               )}
             </div>
@@ -1124,7 +1127,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   onClick={() => setFormulasOpen((open) => !open)}
                 >
                   <Sigma className="mr-1 h-4 w-4" aria-hidden="true" />
-                  Formulas
+                  {t("exam.formulas")}
                 </Button>
               )}
               <Button
@@ -1135,11 +1138,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 onMouseDown={(e) => e.preventDefault()}
                 onTouchStart={(e) => e.preventDefault()}
                 onClick={() => setMathPaletteOpen((open) => !open)}
-                title="Open platform mathematical keyboard"
+                title={t("exam.openMathKeyboard")}
               >
                 <Sigma className="mr-1 h-4 w-4 text-evergreen-700" aria-hidden="true" />
-                Math keyboard
+                {t("exam.mathKeyboard")}
               </Button>
+              <LanguageSwitcher compact />
               <ExamCountdown
                 deadline={attempt.deadline}
                 serverOffsetMs={offset.current}
@@ -1553,9 +1557,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               {draftWarning && <p role="alert" className="mt-2 text-sm text-red-700">Save this answer or discard the changes before submitting.</p>}
 
               <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-evergreen-900/10 pt-4">
-                <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>← Previous</Button>
-                <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>Next →</Button>
-                <Button variant="danger" className="ml-auto" onClick={requestSubmit}>Submit examination</Button>
+                <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>{t("exam.previous")}</Button>
+                <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>{t("exam.next")}</Button>
+                <Button variant="danger" className="ml-auto" onClick={requestSubmit}>{t("exam.submitExamination")}</Button>
               </div>
             </Card>
           )}
@@ -1563,17 +1567,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           {confirmSubmit && (
             <div className="exam-submit-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setConfirmSubmit(false); }}>
               <Card className="exam-submit-dialog w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="exam-submit-heading">
-                <p className="exam-entry-kicker">Final check</p>
-                <h2 id="exam-submit-heading" className="mt-1 font-display text-xl font-semibold text-evergreen-950">Submit your paper?</h2>
+                <p className="exam-entry-kicker">{t("exam.finalCheck")}</p>
+                <h2 id="exam-submit-heading" className="mt-1 font-display text-xl font-semibold text-evergreen-950">{t("exam.submitTitle")}</h2>
                 <p className="mt-2 text-sm text-ink-soft">
-                  You have answered {savedIds.size} of {questions.length} questions
-                  {flagged.length ? ` and flagged ${flagged.length} for review` : ""}.
-                  After submission you cannot change any answer.
+                  {t("exam.submitBody", { answered: savedIds.size, total: questions.length })}
+                  {flagged.length ? ` ${t("exam.andFlagged", { count: flagged.length })}` : ""}
                 </p>
                 {submitError && <p role="alert" className="mt-3 text-sm text-red-700">{submitError}</p>}
                 <div className="mt-4 flex gap-2">
-                  <Button variant="danger" className="flex-1" disabled={submitting} onClick={() => void submit()}>{submitting ? "Checking saves…" : "Yes, submit now"}</Button>
-                  <Button variant="outline" className="flex-1" disabled={submitting} onClick={() => setConfirmSubmit(false)}>Keep working</Button>
+                  <Button variant="danger" className="flex-1" disabled={submitting} onClick={() => void submit()}>{submitting ? t("exam.checkingSaves") : t("exam.yesSubmit")}</Button>
+                  <Button variant="outline" className="flex-1" disabled={submitting} onClick={() => setConfirmSubmit(false)}>{t("exam.keepWorking")}</Button>
                 </div>
               </Card>
             </div>

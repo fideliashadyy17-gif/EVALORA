@@ -1,5 +1,6 @@
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities } from "@/lib/capabilities";
 import Link from "next/link";
 import { isLearnerRole } from "@/lib/roleRouting";
 import { redirect } from "next/navigation";
@@ -14,17 +15,23 @@ export default async function DashboardLayout({
   const org = activeOrg(ctx);
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
   let orgLogoUrl: string | null = null;
+  let modules: Record<string, boolean> | undefined;
   if (org) {
     try {
       const { createClient } = await import("@/lib/supabase/server");
-      const { data } = await (await createClient())
-        .from("organizations")
-        .select("logo_url")
-        .eq("id", org.id)
-        .maybeSingle();
+      const supabase = await createClient();
+      const [{ data }, caps] = await Promise.all([
+        supabase.from("organizations").select("logo_url").eq("id", org.id).maybeSingle(),
+        getCapabilities(supabase, ctx, org.id),
+      ]);
       orgLogoUrl = (data?.logo_url as string | null) ?? null;
+      modules = caps.entitlement.modules;
     } catch {
-      orgLogoUrl = null;
+      orgLogoUrl = orgLogoUrl ?? null;
+      // Entitlement read failed: leave `modules` undefined (nav renders the
+      // full list). Navigation cosmetics never gate access — every page and
+      // server action re-resolves the entitlement server-side and enforces it.
+      modules = modules ?? undefined;
     }
   }
 
@@ -109,6 +116,7 @@ export default async function DashboardLayout({
         orgRole={org.role}
         canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
         userName={ctx.profile.full_name || ctx.profile.email}
+        modules={modules}
       >
         {children}
       </DashboardChrome>

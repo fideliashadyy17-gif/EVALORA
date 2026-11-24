@@ -151,6 +151,7 @@ export default async function CreateExaminationPage({
                     <option value="auto">Detect from the paper (recommended)</option>
                     <option value="en">English</option>
                     <option value="fr">French</option>
+                    <option value="es">Spanish</option>
                   </Select>
                 </Field>
 

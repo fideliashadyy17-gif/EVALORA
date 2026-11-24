@@ -1,4 +1,6 @@
 import { Logo } from "@/components/Logo";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { getI18n } from "@/lib/i18n/server";
 import { Badge, ButtonLink, Card } from "@/components/ui";
 import { getSessionContext } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -28,6 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
  * unknown/inactive tenant simply 404s and never leaks another school.
  */
 export default async function SchoolPortalPage({ params }: { params: Promise<{ slug: string }> }) {
+  const { t } = await getI18n();
   const { slug } = await params;
   const requested = String(slug ?? "").trim().toLowerCase();
   const admin = createAdminClient();
@@ -59,12 +62,13 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
       <header className="tenant-portal-header mx-auto flex max-w-6xl items-center justify-between px-4 py-5 sm:px-6">
         <Logo href={null} />
         <div className="flex items-center gap-3">
+          <LanguageSwitcher compact />
           <span className="hidden text-xs font-medium text-ink-soft sm:inline">{tenantPortalLabel(org.slug)}</span>
           <Link
             href={`/login?next=/dashboard&switch=1&org=${org.slug}`}
             className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-evergreen-50"
           >
-            Staff &amp; student sign in
+            {t("portal.staffStudentSignIn")}
           </Link>
         </div>
       </header>
@@ -84,18 +88,17 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h1 className="font-display text-2xl font-semibold sm:text-3xl">{org.name}</h1>
-                  {org.is_demo && <Badge tone="gold">DEMONSTRATION SCHOOL</Badge>}
+                  {org.is_demo && <Badge tone="gold">{t("portal.demoBadge")}</Badge>}
                 </div>
                 <p className="mt-1 text-sm text-evergreen-100">
-                  {[org.city, org.country].filter(Boolean).join(", ") || "Welcome to our school portal"}
+                  {[org.city, org.country].filter(Boolean).join(", ") || t("portal.welcome")}
                 </p>
               </div>
             </div>
             {org.description && <p className="mt-4 max-w-2xl text-sm leading-relaxed text-evergreen-50">{org.description}</p>}
             {org.is_demo && (
               <p className="mt-4 max-w-2xl rounded-lg bg-gold-500/15 px-3 py-2 text-sm text-gold-100">
-                This is EVALORA&apos;s permanent demonstration school. Every student, result and
-                record here is fictional sample data for evaluation and training.
+                {t("portal.demoNotice")}
               </p>
             )}
           </div>
@@ -103,45 +106,44 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
           <div className="px-6 py-8 sm:px-10">
             {org.status !== "active" ? (
               <div className="rounded-xl bg-red-50 px-4 py-5 text-sm text-red-900">
-                <p className="font-semibold">This school portal is currently {org.status}.</p>
-                <p className="mt-1">Students and staff cannot sign in right now. Please contact the school or EVALORA support.</p>
+                <p className="font-semibold">{t("portal.statusLine", { status: org.status })}</p>
+                <p className="mt-1">{t("portal.statusBody")}</p>
               </div>
             ) : (
               <>
-                <h2 className="font-display text-lg font-semibold text-evergreen-950">How would you like to continue?</h2>
+                <h2 className="font-display text-lg font-semibold text-evergreen-950">{t("portal.howContinue")}</h2>
                 <div className="mt-5 grid gap-4 sm:grid-cols-3">
                   <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
-                    <p className="font-semibold text-evergreen-950">Staff &amp; students</p>
-                    <p className="mt-1 text-sm text-ink-soft">Sign in to the {org.name} workspace: classes, quizzes, examinations and reports.</p>
+                    <p className="font-semibold text-evergreen-950">{t("portal.staffStudents")}</p>
+                    <p className="mt-1 text-sm text-ink-soft">{t("portal.staffStudentsBody", { name: org.name })}</p>
                     {isMember || isSuperAdmin ? (
-                      <ButtonLink href="/dashboard" variant="gold" className="mt-3">Open my workspace</ButtonLink>
+                      <ButtonLink href="/dashboard" variant="gold" className="mt-3">{t("portal.openWorkspace")}</ButtonLink>
                     ) : (
                       <ButtonLink
                         href={`/login?next=/dashboard&switch=1&org=${org.slug}`}
                         variant="gold"
                         className="mt-3"
                       >
-                        Sign in
+                        {t("portal.staffSignIn")}
                       </ButtonLink>
                     )}
                     <p className="mt-2 text-xs text-ink-soft">
-                      Staff and students sign in with their {org.name} account.
+                      {t("portal.staffSignInNote", { name: org.name })}
                     </p>
                   </div>
                   <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
-                    <p className="font-semibold text-evergreen-950">Live competition</p>
-                    <p className="mt-1 text-sm text-ink-soft">Joining a live competition or class quiz? Enter your join code.</p>
-                    <ButtonLink href="/join" variant="outline" className="mt-3">Enter join code</ButtonLink>
+                    <p className="font-semibold text-evergreen-950">{t("portal.liveCompetition")}</p>
+                    <p className="mt-1 text-sm text-ink-soft">{t("portal.liveCompetitionBody")}</p>
+                    <ButtonLink href="/join" variant="outline" className="mt-3">{t("portal.enterJoinCode")}</ButtonLink>
                   </div>
                   <div className="tenant-portal-option rounded-xl border border-evergreen-900/15 p-4">
-                    <p className="font-semibold text-evergreen-950">Examination candidates</p>
-                    <p className="mt-1 text-sm text-ink-soft">Formal examination today? Use the personal access code given by your school.</p>
-                    <ButtonLink href="/exam-access" variant="outline" className="mt-3">Enter access code</ButtonLink>
+                    <p className="font-semibold text-evergreen-950">{t("portal.examCandidates")}</p>
+                    <p className="mt-1 text-sm text-ink-soft">{t("portal.examCandidatesBody")}</p>
+                    <ButtonLink href="/exam-access" variant="outline" className="mt-3">{t("portal.enterAccessCode")}</ButtonLink>
                   </div>
                 </div>
                 <p className="mt-6 text-xs text-ink-soft">
-                  This portal is private to {org.name}. Accounts are created by the school;
-                  if you cannot sign in, contact your school administrator.
+                  {t("portal.privatePortal", { name: org.name })}
                 </p>
               </>
             )}
