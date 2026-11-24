@@ -4,6 +4,7 @@ import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { ASSIGNABLE_STAFF_ROLES, MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
 import { ORG_ROLES } from "@/lib/brand";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -37,6 +38,8 @@ export default async function AccountsPage({
   const pageSize = 25;
 
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "accounts", "/dashboard?e=module");
   const admin = createAdminClient();
 
   const [{ data: members }, { data: students }] = await Promise.all([

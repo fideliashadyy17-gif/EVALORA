@@ -128,7 +128,10 @@ check(orgPage.includes("restricted to organization administrators"), "non-manage
 const chrome = readFileSync("src/components/dashboard/DashboardChrome.tsx", "utf8");
 check(chrome.includes('href: "/dashboard/results"'), "org nav entry exists");
 check(chrome.includes('labelKey: "nav.resultsManagement"'), "nav entry is translatable");
-check(chrome.includes('"/dashboard/results": "exam_results"'), "nav route governed by the exam_results module");
+const catalog = readFileSync("src/lib/modules.ts", "utf8");
+const resultsSurface = catalog.split("\n").find((l) => l.includes('key: "exam_results"'));
+check(Boolean(resultsSurface) && resultsSurface.includes('"/dashboard/results"'), "nav route governed by the exam_results module (canonical catalog surface)");
+check(chrome.includes("isNavVisible("), "org nav visibility runs through the shared isNavVisible rule");
 const navLine = chrome.split("\n").find((l) => l.includes('href: "/dashboard/results"'));
 check(Boolean(navLine) && navLine.includes('audience: "staff"'), "nav entry visible to staff (incl. Oak)");
 for (const lang of ["en", "fr", "es"]) {
@@ -326,8 +329,9 @@ check(resultsModule.group === "exams", "module listed under Examinations");
 check(MODULE_DEFAULTS.exam_results === true, "default ON — existing organizations (incl. Oak) keep it with zero migration");
 check(moduleEnabled(undefined, "exam_results") === true, "missing key resolves to enabled (backward compatible)");
 check(moduleEnabled({ exam_results: false }, "exam_results") === false && moduleEnabled({ exam_results: false }, "examinations") === true, "deactivation is scoped to this module only");
-check(chrome.includes('"/dashboard/results": "exam_results"'), "org nav entry governed by the exam_results module");
-check(chrome.includes('"/dashboard/reports": "org_reports"'), "Reports & Analytics nav unaffected by exam_results");
+check(Array.isArray(resultsModule.surface?.hrefs) && resultsModule.surface.hrefs.includes("/dashboard/results"), "org nav entry governed by the exam_results module (canonical catalog surface)");
+const reportsModule = MODULE_CATALOG.find((m) => m.key === "org_reports");
+check(Boolean(reportsModule) && Array.isArray(reportsModule.surface?.hrefs) && reportsModule.surface.hrefs.includes("/dashboard/reports"), "Reports & Analytics nav unaffected by exam_results (own catalog surface)");
 check(chrome.includes('label: "Results Management & Candidate Links"'), "nav label uses the shared name");
 check(orgPage.includes('requireModule(entitlement, "exam_results", "/dashboard/results?e=module")'), "page blocked server-side when the module is deactivated");
 check(orgPage.includes("sp.e === \"module\""), "deactivation shows a clear explanation, not a crash");

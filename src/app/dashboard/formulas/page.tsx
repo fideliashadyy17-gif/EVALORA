@@ -1,5 +1,6 @@
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { groupLibraryEntries, type FormulaLibraryEntry } from "@/lib/formulaLibrary";
 import { PageTitle, Card } from "@/components/ui";
 import { FormulaLibraryClient } from "@/components/formulas/FormulaLibraryClient";
@@ -28,6 +29,8 @@ export default async function FormulasPage({
   if (!isStaffRole(org.role)) redirect("/student");
 
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "examinations", "/dashboard?e=module");
   const [{ data: subjects }, { data: rows }] = await Promise.all([
     supabase.from("subjects").select("id, name").eq("organization_id", org.id).order("name"),
     supabase

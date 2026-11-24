@@ -1,6 +1,7 @@
 import { Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { BookOpen, Calendar, Layers, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -28,6 +29,8 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
   const org = activeOrg(ctx)!;
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "academics", "/dashboard?e=module");
 
   const [{ data: years }, { data: levels }, { data: departments }, { data: subjects }, { count: classCount }, { count: studentCount }] = await Promise.all([
     supabase.from("academic_years").select("*").eq("organization_id", org.id).order("starts_on", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),

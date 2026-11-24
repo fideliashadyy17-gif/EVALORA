@@ -30,12 +30,13 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 162 page.tsx routes (83 admin, 44 dashboard, 35 public/auth/student/portal)", () => {
+check("route inventory accounts for all 163 page.tsx routes (83 admin, 45 dashboard, 35 public/auth/student/portal)", () => {
   assert.equal(adminPages.length, 83, `expected 83 admin pages, found ${adminPages.length}`);
-  // 44 = 43 + /dashboard/results (Results & Management, PR: results module).
-  assert.equal(dashboardPages.length, 44, `expected 44 dashboard pages, found ${dashboardPages.length}`);
+  // 45 = 43 + /dashboard/results (Results & Management) + /dashboard/competitions/rankings
+  // (Ranking Results module surface, PMM↔dashboard sync).
+  assert.equal(dashboardPages.length, 45, `expected 45 dashboard pages, found ${dashboardPages.length}`);
   assert.equal(otherPages.length, 35, `expected 35 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 162);
+  assert.equal(allPages.length, 163);
 });
 
 for (const pagePath of adminPages) {

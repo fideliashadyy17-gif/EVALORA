@@ -4,10 +4,10 @@ import { Logo } from "@/components/Logo";
 import { PlatformCredit } from "@/components/PlatformCredit";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
-import { moduleEnabled } from "@/lib/modules";
 import { NotificationBell } from "@/components/dashboard/NotificationBell";
 import { createClient } from "@/lib/supabase/client";
-import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAccess";
+import { workspaceLabel, type NavAudience } from "@/lib/navAccess";
+import { isNavVisible } from "@/lib/navModules";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
@@ -75,6 +75,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/formulas", label: "Formula Library", labelKey: "nav.formulas", icon: Sigma, audience: "staff" },
       { href: "/dashboard/questions", label: "Question Bank", labelKey: "nav.questionBank", icon: Library, audience: "staff" },
       { href: "/dashboard/competitions", label: "Live Competitions", labelKey: "nav.competitions", icon: Trophy, audience: "staff" },
+      { href: "/dashboard/competitions/rankings", label: "Rankings & Results", labelKey: "nav.rankingsResults", icon: Trophy, audience: "staff" },
       { href: "/dashboard/rubrics", label: "Rubrics", labelKey: "nav.rubrics", icon: ListChecks, audience: "staff" },
       { href: "/dashboard/proctoring", label: "Proctoring", labelKey: "nav.proctoring", icon: ShieldCheck, audience: "staff" },
       { href: "/dashboard/results", label: "Results Management & Candidate Links", labelKey: "nav.resultsManagement", icon: Award, audience: "staff" },
@@ -96,29 +97,8 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
  * Management). The sidebar hides modules the organization's entitlement does
  * not include; server pages and actions enforce the same map independently.
  */
-const MODULE_FOR_HREF: Record<string, string> = {
-  "/dashboard/students": "students",
-  "/dashboard/teachers": "teachers",
-  "/dashboard/team": "team",
-  "/dashboard/academics/classes": "classes",
-  "/dashboard/academics": "academics",
-  "/dashboard/accounts": "accounts",
-  "/dashboard/settings": "org_settings",
-  "/dashboard/paper-builder": "paper_builder",
-  "/dashboard/quizzes": "quizzes",
-  "/dashboard/exams": "examinations",
-  "/dashboard/formulas": "examinations",
-  "/dashboard/grading": "examinations",
-  "/dashboard/questions": "question_bank",
-  "/dashboard/competitions": "competitions",
-  "/dashboard/rubrics": "rubrics",
-  "/dashboard/proctoring": "proctoring",
-  "/dashboard/results": "exam_results",
-  "/dashboard/reports": "org_reports",
-  "/dashboard/myp-results": "exam_reports",
-  "/dashboard/platform": "platform",
-  "/dashboard/billing": "billing",
-};
+// Derived from MODULE_CATALOG surfaces (src/lib/navModules.ts) — the console
+// and this sidebar can no longer disagree about which href is which module.
 
 const navLink =
   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition";
@@ -192,10 +172,9 @@ export function DashboardChrome({
   // actions enforce the same rules independently.
   const sections = NAV_SECTIONS.map((section) => ({
     ...section,
-    items: filterNavItems(section.items, orgRole).filter((item) => {
-      const moduleKey = MODULE_FOR_HREF[item.href];
-      return moduleKey ? moduleEnabled(modules, moduleKey) : true;
-    }),
+    // One shared rule (role audience + module entitlement + parent modules) —
+    // the same rule src/lib/navModules.ts tests execute.
+    items: section.items.filter((item) => isNavVisible(item, modules, orgRole)),
   })).filter((section) => section.items.length > 0);
 
   const nav = (

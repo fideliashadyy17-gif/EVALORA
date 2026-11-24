@@ -2,6 +2,7 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { BookOpen, GraduationCap, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -20,6 +21,8 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
   const canEdit = can(ctx, org.id, CREATOR_ROLES);
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "classes", "/dashboard?e=module");
 
   const [{ data: years }, { data: levels }, { data: departments }, { data: members }] = await Promise.all([
     supabase.from("academic_years").select("id, name, is_current").eq("organization_id", org.id).order("created_at", { ascending: false }),

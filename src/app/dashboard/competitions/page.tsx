@@ -68,6 +68,10 @@ export default async function OrganizationCompetitionsPage({
   // Assessment Code module: the admission-code column and code lifecycle are
   // a separately entitled feature of the Live Competitions page.
   const codeEnabled = moduleEnabled(entitlement.modules, "competition_code");
+  // competition_config gates the create form; competition_results gates the
+  // rankings entry point (the Rankings & Results sidebar module's page link).
+  const configEnabled = moduleEnabled(entitlement.modules, "competition_config");
+  const resultsEnabled = moduleEnabled(entitlement.modules, "competition_results");
 
   const [{ data: comps }, { data: quizzes }] = await Promise.all([
     supabase
@@ -101,7 +105,16 @@ export default async function OrganizationCompetitionsPage({
             ? `Every competition hosted by ${org.name}. Join codes, participants and live rooms are the same ones used by the public competition screens.`
             : `Every competition hosted by ${org.name}. Participants and live rooms are the same ones used by the public competition screens. Enable the Assessment Code module to manage admission codes.`
         }
-        action={canCreate ? <ButtonLink href="#new-competition" variant="gold">+ New competition</ButtonLink> : undefined}
+        action={
+          <>
+            {resultsEnabled && (
+              <ButtonLink href="/dashboard/competitions/rankings" variant="outline">Rankings &amp; Results</ButtonLink>
+            )}
+            {canCreate && configEnabled && (
+              <ButtonLink href="#new-competition" variant="gold">+ New competition</ButtonLink>
+            )}
+          </>
+        }
       />
 
       {sp.ok && (
@@ -127,7 +140,9 @@ export default async function OrganizationCompetitionsPage({
         <StatCard label="Competitions" value={allRows.length} icon={<Trophy className="h-5 w-5" />} />
         <StatCard label="Live or paused" value={live.length} icon={<Wifi className="h-5 w-5" />} />
         <StatCard label="Registered participants" value={participants} icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Results published" value={allRows.filter((c) => c.results_published).length} />
+        {resultsEnabled && (
+          <StatCard label="Results published" value={allRows.filter((c) => c.results_published).length} />
+        )}
       </div>
 
       <form method="get" className="mt-6 flex flex-wrap items-end gap-2">
@@ -228,7 +243,7 @@ export default async function OrganizationCompetitionsPage({
         </div>
       )}
 
-      {canCreate && (
+      {canCreate && configEnabled && (
         <Card className="mt-6 scroll-mt-24 p-5 sm:p-6" id="new-competition">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Create a competition</h2>
           <p className="mt-1 text-sm text-ink-soft">

@@ -3,6 +3,7 @@ import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDate } from "@/lib/utils";
 import { MailPlus, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
@@ -22,6 +23,8 @@ export default async function TeamPage({
   const sp = await searchParams;
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "team", "/dashboard?e=module");
   const admin = createAdminClient();
 
   // Members, invitations and the plan entitlement are independent; the previous

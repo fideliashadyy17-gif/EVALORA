@@ -3,6 +3,7 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { CheckCircle2, Clock3, FolderTree, Library } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -30,6 +31,8 @@ export default async function QuestionsPage({
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 20;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "question_bank", "/dashboard?e=module");
 
   let query = supabase
     .from("questions")

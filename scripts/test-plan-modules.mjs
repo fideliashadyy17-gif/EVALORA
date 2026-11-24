@@ -112,8 +112,8 @@ ok(/modules: Record<string, boolean>/.test(entitlements), "Entitlement exposes m
 ok(entitlements.includes('modules: {}'), "owner entitlement resolves all-on via defaults");
 
 const chrome = read("src/components/dashboard/DashboardChrome.tsx");
-ok(chrome.includes("MODULE_FOR_HREF"), "workspace nav maps hrefs → modules");
-ok(chrome.includes("moduleEnabled(modules"), "workspace nav filters by resolved modules");
+ok(chrome.includes('from "@/lib/navModules"') && chrome.includes("isNavVisible("), "workspace nav maps hrefs → modules via the shared catalog rule");
+ok(chrome.includes("isNavVisible(item, modules"), "workspace nav filters by resolved modules (incl. parent-module requirements)");
 const layout = read("src/app/dashboard/layout.tsx");
 ok(layout.includes("modules={modules}"), "dashboard layout passes resolved modules");
 
@@ -210,11 +210,24 @@ ok(!/\bUPDATE\b|\bINSERT\b/i.test(migrationStatements), "migration performs no d
   ok(byKey.competition_code.label === "Assessment Code", "Assessment Code module uses the reported name");
   ok(byKey.competition_code.description.includes("Live Competitions"), "Assessment Code points at its operational page");
   ok(chrome.includes('title: "Assessment"'), "Assessment nav section present");
-  // Every MODULE_FOR_HREF value is a real catalog key.
-  const hrefMap = chrome.slice(chrome.indexOf("MODULE_FOR_HREF"), chrome.indexOf("};", chrome.indexOf("MODULE_FOR_HREF")));
-  const hrefKeys = [...hrefMap.matchAll(/: "([a-z_]+)"/g)].map((m) => m[1]);
-  ok(hrefKeys.length > 0, "MODULE_FOR_HREF parsed");
-  for (const key of hrefKeys) ok(keys.includes(key), `nav module key "${key}" exists in the catalog`);
+  // The sidebar's href→module map is DERIVED from catalog nav surfaces
+  // (src/lib/navModules.ts moduleForHref) — every sidebar href is backed by a
+  // real catalog key and every catalog nav surface is offered in the sidebar.
+  const navModulesSrc = read("src/lib/navModules.ts");
+  ok(navModulesSrc.includes("moduleForHref") && navModulesSrc.includes("MODULE_CATALOG"), "href→module map derived from the catalog registry (navModules.ts)");
+  ok(chrome.includes("isNavVisible("), "sidebar visibility runs through the shared isNavVisible rule");
+  const navHrefs = new Set();
+  for (const m of M.MODULE_CATALOG) {
+    if (m.surface && m.surface.kind === "nav") for (const h of m.surface.hrefs) navHrefs.add(h);
+  }
+  ok(navHrefs.size >= 19, `catalog declares ${navHrefs.size} sidebar destinations`);
+  const chromeHrefs = [...chrome.matchAll(/href: "(\/dashboard[^"]*)"/g)].map((x) => x[1]);
+  ok(chromeHrefs.length >= 20, `sidebar lists ${chromeHrefs.length} destinations`);
+  for (const h of chromeHrefs) {
+    if (h === "/dashboard") continue;
+    ok(navHrefs.has(h), `sidebar href ${h} is backed by a catalog nav surface`);
+  }
+  for (const h of navHrefs) ok(chromeHrefs.includes(h), `catalog nav surface ${h} is offered in the sidebar`);
 }
 
 // 8. Server-side page guards — disabled modules inaccessible by direct URL.

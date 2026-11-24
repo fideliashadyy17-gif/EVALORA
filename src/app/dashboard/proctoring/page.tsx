@@ -11,6 +11,7 @@ import {
   loadReviewHistory,
 } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -56,6 +57,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "proctoring", "/dashboard?e=module");
 
   const [exams, candidates] = await Promise.all([
     supabase.from("exams").select("id, title").eq("organization_id", org.id).order("created_at", { ascending: false }).limit(200),

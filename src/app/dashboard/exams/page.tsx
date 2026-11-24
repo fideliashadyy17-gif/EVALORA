@@ -4,6 +4,7 @@ import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { parseLockdownSettings } from "@/lib/lockdown";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDateTime } from "@/lib/utils";
 import { Archive, CheckCircle2, Clock3, FileCheck2, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
@@ -22,6 +23,8 @@ export default async function ExamsPage({
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "examinations", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
 

@@ -1,6 +1,8 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -33,6 +35,13 @@ export default async function OrganizationCompetitionPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  // Parent module first: a disabled competitions module closes the detail
+  // route too, not just the list page.
+  requireModule(entitlement, "competitions", "/dashboard?e=module");
+  const codeEnabled = moduleEnabled(entitlement.modules, "competition_code");
+  const participantsEnabled = moduleEnabled(entitlement.modules, "competition_participants");
+  const resultsEnabled = moduleEnabled(entitlement.modules, "competition_results");
 
   const { data: comp } = await supabase
     .from("competitions")
@@ -79,9 +88,9 @@ export default async function OrganizationCompetitionPage({
       {comp.description && <p className="mb-4 max-w-3xl text-sm text-ink-soft">{comp.description}</p>}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Registered" value={active.length} hint="Excludes removed entries" />
-        <StatCard label="Admission codes" value={(codes ?? []).length} />
-        <StatCard label="Results published" value={comp.results_published ? "Yes" : "No"} />
+        {participantsEnabled && <StatCard label="Registered" value={active.length} hint="Excludes removed entries" />}
+        {codeEnabled && <StatCard label="Admission codes" value={(codes ?? []).length} />}
+        {resultsEnabled && <StatCard label="Results published" value={comp.results_published ? "Yes" : "No"} />}
         <StatCard label="Max participants" value={comp.max_participants ?? "—"} />
       </div>
 
@@ -114,6 +123,7 @@ export default async function OrganizationCompetitionPage({
         <ButtonLink href="/dashboard/reports" variant="outline">Results &amp; reports</ButtonLink>
       </div>
 
+      {codeEnabled && (
       <Card className="mt-6 p-5 sm:p-6">
         <h2 className="font-display text-base font-semibold text-evergreen-950">Admission codes</h2>
         <p className="mt-1 text-sm text-ink-soft">
@@ -139,7 +149,9 @@ export default async function OrganizationCompetitionPage({
           </ul>
         )}
       </Card>
+      )}
 
+      {participantsEnabled && (
       <Card className="mt-6 p-5 sm:p-6">
         <h2 className="font-display text-base font-semibold text-evergreen-950">Participants ({active.length})</h2>
         {(registrations ?? []).length === 0 ? (
@@ -169,6 +181,7 @@ export default async function OrganizationCompetitionPage({
           </div>
         )}
       </Card>
+      )}
     </>
   );
 }

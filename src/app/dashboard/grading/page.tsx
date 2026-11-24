@@ -1,5 +1,6 @@
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import { PageTitle, Card } from "@/components/ui";
 import { GradingSystemsClient } from "@/components/grading/GradingSystemsClient";
@@ -26,6 +27,8 @@ export default async function GradingSystemsPage({
   if (!isStaffRole(org.role)) redirect("/student");
 
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "examinations", "/dashboard?e=module");
   const [{ data: systems }, { data: subjects }] = await Promise.all([
     supabase
       .from("grading_systems")
