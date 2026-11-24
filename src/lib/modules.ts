@@ -64,7 +64,7 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
   { key: "exam_candidate_links", group: "exams", label: "Candidate link", description: "Per-candidate invitation links." },
   { key: "exam_candidates", group: "exams", label: "Candidate management", description: "Candidate registration, rosters and access management." },
   { key: "exam_monitoring", group: "exams", label: "Monitoring & supervision", description: "Invigilation, live supervision and session oversight." },
-  { key: "exam_results", group: "exams", label: "Result management", description: "Marking, grading, provisional review and result links." },
+  { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication and individual candidate result links." },
   { key: "exam_validation", group: "exams", label: "Results validation", description: "Mandatory validation step before publication." },
   { key: "exam_publication", group: "exams", label: "Results publication", description: "Publish validated results to candidates (audited)." },
   { key: "exam_reports", group: "exams", label: "Examination reports", description: "Examination reports, exports and MYP results.", capability: "myp_results" },
