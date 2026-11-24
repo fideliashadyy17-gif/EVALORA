@@ -13,6 +13,20 @@ export default async function DashboardLayout({
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
+  let orgLogoUrl: string | null = null;
+  if (org) {
+    try {
+      const { createClient } = await import("@/lib/supabase/server");
+      const { data } = await (await createClient())
+        .from("organizations")
+        .select("logo_url")
+        .eq("id", org.id)
+        .maybeSingle();
+      orgLogoUrl = (data?.logo_url as string | null) ?? null;
+    } catch {
+      orgLogoUrl = null;
+    }
+  }
 
   // Wrong-tenant hostname: the signed-in user does not belong to the
   // school whose subdomain this is. Never fall back to another school.
@@ -90,6 +104,7 @@ export default async function DashboardLayout({
       <DashboardChrome
         orgName={org.name}
         orgSlug={org.slug}
+        orgLogoUrl={orgLogoUrl}
         isDemo={Boolean(org.is_demo)}
         orgRole={org.role}
         canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}

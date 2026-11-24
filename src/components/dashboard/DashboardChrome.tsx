@@ -12,6 +12,7 @@ import {
   BookOpenCheck,
   CreditCard,
   FileCheck2,
+  FileText,
   GraduationCap,
   KeyRound,
   Layers3,
@@ -59,6 +60,7 @@ const NAV_SECTIONS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Assessment",
     items: [
+      { href: "/dashboard/paper-builder", label: "Question Paper Builder", icon: FileText, audience: "staff" },
       { href: "/dashboard/quizzes", label: "Quizzes", icon: PenSquare, audience: "staff" },
       { href: "/dashboard/exams", label: "Examinations", icon: FileCheck2, audience: "staff" },
       { href: "/dashboard/questions", label: "Question Bank", icon: Library, audience: "staff" },
@@ -102,6 +104,7 @@ function NavPendingIndicator() {
 export function DashboardChrome({
   orgName,
   orgSlug,
+  orgLogoUrl,
   isDemo,
   orgRole,
   canSwitchWorkspace,
@@ -110,6 +113,7 @@ export function DashboardChrome({
 }: {
   orgName: string;
   orgSlug?: string;
+  orgLogoUrl?: string | null;
   isDemo?: boolean;
   orgRole?: string;
   canSwitchWorkspace?: boolean;
@@ -194,7 +198,13 @@ export function DashboardChrome({
       <aside className="dashboard-sidebar sticky top-0 hidden h-screen flex-col border-r border-evergreen-900/15 bg-paper p-5 lg:flex" aria-label="Organization workspace navigation">
         <div className="dashboard-brand"><Logo variant="light" href="/dashboard" /></div>
         <div className="dashboard-org-card mt-6 rounded-xl border border-evergreen-900/10 bg-cream p-3">
-          <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
+          <div className="flex items-center gap-2">
+            {orgLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={orgLogoUrl} alt="" className="h-8 w-8 shrink-0 rounded-md bg-white object-contain p-0.5 ring-1 ring-evergreen-900/10" />
+            ) : null}
+            <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
+          </div>
           <p className="text-xs text-ink-soft">{workspaceLabel(orgRole)}</p>
           {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
           {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}

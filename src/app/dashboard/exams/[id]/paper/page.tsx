@@ -9,6 +9,7 @@ import {
   type CriteriaByRubric, type PaperItem, type RubricCriterionRow,
 } from "@/lib/printablePackets";
 import { createClient } from "@/lib/supabase/server";
+import { formatDuration, parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "@/lib/examPaper";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -34,12 +35,32 @@ export default async function PrintableExam({
   if (!org || !can(ctx, org.id, CREATOR_ROLES)) notFound();
   const db = await createClient();
   const { data: exam, error } = await db.from("exams")
-    .select("id, organization_id, quiz_id, title, instructions, duration_minutes")
+    .select("id, organization_id, quiz_id, title, instructions, duration_minutes, settings")
     .eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (error || !exam || !exam.quiz_id) notFound();
-  const { data: quiz, error: quizError } = await db.from("quizzes").select("id")
+  const { data: quiz, error: quizError } = await db.from("quizzes").select("id, settings")
     .eq("id", exam.quiz_id).eq("organization_id", org.id).maybeSingle();
   if (quizError || !quiz) notFound();
+  const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const quizSettings = ((quiz.settings as Record<string, unknown> | null) ?? {});
+  const [{ data: orgRow }, { data: tplRow }] = await Promise.all([
+    db.from("organizations").select("name, logo_url").eq("id", org.id).maybeSingle(),
+    typeof examSettings.exam_paper_template_id === "string" && examSettings.exam_paper_template_id
+      ? db.from("exam_paper_templates").select("*").eq("id", examSettings.exam_paper_template_id).eq("organization_id", org.id).maybeSingle()
+      : Promise.resolve({ data: null }),
+  ]);
+  const header = resolveExamPaperHeader({
+    organizationName: (orgRow?.name as string | null) ?? org.name,
+    organizationLogoUrl: (orgRow?.logo_url as string | null) ?? null,
+    examTitle: exam.title,
+    examInstructions: exam.instructions ?? null,
+    examDurationMinutes: exam.duration_minutes ?? null,
+    examSettings,
+    quizSettings,
+    template: parseExamPaperTemplate(tplRow),
+    totalMarks: null,
+  });
+  const sections = parsePaperSections(examSettings.sections ?? quizSettings.sections);
   let questions: ReturnType<typeof preparePrintableQuestions> = [];
   let problem: string | null = null;
   try {
@@ -174,30 +195,61 @@ export default async function PrintableExam({
         )
       ) : (
         <article className="paper-document bg-white p-8 print:p-0">
-          <header className="paper-cover border-b-2 border-black pb-8">
-            <p className="text-sm font-semibold uppercase tracking-wide">{org.name} · EVALORA</p>
-            <h1 className="mt-4 text-3xl font-bold">{exam.title}</h1>
-            <p className="mt-3">Duration: {exam.duration_minutes} minutes · Total: {total} marks</p>
-            <div className="mt-8 space-y-4 text-base">
+          <header className="paper-cover border-b-2 border-black pb-8 text-center">
+            {header.showLogo && header.organizationLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={header.organizationLogoUrl} alt="" className="mx-auto h-16 w-16 object-contain" />
+            ) : null}
+            <p className="mt-2 text-lg font-bold uppercase tracking-wide">{header.organizationName}</p>
+            <p className="mt-1 text-sm font-semibold uppercase tracking-[0.2em]">Official Examination Paper</p>
+            {header.period && <p className="mt-1 text-base font-bold uppercase">{header.period}</p>}
+            <h1 className="mt-3 text-3xl font-bold">{header.title}</h1>
+            <p className="mt-3 text-sm">
+              {header.academicYear ? `Academic Year: ${header.academicYear} · ` : ""}
+              {header.gradeLabel ? `Grade: ${header.gradeLabel} · ` : ""}
+              {header.subject ? `Subject: ${header.subject} · ` : ""}
+              Duration: {formatDuration(header.durationMinutes)} · Total Marks: {total}
+            </p>
+            <div className="mt-8 space-y-4 text-left text-base">
               <p>Candidate name: ______________________________________________________</p>
               <p>Candidate reference: ___________________________ Class: __________________</p>
               <p>Date: ___________________________</p>
             </div>
-            {exam.instructions && <section className="mt-8"><h2 className="font-bold">Instructions</h2><p className="mt-2 whitespace-pre-wrap">{exam.instructions}</p></section>}
+            {header.instructions && <section className="mt-8 text-left"><h2 className="font-bold">General Instructions</h2><p className="mt-2 whitespace-pre-wrap">{header.instructions}</p></section>}
+            {sections.length > 0 && (
+              <div className="mt-6 space-y-2 text-left">
+                {sections.map((s) => (
+                  <div key={s.id} className="border border-gray-400 px-4 py-2">
+                    <p className="font-bold">{s.title} <span className="font-normal">· {s.questionCount} questions · {s.marks} marks</span></p>
+                    {s.instructions && <p className="text-sm text-gray-600">{s.instructions}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
           </header>
           <section aria-label="Examination questions">
-            {questions.map((q, i) => (
-              <div key={q.quiz_question_id} className="paper-question border-b border-gray-300 py-6">
-                <div className="flex items-start justify-between gap-4"><h2 className="font-bold">Question {i + 1}</h2><span className="shrink-0">[{q.points} marks]</span></div>
-                {q.media_url && q.media_type === "image" && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={q.media_url} alt="Question illustration" className="mt-4 max-h-64 max-w-full object-contain" />
-                )}
-                <div className="mt-3"><RichContent doc={q.prompt_doc} text={q.prompt} /></div>
-                {q.options.length > 0 && <ol className="mt-4 space-y-2">{q.options.map((o, j) => <li key={o.id} className="flex gap-3"><span>☐ {String.fromCharCode(65 + j)}.</span><RichContent doc={o.content_doc} text={o.label} /></li>)}</ol>}
-                {q.options.length === 0 && <div aria-label="Answer space" className="paper-answer mt-5">{Array.from({length: q.type === "open_ended" ? 7 : 2}, (_, line) => <div key={line} className="h-8 border-b border-gray-400" />)}</div>}
-              </div>
-            ))}
+            {questions.map((q, i) => {
+              const sec = (q as unknown as { question_meta?: { paper_section?: string | null } }).question_meta?.paper_section;
+              const secMeta = sections.find((s) => s.id === sec);
+              const showSec = secMeta && (i === 0 || (questions[i - 1] as unknown as { question_meta?: { paper_section?: string | null } }).question_meta?.paper_section !== sec);
+              return (
+                <div key={q.quiz_question_id}>
+                  {showSec ? (
+                    <h2 className="mt-8 border-y-2 border-black py-3 text-center text-lg font-bold uppercase">{secMeta.title}</h2>
+                  ) : null}
+                  <div className="paper-question border-b border-gray-300 py-6">
+                    <div className="flex items-start justify-between gap-4"><h3 className="font-bold">Question {i + 1}</h3><span className="shrink-0">[{q.points} marks]</span></div>
+                    {q.media_url && q.media_type === "image" && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={q.media_url} alt="Question illustration" className="mt-4 max-h-64 max-w-full object-contain" />
+                    )}
+                    <div className="mt-3"><RichContent doc={q.prompt_doc} text={q.prompt} /></div>
+                    {q.options.length > 0 && <ol className="mt-4 space-y-2">{q.options.map((o, j) => <li key={o.id} className="flex gap-3"><span>☐ {String.fromCharCode(65 + j)}.</span><RichContent doc={o.content_doc} text={o.label} /></li>)}</ol>}
+                    {q.options.length === 0 && <div aria-label="Answer space" className="paper-answer mt-5">{Array.from({length: q.type === "open_ended" ? 7 : 2}, (_, line) => <div key={line} className="h-8 border-b border-gray-400" />)}</div>}
+                  </div>
+                </div>
+              );
+            })}
           </section>
         </article>
       )}

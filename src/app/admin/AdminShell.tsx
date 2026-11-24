@@ -123,6 +123,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { href: "/admin/quizzes", label: "Quiz Dashboard / Manage Quizzes", icon: PenSquare },
       { href: "/admin/quizzes/new", label: "Create Quiz", icon: Plus },
+      { href: "/dashboard/paper-builder", label: "Question Paper Builder", icon: FileCheck2 },
       { href: "/admin/questions", label: "Question Bank", icon: Library },
       { href: "/admin/questions/new", label: "Create Question", icon: Plus },
       { href: "/admin/questions/categories", label: "Question Categories", icon: Tags },

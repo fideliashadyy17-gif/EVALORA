@@ -28,6 +28,7 @@ Module._load=function(request,parent){
   if(request==='@/lib/examSubmission') return {applyDeadlineSubmission:async()=>({outcome:'already_closed',status:'in_progress',submittedAt:null,deadline:new Date(Date.now()+600000).toISOString(),autoSubmitted:false,score:null,max:null,window:attemptWindow(context.exam,context.attempt)})};
   if(request==='@/lib/examHintsServer') return {loadPublishedHints:async()=>new Map()};
   if(request==='@/lib/examFormulas') return {parseFormulaSheet:()=>null};
+  if(request==='@/lib/examPaper') return {parseExamPaperTemplate:()=>null,parsePaperSections:()=>[],resolveExamPaperHeader:(x)=>({organizationName:x.organizationName,organizationLogoUrl:x.organizationLogoUrl??null,showLogo:true,title:x.examTitle,period:null,academicYear:null,gradeLabel:null,subject:null,durationMinutes:x.examDurationMinutes??null,totalMarks:x.totalMarks??null,instructions:x.examInstructions??null,candidateName:x.candidateName??null,candidateRef:x.candidateRef??null})};
   if(request==='@/lib/lockdown') return {parseLockdownSettings:(s)=>s??null, DEFAULT_EXAM_LOCKDOWN:{enabled:false,require_app:false}};
   if(request==='@/lib/supabase/server') return {createAdminClient:()=>admin};
   if(request==='next/server') return {NextResponse:{json:(body,options)=>({body,status:options?.status??200,headers:options?.headers??{}})}};

@@ -12,12 +12,21 @@ import { createAdminClient } from "./supabase/server";
  * operational access. Ordinary customers — including Institutional ones —
  * remain subject to global module toggles and their plan entitlements.
  */
-export type FeatureKey = "live_quizzes" | "examinations" | "proctoring";
+export type FeatureKey =
+  | "live_quizzes"
+  | "examinations"
+  | "proctoring"
+  | "question_paper_builder"
+  | "scientific_calculator"
+  | "official_exam_paper";
 
 export const FEATURE_DEFAULTS: Record<FeatureKey, boolean> = {
   live_quizzes: true,
   examinations: true,
   proctoring: true,
+  question_paper_builder: true,
+  scientific_calculator: true,
+  official_exam_paper: true,
 };
 
 export async function getFeatureFlags(): Promise<Record<FeatureKey, boolean>> {
