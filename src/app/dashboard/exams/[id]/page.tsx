@@ -17,6 +17,9 @@ import { deriveResultStage } from "@/lib/resultLifecycle";
 import { ResultLifecycle } from "@/components/exam/ResultLifecycle";
 import { ExamFormulaSheetCard } from "@/components/formulas/ExamFormulaSheetCard";
 import { setExamGradingSystem } from "@/app/dashboard/grading/actions";
+import { MypExamGradingConfig } from "@/components/grading/MypExamGradingConfig";
+import { MypMarkingStructure } from "@/components/grading/MypMarkingStructure";
+import { mypReferenceGroup, parseMypExamConfig } from "@/lib/mypExamConfig";
 import { getI18n } from "@/lib/i18n/server";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
@@ -34,7 +37,7 @@ export default async function ExamDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ added?: string; ok?: string; e?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; validation_error?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
+  searchParams: Promise<{ added?: string; ok?: string; e?: string; myp_group?: string; mark_error?: string; mark_ok?: string; publish_error?: string; publish_ok?: string; validation_error?: string; access_ok?: string; access_error?: string; room_error?: string; candidate_error?: string; candidate_ok?: string; incident_error?: string; incident_ok?: string; moderation_ok?: string; moderation_error?: string; ai_ok?: string; ai_error?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
@@ -78,6 +81,16 @@ export default async function ExamDetailPage({
   ]);
   const selectedGradingSystemId =
     typeof settings.grading_system_id === "string" ? settings.grading_system_id : "";
+  const selectedGradingSystem = (gradingSystems ?? []).find((gs) => gs.id === selectedGradingSystemId) ?? null;
+  // MYP criteria & strand configuration: shown when the attached grading
+  // framework is MYP. The saved snapshot lives on the exam settings.
+  const mypSavedConfig = parseMypExamConfig(settings.myp_grading);
+  const mypFrameworkActive = selectedGradingSystem?.curriculum === "myp";
+  const requestedGroup = typeof sp.myp_group === "string" ? sp.myp_group : "";
+  const mypGroupKey =
+    requestedGroup && mypReferenceGroup(requestedGroup)
+      ? requestedGroup
+      : (mypSavedConfig?.subject_group ?? "mathematics");
   const rawSheet = (settings.formula_sheet ?? null) as Record<string, unknown> | null;
   const sheetForCard =
     rawSheet && typeof rawSheet === "object" && !Array.isArray(rawSheet)
@@ -277,6 +290,25 @@ export default async function ExamDetailPage({
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
       {sp.ok === "formula" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Formula sheet saved for this examination.</p>}
       {sp.ok === "grading" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Grading configuration saved for this examination.</p>}
+      {sp.ok === "mypgrading" && (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          MYP criteria and strand selection saved as a snapshot on this examination.
+        </p>
+      )}
+      {sp.ok === "myp_rubric" && (
+        <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+          MYP rubric generated from the selected criteria and strands, and attached to this examination for marking.
+        </p>
+      )}
+      {typeof sp.e === "string" && sp.e.startsWith("myp_") && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          {sp.e === "myp_rubric_exists"
+            ? "A MYP rubric has already been generated for this examination — edit or duplicate it from Rubrics instead of generating a second one."
+            : sp.e === "myp_no_config"
+              ? "Save the MYP criteria and strand selection first, then build the rubric."
+              : `The MYP configuration could not be saved (${sp.e}). Check the subject group, criteria and strand selections.`}
+        </p>
+      )}
       {typeof sp.e === "string" && sp.e.startsWith("formula") && (
         <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
           The formula sheet could not be saved ({sp.e}). Check every group has a title and at least one formula, then retry.
@@ -588,6 +620,15 @@ export default async function ExamDetailPage({
               : "No grading system attached — raw marks apply."}
           </p>
         )}
+
+        {mypFrameworkActive && (
+          <MypExamGradingConfig
+            examId={id}
+            groupKey={mypGroupKey}
+            savedConfig={mypSavedConfig}
+            canEdit={can(ctx, org.id, CREATOR_ROLES)}
+          />
+        )}
       </Card>
 
       {/* Results Management & Individual Candidate Links */}
@@ -821,6 +862,7 @@ export default async function ExamDetailPage({
 
           <Card className="p-6">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Marking queue ({awaitingMarking.length})</h2>
+            {mypSavedConfig && <div className="mt-3"><MypMarkingStructure config={mypSavedConfig} /></div>}
             {awaitingMarking.length === 0 ? (
               <p className="mt-2 text-sm text-ink-soft">No written answers awaiting a corrector. Objective questions mark themselves automatically.</p>
             ) : (

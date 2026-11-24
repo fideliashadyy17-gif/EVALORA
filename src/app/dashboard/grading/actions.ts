@@ -8,10 +8,11 @@
  * remain behind the validate → publish workflow.
  */
 
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { audit } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { GRADING_CURRICULA, type GradingCurriculum, type GradingSystemConfig } from "@/lib/gradingSystems";
+import { buildMypExamConfigFromForm, parseMypExamConfig } from "@/lib/mypExamConfig";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -182,7 +183,7 @@ export async function archiveGradingSystem(formData: FormData) {
 export async function setExamGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, MANAGER_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
     redirect("/dashboard/exams?e=forbidden");
   }
   const examId = String(formData.get("exam_id") ?? "");
@@ -232,7 +233,7 @@ export async function setExamGradingSystem(formData: FormData) {
 export async function setQuizGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, MANAGER_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
     redirect("/dashboard/quizzes?e=forbidden");
   }
   const quizId = String(formData.get("quiz_id") ?? "");
@@ -276,4 +277,152 @@ export async function setQuizGradingSystem(formData: FormData) {
   await audit(ctx, "quiz.grading_system_set", "quizzes", quizId, org.id, { grading_system_id: nextSystemId });
   revalidatePath(`/dashboard/quizzes/${quizId}`);
   redirect(`/dashboard/quizzes/${quizId}?ok=grading`);
+}
+
+// ═══ MYP criteria & strand configuration (per examination) ══════════════
+
+/**
+ * Save the MYP criteria/strand selection as a versioned SNAPSHOT inside
+ * `exams.settings.myp_grading`. Titles and descriptions are copied with the
+ * selection, so later reference-library edits never change this examination's
+ * historical grading structure. Marking screens read the snapshot.
+ */
+export async function saveMypExamGrading(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+    redirect("/dashboard/exams?e=forbidden");
+  }
+  const examId = String(formData.get("exam_id") ?? "");
+  if (!UUID.test(examId)) fail("id");
+
+  const built = buildMypExamConfigFromForm(formData, String(formData.get("subject_group") ?? ""));
+  if (!built.ok) fail(`myp_${built.error}`);
+
+  const supabase = await createClient();
+  const { data: exam } = await supabase
+    .from("exams")
+    .select("settings")
+    .eq("id", examId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!exam) fail("missing");
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const { error } = await supabase
+    .from("exams")
+    .update({
+      settings: { ...currentSettings, myp_grading: built.config },
+    })
+    .eq("id", examId)
+    .eq("organization_id", org.id);
+  if (error) fail("save");
+  await audit(ctx, "exam.myp_grading_saved", "exams", examId, org.id, {
+    subject_group: built.config.subject_group,
+    criteria: built.config.criteria.map((criterion) => criterion.code).join(","),
+    strands: built.config.criteria.reduce((sum, c) => sum + c.strands.length, 0),
+    reference: built.config.reference,
+  });
+  revalidatePath(`/dashboard/exams/${examId}`);
+  redirect(`/dashboard/exams/${examId}?ok=mypgrading`);
+}
+
+/**
+ * Build an assessment rubric FROM the saved MYP snapshot and associate it
+ * with the examination (examination-wide link, so the marking queue offers
+ * criterion-level scoring against the selected structure). Idempotent: an
+ * already-generated rubric for this examination refuses a duplicate.
+ */
+export async function generateMypRubricFromConfig(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+    redirect("/dashboard/exams?e=forbidden");
+  }
+  const examId = String(formData.get("exam_id") ?? "");
+  if (!UUID.test(examId)) fail("id");
+
+  const supabase = await createClient();
+  const { data: exam } = await supabase
+    .from("exams")
+    .select("id, title, settings")
+    .eq("id", examId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!exam) fail("missing");
+
+  const config = parseMypExamConfig((exam.settings as Record<string, unknown> | null)?.myp_grading);
+  if (!config) fail("myp_no_config");
+
+  // One generated rubric per examination: detect an existing linked rubric
+  // carrying the generation marker.
+  const { data: existingLinks } = await supabase
+    .from("exam_rubric_links")
+    .select("rubric_id, grading_rubrics(title, description, curriculum)")
+    .eq("exam_id", examId)
+    .eq("organization_id", org.id);
+  const alreadyGenerated = ((existingLinks ?? []) as unknown as {
+    grading_rubrics: { description?: string | null } | null;
+  }[]).some((link) =>
+    (link.grading_rubrics?.description ?? "").includes("Generated from MYP criteria snapshot"),
+  );
+  if (alreadyGenerated) fail("myp_rubric_exists");
+
+  const marker = "Generated from MYP criteria snapshot — edit by duplicating; scored exams keep this version.";
+  const title = `MYP ${config.subject_group_label} · ${exam.title}`.slice(0, 200);
+
+  const { data: rubric, error: rubricError } = await supabase
+    .from("grading_rubrics")
+    .insert({
+      organization_id: org.id,
+      title,
+      description: marker,
+      framework: "IB MYP",
+      curriculum: "myp",
+      grade_label: config.subject_group_label.slice(0, 80),
+      status: "draft",
+      version: 1,
+      created_by: ctx.user.id,
+    })
+    .select("id")
+    .maybeSingle();
+  if (rubricError || !rubric) fail("myp_rubric");
+
+  const rows = config.criteria.map((criterion, index) => {
+    const strandLines = criterion.strands.length
+      ? "\n\nSelected strands:\n" +
+        criterion.strands.map((strand) => `- ${strand.code} ${strand.title} — ${strand.description}`).join("\n")
+      : "";
+    return {
+      rubric_id: rubric.id,
+      organization_id: org.id,
+      position: index,
+      code: criterion.code,
+      label: criterion.title,
+      description: `${criterion.description}${strandLines}`.slice(0, 4000),
+      max_marks: criterion.marks ?? 10,
+      weight: criterion.weight,
+      levels: null,
+    };
+  });
+  const { error: criteriaError } = await supabase.from("grading_rubric_criteria").insert(rows);
+  if (criteriaError) fail("myp_rubric");
+
+  const { error: linkError } = await supabase.from("exam_rubric_links").insert({
+    organization_id: org.id,
+    exam_id: examId,
+    question_id: null,
+    rubric_id: rubric.id,
+    created_by: ctx.user.id,
+  });
+  if (linkError) fail("myp_rubric");
+
+  await audit(ctx, "exam.myp_rubric_generated", "grading_rubrics", rubric.id, org.id, {
+    exam_id: examId,
+    subject_group: config.subject_group,
+    criteria: config.criteria.length,
+  });
+  revalidatePath(`/dashboard/exams/${examId}`);
+  revalidatePath(`/dashboard/rubrics/${rubric.id}`);
+  redirect(`/dashboard/exams/${examId}?ok=myp_rubric`);
 }
