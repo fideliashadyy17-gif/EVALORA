@@ -13,15 +13,30 @@ import { redirect } from "next/navigation";
 const ORG_TYPE_VALUES = ORG_TYPES.map((t) => t.value) as readonly string[];
 const MEMBER_ROLES = ["owner", "admin", "teacher", "organizer", "supervisor", "corrector", "participant", "candidate", "parent", "student"];
 
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+
 async function uploadLogo(orgId: string, file: File | null): Promise<string | null> {
   if (!file || file.size === 0) return null;
-  if (file.size > 2 * 1024 * 1024 || !file.type.startsWith("image/")) return null;
+  if (file.size > 2 * 1024 * 1024 || !LOGO_TYPES.includes(file.type)) return null;
   const admin = createAdminClient();
   const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+  if (!["png", "jpg", "jpeg", "webp"].includes(ext)) return null;
   const path = `${orgId}/logo-${Date.now()}.${ext}`;
   const { error } = await admin.storage.from("org-logos").upload(path, file, { upsert: true });
   if (error) return null;
-  return admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+  const publicUrl = admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+  return `${publicUrl}?v=${Date.now()}`;
+}
+
+async function deleteStoredLogo(url: string | null | undefined) {
+  if (!url) return;
+  const path = url.split("/org-logos/")[1]?.split("?")[0];
+  if (!path) return;
+  try {
+    await createAdminClient().storage.from("org-logos").remove([decodeURIComponent(path)]);
+  } catch {
+    // A missing object must never fail the profile save.
+  }
 }
 
 /** Find or create the auth user who will own / administer an organization. */
@@ -202,12 +217,15 @@ export async function updateOrganization(formData: FormData) {
   };
   if (slugPatch) patch.slug = slugPatch;
   patch.portal_enabled = formData.get("portal_enabled") === "on";
+  const { data: currentOrg } = await admin.from("organizations").select("logo_url").eq("id", id).maybeSingle();
+  const oldLogoUrl = (currentOrg?.logo_url as string | null) ?? null;
   const logoUrl = await uploadLogo(id, formData.get("logo") as File | null);
   if (logoUrl) patch.logo_url = logoUrl;
   if (formData.get("remove_logo") === "on") patch.logo_url = null;
 
   const { error: updateError } = await admin.from("organizations").update(patch).eq("id", id);
   if (updateError) redirect(`/admin/organizations/${id}?e=${org!.is_demo ? "demo_protected" : "save_failed"}`);
+  if (logoUrl || formData.get("remove_logo") === "on") await deleteStoredLogo(oldLogoUrl);
   await audit(ctx, slugPatch ? "organization.subdomain_changed" : "organization.updated", "organizations", id, id,
     slugPatch ? { from: org!.slug, to: slugPatch } : { portal_enabled: patch.portal_enabled });
   revalidatePath(`/admin/organizations/${id}`);

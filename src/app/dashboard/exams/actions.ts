@@ -73,6 +73,14 @@ export async function createExam(formData: FormData) {
       require_screen_share: proctoringWanted && formData.get("require_screen_share") === "on",
       randomize_questions: formData.get("randomize_questions") === "on",
       randomize_options: formData.get("randomize_options") === "on",
+      calculator: formData.get("calculator") === "on",
+      calculator_mode: formData.get("calculator_mode") === "basic" ? "basic" : "scientific",
+      calculator_angle_mode: formData.get("calculator_angle_mode") === "rad" ? "rad" : "deg",
+      exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
+      academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
+      grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
+      subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
+      exam_paper_template_id: String(formData.get("exam_paper_template_id") ?? "").trim() || null,
       lockdown: {
         enabled: lockdownWanted,
         require_app: true,
@@ -208,6 +216,46 @@ export async function updateExamLockdown(formData: FormData) {
   revalidatePath("/dashboard/exams");
   revalidatePath(`/dashboard/exams/${id}`);
   redirect(`/dashboard/exams/${id}?ok=lockdown`);
+}
+
+/** Per-examination scientific calculator + official paper header settings. */
+export async function updateExamCalculator(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const id = String(formData.get("id") ?? "");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  const supabase = await createClient();
+  const { data: exam, error: readError } = await supabase.from("exams").select("settings").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const templateId = String(formData.get("exam_paper_template_id") ?? "").trim() || null;
+  // A template id must belong to this organization.
+  if (templateId) {
+    const { data: tpl } = await supabase.from("exam_paper_templates").select("id").eq("id", templateId).eq("organization_id", org.id).maybeSingle();
+    if (!tpl) redirect(`/dashboard/exams/${id}?e=calculator`);
+  }
+
+  const updatedSettings = {
+    ...currentSettings,
+    calculator: formData.get("calculator") === "on",
+    calculator_mode: formData.get("calculator_mode") === "basic" ? "basic" : "scientific",
+    calculator_angle_mode: formData.get("calculator_angle_mode") === "rad" ? "rad" : "deg",
+    exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
+    academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
+    grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
+    subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
+    exam_paper_template_id: templateId,
+  };
+
+  const { error: updateError } = await supabase.from("exams").update({ settings: updatedSettings }).eq("id", id).eq("organization_id", org.id);
+  if (updateError) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  revalidatePath("/dashboard/exams");
+  revalidatePath(`/dashboard/exams/${id}`);
+  redirect(`/dashboard/exams/${id}?ok=calculator`);
 }
 
 export async function deleteExam(formData: FormData) {

@@ -13,6 +13,7 @@ const original=Module._load;Module._load=function(req,parent){if(parent?.filenam
  if(req==='@/lib/auth')return {requireUser:async()=>ctx,activeOrg:c=>c.org,can:c=>c.allowed,CREATOR_ROLES:[]};
  if(req==='@/lib/supabase/server')return {createClient:async()=>db};
  if(req==='@/lib/live')return {loadQuizQuestions:async()=>Array(count).fill({})};
+ if(req==='@/lib/examPaper')return {formatDuration:(m)=>m?`${m} minutes`:'—',parseExamPaperTemplate:()=>null,parsePaperSections:()=>[],resolveExamPaperHeader:(x)=>({organizationName:x.organizationName,organizationLogoUrl:x.organizationLogoUrl??null,showLogo:true,title:x.examTitle,period:null,academicYear:null,gradeLabel:null,subject:null,durationMinutes:x.examDurationMinutes??null,totalMarks:x.totalMarks??null,instructions:x.examInstructions??null,candidateName:null,candidateRef:null})};
  if(req==='@/lib/printablePaper')return {PrintablePaperError:Error,preparePrintableQuestions:()=>prepared};
  if(req==='@/lib/printablePackets')return {
    PrintablePacketError:Error,

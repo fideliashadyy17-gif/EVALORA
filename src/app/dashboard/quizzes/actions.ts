@@ -19,6 +19,28 @@ const QuizSchema = z.object({
   randomize_options: z.boolean(),
   time_per_question_seconds: z.number().int().min(5).max(3600),
   question_ids: z.array(z.string()),
+  sections: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(8),
+        title: z.string().min(1).max(200),
+        instructions: z.string().max(1000).optional(),
+        questions: z.number().int().min(0).optional(),
+        marks: z.number().min(0).optional(),
+      }),
+    )
+    .max(12)
+    .optional(),
+  section_of: z.record(z.string(), z.string()).optional(),
+  calculator: z.boolean().optional(),
+  calculator_mode: z.enum(["scientific", "basic"]).optional(),
+  calculator_angle_mode: z.enum(["deg", "rad"]).optional(),
+  exam_period: z.string().max(120).optional(),
+  academic_year: z.string().max(40).optional(),
+  grade_label: z.string().max(80).optional(),
+  subject: z.string().max(120).optional(),
+  instructions: z.string().max(4000).optional(),
+  exam_paper_template_id: z.string().nullable().optional(),
 });
 
 export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
@@ -37,15 +59,39 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
       return { error: `Your ${ent.planName} plan allows ${ent.limits.max_quizzes} quizzes. Upgrade in Billing.` };
   }
 
+  // Preserve unrelated settings keys (e.g. criterion totals, source) when
+  // editing an existing paper; only the builder-owned keys are replaced.
+  let preservedSettings: Record<string, unknown> = {};
+  if (q.id) {
+    const { data: existing } = await supabase
+      .from("quizzes")
+      .select("settings")
+      .eq("id", q.id)
+      .eq("organization_id", org.id)
+      .maybeSingle();
+    preservedSettings = ((existing?.settings as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  }
+
   const payload = {
     organization_id: org.id,
     title: q.title,
     description: q.description || null,
     status: q.status,
     settings: {
+      ...preservedSettings,
       randomize_questions: q.randomize_questions,
       randomize_options: q.randomize_options,
       time_per_question_seconds: q.time_per_question_seconds,
+      ...(q.sections ? { sections: q.sections } : {}),
+      ...(q.calculator !== undefined ? { calculator: q.calculator } : {}),
+      ...(q.calculator_mode ? { calculator_mode: q.calculator_mode } : {}),
+      ...(q.calculator_angle_mode ? { calculator_angle_mode: q.calculator_angle_mode } : {}),
+      ...(q.exam_period !== undefined ? { exam_period: q.exam_period } : {}),
+      ...(q.academic_year !== undefined ? { academic_year: q.academic_year } : {}),
+      ...(q.grade_label !== undefined ? { grade_label: q.grade_label } : {}),
+      ...(q.subject !== undefined ? { subject: q.subject } : {}),
+      ...(q.instructions !== undefined ? { instructions: q.instructions } : {}),
+      ...(q.exam_paper_template_id !== undefined ? { exam_paper_template_id: q.exam_paper_template_id } : {}),
     },
     created_by: ctx.user.id,
     updated_at: new Date().toISOString(),
@@ -66,7 +112,7 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   if (q.question_ids.length > 0) {
     // Verify the questions belong to this org (RLS also enforces on read).
     const { data: owned } = await supabase
-      .from("questions").select("id").eq("organization_id", org.id).in("id", q.question_ids);
+      .from("questions").select("id, config").eq("organization_id", org.id).in("id", q.question_ids);
     const ownedIds = new Set((owned ?? []).map((r) => r.id));
     const rows = q.question_ids
       .filter((id) => ownedIds.has(id))
@@ -75,9 +121,25 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
       const { error } = await supabase.from("quiz_questions").insert(rows);
       if (error) return { error: error.message };
     }
+    // Persist per-question section assignment without touching wording,
+    // options, keys or marks. Only the paper_section config key changes.
+    if (q.section_of) {
+      for (const row of owned ?? []) {
+        const section = q.section_of[row.id];
+        if (!section) continue;
+        const cfg = ((row as { config?: Record<string, unknown> | null }).config ?? {}) as Record<string, unknown>;
+        if (cfg.paper_section === section) continue;
+        await supabase
+          .from("questions")
+          .update({ config: { ...cfg, paper_section: section }, updated_at: new Date().toISOString() })
+          .eq("id", row.id)
+          .eq("organization_id", org.id);
+      }
+    }
   }
 
   revalidatePath("/dashboard/quizzes");
+  revalidatePath("/dashboard/paper-builder");
   return { ok: true, id: quizId };
 }
 

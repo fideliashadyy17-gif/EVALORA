@@ -18,7 +18,7 @@ import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamLockdown, updateWorkspaceExamAccess,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateWorkspaceExamAccess,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -50,6 +50,11 @@ export default async function ExamDetailPage({
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const lockdown = parseLockdownSettings(settings.lockdown);
+  const { data: templates } = await supabase
+    .from("exam_paper_templates")
+    .select("id, name, is_default")
+    .eq("organization_id", org.id)
+    .order("is_default", { ascending: false });
   const accessLink = String(
     (exam as Record<string, unknown>).access_link
       ?? `/exam/join/${String((exam as Record<string, unknown>).invite_token ?? "")}`,
@@ -405,6 +410,61 @@ export default async function ExamDetailPage({
             <Button type="submit" variant="primary" className="text-xs">
               Save Lockdown Settings
             </Button>
+          </form>
+        )}
+      </Card>
+
+      {/* Scientific calculator + official paper header */}
+      <Card className="mb-6 p-6">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-evergreen-900/10 pb-4">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Scientific Calculator &amp; Official Paper Header</h2>
+          <Badge tone={settings.calculator ? "green" : "gray"}>{settings.calculator ? "Calculator on" : "Calculator off"}</Badge>
+        </div>
+        {can(ctx, org.id, CREATOR_ROLES) && (
+          <form action={updateExamCalculator} className="mt-4 space-y-4">
+            <input type="hidden" name="id" value={id} />
+            <label className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+              <input type="checkbox" name="calculator" defaultChecked={settings.calculator === true} className="h-5 w-5 accent-evergreen-700" />
+              Scientific calculator available to candidates for this examination
+            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Calculator mode">
+                <Select name="calculator_mode" defaultValue={settings.calculator_mode === "basic" ? "basic" : "scientific"}>
+                  <option value="scientific">Scientific (full)</option>
+                  <option value="basic">Basic (four operations)</option>
+                </Select>
+              </Field>
+              <Field label="Default angle mode">
+                <Select name="calculator_angle_mode" defaultValue={settings.calculator_angle_mode === "rad" ? "rad" : "deg"}>
+                  <option value="deg">Degrees</option>
+                  <option value="rad">Radians</option>
+                </Select>
+              </Field>
+              <Field label="Examination period">
+                <Input name="exam_period" defaultValue={typeof settings.exam_period === "string" ? settings.exam_period : ""} placeholder="First Term Examination" />
+              </Field>
+              <Field label="Academic year">
+                <Input name="academic_year" defaultValue={typeof settings.academic_year === "string" ? settings.academic_year : ""} placeholder="2026–2027" />
+              </Field>
+              <Field label="Grade / Class">
+                <Input name="grade_label" defaultValue={typeof settings.grade_label === "string" ? settings.grade_label : ""} placeholder="MYP4" />
+              </Field>
+              <Field label="Subject">
+                <Input name="subject" defaultValue={typeof settings.subject === "string" ? settings.subject : ""} placeholder="Mathematics" />
+              </Field>
+            </div>
+            <Field label="Official paper template">
+              <Select name="exam_paper_template_id" defaultValue={typeof settings.exam_paper_template_id === "string" ? settings.exam_paper_template_id : ""}>
+                <option value="">Organization defaults</option>
+                {(templates ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (default)" : ""}</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="flex flex-wrap gap-2">
+              <Button type="submit" variant="primary" className="text-xs">Save calculator &amp; header settings</Button>
+              <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline" className="text-xs">Preview official paper</ButtonLink>
+            </div>
           </form>
         )}
       </Card>

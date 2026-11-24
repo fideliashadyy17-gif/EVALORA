@@ -1,7 +1,7 @@
 import { Badge, Button, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { getFeatureFlags, type FeatureKey } from "@/lib/platform";
-import { Blocks, Radio, ShieldCheck, Video } from "lucide-react";
+import { Blocks, Calculator, FileText, Radio, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
 import { saveFeatures } from "../actions";
 
@@ -40,6 +40,30 @@ const MODULES: {
     enforcedAt: "Checked server-side in /api/livekit/token before any room token is minted.",
     impactWhenDisabled: "Candidates can still sit and submit papers without interruption; new video joins are paused.",
   },
+  {
+    key: "question_paper_builder",
+    name: "Question Paper Builder",
+    scope: "Organization examination paper assembly",
+    description: "Controls whether organization administrators and teachers can open the Question Paper Builder to assemble, section, publish, duplicate and archive examination papers.",
+    enforcedAt: "Checked server-side via the question_paper_builder capability on every paper-builder page and action.",
+    impactWhenDisabled: "Existing papers, examinations and candidate attempts are unaffected; only new paper assembly is paused.",
+  },
+  {
+    key: "scientific_calculator",
+    name: "Scientific calculator",
+    scope: "Candidate examination calculator",
+    description: "Controls whether the premium scientific calculator is offered in the candidate examination interface. Per-examination settings still decide whether a given paper permits it.",
+    enforcedAt: "Checked server-side when the candidate paper is served; per-exam calculator settings remain authoritative.",
+    impactWhenDisabled: "Candidates can still sit and submit papers; the calculator launcher is hidden.",
+  },
+  {
+    key: "official_exam_paper",
+    name: "Official examination paper presentation",
+    scope: "Branded paper headers, templates and printable papers",
+    description: "Controls the official examination paper presentation (organization header, templates, printable papers) across dashboards and candidate screens.",
+    enforcedAt: "Checked server-side when official headers and templates are resolved.",
+    impactWhenDisabled: "Examinations still run with a plain title header; branded templates are hidden.",
+  },
 ];
 
 export default async function AdminModules({
@@ -75,6 +99,9 @@ export default async function AdminModules({
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Enabled modules" value={`${enabledCount} / ${MODULES.length}`} hint="Active platform capabilities" icon={<Blocks className="h-5 w-5" />} />
         <StatCard label="Live & Exam Gate" value={flags.live_quizzes && flags.examinations ? "Nominal" : "Restricted"} hint="Assessment creation gates" icon={<Radio className="h-5 w-5" />} />
+        <StatCard label="Paper Builder" value={flags.question_paper_builder ? "Active" : "Paused"} hint="Examination paper assembly" icon={<FileText className="h-5 w-5" />} />
+        <StatCard label="Scientific Calculator" value={flags.scientific_calculator ? "Active" : "Paused"} hint="Candidate calculator" icon={<Calculator className="h-5 w-5" />} />
+        <StatCard label="Official Paper" value={flags.official_exam_paper ? "Active" : "Paused"} hint="Branded paper headers" icon={<FileText className="h-5 w-5" />} />
         <StatCard label="Video Proctoring" value={flags.proctoring ? "Active" : "Paused"} hint="LiveKit token issuance" icon={<Video className="h-5 w-5" />} />
       </div>
 

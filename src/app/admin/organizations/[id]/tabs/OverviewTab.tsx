@@ -1,4 +1,5 @@
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
+import { LogoUpload } from "@/components/LogoUpload";
 import { ORG_TYPES } from "@/lib/brand";
 import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import { setOrgStatus } from "../../../actions";
@@ -90,8 +91,8 @@ export function OverviewTab({ org, sp }: { org: OrgRow; sp: { ok?: string; e?: s
               <Field label="Address" className="sm:col-span-2"><Input name="address" defaultValue={org.address ?? ""} /></Field>
               <Field label="Contact email"><Input name="contact_email" type="email" defaultValue={org.contact_email ?? ""} /></Field>
               <Field label="Contact phone"><Input name="contact_phone" defaultValue={org.contact_phone ?? ""} /></Field>
-              <Field label="Replace logo">
-                <Input name="logo" type="file" accept="image/*" />
+              <Field label="Replace logo" className="sm:col-span-2">
+                <LogoUpload currentUrl={org.logo_url} />
               </Field>
               <Field
                 label="Platform identifier"

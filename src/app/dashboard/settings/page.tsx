@@ -1,12 +1,57 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/components/ui";
+import { LogoUpload } from "@/components/LogoUpload";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { ssoProviderStatus } from "@/lib/sso";
 import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+
+const LOGO_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+async function updateOrgLogo(formData: FormData) {
+  "use server";
+  const ctx = await requireUser();
+  const org = activeOrg(ctx)!;
+  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings");
+  const admin = createAdminClient();
+  const { data: current } = await admin.from("organizations").select("logo_url").eq("id", org.id).maybeSingle();
+  const oldUrl = (current?.logo_url as string | null) ?? null;
+
+  if (formData.get("remove_logo") === "on") {
+    await admin.from("organizations").update({ logo_url: null }).eq("id", org.id);
+    if (oldUrl) {
+      const path = oldUrl.split("/org-logos/")[1]?.split("?")[0];
+      if (path) await admin.storage.from("org-logos").remove([decodeURIComponent(path)]);
+    }
+    revalidatePath("/dashboard/settings");
+    revalidatePath("/dashboard");
+    redirect("/dashboard/settings?saved=logo");
+  }
+
+  const file = formData.get("logo") as File | null;
+  if (!file || file.size === 0) redirect("/dashboard/settings?e=logo");
+  if (!LOGO_TYPES.includes(file.type) || file.size > LOGO_MAX_BYTES) redirect("/dashboard/settings?e=logo");
+  const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+  if (!["png", "jpg", "jpeg", "webp"].includes(ext)) redirect("/dashboard/settings?e=logo");
+  const path = `${org.id}/logo-${Date.now()}.${ext}`;
+  const { error: uploadError } = await admin.storage.from("org-logos").upload(path, file, { upsert: true });
+  if (uploadError) redirect("/dashboard/settings?e=logo");
+  const publicUrl = admin.storage.from("org-logos").getPublicUrl(path).data.publicUrl;
+  const versioned = `${publicUrl}?v=${Date.now()}`;
+  const { error: updateError } = await admin.from("organizations").update({ logo_url: versioned }).eq("id", org.id);
+  if (updateError) redirect("/dashboard/settings?e=logo");
+  if (oldUrl) {
+    const oldPath = oldUrl.split("/org-logos/")[1]?.split("?")[0];
+    if (oldPath && decodeURIComponent(oldPath) !== path) await admin.storage.from("org-logos").remove([decodeURIComponent(oldPath)]);
+  }
+  revalidatePath("/dashboard/settings");
+  revalidatePath("/dashboard");
+  redirect("/dashboard/settings?saved=logo");
+}
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -64,10 +109,39 @@ export default async function SettingsPage({
         eyebrow="Workspace Administration · Profile, Identity & SSO"
         title="Settings"
         subtitle="Your profile and your organization's configuration."
-        action={isManager ? <ButtonLink href="/dashboard/settings/proctoring" variant="outline">Proctoring retention →</ButtonLink> : undefined}
+        action={isManager ? (
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/dashboard/settings/templates" variant="outline">Paper templates →</ButtonLink>
+            <ButtonLink href="/dashboard/settings/proctoring" variant="outline">Proctoring retention →</ButtonLink>
+          </div>
+        ) : undefined}
       />
       {sp.saved && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Saved.</p>}
       {sp.e === "password" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Password must be at least 8 characters.</p>}
+      {sp.e === "logo" && <p className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">The logo could not be saved. Use a PNG, JPEG or WebP image up to 2 MB.</p>}
+
+      <Card className="mb-6 p-6">
+        <h2 className="font-display text-lg font-semibold text-evergreen-950">Organization branding &amp; logo</h2>
+        <p className="mt-1 text-sm text-ink-soft">
+          Your logo appears on your dashboard, school portal, official examination papers and candidate screens.
+          Change it whenever you want — the new logo replaces the old one everywhere immediately.
+        </p>
+        {isManager ? (
+          <form action={updateOrgLogo} className="mt-4 space-y-4">
+            <LogoUpload currentUrl={(orgFull?.logo_url as string | null) ?? null} />
+            <div className="flex flex-wrap items-center gap-3">
+              <Button type="submit">Save logo</Button>
+              {(orgFull?.logo_url as string | null) && (
+                <label className="flex items-center gap-2 text-sm text-ink">
+                  <input type="checkbox" name="remove_logo" className="h-4 w-4 accent-evergreen-700" /> Remove current logo
+                </label>
+              )}
+            </div>
+          </form>
+        ) : (
+          <p className="mt-3 text-sm text-ink-soft">Only owners and administrators can change the organization logo.</p>
+        )}
+      </Card>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="p-6">
