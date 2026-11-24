@@ -14,6 +14,7 @@ import {
   matchesResultsFilters,
   collectFilterOptions,
 } from "../src/lib/resultsManagement.ts";
+import { MODULE_CATALOG, MODULE_DEFAULTS, moduleEnabled } from "../src/lib/modules.ts";
 
 let n = 0;
 const check = (cond, msg) => { assert.ok(cond, msg); n += 1; };
@@ -101,7 +102,10 @@ check(opts.years.length === 1 && opts.grades.length === 2 && opts.subjects.lengt
 
 // ── 3. Organization dashboard page (source) ──────────────────────────────
 const orgPage = readFileSync("src/app/dashboard/results/page.tsx", "utf8");
-check(orgPage.includes('title: "Results & Management"'), "org page titled Results & Management");
+check(orgPage.includes('title: "Results Management & Candidate Links"'), "org page carries the shared module name");
+const adminResultsPage = readFileSync("src/app/admin/examinations/results/page.tsx", "utf8");
+check(adminResultsPage.includes("Results Management & Candidate Links"), "Super Admin page uses the same name");
+check(orgPage.includes("Results Management &amp; Candidate Links —"), "org candidate section titled identically to Super Admin");
 check(orgPage.includes("requireUser") && orgPage.includes("isStaffRole"), "staff guard present");
 check(orgPage.includes("MANAGER_ROLES"), "manager-gated sensitive actions");
 check(orgPage.includes('.eq("organization_id", org.id)'), "tenant-scoped exam query");
@@ -124,7 +128,7 @@ check(orgPage.includes("restricted to organization administrators"), "non-manage
 const chrome = readFileSync("src/components/dashboard/DashboardChrome.tsx", "utf8");
 check(chrome.includes('href: "/dashboard/results"'), "org nav entry exists");
 check(chrome.includes('labelKey: "nav.resultsManagement"'), "nav entry is translatable");
-check(chrome.includes('"/dashboard/results": "org_reports"'), "route capability mapped (org reports)");
+check(chrome.includes('"/dashboard/results": "exam_results"'), "nav route governed by the exam_results module");
 const navLine = chrome.split("\n").find((l) => l.includes('href: "/dashboard/results"'));
 check(Boolean(navLine) && navLine.includes('audience: "staff"'), "nav entry visible to staff (incl. Oak)");
 for (const lang of ["en", "fr", "es"]) {
@@ -289,5 +293,65 @@ check(examActionsSrc.includes('from("quizzes")') || readFileSync("src/app/dashbo
 const mappingSuite = readFileSync("scripts/test-question-assessment-mapping.mjs", "utf8");
 check(mappingSuite.includes("assessment_of") && mappingSuite.includes("quiz_questions"), "Paper Builder mappings covered end-to-end (PR #90 preserved)");
 check(readFileSync("scripts/test-publication-workflow.mjs", "utf8").length > 0, "existing publication workflow suite still present");
+
+// ── 10. Candidate links in the Organization dashboard ──────────────────
+check(orgPage.includes('data-testid="candidate-links-section"'), "candidate links section rendered for the selected examination");
+check(orgPage.includes('data-testid="candidate-link-row"'), "one row per candidate attempt");
+check(orgPage.includes('data-testid="candidate-links-link"'), "every exam card offers a Candidate links entry");
+check(orgPage.includes("CopyResultLinkButton"), "reuses the existing copy-to-clipboard component (no duplicate link system)");
+check(orgPage.includes("candidateName={candName}"), "copy action identifies which candidate the link belongs to");
+check(orgPage.includes('${origin}/exam/result/${a.access_token}'), "links use the existing per-attempt secure access_token (no predictable IDs)");
+check(orgPage.includes('aria-label={`Individual result link for ${candName}`}' ) || orgPage.includes("Individual result link for"), "link input is labelled per candidate");
+check(orgPage.includes("Registered candidates") && orgPage.includes("Submitted attempts"), "registered candidates and submitted attempts visible");
+check(orgPage.includes("Average score") && orgPage.includes("Pass rate"), "average score and pass rate visible");
+check(orgPage.includes("Published (links reveal results)") && orgPage.includes("Withheld (links hide results)"), "publication state of links tracked");
+check(orgPage.includes("Export links (CSV / Excel)"), "CSV export of candidate links (Super Admin parity)");
+check(orgPage.includes("PrintButton"), "print/PDF available (Super Admin parity)");
+check(orgPage.includes("while results are withheld, every personal link shows only an official"), "unpublished links explicitly documented as non-revealing");
+check(orgPage.includes("Unpublishing immediately withholds the links again"), "link availability managed by the existing publication mechanism");
+check(orgPage.includes("That examination does not exist in this organization."), "cross-tenant exam ids indistinguishable from missing");
+check(orgPage.includes('.eq("exam_id", selectedExamId)'), "attempts scoped to the selected examination");
+check(orgPage.includes('rows.find((r) => r.exam.id === selectedExamId)'), "selected exam must belong to this organization's loaded set");
+
+// Same secure backend on the exam workspace (already existing — preserved).
+const examWs = readFileSync("src/app/dashboard/exams/[id]/page.tsx", "utf8");
+check(examWs.includes("CopyResultLinkButton") && examWs.includes("Candidate individual result links"), "exam workspace keeps its candidate links table");
+check(examWs.includes("${origin}/exam/result/${a.access_token}"), "workspace and results index share the identical link mechanism");
+
+// ── 11. Module activation (Plan & Module Management) ────────────────────
+const resultsModule = MODULE_CATALOG.find((m) => m.key === "exam_results");
+check(Boolean(resultsModule), "exam_results exists in the module catalog");
+check(resultsModule.label === "Results Management & Candidate Links", "catalog label matches the required module name");
+check(resultsModule.group === "exams", "module listed under Examinations");
+check(MODULE_DEFAULTS.exam_results === true, "default ON — existing organizations (incl. Oak) keep it with zero migration");
+check(moduleEnabled(undefined, "exam_results") === true, "missing key resolves to enabled (backward compatible)");
+check(moduleEnabled({ exam_results: false }, "exam_results") === false && moduleEnabled({ exam_results: false }, "examinations") === true, "deactivation is scoped to this module only");
+check(chrome.includes('"/dashboard/results": "exam_results"'), "org nav entry governed by the exam_results module");
+check(chrome.includes('"/dashboard/reports": "org_reports"'), "Reports & Analytics nav unaffected by exam_results");
+check(chrome.includes('label: "Results Management & Candidate Links"'), "nav label uses the shared name");
+check(orgPage.includes('requireModule(entitlement, "exam_results", "/dashboard/results?e=module")'), "page blocked server-side when the module is deactivated");
+check(orgPage.includes("sp.e === \"module\""), "deactivation shows a clear explanation, not a crash");
+check(!/\.delete\(/.test(orgPage), "toggling/viewing never deletes results or candidate records");
+const planModulesPage = readFileSync("src/app/admin/plans/modules/page.tsx", "utf8");
+check(planModulesPage.includes('"@/lib/modules"') && planModulesPage.includes("MODULE_CATALOG"), "Super Admin Plan & Module Management renders the catalog (incl. exam_results)");
+check(planModulesPage.includes("requireSuperAdmin"), "only Super Admin can activate/deactivate modules");
+check(planModulesPage.includes("modules_override"), "per-organization override mechanism available");
+const modulesSrc = readFileSync("src/lib/modules.ts", "utf8");
+check(modulesSrc.includes("subscriptions.modules_override"), "org-level overrides persisted additively (nullable jsonb)");
+check(modulesSrc.includes("Platform-owner sessions bypass"), "platform owner bypass preserved (existing Super Admin capability intact)");
+
+// Oak access: default-true module + staff nav → Oak sees the entry.
+check(moduleEnabled({ exam_results: true }, "exam_results") === true, "Oak (Institution plan, default map) accesses the full functionality");
+
+// ── 12. Full workflow chain (examination → submission → marking →
+//        validation → publication → links → candidate sees own result) ──
+// Each stage is covered by executed or source-tested code:
+check(readFileSync("scripts/test-question-assessment-mapping.mjs", "utf8").includes('from("quiz_questions")'), "stage 1: examination reads the Paper's questions + mappings (source-tested elsewhere)");
+check(readFileSync("scripts/test-exam-submission-lifecycle.mjs", "utf8").length > 0, "stage 2: candidate submission suite present");
+check(examActionsSrc.includes("markAnswer") || readFileSync("src/app/dashboard/exams/actions.ts", "utf8").includes("export async function markAnswer"), "stage 3: manual marking action exists");
+// Stages 4–6 executed in section 8 above (validate → publish, gated, audited).
+check(resultPage.includes("Awaiting Publication") && resultPage.includes("resultsPublished"), "stage 7: unpublished link shows awaiting-confirmation, not marks");
+check(studentPage.includes("results_published"), "stage 8: candidate sees own result only after publication");
+check(adminResultsPage.includes("requireSuperAdmin"), "stage 9: Super Admin retains global oversight");
 
 console.log(`results-management: ${n} checks passed`);

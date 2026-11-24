@@ -1,7 +1,10 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
-import { Badge, Button, Card, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
+import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
+import { ExportButton, PrintButton } from "@/components/ExportTools";
+import { Badge, Button, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import {
   collectFilterOptions,
@@ -10,9 +13,10 @@ import {
   type ResultsFilters,
 } from "@/lib/resultsManagement";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
+import { fmtDateTime, toCsv } from "@/lib/utils";
 import {
   AlertTriangle,
+  Award,
   CheckCircle2,
   ClipboardList,
   Eye,
@@ -21,11 +25,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { publishResults, unvalidateResults, validateResults } from "../exams/actions";
 
-export const metadata: Metadata = { title: "Results & Management" };
+export const metadata: Metadata = { title: "Results Management & Candidate Links" };
 export const dynamic = "force-dynamic";
 
 const MESSAGES: Record<string, string> = {
@@ -34,6 +39,7 @@ const MESSAGES: Record<string, string> = {
   published: "Results published. Published results are now visible to the candidates' personal result links.",
   unpublished: "Results unpublished and withheld from candidates again.",
   forbidden: "You don't have permission to validate or publish results. Ask an organization administrator.",
+  module: "Results Management & Candidate Links is disabled for this organization. A Super Admin can activate it in Plan & Module Management — no results or candidate data are deleted when a module is toggled.",
 };
 
 const RESULT_AUDIT_ACTIONS = [
@@ -77,7 +83,7 @@ const chunk = <T,>(items: T[], size: number): T[][] => {
 export default async function ResultsManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<ResultsFilters & { page?: string; ok?: string; e?: string }>;
+  searchParams: Promise<ResultsFilters & { page?: string; ok?: string; e?: string; exam?: string }>;
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -86,6 +92,11 @@ export default async function ResultsManagementPage({
 
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  // Module activation (Plan & Module Management) gates this feature
+  // server-side — disabling it hides the nav entry AND blocks the page,
+  // without touching any results, links or examination data.
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "exam_results", "/dashboard/results?e=module");
 
   const { data: rawExams, error: examsError } = await supabase
     .from("exams")
@@ -169,6 +180,95 @@ export default async function ResultsManagementPage({
     auditByExam.set(entry.entity_id, list);
   }
 
+  // ── Candidate links for the selected examination (tenant-scoped) ──────
+  // Same secure mechanism as the Super Admin reference and the exam
+  // workspace: one per-attempt access_token → /exam/result/<token>, which
+  // only ever reveals that candidate's own result, and only once the
+  // examination's results are published.
+  const selectedExamId =
+    typeof sp.exam === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(sp.exam)
+      ? sp.exam
+      : null;
+  interface CandidateAttempt {
+    id: string;
+    status: string;
+    submitted_at: string | null;
+    score: number | null;
+    max_score: number | null;
+    attempt_number?: number | null;
+    access_token: string;
+    exam_candidates: { full_name: string; candidate_ref: string | null; email: string | null; access_code?: string | null } | null;
+  }
+  let candidateSection:
+    | { notFound: true }
+    | {
+        notFound?: false;
+        exam: ExamRow & { settings: Record<string, unknown> };
+        attempts: CandidateAttempt[];
+        candidateTotal: number;
+        passMark: number;
+        percentages: number[];
+        passes: number;
+        csv: string;
+        origin: string;
+      }
+    | null = null;
+  if (selectedExamId) {
+    const selectedRow = rows.find((r) => r.exam.id === selectedExamId);
+    if (!selectedRow) {
+      // Not in this organization's exams — indistinguishable from missing.
+      candidateSection = { notFound: true };
+    } else {
+      const h = await headers();
+      const host = h.get("x-forwarded-host") ?? h.get("host") ?? process.env.NEXT_PUBLIC_ROOT_DOMAIN ?? "evalora-edu.online";
+      const origin = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
+      const [{ data: rawAttempts }, { count: candidateTotal }] = await Promise.all([
+        supabase
+          .from("exam_attempts")
+          .select("id, status, submitted_at, score, max_score, attempt_number, access_token, exam_candidates(full_name, candidate_ref, email, access_code)")
+          .eq("exam_id", selectedExamId)
+          .order("score", { ascending: false, nullsFirst: false })
+          .limit(1000),
+        supabase.from("exam_candidates").select("id", { count: "exact", head: true }).eq("exam_id", selectedExamId),
+      ]);
+      const attempts = (rawAttempts ?? []) as unknown as CandidateAttempt[];
+      const passMark = Number(selectedRow.settings.pass_mark_percent ?? 50);
+      const scored = attempts.filter((a) => a.status !== "in_progress" && a.score != null && a.max_score);
+      const percentages = scored.map((a) => (Number(a.score) / Math.max(1, Number(a.max_score))) * 100);
+      const passes = percentages.filter((pct) => pct >= passMark).length;
+      const published = selectedRow.settings.results_published === true;
+      const csv = toCsv([
+        ["Candidate", "Reference", "Email", "Status", "Score", "Maximum", "Percent", "Outcome", "Publication", "Individual Result Link", "Started", "Submitted"],
+        ...attempts.map((a) => {
+          const pct = a.score != null && a.max_score ? Math.round((Number(a.score) / Math.max(1, Number(a.max_score))) * 1000) / 10 : "";
+          return [
+            a.exam_candidates?.full_name ?? "",
+            a.exam_candidates?.candidate_ref ?? "",
+            a.exam_candidates?.email ?? "",
+            a.status,
+            a.score ?? "",
+            a.max_score ?? "",
+            pct,
+            pct === "" ? "PENDING" : pct >= passMark ? "PASS" : "FAIL",
+            published ? "Published" : "Withheld",
+            `${origin}/exam/result/${a.access_token}`,
+            a.submitted_at ?? "",
+          ];
+        }),
+      ]);
+      candidateSection = {
+        exam: { ...selectedRow.exam, settings: selectedRow.settings },
+        attempts,
+        candidateTotal: candidateTotal ?? 0,
+        passMark,
+        percentages,
+        passes,
+        csv,
+        origin,
+      };
+    }
+  }
+
   const actionLabel: Record<string, string> = {
     "exam.results_validated": "Validated",
     "exam.results_validation_reopened": "Validation reopened",
@@ -189,9 +289,16 @@ export default async function ResultsManagementPage({
   return (
     <div className="space-y-6">
       <PageTitle
-        eyebrow="Examinations · Results & Management"
-        title="Results & Management"
-        subtitle="One operational view of every examination: submissions, marking progress, provisional scores, validation and publication. Completing marking never publishes anything — validation and publication are explicit, audited actions."
+        eyebrow="Examinations · Results & Candidate Links"
+        title="Results Management & Candidate Links"
+        subtitle="One operational view of every examination: submissions, marking progress, provisional scores, validation, publication and each candidate's individual result link. Completing marking never publishes anything — validation and publication are explicit, audited actions."
+        action={
+          typeof sp.exam === "string" && sp.exam ? (
+            <div className="flex flex-wrap gap-2">
+              <PrintButton />
+            </div>
+          ) : undefined
+        }
       />
 
       {sp.ok && MESSAGES[sp.ok] && (
@@ -201,7 +308,11 @@ export default async function ResultsManagementPage({
       )}
       {sp.e && (
         <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
-          {sp.e === "forbidden" ? MESSAGES.forbidden : "That results action could not be completed. Reload and try again."}
+          {sp.e === "forbidden"
+            ? MESSAGES.forbidden
+            : sp.e === "module"
+              ? MESSAGES.module
+              : "That results action could not be completed. Reload and try again."}
         </p>
       )}
 
@@ -218,6 +329,121 @@ export default async function ResultsManagementPage({
         <StatCard label="Published" value={totals.published} hint="visible to candidates" icon={<Eye className="h-5 w-5" />} />
         <StatCard label="Missing scores" value={totals.missingScores} hint="submitted, unmarked totals" icon={<AlertTriangle className="h-5 w-5" />} />
       </div>
+
+      {/* ── Candidate links (selected examination) ────────────────────── */}
+      {selectedExamId && !candidateSection && (
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
+          That examination does not exist in this organization.
+        </p>
+      )}
+      {candidateSection && "notFound" in candidateSection && candidateSection.notFound && (
+        <p role="alert" className="rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
+          That examination does not exist in this organization.
+        </p>
+      )}
+      {candidateSection && !("notFound" in candidateSection) && (
+        <Card className="p-5" data-testid="candidate-links-section">
+          <div className="flex flex-wrap items-start justify-between gap-3 border-b border-evergreen-900/10 pb-4">
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                  Results Management &amp; Candidate Links — {candidateSection.exam.title}
+                </h2>
+                <Badge tone={candidateSection.exam.settings.results_published ? "green" : "amber"}>
+                  {candidateSection.exam.settings.results_published ? "Published (links reveal results)" : "Withheld (links hide results)"}
+                </Badge>
+                {candidateSection.exam.settings.results_validated === true && (
+                  <Badge tone="green">Validated</Badge>
+                )}
+              </div>
+              <p className="mt-1 text-sm text-ink-soft">
+                Each candidate receives a unique, secure personal link. Copy and distribute it —
+                the link only ever shows that candidate&apos;s own result, and only after publication.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <ExportButton filename={`candidate-links-${candidateSection.exam.id}.csv`} csv={candidateSection.csv} label="Export links (CSV / Excel)" />
+              <Link href={`/dashboard/results`} className="inline-flex min-h-10 items-center rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
+                Back to overview
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+            <StatCard label="Registered candidates" value={candidateSection.candidateTotal} icon={<FileCheck2 className="h-5 w-5" />} />
+            <StatCard label="Submitted attempts" value={candidateSection.attempts.filter((a) => a.status !== "in_progress").length} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <StatCard label="Average score" value={candidateSection.percentages.length ? `${Math.round((candidateSection.percentages.reduce((a, b) => a + b, 0) / candidateSection.percentages.length) * 10) / 10}%` : "—"} icon={<Award className="h-5 w-5" />} />
+            <StatCard label="Pass rate" value={candidateSection.percentages.length ? `${Math.round((candidateSection.passes / candidateSection.percentages.length) * 1000) / 10}%` : "—"} hint={`${candidateSection.passes}/${candidateSection.percentages.length} at ${candidateSection.passMark}%`} icon={<CheckCircle2 className="h-5 w-5" />} />
+            <StatCard label="Link availability" value={candidateSection.exam.settings.results_published ? "Live" : "Withheld"} hint="per-candidate result links" icon={<Eye className="h-5 w-5" />} />
+          </div>
+
+          <div className="mt-4">
+            {candidateSection.attempts.length === 0 ? (
+              <p className="py-6 text-center text-sm text-ink-soft">
+                No candidate attempts yet. As candidates start and submit their papers, their individual result links will appear here.
+              </p>
+            ) : (
+              <DataTable
+                head={["Candidate Name & Identifier", "Attempt", "Submission Status", "Score", "%", "Publication", "Individual Result Link", "Actions"]}
+                label="Candidate individual result links"
+              >
+                {candidateSection.attempts.map((a, idx) => {
+                  const pct = a.score != null && a.max_score ? (Number(a.score) / Math.max(1, Number(a.max_score))) * 100 : null;
+                  const candName = a.exam_candidates?.full_name ?? "Candidate";
+                  const candId = a.exam_candidates?.candidate_ref || a.exam_candidates?.email || (a.exam_candidates?.access_code ? `Code: ${a.exam_candidates.access_code}` : null);
+                  const resultUrl = `${candidateSection.origin}/exam/result/${a.access_token}`;
+                  const published = candidateSection.exam.settings.results_published === true;
+                  return (
+                    <tr key={a.id} data-testid="candidate-link-row">
+                      <td>
+                        <span className="font-medium text-evergreen-950">{candName}</span>
+                        {candId && <span className="block text-xs text-ink-soft">{candId}</span>}
+                        <span className="block text-[11px] text-ink-soft">#{idx + 1}</span>
+                      </td>
+                      <td className="text-xs font-medium text-ink-soft">Attempt {a.attempt_number ?? 1}</td>
+                      <td>
+                        <Badge tone={a.status === "in_progress" ? "amber" : "green"}>{a.status.replace(/_/g, " ")}</Badge>
+                        {a.submitted_at && <span className="block text-[11px] text-ink-soft">{fmtDateTime(a.submitted_at)}</span>}
+                      </td>
+                      <td className="tabular-nums text-sm font-semibold text-evergreen-900">
+                        {a.status !== "in_progress" && a.score != null ? `${Number(a.score)} / ${Number(a.max_score ?? 0)}` : "—"}
+                      </td>
+                      <td className="tabular-nums text-sm">{pct === null ? "—" : `${Math.round(pct * 10) / 10}%`}</td>
+                      <td>
+                        <Badge tone={published ? "green" : "amber"}>{published ? "Published" : "Withheld"}</Badge>
+                      </td>
+                      <td className="max-w-xs">
+                        <input
+                          type="text"
+                          readOnly
+                          value={resultUrl}
+                          className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
+                          title={resultUrl}
+                          aria-label={`Individual result link for ${candName}`}
+                        />
+                      </td>
+                      <td>
+                        <div className="flex items-center gap-1.5">
+                          <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                          <Link href={`/exam/result/${a.access_token}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2">
+                            View
+                          </Link>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </DataTable>
+            )}
+          </div>
+
+          <p className="mt-3 text-[11px] text-ink-soft">
+            Publication control: while results are withheld, every personal link shows only an official
+            “received, awaiting review” confirmation — no marks, no answers, no other candidate&apos;s data.
+            Unpublishing immediately withholds the links again (existing security mechanism, no separate revocation needed).
+          </p>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card className="p-4">
@@ -334,6 +560,9 @@ export default async function ResultsManagementPage({
                     </Link>
                     <Link href={`/dashboard/reports/exam/${exam.id}`} className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
                       Candidate results
+                    </Link>
+                    <Link href={`/dashboard/results?exam=${exam.id}`} className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream" data-testid="candidate-links-link">
+                      Candidate links
                     </Link>
                     {isManager && attempts.length > 0 && settings.results_validated !== true && !settings.results_published && (
                       <form action={validateResults}>
