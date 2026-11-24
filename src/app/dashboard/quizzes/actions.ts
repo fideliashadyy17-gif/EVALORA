@@ -3,6 +3,11 @@
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
+import {
+  assessmentEquals,
+  parseQuestionAssessment,
+  validateQuestionAssessment,
+} from "@/lib/questionAssessment";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -32,6 +37,9 @@ const QuizSchema = z.object({
     .max(12)
     .optional(),
   section_of: z.record(z.string(), z.string()).optional(),
+  /** Per-question assessment mapping (framework / MYP criteria+strands /
+   *  framework elements), keyed by question id. null clears a mapping. */
+  assessment_of: z.record(z.string(), z.unknown()).optional(),
   calculator: z.boolean().optional(),
   calculator_mode: z.enum(["scientific", "basic"]).optional(),
   calculator_angle_mode: z.enum(["deg", "rad"]).optional(),
@@ -155,6 +163,57 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
         ? await deleteQuery.not("question_id", "in", `(${desired.join(",")})`)
         : await deleteQuery;
       if (removeError) return { error: friendlySaveError(removeError) };
+    }
+  }
+
+  // ── Question-level assessment mapping ────────────────────────────────
+  // Persisted on quiz_questions.assessment (per paper+question association).
+  // Unchanged mappings are skipped order-insensitively (jsonb key order),
+  // so re-saving a paper on an attempt-locked exam never trips the
+  // assessment-source guard. Changed mappings are validated against the
+  // LIVE reference before writing — a mapping whose MYP strand no longer
+  // exists is rejected with a clear message, never silently rewritten.
+  if (q.assessment_of) {
+    const { data: assessRows, error: assessReadError } = await supabase
+      .from("quiz_questions")
+      .select("question_id, assessment")
+      .eq("quiz_id", quizId!);
+    if (assessReadError) return { error: friendlySaveError(assessReadError) };
+    const storedByQuestion = new Map<string, unknown>(
+      (assessRows ?? []).map((row: { question_id: string; assessment: unknown }) => [row.question_id, row.assessment ?? null]),
+    );
+    for (const questionId of desired) {
+      if (!(questionId in q.assessment_of)) continue; // untouched by this save
+      const raw = q.assessment_of[questionId];
+      if (raw === null || raw === undefined) {
+        const stored = storedByQuestion.get(questionId) ?? null;
+        if (stored === null) continue;
+        const { error: clearError } = await supabase
+          .from("quiz_questions")
+          .update({ assessment: null })
+          .eq("quiz_id", quizId!)
+          .eq("question_id", questionId);
+        if (clearError) return { error: friendlySaveError(clearError) };
+        continue;
+      }
+      const validation = validateQuestionAssessment(raw);
+      if (!validation.ok) {
+        return {
+          error: `Assessment mapping on one question is not valid (${validation.error}). Re-open the question's Assessment mapping panel, re-select the framework criteria and strands from the current reference, and save again.`,
+        };
+      }
+      const parsed = parseQuestionAssessment(raw);
+      if (!parsed) {
+        return { error: "Assessment mapping on one question could not be read. Re-select it in the Assessment mapping panel and save again." };
+      }
+      const stored = storedByQuestion.get(questionId) ?? null;
+      if (assessmentEquals(stored, parsed)) continue;
+      const { error: assessWriteError } = await supabase
+        .from("quiz_questions")
+        .update({ assessment: parsed })
+        .eq("quiz_id", quizId!)
+        .eq("question_id", questionId);
+      if (assessWriteError) return { error: friendlySaveError(assessWriteError) };
     }
   }
 

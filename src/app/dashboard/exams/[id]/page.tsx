@@ -19,6 +19,7 @@ import { ExamFormulaSheetCard } from "@/components/formulas/ExamFormulaSheetCard
 import { setExamGradingSystem } from "@/app/dashboard/grading/actions";
 import { MypExamGradingConfig } from "@/components/grading/MypExamGradingConfig";
 import { MypMarkingStructure } from "@/components/grading/MypMarkingStructure";
+import { QuestionAssessmentBadges } from "@/components/grading/QuestionAssessmentBadges";
 import { mypReferenceGroup, parseMypExamConfig } from "@/lib/mypExamConfig";
 import { getI18n } from "@/lib/i18n/server";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
@@ -134,10 +135,15 @@ export default async function ExamDetailPage({
       .eq("exam_id", id)
       .order("created_at", { ascending: false }),
     exam.quiz_id
-      ? supabase.from("quiz_questions").select("question_id, points").eq("quiz_id", exam.quiz_id)
+      ? supabase.from("quiz_questions").select("question_id, points, assessment").eq("quiz_id", exam.quiz_id)
       : Promise.resolve({ data: [] }),
   ]);
   const paperPoints = new Map((paperQuestions ?? []).map((q) => [q.question_id, q.points]));
+  // Question-level assessment mapping from the Paper Builder (snapshot on
+  // quiz_questions) — shown next to each question while marking.
+  const assessmentByQuestion = new Map<string, unknown>(
+    (paperQuestions ?? []).map((q) => [q.question_id, (q as { assessment?: unknown }).assessment ?? null]),
+  );
   type MarkableAnswer = {
     id: string;
     question_id: string;
@@ -876,6 +882,7 @@ export default async function ExamDetailPage({
                       {(attempt.exam_candidates as { full_name: string } | null)?.full_name} · max {Number(paperPoints.get(ans.question_id) ?? ans.questions.points)} pts
                     </p>
                     <div className="mt-1 font-medium"><RichContent doc={(ans.questions as unknown as { prompt_doc?: import("@/lib/content").RichDoc | null }).prompt_doc ?? null} text={ans.questions.prompt} /></div>
+                    <QuestionAssessmentBadges assessment={assessmentByQuestion.get(ans.question_id) ?? null} />
                     <div className="mt-2 rounded-lg bg-white p-3">
                       <AnswerResponseView answer={ans.answer} assessParts={publicAssessParts(assessPartsFromConfig(ans.questions.config))} />
                     </div>
@@ -1052,6 +1059,7 @@ export default async function ExamDetailPage({
                         <span className="ml-auto text-xs text-ink-soft">{GRADING_METHOD_LABEL[ans.grading_method] ?? ans.grading_method}</span>
                       </div>
                       <p className="mt-1 truncate text-xs text-ink-soft">{ans.questions.prompt}</p>
+                      <QuestionAssessmentBadges assessment={assessmentByQuestion.get(ans.question_id) ?? null} />
                       {ans.questions.type === "assess_parts" ? (
                         <details className="mt-2 rounded-lg border border-evergreen-900/10 bg-white p-2">
                           <summary className="cursor-pointer text-xs font-semibold text-evergreen-800">Review typed answers and submitted working</summary>

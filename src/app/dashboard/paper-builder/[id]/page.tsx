@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { PaperBuilder } from "../PaperBuilder";
+import { parseQuestionAssessment } from "@/lib/questionAssessment";
 
 export const metadata: Metadata = { title: "Edit examination paper" };
 
@@ -21,16 +22,29 @@ export default async function EditPaperPage({ params }: { params: Promise<{ id: 
 
   const { data: quiz } = await supabase
     .from("quizzes")
-    .select("*, quiz_questions(question_id, position)")
+    .select("*, quiz_questions(question_id, position, assessment)")
     .eq("id", id)
     .eq("organization_id", org.id)
     .maybeSingle();
   if (!quiz) notFound();
 
   const settings = (quiz.settings as Record<string, unknown>) ?? {};
-  const ordered = [...((quiz.quiz_questions as { question_id: string; position: number }[]) ?? [])]
+  const questionRows = (quiz.quiz_questions as { question_id: string; position: number; assessment: unknown }[]) ?? [];
+  const ordered = [...questionRows]
     .sort((a, b) => a.position - b.position)
     .map((r) => r.question_id);
+  // Reopen → every saved mapping reappears on its question (null = unmapped).
+  const assessmentOf: Record<string, ReturnType<typeof parseQuestionAssessment>> = {};
+  for (const row of questionRows) {
+    assessmentOf[row.question_id] = parseQuestionAssessment(row.assessment);
+  }
+
+  const { data: gradingSystems } = await supabase
+    .from("grading_systems")
+    .select("id, name, curriculum, config")
+    .eq("organization_id", org.id)
+    .eq("status", "active")
+    .order("name");
 
   const { data: templates } = await supabase
     .from("exam_paper_templates")
@@ -132,7 +146,14 @@ export default async function EditPaperPage({ params }: { params: Promise<{ id: 
           subject: typeof settings.subject === "string" ? settings.subject : "",
           instructions: typeof settings.instructions === "string" ? settings.instructions : "",
           template_id: typeof settings.exam_paper_template_id === "string" ? settings.exam_paper_template_id : "",
+          assessment_of: assessmentOf,
         }}
+        gradingSystems={(gradingSystems ?? []).map((gs) => ({
+          id: gs.id,
+          name: gs.name,
+          curriculum: gs.curriculum,
+          config: (gs.config ?? {}) as Record<string, unknown>,
+        }))}
       />
     </>
   );
