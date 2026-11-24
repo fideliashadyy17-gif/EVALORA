@@ -2,6 +2,7 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, PenSquare, Radio } from "lucide-react";
 import type { Metadata } from "next";
@@ -16,6 +17,8 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "quizzes", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
   let quizQuery = supabase

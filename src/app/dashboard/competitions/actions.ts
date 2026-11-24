@@ -3,7 +3,7 @@
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { audit } from "@/lib/admin";
-import { getCapabilities } from "@/lib/capabilities";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -37,6 +37,12 @@ export async function createOrgCompetition(formData: FormData) {
   if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/competitions?e=forbidden");
 
   const admin = createAdminClient();
+  // Resolve the entitlement BEFORE any write: creating a competition is the
+  // competition_config module's surface and minting admission codes is the
+  // competition_code module's — both enforced with the same map the sidebar
+  // and pages resolve (one source of truth, no menu-only gating).
+  const { entitlement } = await getCapabilities(admin, ctx, org.id);
+  requireModule(entitlement, "competition_config", "/dashboard?e=module");
   const title = text(formData, "title", 160);
   if (!title) redirect("/dashboard/competitions?e=title");
 
@@ -75,7 +81,6 @@ export async function createOrgCompetition(formData: FormData) {
   // Every competition starts with one shareable admission code — only while
   // the Assessment Code module is enabled for this organization (same
   // entitlement the navigation and pages resolve).
-  const { entitlement } = await getCapabilities(admin, ctx, org.id);
   if (moduleEnabled(entitlement.modules, "competition_code")) {
     for (let attempt = 0; attempt < 6; attempt++) {
       const { error: codeError } = await admin

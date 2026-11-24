@@ -4,6 +4,7 @@ import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, P
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { BookOpen, FileUp, KeyRound, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -34,6 +35,8 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const canEdit = can(ctx, org.id, CREATOR_ROLES);
   const canManageClasses = can(ctx, org.id, MANAGER_ROLES) || canEdit;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "students", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
 

@@ -118,6 +118,7 @@ export default async function PlanModuleManagementPage({
           group: m.group,
           label: m.label,
           description: m.description,
+          surface: m.surface,
         }))}
         initialPlanId={sp.plan}
         initialSubId={sp.sub}

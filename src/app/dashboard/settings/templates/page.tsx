@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -18,6 +19,8 @@ export default async function TemplatesPage({
   if (!can(ctx, org.id, MANAGER_ROLES)) notFound();
   const sp = await searchParams;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "exam_templates", "/dashboard?e=module");
   const { data: templates } = await supabase
     .from("exam_paper_templates")
     .select("*")

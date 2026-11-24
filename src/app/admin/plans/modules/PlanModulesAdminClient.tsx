@@ -20,6 +20,7 @@ import {
   resolveEffectiveModule,
   type ModuleEntitlementSource,
   type ModuleGroup,
+  type ModuleSurface,
 } from "@/lib/modules";
 import { savePlanModules, saveSubscriptionModules } from "./actions";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,8 @@ export interface CatalogRow {
   group: ModuleGroup;
   label: string;
   description: string;
+  /** Where this module actually appears — never promise a phantom surface. */
+  surface: ModuleSurface;
 }
 
 const GROUP_LABEL_KEY: Record<ModuleGroup, string> = {
@@ -96,6 +99,14 @@ export function PlanModulesAdminClient({
     plan: t("admin.pmmSourcePlan"),
     override: t("admin.pmmSourceOverride"),
     default: t("admin.pmmSourceDefault"),
+  };
+  // The single honest answer to "where will I see this?": derived from the
+  // same catalog surface the organization sidebar derives its map from.
+  const surfaceText = (surface: ModuleSurface): string => {
+    if (surface.kind === "nav") return t("admin.pmmSurfaceSidebar", { href: surface.hrefs.join(" · ") });
+    if (surface.kind === "page") return t("admin.pmmSurfacePage", { href: surface.href, where: surface.where });
+    if (surface.kind === "admin") return t("admin.pmmSurfaceAdmin", { href: surface.href, where: surface.where });
+    return t("admin.pmmSurfaceNone", { why: surface.why });
   };
   const planEnabledCount = sub
     ? catalog.filter((m) => resolveEffectiveModule(sub.planModules, null, m.key).effective).length
@@ -166,6 +177,9 @@ export function PlanModulesAdminClient({
                           <span className="block font-semibold text-evergreen-950">{m.label}</span>
                           <span className="mt-0.5 block text-xs leading-5 text-ink-soft">
                             {m.description}
+                          </span>
+                          <span className="mt-1 block text-[11px] font-medium text-evergreen-700" data-testid="pmm-surface">
+                            {surfaceText(m.surface)}
                           </span>
                         </span>
                       </label>
@@ -275,6 +289,9 @@ export function PlanModulesAdminClient({
                           </span>
                           <span className="mt-0.5 block text-[11px] text-ink-soft">
                             {t("admin.pmmSource")}: {sourceLabel[resolved.source]}
+                          </span>
+                          <span className="mt-1 block text-[11px] font-medium text-evergreen-700" data-testid="pmm-surface">
+                            {surfaceText(m.surface)}
                           </span>
                         </span>
                         <select

@@ -1,6 +1,6 @@
 import { Badge, ButtonLink, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
-import { getCapabilities } from "@/lib/capabilities";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { parsePaperSections } from "@/lib/examPaper";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -18,7 +18,8 @@ export default async function PaperBuilderPage() {
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, CREATOR_ROLES)) notFound();
   const supabase = await createClient();
-  const { capabilities, featureFlags } = await getCapabilities(supabase, ctx, org.id);
+  const { capabilities, featureFlags, entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "paper_builder", "/dashboard?e=module");
   const builderEnabled = capabilities.question_paper_builder;
 
   const { data: papers } = await supabase

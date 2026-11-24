@@ -20,6 +20,7 @@ const eslintConfig = [
       "desktop/**",
       "next-env.d.ts",
       "scripts/*.generated.js",
+      ".tmp-test-sync/**",
     ],
   },
 ];

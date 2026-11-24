@@ -2,6 +2,7 @@ import { Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/com
 import { LogoUpload } from "@/components/LogoUpload";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { ssoProviderStatus } from "@/lib/sso";
 import { tenantPortalLabel, tenantPortalUrl } from "@/lib/tenant";
 import type { Metadata } from "next";
@@ -18,6 +19,9 @@ async function updateOrgLogo(formData: FormData) {
   const org = activeOrg(ctx)!;
   if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings");
   const admin = createAdminClient();
+  // Org-settings module gates org writes server-side, not just the page.
+  const { entitlement: logoEnt } = await getCapabilities(admin, ctx, org.id);
+  requireModule(logoEnt, "org_settings", "/dashboard/settings?e=module");
   const { data: current } = await admin.from("organizations").select("logo_url").eq("id", org.id).maybeSingle();
   const oldUrl = (current?.logo_url as string | null) ?? null;
 
@@ -73,6 +77,8 @@ async function updateOrg(formData: FormData) {
   const type = String(formData.get("type") ?? "school");
   if (!name) redirect("/dashboard/settings");
   const supabase = await createClient();
+  const { entitlement: orgEnt } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(orgEnt, "org_settings", "/dashboard/settings?e=module");
   await supabase.from("organizations").update({ name, type }).eq("id", org.id);
   revalidatePath("/dashboard/settings");
   redirect("/dashboard/settings?saved=org");
@@ -99,6 +105,8 @@ export default async function SettingsPage({
   const sp = await searchParams;
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "org_settings", "/dashboard?e=module");
   const { data: orgFull } = await supabase.from("organizations").select("*").eq("id", org.id).single();
   const ssoProviders = ssoProviderStatus();
   const anySsoEnabled = ssoProviders.some((provider) => provider.enabled);
