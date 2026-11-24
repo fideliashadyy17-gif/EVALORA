@@ -59,6 +59,19 @@ export default async function DashboardPage() {
     ? null
     : (overviewResult.data as Overview | null);
 
+  // The signed-in teacher's subject specializations for THIS organization
+  // (teacher_subjects). Shown on the workspace home so the platform treats
+  // teachers as subject specialists rather than generic accounts.
+  const { data: mySubjectRows } = await supabase
+    .from("teacher_subjects")
+    .select("subjects(id, name)")
+    .eq("organization_id", org.id)
+    .eq("profile_id", ctx.user.id)
+    .order("created_at");
+  const mySubjects = (mySubjectRows ?? [])
+    .map((row) => (row.subjects as unknown as { id: string; name: string } | null) ?? null)
+    .filter((subject): subject is { id: string; name: string } => Boolean(subject));
+
   if (!overview) {
     // Backward-compatible fallback: if the migration has not reached the
     // database yet, render the same dashboard from direct, tenant-scoped reads
@@ -150,6 +163,25 @@ export default async function DashboardPage() {
         <StatCard label="Live / open sessions" value={sessions.count ?? 0} icon={<Radio className="h-5 w-5" />} />
         <StatCard label="Team members" value={members.count ?? 0} icon={<Users className="h-5 w-5" />} />
       </div>
+
+      {mySubjects.length > 0 && (
+        <Card className="mt-6 p-5" data-testid="my-subjects">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">My subjects</h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Your teaching specializations in {org.name}. These preselect the subject when you author questions and
+                examinations.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {mySubjects.map((subject) => (
+                <Badge key={subject.id} tone="green">{subject.name}</Badge>
+              ))}
+            </div>
+          </div>
+        </Card>
+      )}
 
       <Card className="mt-6 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">

@@ -709,6 +709,8 @@ export function QuestionRunner({
                       <StructuredResponseEditor
                         workspace={workingWorkspace}
                         premium={experience.premiumMathInterface}
+                        questionId={question.question_id}
+                        fieldId={`working:${part.id}`}
                         initial={(workingParts[part.id] as Record<string, unknown>) ?? null}
                         disabled={disabled}
                         autosave={autosave}
@@ -757,6 +759,8 @@ export function QuestionRunner({
           <StructuredResponseEditor
             workspace={question.response_workspace ?? responseWorkspaceFor(question)}
             premium={experience.premiumMathInterface}
+            questionId={question.question_id}
+            fieldId="written"
             initial={initial ?? null}
             disabled={disabled}
             autosave={autosave}

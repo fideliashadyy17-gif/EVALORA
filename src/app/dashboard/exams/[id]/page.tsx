@@ -15,6 +15,8 @@ import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
 import { deriveResultStage } from "@/lib/resultLifecycle";
 import { ResultLifecycle } from "@/components/exam/ResultLifecycle";
+import { ExamFormulaSheetCard } from "@/components/formulas/ExamFormulaSheetCard";
+import { setExamGradingSystem } from "@/app/dashboard/grading/actions";
 import { getI18n } from "@/lib/i18n/server";
 import { CopyResultLinkButton } from "./CopyResultLinkButton";
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
@@ -58,6 +60,48 @@ export default async function ExamDetailPage({
     .select("id, name, is_default")
     .eq("organization_id", org.id)
     .order("is_default", { ascending: false });
+
+  // Formula sheet source data (library + subjects) for the per-exam composer.
+  const [{ data: formulaLibrary }, { data: gradingSystems }] = await Promise.all([
+    supabase
+      .from("formula_library")
+      .select("id, topic, chapter, title, latex, note")
+      .eq("organization_id", org.id)
+      .order("topic")
+      .order("title"),
+    supabase
+      .from("grading_systems")
+      .select("id, name, curriculum, grade_label, status")
+      .eq("organization_id", org.id)
+      .eq("status", "active")
+      .order("name"),
+  ]);
+  const selectedGradingSystemId =
+    typeof settings.grading_system_id === "string" ? settings.grading_system_id : "";
+  const rawSheet = (settings.formula_sheet ?? null) as Record<string, unknown> | null;
+  const sheetForCard =
+    rawSheet && typeof rawSheet === "object" && !Array.isArray(rawSheet)
+      ? {
+          title: typeof rawSheet.title === "string" ? rawSheet.title : "Formulas for this paper",
+          enabled: rawSheet.enabled !== false,
+          groups: Array.isArray(rawSheet.groups)
+            ? (rawSheet.groups as { title?: unknown; items?: unknown }[])
+                .filter((g) => g && typeof g === "object" && typeof g.title === "string")
+                .map((g) => ({
+                  title: g.title as string,
+                  items: Array.isArray(g.items)
+                    ? (g.items as { latex?: unknown; note?: unknown; source?: unknown }[])
+                        .filter((it) => it && typeof it === "object" && typeof it.latex === "string" && it.latex)
+                        .map((it) => ({
+                          latex: it.latex as string,
+                          ...(typeof it.note === "string" && it.note ? { note: it.note } : {}),
+                          ...(typeof it.source === "string" ? { source: it.source } : {}),
+                        }))
+                    : [],
+                }))
+            : [],
+        }
+      : null;
   const accessLink = String(
     (exam as Record<string, unknown>).access_link
       ?? `/exam/join/${String((exam as Record<string, unknown>).invite_token ?? "")}`,
@@ -231,6 +275,13 @@ export default async function ExamDetailPage({
       {sp.publish_error === "validation" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{t("results.validationFirstError")}</p>}
       {sp.publish_error && sp.publish_error !== "validation" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">Results visibility could not be confirmed. Reload and try again.</p>}
       {sp.publish_ok && <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Results visibility updated.</p>}
+      {sp.ok === "formula" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Formula sheet saved for this examination.</p>}
+      {sp.ok === "grading" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">Grading configuration saved for this examination.</p>}
+      {typeof sp.e === "string" && sp.e.startsWith("formula") && (
+        <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">
+          The formula sheet could not be saved ({sp.e}). Check every group has a title and at least one formula, then retry.
+        </p>
+      )}
       {sp.ok === "validated" && <p role="status" className="mb-4 rounded-lg bg-emerald-50 px-4 py-3 text-sm text-emerald-900">{t("results.validatedMsg")}</p>}
       {sp.ok === "unvalidated" && <p role="status" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">{t("results.unvalidatedMsg")}</p>}
       {sp.validation_error && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{sp.validation_error === "empty" ? "There are no attempts to validate yet." : sp.validation_error === "published" ? "Results are published — unpublish before reopening validation." : "Validation could not be confirmed. Reload and try again."}</p>}
@@ -493,6 +544,49 @@ export default async function ExamDetailPage({
               <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline" className="text-xs">Preview official paper</ButtonLink>
             </div>
           </form>
+        )}
+      </Card>
+
+      {/* Formula sheet — library selection, per-exam enable/disable */}
+      <Card className="mb-6 p-6">
+        <ExamFormulaSheetCard
+          examId={id}
+          library={(formulaLibrary ?? []) as { id: string; topic: string; chapter: string | null; title: string; latex: string; note: string | null }[]}
+          sheet={sheetForCard}
+          canEdit={can(ctx, org.id, CREATOR_ROLES)}
+        />
+      </Card>
+
+      {/* Grading configuration — reusable system attached to this paper */}
+      <Card className="mb-6 p-6">
+        <div className="flex flex-wrap items-center gap-2.5 border-b border-evergreen-900/10 pb-4">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Grading configuration</h2>
+          <Badge tone={selectedGradingSystemId ? "green" : "gray"}>
+            {selectedGradingSystemId ? "System attached" : "Organization default"}
+          </Badge>
+        </div>
+        {can(ctx, org.id, CREATOR_ROLES) ? (
+          <form action={setExamGradingSystem} className="mt-4 flex flex-wrap items-end gap-3">
+            <input type="hidden" name="exam_id" value={id} />
+            <Field label="Grading system for this examination">
+              <Select name="grading_system_id" defaultValue={selectedGradingSystemId} className="min-w-64">
+                <option value="">None — use organization defaults / raw marks</option>
+                {(gradingSystems ?? []).map((gs) => (
+                  <option key={gs.id} value={gs.id}>
+                    {gs.name} ({gs.curriculum}{gs.grade_label ? ` · ${gs.grade_label}` : ""})
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Button type="submit" variant="primary" className="text-xs">Save grading configuration</Button>
+            <ButtonLink href="/dashboard/grading" variant="outline" className="text-xs">Manage grading systems</ButtonLink>
+          </form>
+        ) : (
+          <p className="mt-3 text-sm text-ink-soft">
+            {selectedGradingSystemId
+              ? "A grading system is attached to this examination."
+              : "No grading system attached — raw marks apply."}
+          </p>
         )}
       </Card>
 

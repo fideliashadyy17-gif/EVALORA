@@ -1,6 +1,7 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { PlatformCredit } from "@/components/PlatformCredit";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
@@ -949,6 +950,77 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
     }
   }
 
+  // ── Sections ──────────────────────────────────────────────────────────
+  // Group the EXISTING ordered questions by their paper_section tag against
+  // the paper's configured sections (Paper Builder / exam configuration).
+  // Nothing is reordered, renumbered globally or re-scored: the model only
+  // adds per-section local numbering and per-section progress for the UI.
+  const sectionModel = useMemo(() => {
+    // Declared BEFORE every early return so the hook order never changes
+    // between the loading render and the loaded render.
+    if (!state) return null;
+    const { exam, questions } = state;
+    const configured = exam.paper_header?.sections ?? [];
+    const hasTags = questions.some((q) => q.question_meta?.paper_section);
+    if (!configured.length && !hasTags) return null;
+    type Sec = {
+      id: string;
+      title: string;
+      instructions: string | null;
+      marks: number | null;
+      indexes: number[];
+      answered: number;
+      total: number;
+    };
+    const order: string[] = [];
+    const byId = new Map<string, Sec>();
+    for (const s of configured) {
+      byId.set(s.id, {
+        id: s.id,
+        title: s.title,
+        instructions: s.instructions,
+        marks: s.marks,
+        indexes: [],
+        answered: 0,
+        total: 0,
+      });
+      order.push(s.id);
+    }
+    questions.forEach((q, i) => {
+      const sid = typeof q.question_meta?.paper_section === "string" ? q.question_meta.paper_section : "";
+      if (!sid) return;
+      if (!byId.has(sid)) {
+        byId.set(sid, {
+          id: sid,
+          title: `Section ${sid.length <= 2 ? sid.toUpperCase() : order.length + 1}`,
+          instructions: null,
+          marks: null,
+          indexes: [],
+          answered: 0,
+          total: 0,
+        });
+        order.push(sid);
+      }
+      byId.get(sid)!.indexes.push(i);
+    });
+    const localNumber = new Map<number, number>();
+    const sections: Sec[] = [];
+    for (const id of order) {
+      const sec = byId.get(id)!;
+      if (!sec.indexes.length) continue;
+      sec.indexes.forEach((qi, n) => localNumber.set(qi, n + 1));
+      sec.answered = sec.indexes.filter((qi) => savedIds.has(questions[qi].question_id)).length;
+      sec.total = sec.indexes.length;
+      sections.push(sec);
+    }
+    if (!sections.length) return null;
+    return { sections, localNumber };
+  }, [state, savedIds]);
+  const hasSections = Boolean(sectionModel);
+  const currentSection = sectionModel
+    ? sectionModel.sections.find((sec) => sec.indexes.includes(index)) ?? null
+    : null;
+
   if (sessionClosedHref && !state) {
     return (
       <Centered>
@@ -1051,6 +1123,39 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const correctCount = questions.filter((q) => q.result?.is_correct === true).length;
 
   const pct = attempt.score !== null && attempt.max_score ? (attempt.score / attempt.max_score) * 100 : null;
+
+  // Navigator button for one question. Inside a sectioned paper the label is
+  // the LOCAL number (restarts at 1 for every section); unsectioned papers
+  // keep the global number exactly as before.
+  function renderNavigatorButton(q: (typeof questions)[number], i: number) {
+    const displayNumber = sectionModel?.localNumber.get(i) ?? i + 1;
+    return (
+      <button
+        key={q.question_id}
+        onClick={() => navigateTo(i)}
+        aria-label={`Question ${displayNumber}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
+        aria-current={i === index ? "step" : undefined}
+        className={cn(
+          "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
+          i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
+        )}
+      >
+        {displayNumber}
+        {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
+        {q.result && (
+          <span
+            aria-hidden
+            className={cn(
+              "absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white",
+              resultMark(q.result).tone,
+            )}
+          >
+            {resultMark(q.result).glyph}
+          </span>
+        )}
+      </button>
+    );
+  }
 
   const examBody = (
     <div
@@ -1182,6 +1287,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               </div>
             </>
           )}
+          <PlatformCredit
+            className="shrink-0 self-center text-[10px]"
+            data-testid="candidate-attribution"
+          />
           <Badge tone={submitted ? "green" : "gold"}>{submitted ? attempt.status.replace(/_/g, " ") : "In progress"}</Badge>
           {submitted && (
             <Button
@@ -1284,34 +1393,32 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 aria-valuemax={questions.length}
                 aria-valuenow={savedIds.size}
               ><span style={{ width: `${questions.length ? Math.min(100, (savedIds.size / questions.length) * 100) : 0}%` }} /></div>}
-              <div className="exam-question-grid">
-                {questions.map((q, i) => (
-                  <button
-                    key={q.question_id}
-                    onClick={() => navigateTo(i)}
-                    aria-label={`Question ${i + 1}${q.result ? `, ${resultMark(q.result).label}` : savedIds.has(q.question_id) ? ", saved to server" : ", unanswered"}${flagged.includes(q.question_id) ? ", flagged for review" : ""}`}
-                    aria-current={i === index ? "step" : undefined}
-                    className={cn(
-                      "relative flex h-9 min-w-9 items-center justify-center rounded-lg px-1.5 text-sm font-medium transition",
-                      i === index ? "bg-evergreen-700 text-white" : savedIds.has(q.question_id) ? "bg-evergreen-100 text-evergreen-900" : "bg-white text-ink border border-evergreen-900/15",
-                    )}
-                  >
-                    {i + 1}
-                    {flagged.includes(q.question_id) && <span className="absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full bg-gold-500 ring-2 ring-white" />}
-                    {q.result && (
-                      <span
-                        aria-hidden
-                        className={cn(
-                          "absolute -bottom-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold text-white ring-2 ring-white",
-                          resultMark(q.result).tone,
-                        )}
+              {hasSections && sectionModel ? (
+                sectionModel.sections.map((sec) => (
+                  <div key={sec.id} className="mb-3 last:mb-0" data-testid={`navigator-section-${sec.id}`}>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => navigateTo(sec.indexes[0])}
+                        className="truncate text-left text-[11px] font-semibold uppercase tracking-wide text-evergreen-800 hover:underline"
+                        title={`Open ${sec.title}`}
                       >
-                        {resultMark(q.result).glyph}
+                        {sec.title}
+                      </button>
+                      <span className="shrink-0 text-[10px] font-medium tabular-nums text-ink-soft" aria-label={`${sec.answered} of ${sec.total} answered in ${sec.title}`}>
+                        {sec.answered}/{sec.total}
                       </span>
-                    )}
-                  </button>
-                ))}
+                    </div>
+                    <div className="exam-question-grid">
+                      {sec.indexes.map((qi) => renderNavigatorButton(questions[qi], qi))}
+                    </div>
+                  </div>
+                ))
+              ) : (
+              <div className="exam-question-grid">
+                {questions.map((q, i) => renderNavigatorButton(q, i))}
               </div>
+              )}
               {showCorrige ? (
                 <p className="mt-3 text-xs text-ink-soft">
                   {correctCount} correct · {answeredCount} answered · {questions.length - answeredCount} left blank (0 marks)
@@ -1470,6 +1577,41 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               )}
             </Card>
           ) : current && !corrigeAll && (
+            <>
+            {hasSections && sectionModel && !submitted && (
+              <nav
+                aria-label="Examination sections"
+                data-testid="section-nav"
+                className="mb-4 flex gap-2 overflow-x-auto pb-1 print:hidden"
+              >
+                {sectionModel.sections.map((sec) => {
+                  const active = sec.indexes.includes(index);
+                  return (
+                    <button
+                      key={sec.id}
+                      type="button"
+                      onClick={() => navigateTo(sec.indexes[0])}
+                      aria-current={active ? "true" : undefined}
+                      data-testid={`section-tab-${sec.id}`}
+                      className={cn(
+                        "flex shrink-0 items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs transition",
+                        active
+                          ? "border-evergreen-700 bg-evergreen-700 text-white shadow-sm"
+                          : "border-evergreen-900/15 bg-white text-evergreen-900 hover:bg-cream",
+                      )}
+                    >
+                      <span className="font-semibold">{sec.title}</span>
+                      <span
+                        className={cn("tabular-nums", active ? "text-emerald-100" : "text-ink-soft")}
+                        aria-label={`${sec.answered} of ${sec.total} answered`}
+                      >
+                        {sec.answered}/{sec.total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </nav>
+            )}
             <Card className="exam-question-card p-6 sm:p-7">
               {(() => {
                 // Pre-compute question feedback for authorised review
@@ -1484,12 +1626,21 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               })()}
               <div className="exam-question-meta mb-4 flex flex-wrap items-center gap-2">
                 <Badge tone="green">
-                  {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
-                  {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
-                  {current.question_meta?.question_number ?? index + 1} of{" "}
-                  {current.question_meta?.paper_section
-                    ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section).length
-                    : questions.length}
+                  {hasSections && sectionModel && currentSection ? (
+                    <>
+                      {currentSection.title} · Question{" "}
+                      {sectionModel.localNumber.get(index) ?? index + 1} of {currentSection.total}
+                    </>
+                  ) : (
+                    <>
+                      {current.question_meta?.paper_section ? `Part ${current.question_meta.paper_section} · ` : ""}
+                      {(current.question_meta?.question_span ?? 1) > 1 ? "Questions" : "Question"}{" "}
+                      {current.question_meta?.question_number ?? index + 1} of{" "}
+                      {current.question_meta?.paper_section
+                        ? questions.filter((q) => q.question_meta?.paper_section === current.question_meta?.paper_section).length
+                        : questions.length}
+                    </>
+                  )}
                 </Badge>
                 <Badge tone="gold">{current.points} point(s)</Badge>
                 {current.criterion ? (
@@ -1546,7 +1697,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   onDirtyChange={setAnswerDirty}
                   markings={currentMarkings}
                   experience={experience}
-                  displayQuestionNumber={index + 1}
+                  displayQuestionNumber={sectionModel?.localNumber.get(index) ?? index + 1}
                 />
               </MathInputProvider>
 
@@ -1562,6 +1713,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <Button variant="danger" className="ml-auto" onClick={requestSubmit}>{t("exam.submitExamination")}</Button>
               </div>
             </Card>
+            </>
           )}
 
           {confirmSubmit && (

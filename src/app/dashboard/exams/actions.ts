@@ -2,6 +2,7 @@
 
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
+import { validateSheetDraft } from "@/lib/formulaLibrary";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
@@ -222,6 +223,78 @@ export async function updateExamLockdown(formData: FormData) {
   revalidatePath("/dashboard/exams");
   revalidatePath(`/dashboard/exams/${id}`);
   redirect(`/dashboard/exams/${id}?ok=lockdown`);
+}
+
+/**
+ * Attach (or update / disable / clear) the formula sheet for ONE examination.
+ * The sheet is a validated snapshot stored in settings.formula_sheet with
+ * exam_id set to this examination — a sheet copied elsewhere is ignored by
+ * the candidate API. Candidates receive it only while `enabled` is true
+ * (parseFormulaSheet), and it opens in-page without leaving the paper.
+ */
+export async function updateExamFormulaSheet(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+    redirect("/dashboard/exams?e=forbidden");
+  }
+  const id = String(formData.get("exam_id") ?? "");
+  const mode = String(formData.get("mode") ?? "save");
+  if (!id) redirect("/dashboard/exams?e=id");
+
+  const supabase = await createClient();
+  const { data: exam, error: readError } = await supabase
+    .from("exams")
+    .select("settings")
+    .eq("id", id)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (readError || !exam) redirect(`/dashboard/exams/${id}?e=missing`);
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+
+  if (mode === "clear") {
+    const { error } = await supabase
+      .from("exams")
+      .update({ settings: { ...currentSettings, formula_sheet: null } })
+      .eq("id", id)
+      .eq("organization_id", org.id);
+    if (error) redirect(`/dashboard/exams/${id}?e=formula_save`);
+    await audit(ctx, "exam.formula_sheet_cleared", "exams", id, org.id, {});
+    revalidatePath(`/dashboard/exams/${id}`);
+    redirect(`/dashboard/exams/${id}?ok=formula`);
+  }
+
+  const enabled = String(formData.get("enabled") ?? "0") === "1";
+  const rawTitle = String(formData.get("title") ?? "").trim().slice(0, 80);
+  const title = rawTitle || "Formulas for this paper";
+  let parsedGroups: unknown;
+  try {
+    parsedGroups = JSON.parse(String(formData.get("groups_json") ?? "[]"));
+  } catch {
+    redirect(`/dashboard/exams/${id}?e=formula_groups`);
+  }
+  const groups = validateSheetDraft(parsedGroups);
+  if (!groups.ok) redirect(`/dashboard/exams/${id}?e=formula_${groups.error}`);
+
+  const sheet = {
+    version: 1 as const,
+    exam_id: id,
+    title,
+    groups: groups.groups,
+    enabled,
+  };
+  const { error } = await supabase
+    .from("exams")
+    .update({ settings: { ...currentSettings, formula_sheet: sheet } })
+    .eq("id", id)
+    .eq("organization_id", org.id);
+  if (error) redirect(`/dashboard/exams/${id}?e=formula_save`);
+  await audit(ctx, enabled ? "exam.formula_sheet_enabled" : "exam.formula_sheet_disabled", "exams", id, org.id, {
+    groups: groups.groups.length,
+    title,
+  });
+  revalidatePath(`/dashboard/exams/${id}`);
+  redirect(`/dashboard/exams/${id}?ok=formula`);
 }
 
 /** Per-examination scientific calculator + official paper header settings. */

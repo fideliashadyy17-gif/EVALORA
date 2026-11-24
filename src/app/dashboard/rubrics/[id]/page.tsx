@@ -1,11 +1,11 @@
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
-import type { RubricCriterion } from "@/lib/grading";
+import type { RubricCriterion, RubricPerformanceLevel } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { addCriterion, attachRubric, deleteCriterion, detachRubric, updateCriterion, updateRubric } from "../actions";
+import { addCriterion, attachRubric, deleteCriterion, detachRubric, duplicateRubric, updateCriterion, updateRubric } from "../actions";
 
 export const metadata: Metadata = { title: "Rubric" };
 export const dynamic = "force-dynamic";
@@ -24,6 +24,7 @@ const MESSAGES: Record<string, string> = {
   removed: "Criterion removed and the total recalculated.",
   attached: "Rubric attached to the examination.",
   detached: "Rubric detached from the examination.",
+  duplicated: "Grid duplicated — the copy is editable and versioned; the original keeps all historical marking links.",
 };
 
 const ERRORS: Record<string, string> = {
@@ -38,7 +39,67 @@ const ERRORS: Record<string, string> = {
   attach: "This rubric is already attached at that level.",
   detach: "The rubric could not be detached.",
   save: "The rubric could not be saved.",
+  versioned: "This grid has already scored answers, so its rules cannot change in place (that would rewrite what the stored marks mean). Duplicate it to edit a new version.",
+  levels: "Performance levels must have a label, valid number ranges inside the criterion maximum, and no overlapping bands.",
+  duplicate: "The grid could not be duplicated.",
 };
+
+/**
+ * Static performance-level rows (no client JS): four rows of
+ * label / min / max / description. Empty labels are ignored by
+ * parseLevelsFromForm; stored levels prefill the rows.
+ */
+function PerformanceLevelsEditor({ maxMarks, levels }: { maxMarks: number; levels: RubricPerformanceLevel[] | null }) {
+  const rows = (levels ?? []).slice(0, 4);
+  const slots = [0, 1, 2, 3];
+  return (
+    <fieldset className="rounded-lg border border-evergreen-900/15 bg-cream/50 p-2.5">
+      <legend className="px-1 text-[11px] font-semibold uppercase tracking-wide text-ink-soft">
+        Performance levels (optional)
+      </legend>
+      <div className="grid gap-2">
+        {slots.map((slot) => {
+          const stored = rows[slot];
+          return (
+            <div key={slot} className="grid gap-1.5 sm:grid-cols-[1fr_4.5rem_4.5rem]">
+              <Input
+                name="level_label"
+                defaultValue={stored?.label ?? ""}
+                maxLength={80}
+                placeholder={`Level ${slot + 1} label (e.g. ${slot === 0 ? "Excellent" : "…"})`}
+                aria-label={`Level ${slot + 1} label`}
+              />
+              <Input
+                name="level_min"
+                type="number"
+                step="0.25"
+                min={0}
+                max={maxMarks}
+                defaultValue={stored ? String(stored.min_marks) : ""}
+                placeholder="min"
+                aria-label={`Level ${slot + 1} minimum marks`}
+              />
+              <Input
+                name="level_max"
+                type="number"
+                step="0.25"
+                min={0}
+                max={maxMarks}
+                defaultValue={stored ? String(stored.max_marks) : ""}
+                placeholder="max"
+                aria-label={`Level ${slot + 1} maximum marks`}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-1.5 text-[11px] text-ink-soft">
+        Ranges are in marks out of {maxMarks}, must not overlap, and stay within the criterion maximum. Leave all rows
+        empty for a plain mark band without levels.
+      </p>
+    </fieldset>
+  );
+}
 
 export default async function RubricDetailPage({
   params,
@@ -88,6 +149,13 @@ export default async function RubricDetailPage({
             <span>
               {Number(rubric.total_marks)} marks · {bands.length} criteria · updated {fmtDateTime(rubric.updated_at)}
             </span>
+            <Badge tone="gold">v{Number((rubric as { version?: number }).version ?? 1)}</Badge>
+            {canMark && (
+              <form action={duplicateRubric} className="inline">
+                <input type="hidden" name="id" value={rubric.id} />
+                <Button type="submit" variant="outline" className="text-xs">Duplicate as new version</Button>
+              </form>
+            )}
           </span>
         }
         action={<ButtonLink href="/dashboard/rubrics" variant="outline">All rubrics</ButtonLink>}
@@ -151,6 +219,10 @@ export default async function RubricDetailPage({
                         <Field label="What this band rewards" hint="Shown to markers beside the mark box.">
                           <Textarea name="description" rows={2} maxLength={4000} defaultValue={c.description ?? ""} />
                         </Field>
+                        <PerformanceLevelsEditor maxMarks={Number(c.max_marks)} levels={c.levels ?? null} />
+                        <Field label="Weight (optional)" hint="Used by weighted-grid calculations; leave empty for equal weighting.">
+                          <Input name="weight" type="number" step="0.001" min={0} max={100} defaultValue={c.weight ?? ""} className="max-w-40" />
+                        </Field>
                         <div className="flex flex-wrap gap-2">
                           <Button type="submit" variant="outline">Save criterion</Button>
                         </div>
@@ -186,6 +258,12 @@ export default async function RubricDetailPage({
                     <Textarea name="description" rows={2} maxLength={4000} />
                   </Field>
                 </div>
+                <div className="mt-3">
+                  <PerformanceLevelsEditor maxMarks={5} levels={null} />
+                </div>
+                <Field label="Weight (optional)" hint="Used by weighted-grid calculations; leave empty for equal weighting.">
+                  <Input name="weight" type="number" step="0.001" min={0} max={100} className="max-w-40" />
+                </Field>
                 <Button type="submit" className="mt-3">Add criterion</Button>
               </form>
             </Card>
@@ -246,6 +324,22 @@ export default async function RubricDetailPage({
               <Field label="Framework">
                 <Input name="framework" defaultValue={rubric.framework ?? ""} maxLength={60} />
               </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Curriculum family">
+                  <Select name="curriculum" defaultValue={(rubric as { curriculum?: string | null }).curriculum ?? ""}>
+                    <option value="">Unspecified</option>
+                    <option value="cambridge">Cambridge International</option>
+                    <option value="british">British Curriculum</option>
+                    <option value="myp">IB MYP</option>
+                    <option value="ap">AP</option>
+                    <option value="beninese">Beninese</option>
+                    <option value="custom">Custom</option>
+                  </Select>
+                </Field>
+                <Field label="Grade / class">
+                  <Input name="grade_label" defaultValue={(rubric as { grade_label?: string | null }).grade_label ?? ""} maxLength={80} placeholder="MYP4" />
+                </Field>
+              </div>
               <Field label="Description">
                 <Textarea name="description" rows={4} maxLength={4000} defaultValue={rubric.description ?? ""} />
               </Field>
@@ -266,6 +360,13 @@ export default async function RubricDetailPage({
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-soft">Criteria</dt>
                 <dd className="font-semibold text-evergreen-950">{bands.length}</dd>
+              </div>
+              <div className="flex justify-between gap-3">
+                <dt className="text-ink-soft">Version lineage</dt>
+                <dd className="text-ink">
+                  v{Number((rubric as { version?: number }).version ?? 1)}
+                  {(rubric as { parent_id?: string | null }).parent_id ? " (copied)" : ""}
+                </dd>
               </div>
               <div className="flex justify-between gap-3">
                 <dt className="text-ink-soft">Created</dt>

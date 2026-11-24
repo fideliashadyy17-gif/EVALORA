@@ -4,6 +4,12 @@ import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  duplicatedTitle,
+  nextGridVersion,
+  parseLevelsFromForm,
+  rejectRuleEditForScoredGrid,
+} from "@/lib/rubricGrid";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +37,10 @@ export async function createRubric(formData: FormData) {
       title,
       framework: text(formData, "framework", 60) || null,
       description: text(formData, "description", 4000) || null,
+      curriculum: text(formData, "curriculum", 40) || null,
+      subject_id: null,
+      grade_label: text(formData, "grade_label", 80) || null,
+      version: 1,
       created_by: ctx.user.id,
     })
     .select("id")
@@ -50,12 +60,41 @@ export async function updateRubric(formData: FormData) {
   if (!["draft", "published", "archived"].includes(status)) redirect(`/dashboard/rubrics/${id}?e=status`);
 
   const supabase = await createClient();
+  const { data: current } = await supabase
+    .from("grading_rubrics")
+    .select("id, title, description, framework, curriculum, status")
+    .eq("id", id)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!current) redirect("/dashboard/rubrics");
+
+  // Historical-results guard: a grid that has already scored answers must be
+  // DUPLICATED to change its rules — stored marks keep their original meaning.
+  const { count: scored } = await supabase
+    .from("answer_rubric_scores")
+    .select("id", { count: "exact", head: true })
+    .eq("rubric_id", id);
+  const nextFramework = text(formData, "framework", 60) || null;
+  const nextDescription = text(formData, "description", 4000) || null;
+  const nextCurriculum = text(formData, "curriculum", 40) || null;
+  const statusChanged = status !== current.status;
+  const rulesChanged = rejectRuleEditForScoredGrid({
+    scoredAnswerCount: scored ?? 0,
+    titleChanged: title !== current.title,
+    descriptionChanged: nextDescription !== current.description,
+    frameworkChanged: nextFramework !== current.framework,
+    curriculumChanged: nextCurriculum !== current.curriculum,
+  });
+  if (rulesChanged) redirect(`/dashboard/rubrics/${id}?e=versioned`);
+
   const { data, error } = await supabase
     .from("grading_rubrics")
     .update({
-      title,
-      framework: text(formData, "framework", 60) || null,
-      description: text(formData, "description", 4000) || null,
+      title: rulesChanged ? current.title : title,
+      framework: nextFramework,
+      description: nextDescription,
+      curriculum: nextCurriculum,
+      grade_label: text(formData, "grade_label", 80) || null,
       status,
       updated_at: new Date().toISOString(),
     })
@@ -64,8 +103,71 @@ export async function updateRubric(formData: FormData) {
     .select("id")
     .maybeSingle();
   if (error || !data) redirect(`/dashboard/rubrics/${id}?e=save`);
+  void statusChanged;
   revalidatePath(`/dashboard/rubrics/${id}`);
   redirect(`/dashboard/rubrics/${id}?ok=saved`);
+}
+
+/**
+ * Duplicate a grid: criteria are copied, the new grid records its parent and
+ * increments the version. Historical links keep pointing at the ORIGINAL
+ * grid, so past marking rules and results are untouched.
+ */
+export async function duplicateRubric(formData: FormData) {
+  const { ctx, org } = await guard();
+  const sourceId = String(formData.get("id") ?? "");
+  if (!UUID.test(sourceId)) redirect("/dashboard/rubrics");
+  const supabase = await createClient();
+  const { data: source } = await supabase
+    .from("grading_rubrics")
+    .select("*")
+    .eq("id", sourceId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!source) redirect("/dashboard/rubrics");
+
+  const version = nextGridVersion((source as { version?: number }).version);
+  const { data: copy, error } = await supabase
+    .from("grading_rubrics")
+    .insert({
+      organization_id: org.id,
+      title: duplicatedTitle(source.title, version),
+      description: source.description,
+      framework: source.framework,
+      curriculum: (source as { curriculum?: string | null }).curriculum ?? null,
+      subject_id: (source as { subject_id?: string | null }).subject_id ?? null,
+      grade_label: (source as { grade_label?: string | null }).grade_label ?? null,
+      status: "draft",
+      version,
+      parent_id: source.id,
+      created_by: ctx.user.id,
+    })
+    .select("id")
+    .maybeSingle();
+  if (error || !copy) redirect(`/dashboard/rubrics/${sourceId}?e=duplicate`);
+
+  const { data: sourceCriteria } = await supabase
+    .from("grading_rubric_criteria")
+    .select("*")
+    .eq("rubric_id", sourceId)
+    .order("position");
+  const rows = ((sourceCriteria ?? []) as Record<string, unknown>[]).map((criterion) => ({
+    rubric_id: copy.id,
+    organization_id: org.id,
+    position: criterion.position,
+    code: criterion.code,
+    label: criterion.label,
+    description: criterion.description,
+    max_marks: criterion.max_marks,
+    levels: criterion.levels ?? null,
+    weight: criterion.weight ?? null,
+  }));
+  if (rows.length) {
+    const { error: criteriaError } = await supabase.from("grading_rubric_criteria").insert(rows);
+    if (criteriaError) redirect(`/dashboard/rubrics/${sourceId}?e=duplicate`);
+  }
+  revalidatePath("/dashboard/rubrics");
+  redirect(`/dashboard/rubrics/${copy.id}?ok=duplicated`);
 }
 
 export async function addCriterion(formData: FormData) {
@@ -95,6 +197,11 @@ export async function addCriterion(formData: FormData) {
     .limit(1)
     .maybeSingle();
 
+  const levels = parseLevelsFromForm(formData, Math.round(maxMarks * 100) / 100);
+  if (!levels) redirect(`/dashboard/rubrics/${rubricId}?e=levels`);
+  const weightRaw = Number(formData.get("weight"));
+  const weight = Number.isFinite(weightRaw) && weightRaw >= 0 ? Math.round(weightRaw * 1000) / 1000 : null;
+
   const { error } = await supabase.from("grading_rubric_criteria").insert({
     rubric_id: rubricId,
     organization_id: org.id,
@@ -103,6 +210,8 @@ export async function addCriterion(formData: FormData) {
     label,
     description: text(formData, "description", 4000) || null,
     max_marks: Math.round(maxMarks * 100) / 100,
+    levels: levels && levels.length ? levels : null,
+    weight,
   });
   if (error) redirect(`/dashboard/rubrics/${rubricId}?e=criterion`);
   revalidatePath(`/dashboard/rubrics/${rubricId}`);
@@ -120,6 +229,11 @@ export async function updateCriterion(formData: FormData) {
   if (!Number.isFinite(maxMarks) || maxMarks <= 0 || maxMarks > 1000)
     redirect(`/dashboard/rubrics/${rubricId}?e=marks`);
 
+  const levels = parseLevelsFromForm(formData, Math.round(maxMarks * 100) / 100);
+  if (!levels) redirect(`/dashboard/rubrics/${rubricId}?e=levels`);
+  const weightRaw = Number(formData.get("weight"));
+  const weight = Number.isFinite(weightRaw) && weightRaw >= 0 ? Math.round(weightRaw * 1000) / 1000 : null;
+
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("grading_rubric_criteria")
@@ -128,6 +242,8 @@ export async function updateCriterion(formData: FormData) {
       label,
       description: text(formData, "description", 4000) || null,
       max_marks: Math.round(maxMarks * 100) / 100,
+      levels: levels && levels.length ? levels : null,
+      weight,
     })
     .eq("id", id)
     .eq("rubric_id", rubricId)

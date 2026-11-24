@@ -108,6 +108,8 @@ export const fr = {
     questionBank: "Banque de questions",
     competitions: "Compétitions en direct",
     rubrics: "Grilles d'évaluation",
+    formulas: "Bibliothèque de formules",
+    gradingSystems: "Systèmes de notation",
     proctoring: "Surveillance vidéo",
     resultsReports: "Résultats & rapports",
     mypResults: "Résultats MYP",
