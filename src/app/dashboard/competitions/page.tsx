@@ -1,6 +1,8 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { fmtDate } from "@/lib/utils";
 import { Trophy, Users, Wifi } from "lucide-react";
@@ -61,6 +63,11 @@ export default async function OrganizationCompetitionsPage({
   const canCreate = can(ctx, org.id, CREATOR_ROLES);
   const isManager = can(ctx, org.id, ["owner", "admin"]);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "competitions", "/dashboard?e=module");
+  // Assessment Code module: the admission-code column and code lifecycle are
+  // a separately entitled feature of the Live Competitions page.
+  const codeEnabled = moduleEnabled(entitlement.modules, "competition_code");
 
   const [{ data: comps }, { data: quizzes }] = await Promise.all([
     supabase
@@ -89,7 +96,11 @@ export default async function OrganizationCompetitionsPage({
       <PageTitle
         eyebrow="Live Operations · Institutional Competitions"
         title="Live competitions"
-        subtitle={`Every competition hosted by ${org.name}. Join codes, participants and live rooms are the same ones used by the public competition screens.`}
+        subtitle={
+          codeEnabled
+            ? `Every competition hosted by ${org.name}. Join codes, participants and live rooms are the same ones used by the public competition screens.`
+            : `Every competition hosted by ${org.name}. Participants and live rooms are the same ones used by the public competition screens. Enable the Assessment Code module to manage admission codes.`
+        }
         action={canCreate ? <ButtonLink href="#new-competition" variant="gold">+ New competition</ButtonLink> : undefined}
       />
 
@@ -149,7 +160,10 @@ export default async function OrganizationCompetitionsPage({
         </div>
       ) : (
         <div className="mt-6">
-          <DataTable head={["Competition", "Format", "Participants", "Admission code", "Status", "Actions"]} label="Organization competitions">
+          <DataTable
+            head={codeEnabled ? ["Competition", "Format", "Participants", "Admission code", "Status", "Actions"] : ["Competition", "Format", "Participants", "Status", "Actions"]}
+            label="Organization competitions"
+          >
             {rows.slice((page - 1) * pageSize, page * pageSize).map((c) => {
               const codes = c.competition_access_codes ?? [];
               return (
@@ -162,15 +176,17 @@ export default async function OrganizationCompetitionsPage({
                   </td>
                   <td className="text-xs text-ink-soft">{FORMAT_LABELS[c.format] ?? c.format}</td>
                   <td>{participants === 0 ? "—" : (c.competition_registrations ?? []).filter((r) => r.status !== "removed").length}</td>
-                  <td className="text-xs">
-                    {codes.length ? (
-                      <Link href={`/dashboard/competitions/${c.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
-                        {codes.length} code{codes.length === 1 ? "" : "s"}
-                      </Link>
-                    ) : (
-                      <span className="text-ink-soft">none</span>
-                    )}
-                  </td>
+                  {codeEnabled && (
+                    <td className="text-xs">
+                      {codes.length ? (
+                        <Link href={`/dashboard/competitions/${c.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                          {codes.length} code{codes.length === 1 ? "" : "s"}
+                        </Link>
+                      ) : (
+                        <span className="text-ink-soft">none</span>
+                      )}
+                    </td>
+                  )}
                   <td><Badge tone={STATUS_TONE[c.status] ?? "gray"}>{c.status}</Badge></td>
                   <td>
                     <div className="flex flex-wrap items-center gap-x-3 gap-y-1">

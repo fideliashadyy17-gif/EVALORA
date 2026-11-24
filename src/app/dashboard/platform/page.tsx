@@ -2,6 +2,7 @@ import { OrganizationPlatformCard } from "@/components/platform/OrganizationPlat
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { ButtonLink, Card, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess, platformInfrastructure } from "@/lib/tenant";
 import { fmtDateTime } from "@/lib/utils";
@@ -28,6 +29,8 @@ export default async function InstitutionPlatformPage() {
   if (!org) redirect(ctx.profile.platform_role === "super_admin" ? "/admin/organizations/access" : "/onboarding");
 
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "platform", "/dashboard?e=module");
   const { data: full } = await supabase
     .from("organizations")
     .select("id, name, slug, status, portal_enabled, custom_domain, platform_domain_status, slug_updated_at, previous_slugs")

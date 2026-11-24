@@ -23,7 +23,7 @@ export const dynamic = "force-dynamic";
 export default async function PlanModuleManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ plan?: string; sub?: string }>;
+  searchParams: Promise<{ plan?: string; sub?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = (await searchParams) ?? {};
@@ -37,7 +37,7 @@ export default async function PlanModuleManagementPage({
         .order("sort"),
       admin
         .from("subscriptions")
-        .select("id, organization_id, status, modules_override, plan_id, plans(name, slug)")
+        .select("id, organization_id, status, modules_override, plan_id, plans(name, slug, modules)")
         .in("status", ["active", "trialing"])
         .order("created_at", { ascending: false }),
       admin.from("organizations").select("id, name"),
@@ -63,7 +63,7 @@ export default async function PlanModuleManagementPage({
   }));
 
   const subRows: SubRow[] = (subs ?? []).map((s) => {
-    const plan = s.plans as { name?: string; slug?: string } | null;
+    const plan = s.plans as { name?: string; slug?: string; modules?: unknown } | null;
     return {
       id: s.id as string,
       organization_id: s.organization_id as string,
@@ -72,6 +72,7 @@ export default async function PlanModuleManagementPage({
       status: s.status as string,
       planName: plan?.name ?? "—",
       planSlug: plan?.slug ?? "—",
+      planModules: (plan?.modules as Record<string, boolean> | null) ?? null,
       modulesOverride:
         (s.modules_override as Record<string, boolean> | null) ?? null,
     };
@@ -90,6 +91,25 @@ export default async function PlanModuleManagementPage({
           </div>
         }
       />
+      {sp.ok === "override" && (
+        <p role="status" className="mb-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+          Override saved. The configured state, effective state and source below are read back from the database —
+          the organization&apos;s dashboard navigation and pages now resolve this configuration on their next load.
+        </p>
+      )}
+      {sp.ok === "plan" && (
+        <p role="status" className="mb-6 rounded-lg bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-900">
+          Plan modules saved. Every organization on this plan inherits the new configuration on its next
+          entitlement resolution — explicit organization overrides remain respected.
+        </p>
+      )}
+      {sp.e && (
+        <p role="alert" className="mb-6 rounded-lg bg-red-50 px-4 py-3 text-sm font-medium text-red-900">
+          {sp.e === "save"
+            ? "The configuration could not be saved. Nothing was changed — check the selected organization and try again."
+            : "Invalid selection. Choose a plan or organization and try again."}
+        </p>
+      )}
       <PlanModulesAdminClient
         plans={planRows}
         subs={subRows}

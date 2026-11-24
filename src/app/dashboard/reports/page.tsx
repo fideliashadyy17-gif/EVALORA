@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Radio } from "lucide-react";
@@ -15,6 +16,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "org_reports", "/dashboard?e=module");
   const pageSize = 12;
   const sessionsPage = Math.max(1, Number.parseInt(sp.sessionsPage ?? "1", 10) || 1);
   const examsPage = Math.max(1, Number.parseInt(sp.examsPage ?? "1", 10) || 1);

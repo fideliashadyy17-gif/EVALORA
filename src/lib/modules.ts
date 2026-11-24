@@ -38,9 +38,9 @@ export interface ModuleDef {
 
 export const MODULE_CATALOG: readonly ModuleDef[] = [
   // ── Assessments & live competitions ───────────────────────────────────
-  { key: "competitions", group: "assessments", label: "Competition management", description: "Create and manage live competitions and assessment events.", capability: "competitions" },
+  { key: "competitions", group: "assessments", label: "Live Competitions", description: "Create and manage live competitions and assessment events (the Assessment section of the workspace).", capability: "live_competitions" },
   { key: "competition_config", group: "assessments", label: "Competition configuration", description: "Event settings, formats and competition configuration screens." },
-  { key: "competition_code", group: "assessments", label: "Assessment & access codes", description: "Competition join codes, access codes and code lifecycle." },
+  { key: "competition_code", group: "assessments", label: "Assessment Code", description: "Assessment join & access codes — shown on the Live Competitions page and its competition detail screens." },
   { key: "competition_participants", group: "assessments", label: "Participants & eligibility", description: "Participant registration, eligibility and rosters." },
   { key: "competition_phases", group: "assessments", label: "Event phases", description: "Phase design, qualification review and progression." },
   { key: "competition_questions", group: "assessments", label: "Competition questions", description: "Competition question sets, pools and per-event papers." },
@@ -49,8 +49,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
   { key: "competition_reports", group: "assessments", label: "Competition reports", description: "Competition analytics and exportable reports." },
 
   // ── Quizzes ───────────────────────────────────────────────────────────
-  { key: "quizzes", group: "quizzes", label: "Quiz management", description: "Create, publish and operate quizzes.", capability: "quizzes" },
-  { key: "paper_builder", group: "quizzes", label: "Question paper builder", description: "The existing Paper Builder workflow (single shared builder — never duplicated).", capability: "paper_builder" },
+  { key: "quizzes", group: "quizzes", label: "Quiz management", description: "Create, publish and operate quizzes.", capability: "quiz_management" },
+  { key: "paper_builder", group: "quizzes", label: "Question Paper Builder", description: "The existing Paper Builder workflow (single shared builder — never duplicated).", capability: "question_paper_builder" },
   { key: "quiz_solutions", group: "quizzes", label: "Answers & solutions", description: "Answer keys, worked solutions and review release." },
   { key: "quiz_assignment", group: "quizzes", label: "Quiz assignment", description: "Assign quizzes to classes, candidates and schedules." },
   { key: "question_bank", group: "quizzes", label: "Question management", description: "Question bank, categories, types and imports.", capability: "question_bank" },
@@ -67,7 +67,7 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
   { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication and individual candidate result links." },
   { key: "exam_validation", group: "exams", label: "Results validation", description: "Mandatory validation step before publication." },
   { key: "exam_publication", group: "exams", label: "Results publication", description: "Publish validated results to candidates (audited)." },
-  { key: "exam_reports", group: "exams", label: "Examination reports", description: "Examination reports, exports and MYP results.", capability: "myp_results" },
+  { key: "exam_reports", group: "exams", label: "MYP Results", description: "Examination reports, exports and MYP results (MYP Results pages)." },
   { key: "exam_printable", group: "exams", label: "Printable papers", description: "Candidate-printable paper rendering." },
   { key: "exam_templates", group: "exams", label: "Official templates", description: "Official exam paper templates and headers." },
   { key: "exam_calculator", group: "exams", label: "Scientific calculator", description: "Scientific/basic calculator offered to candidates." },
@@ -76,15 +76,15 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
   { key: "classes", group: "institution", label: "Class management", description: "Classes and class assignments.", capability: "class_management" },
   { key: "academics", group: "institution", label: "Academic structure", description: "Academic years, terms and structures." },
   { key: "students", group: "institution", label: "Student management", description: "Student directory, registration and imports.", capability: "student_management" },
-  { key: "teachers", group: "institution", label: "Teachers & staff", description: "Teacher and staff management.", capability: "teacher_management" },
+  { key: "teachers", group: "institution", label: "Teachers", description: "Teacher and staff management (Teachers page)." },
   { key: "team", group: "institution", label: "Staff & members", description: "Workspace members and invitations." },
   { key: "accounts", group: "institution", label: "Accounts & permissions", description: "Roles and permissions within the organization." },
   { key: "org_settings", group: "institution", label: "Organization settings", description: "Tenant settings, branding and portal." },
-  { key: "rubrics", group: "institution", label: "Rubrics", description: "Marking rubrics.", capability: "rubrics" },
+  { key: "rubrics", group: "institution", label: "Rubrics", description: "Marking rubrics (Rubrics page)." },
   { key: "proctoring", group: "institution", label: "Proctoring", description: "Proctoring / lockdown examination supervision.", capability: "proctoring" },
-  { key: "org_reports", group: "institution", label: "Results & reports", description: "Organization-wide results and reports.", capability: "reports" },
-  { key: "platform", group: "institution", label: "My platform", description: "Public platform page management for the organization.", capability: "platform" },
-  { key: "billing", group: "institution", label: "Billing & plan", description: "Billing, subscription and plan views.", capability: "billing" },
+  { key: "org_reports", group: "institution", label: "Results & Reports", description: "Organization-wide results and reports (Results & Reports page).", capability: "reports_analytics" },
+  { key: "platform", group: "institution", label: "My Platform", description: "Public platform page management for the organization (My Platform page)." },
+  { key: "billing", group: "institution", label: "Billing & Plan", description: "Billing, subscription and plan views (Billing & Plan page)." },
 ] as const;
 
 export type ModuleKey = (typeof MODULE_CATALOG)[number]["key"];
@@ -100,7 +100,60 @@ export const MODULE_DEFAULTS: Record<string, boolean> = Object.fromEntries(
   MODULE_KEYS.map((key) => [key, true]),
 );
 
-/** key → capability it gates1:1 (for the capabilities choke point). */
+/**
+ * Configured vs effective state for ONE module — the single rule used by the
+ * Super Admin console, the workspace navigation and the tests, so the UI can
+ * never disagree with enforcement:
+ *
+ *   INHERIT → effective = organization's plan value, else PLATFORM DEFAULT
+ *   ON      → enabled (stored on this subscription only)
+ *   OFF     → disabled (even when the plan includes it)
+ *
+ * `configured` is what the admin chose; `effective` is what the organization
+ * actually gets; `source` explains where the effective value came from.
+ * Overrides only exist on a VALID active/trialing subscription — getEntitlement
+ * stops reading them once the subscription lapses (free plan applies).
+ */
+export type ModuleConfiguredState = "inherit" | "on" | "off";
+export type ModuleEntitlementSource = "plan" | "override" | "default";
+
+export interface EffectiveModuleState {
+  configured: ModuleConfiguredState;
+  effective: boolean;
+  source: ModuleEntitlementSource;
+}
+
+export function resolveEffectiveModule(
+  planModules: Record<string, boolean> | null | undefined,
+  overrideModules: Record<string, boolean> | null | undefined,
+  key: string,
+): EffectiveModuleState {
+  const override = overrideModules && typeof overrideModules === "object" && !Array.isArray(overrideModules) ? overrideModules : null;
+  const plan = planModules && typeof planModules === "object" && !Array.isArray(planModules) ? planModules : null;
+  if (override && key in override) {
+    const value = override[key] === true;
+    return { configured: value ? "on" : "off", effective: value, source: "override" };
+  }
+  if (plan && key in plan) {
+    return { configured: "inherit", effective: plan[key] === true, source: "plan" };
+  }
+  return { configured: "inherit", effective: MODULE_DEFAULTS[key] ?? true, source: "default" };
+}
+
+/** Effective state for every catalog module (admin console rendering). */
+export function resolveEffectiveModules(
+  planModules: Record<string, boolean> | null | undefined,
+  overrideModules: Record<string, boolean> | null | undefined,
+): Record<string, EffectiveModuleState> {
+  const out: Record<string, EffectiveModuleState> = {};
+  for (const { key } of MODULE_CATALOG) out[key] = resolveEffectiveModule(planModules, overrideModules, key);
+  return out;
+}
+
+/** key → capability it gates 1:1 (for the capabilities choke point).
+ *  ONLY real CapabilityKeys from capability-rules.ts — a phantom key here
+ *  would silently disable nothing while the nav hid the module (the exact
+ *  navigation/authorization divergence this mapping exists to prevent). */
 export const MODULE_CAPABILITY_GATES: Record<string, string> = Object.fromEntries(
   MODULE_CATALOG.filter((m) => m.capability).map((m) => [m.key, m.capability as string]),
 );
