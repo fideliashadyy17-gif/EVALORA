@@ -75,7 +75,7 @@ export default async function SchoolPortalPage({ params }: { params: Promise<{ s
             <div className="flex flex-wrap items-center gap-4">
               {org.logo_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={org.logo_url} alt="" className="h-16 w-16 rounded-xl bg-white object-contain p-1" />
+                <img src={org.logo_url} alt="" className="h-16 w-auto max-w-[12rem] rounded-xl bg-white object-contain p-1" />
               ) : (
                 <div className="flex h-16 w-16 items-center justify-center rounded-xl bg-gold-500 font-display text-2xl font-bold text-evergreen-950">
                   {org.name.slice(0, 1).toUpperCase()}

@@ -1204,7 +1204,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           <div className="mx-auto max-w-7xl px-4 py-6 text-center sm:px-6">
             {exam.paper_header.showLogo && exam.paper_header.organizationLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={exam.paper_header.organizationLogoUrl} alt="" className="mx-auto h-16 w-16 rounded-xl object-contain" />
+              <img src={exam.paper_header.organizationLogoUrl} alt="" className="mx-auto h-16 w-auto max-w-[12rem] rounded-xl object-contain" />
             ) : null}
             <p className="mt-2 font-display text-lg font-bold uppercase tracking-wide text-evergreen-950">{exam.paper_header.organizationName}</p>
             <p className="mt-1 text-sm font-semibold uppercase tracking-[0.2em] text-evergreen-800">Official Examination Paper</p>

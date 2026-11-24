@@ -18,6 +18,8 @@ export type PaperItem = {
   type: string;
   points: number;
   options: readonly unknown[];
+  /** Paper-specific writing space (per-part or per-row), when known. */
+  answerLines?: number;
 };
 
 export type PaperCandidate = {
@@ -49,6 +51,12 @@ export function answerLinesFor(type: string): number {
       return 7;
     case "short_answer":
       return 4;
+    case "assess_parts":
+      return 8;
+    case "matching":
+      return 5;
+    case "ordering":
+      return 4;
     default:
       return 2;
   }
@@ -65,7 +73,7 @@ export type AnswerSheetRow = {
 
 export function buildAnswerSheet(items: readonly PaperItem[]): AnswerSheetRow[] {
   return items.map((item, index): AnswerSheetRow => {
-    const lines = answerLinesFor(item.type);
+    const lines = item.answerLines ?? answerLinesFor(item.type);
     const choices = CHOICE_TYPES.has(item.type) ? item.options.length : 0;
     const choiceLabels = Array.from({ length: choices }, (_, i) => String.fromCharCode(65 + i));
     // A question with printed options but an unrecognised option count would

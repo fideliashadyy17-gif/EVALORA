@@ -138,5 +138,47 @@ check("migration creates templates table", migration.includes("exam_paper_templa
 check("migration sets Version C sections", migration.includes("SECTION A — MULTIPLE CHOICE QUESTIONS") && migration.includes("SECTION B — THEORY QUESTIONS"));
 check("migration never deletes questions", !/delete from public\.questions/i.test(migration) && !/delete from public\.question_options/i.test(migration));
 
+// ── Regression: edit loads large banks, saves safely, prints all types ──
+const editPage = readFileSync("src/app/dashboard/paper-builder/[id]/page.tsx", "utf8");
+check("edit bank is paged, not capped at 300", editPage.includes(".range(") && !editPage.includes(".limit(300)"));
+check("edit page surfaces bank load failures", editPage.includes("question bank could not be loaded"));
+
+const builderSrc = readFileSync("src/app/dashboard/paper-builder/PaperBuilder.tsx", "utf8");
+check("builder never force-unwraps missing bank rows", !builderSrc.includes("byId.get(id)!") && builderSrc.includes("sectionFor("));
+check("builder shows missing paper questions instead of dropping them", builderSrc.includes("was not found in the loaded question bank"));
+
+const quizActions = readFileSync("src/app/dashboard/quizzes/actions.ts", "utf8");
+check("saveQuiz checks every write and maps the guard to a friendly error", quizActions.includes("friendlySaveError") && quizActions.includes("membershipUnchanged") && quizActions.includes("upsert"));
+
+const printableLib = readFileSync("src/lib/printablePaper.ts", "utf8");
+check("preview supports matching/ordering/assess_parts", ["\"matching\"", "\"ordering\"", "\"assess_parts\""].every((t) => printableLib.includes(t)));
+check("matching bank rotated off index alignment", printableLib.includes("matching_rights") && printableLib.includes("slice(1)"));
+
+const printPage = readFileSync("src/app/dashboard/exams/[id]/paper/page.tsx", "utf8");
+check("preview renders matching and multi-part questions", printPage.includes("MatchingPrint") && printPage.includes("assess_parts"));
+
+const guardMigration = readFileSync("supabase/migrations/20261124170000_writable_paper_settings_and_attempt_scoped_guard.sql", "utf8");
+check("guard migration lets quiz settings update", guardMigration.includes("tg_table_name = 'quizzes' and tg_op = 'UPDATE'"));
+check("guard migration freezes content on attempts via exams", guardMigration.includes("join public.exams e on e.id = a.exam_id"));
+check("guard migration never deletes or drops data", !/delete\s+from/i.test(guardMigration) && !/drop\s+(table|column)/i.test(guardMigration));
+
+// ── Official Oak logo asset + aspect-safe surfaces ──────────────────────
+const oakLogo = readFileSync("public/brand/oak-international-school-logo.webp");
+check(
+  "official Oak logo file exists at the configured path",
+  oakLogo.length > 10_000 && oakLogo.subarray(0, 4).toString() === "RIFF" && oakLogo.subarray(8, 12).toString() === "WEBP",
+);
+const portalPage = readFileSync("src/app/portal/[slug]/page.tsx", "utf8");
+const logoUpload = readFileSync("src/components/LogoUpload.tsx", "utf8");
+for (const [name, src] of [
+  ["dashboard chrome", chrome],
+  ["portal", portalPage],
+  ["candidate screen", takeExam],
+  ["logo upload", logoUpload],
+  ["printable header", printable],
+]) {
+  check(`${name} keeps logo aspect (w-auto + max-w)`, src.includes("w-auto") && src.includes("max-w-"));
+}
+
 console.log(`\n${passed} paper-builder checks passed${failed ? `, ${failed} failed` : ""}.`);
 process.exit(failed === 0 ? 0 : 1);

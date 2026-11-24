@@ -97,9 +97,13 @@ export function PaperBuilder({
   );
   const totalPoints = selected.reduce((s, id) => s + Number(byId.get(id)?.points ?? 0), 0);
 
-  function defaultSection(q: BankQ): string {
-    if (sectionOf[q.id]) return sectionOf[q.id];
-    return MCQ_TYPES.has(q.type) ? "A" : "B";
+  /** Which section a selected paper question belongs to. Safe for ids that
+   *  are missing from the loaded bank (large banks page; a missing row must
+   *  never crash sections rendering or the save path). */
+  function sectionFor(id: string): string {
+    if (sectionOf[id]) return sectionOf[id];
+    const q = byId.get(id);
+    return q && MCQ_TYPES.has(q.type) ? "A" : "B";
   }
 
   function move(i: number, dir: -1 | 1) {
@@ -128,9 +132,9 @@ export function PaperBuilder({
         id: s.id,
         title: s.title,
         instructions: s.instructions,
-        questions: selected.filter((id) => defaultSection(byId.get(id)!) === s.id).length,
+        questions: selected.filter((id) => sectionFor(id) === s.id).length,
         marks: selected
-          .filter((id) => defaultSection(byId.get(id)!) === s.id)
+          .filter((id) => sectionFor(id) === s.id)
           .reduce((sum, id) => sum + Number(byId.get(id)?.points ?? 0), 0),
       })),
       section_of: sectionOf,
@@ -246,7 +250,7 @@ export function PaperBuilder({
             </Field>
             <div className="flex items-end">
               <Badge tone="gold">
-                {selected.filter((id) => defaultSection(byId.get(id)!) === s.id).length} questions
+                {selected.filter((id) => sectionFor(id) === s.id).length} questions
               </Badge>
             </div>
           </div>
@@ -269,8 +273,23 @@ export function PaperBuilder({
             <ol className="space-y-2">
               {selected.map((id, i) => {
                 const q = byId.get(id);
-                if (!q) return null;
-                const sec = defaultSection(q);
+                if (!q) {
+                  // Never silently drop a question that belongs to this paper:
+                  // show it with an explicit recovery action instead.
+                  return (
+                    <li key={id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+                      <span>Question {i + 1} is part of this paper but was not found in the loaded question bank.</span>
+                      <button
+                        type="button"
+                        className="shrink-0 font-medium underline"
+                        onClick={() => setSelected((prev) => prev.filter((x) => x !== id))}
+                      >
+                        Remove from paper
+                      </button>
+                    </li>
+                  );
+                }
+                const sec = sectionFor(id);
                 return (
                   <li key={id} className="flex items-start gap-2 rounded-xl border border-evergreen-900/10 bg-cream p-3">
                     <span className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-evergreen-700 text-xs font-bold text-white">{i + 1}</span>
