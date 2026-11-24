@@ -1,6 +1,8 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
 import { ExamCorrige } from "@/components/ExamCorrige";
 import { IntegrityMonitor } from "@/lib/integrityMonitor";
@@ -51,7 +53,7 @@ import { PRESENCE_HEARTBEAT_MS, PRESENCE_REFRESH_MS, type PresenceRoster } from 
 
 interface ExamState {
   server_now: string;
-  exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience };
+  exam: { id: string; entry_href?: string | null; access_code?: string | null; title: string; description: string | null; instructions: string | null; proctoring: boolean; require_screen_share: boolean; pass_mark_percent: number; integrity?: IntegrityPolicy | null; lockdown?: ExamLockdownSettings | null; formula_sheet?: FormulaSheet | null; language?: PaperLanguage; experience?: ExamExperience; calculator_mode?: "scientific" | "basic"; calculator_angle_mode?: "deg" | "rad"; paper_header?: { organizationName: string; organizationLogoUrl: string | null; showLogo: boolean; title: string; period: string | null; academicYear: string | null; gradeLabel: string | null; subject: string | null; durationMinutes: number | null; totalMarks: number | null; instructions: string | null; candidateName: string | null; candidateRef: string | null; sections?: { id: string; title: string; instructions: string | null; questionCount: number; marks: number }[] } | null };
   candidate: { name: string; ref: string | null; first_name?: string | null; last_name?: string | null; class_id?: string | null };
   attempt: { id: string; status: string; attempt_number?: number; previous_attempt_id?: string | null; deadline: string; flagged: string[]; score: number | null; max_score: number | null; results_published: boolean; track?: "AB" | "BC" | null; paused?: boolean; pause_reasons?: ("assessment" | "student" | "connection")[]; paused_at?: string | null; pause_notice?: "assessment" | "student" | null; lockdown_verified?: boolean; lockdown_platform?: string | null; lockdown_app_version?: string | null };
   hint_usage?: { question_id: string; part_id: string; level: number; times_opened: number }[];
@@ -197,6 +199,7 @@ function resultTone(result: { is_correct: boolean | null; answered?: boolean }):
 }
 
 export function TakeExamClient({ attemptId }: { attemptId: string }) {
+  const { t } = useI18n();
   const [token, setToken] = useState<string | null>(null);
   const [sessionClosedHref, setSessionClosedHref] = useState<string | null>(null);
   const entryHrefRef = useRef<string>("/exam-access");
@@ -1090,7 +1093,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               <p className="truncate font-display text-lg font-semibold text-evergreen-950">{exam.title}</p>
               {isLockdownRequired && isLockdownVerified && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800 shrink-0">
-                  <ShieldCheck className="h-3 w-3" /> Secure Lockdown
+                  <ShieldCheck className="h-3 w-3" /> {t("exam.secureLockdown")}
                 </span>
               )}
             </div>
@@ -1110,6 +1113,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 <CalculatorLauncher
                   draggable={experience.floatingCalculator}
                   storageKey={`evalora-calculator-${attemptId}`}
+                  mode={exam.calculator_mode ?? "scientific"}
+                  angleMode={exam.calculator_angle_mode ?? "deg"}
                 />
               )}
               {exam.formula_sheet && (
@@ -1122,7 +1127,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   onClick={() => setFormulasOpen((open) => !open)}
                 >
                   <Sigma className="mr-1 h-4 w-4" aria-hidden="true" />
-                  Formulas
+                  {t("exam.formulas")}
                 </Button>
               )}
               <Button
@@ -1133,11 +1138,12 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                 onMouseDown={(e) => e.preventDefault()}
                 onTouchStart={(e) => e.preventDefault()}
                 onClick={() => setMathPaletteOpen((open) => !open)}
-                title="Open platform mathematical keyboard"
+                title={t("exam.openMathKeyboard")}
               >
                 <Sigma className="mr-1 h-4 w-4 text-evergreen-700" aria-hidden="true" />
-                Math keyboard
+                {t("exam.mathKeyboard")}
               </Button>
+              <LanguageSwitcher compact />
               <ExamCountdown
                 deadline={attempt.deadline}
                 serverOffsetMs={offset.current}
@@ -1196,6 +1202,40 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           />
         </div>
       </header>
+
+      {exam.paper_header && (
+        <section aria-label="Official examination paper" className="border-b border-evergreen-900/15 bg-white">
+          <div className="mx-auto max-w-7xl px-4 py-6 text-center sm:px-6">
+            {exam.paper_header.showLogo && exam.paper_header.organizationLogoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={exam.paper_header.organizationLogoUrl} alt="" className="mx-auto h-16 w-auto max-w-[12rem] rounded-xl object-contain" />
+            ) : null}
+            <p className="mt-2 font-display text-lg font-bold uppercase tracking-wide text-evergreen-950">{exam.paper_header.organizationName}</p>
+            <p className="mt-1 text-sm font-semibold uppercase tracking-[0.2em] text-evergreen-800">Official Examination Paper</p>
+            {exam.paper_header.period && <p className="mt-1 text-base font-bold uppercase text-evergreen-950">{exam.paper_header.period}</p>}
+            <p className="mt-2 font-display text-xl font-semibold text-evergreen-950">{exam.paper_header.title}</p>
+            <dl className="mx-auto mt-3 grid max-w-2xl grid-cols-2 gap-x-6 gap-y-1 text-left text-sm sm:grid-cols-3">
+              {exam.paper_header.academicYear && <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Academic Year</dt><dd className="font-medium">{exam.paper_header.academicYear}</dd></div>}
+              {exam.paper_header.gradeLabel && <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Grade / Class</dt><dd className="font-medium">{exam.paper_header.gradeLabel}</dd></div>}
+              {exam.paper_header.subject && <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Subject</dt><dd className="font-medium">{exam.paper_header.subject}</dd></div>}
+              {exam.paper_header.durationMinutes ? <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Duration</dt><dd className="font-medium">{exam.paper_header.durationMinutes} minutes</dd></div> : null}
+              {exam.paper_header.totalMarks != null ? <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Total Marks</dt><dd className="font-medium">{exam.paper_header.totalMarks}</dd></div> : null}
+              <div><dt className="text-xs uppercase tracking-wide text-ink-soft">Candidate</dt><dd className="font-medium">{exam.paper_header.candidateName ?? state.candidate.name}{exam.paper_header.candidateRef ? ` · ${exam.paper_header.candidateRef}` : ""}</dd></div>
+            </dl>
+            {exam.paper_header.instructions && <p className="mx-auto mt-3 max-w-3xl text-left text-sm leading-relaxed text-ink">{exam.paper_header.instructions}</p>}
+            {exam.paper_header.sections && exam.paper_header.sections.length > 0 && (
+              <div className="mx-auto mt-4 grid max-w-3xl gap-2 text-left">
+                {exam.paper_header.sections.map((s) => (
+                  <div key={s.id} className="rounded-lg border border-evergreen-900/15 bg-cream px-4 py-2">
+                    <p className="text-sm font-bold text-evergreen-950">{s.title} <span className="font-medium text-ink-soft">· {s.questionCount} questions · {s.marks} marks</span></p>
+                    {s.instructions && <p className="text-xs text-ink-soft">{s.instructions}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
       <main id="exam-main" className={cn("mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[240px_1fr]", corrigeAll && "block")}>
         <aside className={cn("space-y-4 lg:sticky lg:top-24 lg:h-fit print:hidden", corrigeAll && "hidden")}>
@@ -1517,9 +1557,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
               {draftWarning && <p role="alert" className="mt-2 text-sm text-red-700">Save this answer or discard the changes before submitting.</p>}
 
               <div className="mt-6 flex flex-wrap items-center gap-2 border-t border-evergreen-900/10 pt-4">
-                <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>← Previous</Button>
-                <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>Next →</Button>
-                <Button variant="danger" className="ml-auto" onClick={requestSubmit}>Submit examination</Button>
+                <Button variant="outline" disabled={index === 0} onClick={() => navigateTo(index - 1)}>{t("exam.previous")}</Button>
+                <Button variant="outline" disabled={index === questions.length - 1} onClick={() => navigateTo(index + 1)}>{t("exam.next")}</Button>
+                <Button variant="danger" className="ml-auto" onClick={requestSubmit}>{t("exam.submitExamination")}</Button>
               </div>
             </Card>
           )}
@@ -1527,17 +1567,16 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
           {confirmSubmit && (
             <div className="exam-submit-backdrop fixed inset-0 z-50 flex items-center justify-center px-4" onMouseDown={(event) => { if (event.target === event.currentTarget && !submitting) setConfirmSubmit(false); }}>
               <Card className="exam-submit-dialog w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="exam-submit-heading">
-                <p className="exam-entry-kicker">Final check</p>
-                <h2 id="exam-submit-heading" className="mt-1 font-display text-xl font-semibold text-evergreen-950">Submit your paper?</h2>
+                <p className="exam-entry-kicker">{t("exam.finalCheck")}</p>
+                <h2 id="exam-submit-heading" className="mt-1 font-display text-xl font-semibold text-evergreen-950">{t("exam.submitTitle")}</h2>
                 <p className="mt-2 text-sm text-ink-soft">
-                  You have answered {savedIds.size} of {questions.length} questions
-                  {flagged.length ? ` and flagged ${flagged.length} for review` : ""}.
-                  After submission you cannot change any answer.
+                  {t("exam.submitBody", { answered: savedIds.size, total: questions.length })}
+                  {flagged.length ? ` ${t("exam.andFlagged", { count: flagged.length })}` : ""}
                 </p>
                 {submitError && <p role="alert" className="mt-3 text-sm text-red-700">{submitError}</p>}
                 <div className="mt-4 flex gap-2">
-                  <Button variant="danger" className="flex-1" disabled={submitting} onClick={() => void submit()}>{submitting ? "Checking saves…" : "Yes, submit now"}</Button>
-                  <Button variant="outline" className="flex-1" disabled={submitting} onClick={() => setConfirmSubmit(false)}>Keep working</Button>
+                  <Button variant="danger" className="flex-1" disabled={submitting} onClick={() => void submit()}>{submitting ? t("exam.checkingSaves") : t("exam.yesSubmit")}</Button>
+                  <Button variant="outline" className="flex-1" disabled={submitting} onClick={() => setConfirmSubmit(false)}>{t("exam.keepWorking")}</Button>
                 </div>
               </Card>
             </div>

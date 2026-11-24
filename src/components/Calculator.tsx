@@ -42,13 +42,18 @@ const OPS: Record<Op, { prec: number; right: boolean; apply: (a: number, b: numb
   "%": { prec: 2, right: false, apply: (a, b) => (b === 0 ? NaN : a - b * Math.floor(a / b)) },
 };
 
-const FUNCS: Record<string, { arity: number; apply: (...args: number[]) => number }> = {
-  sin: { arity: 1, apply: (x) => Math.sin(toRad(x)) },
-  cos: { arity: 1, apply: (x) => Math.cos(toRad(x)) },
-  tan: { arity: 1, apply: (x) => Math.tan(toRad(x)) },
-  asin: { arity: 1, apply: (x) => toDeg(Math.asin(x)) },
-  acos: { arity: 1, apply: (x) => toDeg(Math.acos(x)) },
-  atan: { arity: 1, apply: (x) => toDeg(Math.atan(x)) },
+export type AngleMode = "deg" | "rad";
+
+function buildFuncs(angleMode: AngleMode): Record<string, { arity: number; apply: (...args: number[]) => number }> {
+  const inRad = (x: number) => (angleMode === "deg" ? toRad(x) : x);
+  const outDeg = (x: number) => (angleMode === "deg" ? toDeg(x) : x);
+  return {
+  sin: { arity: 1, apply: (x) => Math.sin(inRad(x)) },
+  cos: { arity: 1, apply: (x) => Math.cos(inRad(x)) },
+  tan: { arity: 1, apply: (x) => Math.tan(inRad(x)) },
+  asin: { arity: 1, apply: (x) => outDeg(Math.asin(x)) },
+  acos: { arity: 1, apply: (x) => outDeg(Math.acos(x)) },
+  atan: { arity: 1, apply: (x) => outDeg(Math.atan(x)) },
   sinh: { arity: 1, apply: (x) => Math.sinh(x) },
   cosh: { arity: 1, apply: (x) => Math.cosh(x) },
   tanh: { arity: 1, apply: (x) => Math.tanh(x) },
@@ -66,7 +71,11 @@ const FUNCS: Record<string, { arity: number; apply: (...args: number[]) => numbe
   npr: { arity: 2, apply: (n, r) => permutations(n, r) },
   min: { arity: 2, apply: (a, b) => Math.min(a, b) },
   max: { arity: 2, apply: (a, b) => Math.max(a, b) },
-};
+  factorial: { arity: 1, apply: (x) => factorial(x) },
+  };
+}
+
+const FUNCS: Record<string, { arity: number; apply: (...args: number[]) => number }> = buildFuncs("deg");
 type FuncName = keyof typeof FUNCS;
 
 const CONSTS: Record<string, number> = { pi: Math.PI, e: Math.E, tau: Math.PI * 2 };
@@ -205,7 +214,8 @@ function tokenise(input: string): Token[] {
 }
 
 /** Safe evaluation: shunting-yard to RPN, then a fixed operator table. */
-export function evaluateExpression(input: string, ans = 0): number {
+export function evaluateExpression(input: string, ans = 0, opts?: { angleMode?: AngleMode }): number {
+  const funcs = buildFuncs(opts?.angleMode ?? "deg");
   const tokens = tokenise(input.replace(/×/g, "*").replace(/÷/g, "/").replace(/−/g, "-").replace(/\bans\b/gi, String(ans)));
   if (!tokens.length) return NaN;
   const output: (number | Token)[] = [];
@@ -279,7 +289,7 @@ export function evaluateExpression(input: string, ans = 0): number {
       continue;
     }
     if (item.kind === "func") {
-      const fn = FUNCS[item.value];
+      const fn = funcs[item.value];
       const args: number[] = [];
       for (let k = 0; k < fn.arity; k += 1) {
         const v = evalStack.pop();
@@ -311,7 +321,9 @@ type Key =
   | { label: string; insert?: string; kind?: "digit" | "op" | "func" | "const" | "action"; action?: Action; span?: number; aria?: string }
   | { label: string; action: Action; kind: "action"; span?: number; aria?: string };
 
-type Action = "clear" | "back" | "equals" | "negate" | "ans" | "toggle";
+type Action =
+  | "clear" | "back" | "equals" | "negate" | "ans" | "toggle"
+  | "fraction" | "angle" | "mem_clear" | "mem_recall" | "mem_add" | "mem_sub" | "history_clear";
 
 const BASIC_KEYS: Key[] = [
   { label: "C", action: "clear", kind: "action", aria: "Clear" },
@@ -344,15 +356,27 @@ const SCIENTIFIC_KEYS: Key[] = [
   { label: "sin", insert: "sin(", kind: "func" },
   { label: "cos", insert: "cos(", kind: "func" },
   { label: "tan", insert: "tan(", kind: "func" },
+  { label: "sin⁻¹", insert: "asin(", kind: "func", aria: "Inverse sine" },
+  { label: "cos⁻¹", insert: "acos(", kind: "func", aria: "Inverse cosine" },
+  { label: "tan⁻¹", insert: "atan(", kind: "func", aria: "Inverse tangent" },
   { label: "log", insert: "log(", kind: "func", aria: "Log base 10" },
   { label: "ln", insert: "ln(", kind: "func", aria: "Natural log" },
   { label: "eˣ", insert: "exp(", kind: "func" },
   { label: "π", insert: "π", kind: "const", aria: "Pi" },
+  { label: "e", insert: "e", kind: "const", aria: "Euler's number" },
   { label: "n!", insert: "factorial(", kind: "func", aria: "Factorial" },
+  { label: "a/b", action: "fraction", kind: "action", aria: "Fraction" },
+  { label: "|x|", insert: "abs(", kind: "func", aria: "Absolute value" },
   { label: "×10ˣ", insert: "*10^", kind: "op", aria: "Times ten to the power" },
+  { label: "EE", insert: "e", kind: "op", aria: "Scientific notation exponent" },
   { label: "±", action: "negate", kind: "action", aria: "Change sign" },
   { label: "1/x", insert: "1/(", kind: "op", aria: "Reciprocal" },
   { label: "mod", insert: "mod", kind: "op", aria: "Modulo" },
+  { label: "DEG", action: "angle", kind: "action", aria: "Toggle degrees and radians" },
+  { label: "MC", action: "mem_clear", kind: "action", aria: "Memory clear" },
+  { label: "MR", action: "mem_recall", kind: "action", aria: "Memory recall" },
+  { label: "M+", action: "mem_add", kind: "action", aria: "Memory add" },
+  { label: "M−", action: "mem_sub", kind: "action", aria: "Memory subtract" },
 ];
 
 // ──────────────────────────────────────────────────────────────── component
@@ -364,10 +388,14 @@ export interface CalculatorSnapshot {
   lastAnswer: number;
   history: { expr: string; value: string }[];
   showScientific: boolean;
+  angleMode?: AngleMode;
+  memory?: number;
 }
 
 export function Calculator({
   scientific = true,
+  mode,
+  angleMode: angleModeProp,
   onClose,
   onMinimize,
   className,
@@ -376,6 +404,10 @@ export function Calculator({
   onSnapshot,
 }: {
   scientific?: boolean;
+  /** Examination-configured calculator mode. "basic" hides scientific keys. */
+  mode?: "scientific" | "basic";
+  /** Examination-configured default angle mode. Candidates may toggle it. */
+  angleMode?: AngleMode;
   onClose?: () => void;
   onMinimize?: () => void;
   className?: string;
@@ -384,10 +416,16 @@ export function Calculator({
   initial?: CalculatorSnapshot | null;
   onSnapshot?: (snapshot: CalculatorSnapshot) => void;
 }) {
+  const forcedBasic = mode === "basic";
   const [expression, setExpression] = useState(initial?.expression ?? "");
   const [result, setResult] = useState<string>(initial?.result ?? "0");
   const [error, setError] = useState<string | null>(initial?.error ?? null);
-  const [showScientific, setShowScientific] = useState(initial?.showScientific ?? scientific);
+  const [showScientific, setShowScientific] = useState(
+    forcedBasic ? false : (initial?.showScientific ?? scientific),
+  );
+  const [angleMode, setAngleMode] = useState<AngleMode>(initial?.angleMode ?? angleModeProp ?? "deg");
+  const memory = useRef(initial?.memory ?? 0);
+  const [memoryVersion, setMemoryVersion] = useState(0);
   const lastAnswer = useRef(initial?.lastAnswer ?? 0);
   const history = useRef<{ expr: string; value: string }[]>(initial?.history ? [...initial.history] : []);
   const [historyVersion, setHistoryVersion] = useState(0);
@@ -419,20 +457,20 @@ export function Calculator({
   const equals = useCallback(() => {
     if (!expression.trim()) return;
     try {
-      const value = evaluateExpression(expression, lastAnswer.current);
+      const value = evaluateExpression(expression, lastAnswer.current, { angleMode });
       const formatted = formatResult(value);
       setResult(formatted);
       setError(formatted === "Error" ? "Check the expression" : null);
       if (Number.isFinite(value)) {
         lastAnswer.current = value;
-        history.current = [{ expr: expression, value: formatted }, ...history.current].slice(0, 8);
+        history.current = [{ expr: expression, value: formatted }, ...history.current].slice(0, 20);
         setHistoryVersion((v) => v + 1);
       }
     } catch (err) {
       setResult("Error");
       setError(err instanceof Error ? err.message : "Check the expression");
     }
-  }, [expression]);
+  }, [expression, angleMode]);
 
   const applyAction = useCallback(
     (action: Action) => {
@@ -443,6 +481,13 @@ export function Calculator({
         case "negate": return setExpression((prev) => (prev.startsWith("-") ? prev.slice(1) : `-${prev}`));
         case "ans": return insert(String(formatResult(lastAnswer.current)));
         case "toggle": return setShowScientific((v) => !v);
+        case "fraction": return insert("(/)");
+        case "angle": return setAngleMode((v) => (v === "deg" ? "rad" : "deg"));
+        case "mem_clear": memory.current = 0; return setMemoryVersion((v) => v + 1);
+        case "mem_recall": return insert(String(formatResult(memory.current)));
+        case "mem_add": memory.current += lastAnswer.current; return setMemoryVersion((v) => v + 1);
+        case "mem_sub": memory.current -= lastAnswer.current; return setMemoryVersion((v) => v + 1);
+        case "history_clear": history.current = []; return setHistoryVersion((v) => v + 1);
         default: return undefined;
       }
     },
@@ -484,8 +529,10 @@ export function Calculator({
       lastAnswer: lastAnswer.current,
       history: history.current,
       showScientific,
+      angleMode,
+      memory: memory.current,
     });
-  }, [expression, result, error, historyVersion, showScientific]);
+  }, [expression, result, error, historyVersion, showScientific, angleMode, memoryVersion]);
 
   const keys = useMemo(() => (showScientific ? [...SCIENTIFIC_KEYS, ...BASIC_KEYS] : BASIC_KEYS), [showScientific]);
 
@@ -555,7 +602,7 @@ export function Calculator({
       <div className="grid grid-cols-4 gap-1.5 p-3">
         {keys.map((key, index) => {
           const isAction = key.kind === "action";
-          const label = key.action === "back" ? "⌫" : key.label;
+          const label = key.action === "back" ? "⌫" : key.action === "angle" ? angleMode.toUpperCase() : key.label;
           return (
             <button
               key={`${key.label}-${index}`}
@@ -589,9 +636,21 @@ export function Calculator({
 
       {history.current.length ? (
         <div className="border-t border-evergreen-900/10 px-3 py-2" data-history-version={historyVersion}>
-          <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-evergreen-700">Recent</p>
-          <ul className="space-y-0.5">
-            {history.current.slice(0, 3).map((entry, i) => (
+          <div className="mb-1 flex items-center justify-between">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-evergreen-700">
+              History{memory.current !== 0 ? ` · M = ${formatResult(memory.current)}` : ""}
+            </p>
+            <button
+              type="button"
+              onClick={() => applyAction("history_clear")}
+              className="text-[10px] font-semibold text-evergreen-700 hover:underline"
+              aria-label="Clear calculator history"
+            >
+              Clear
+            </button>
+          </div>
+          <ul className="max-h-28 space-y-0.5 overflow-y-auto">
+            {history.current.map((entry, i) => (
               <li key={`${entry.expr}-${i}`}>
                 <button
                   type="button"
@@ -606,8 +665,9 @@ export function Calculator({
         </div>
       ) : null}
       <p className="px-3 pb-3 text-[10px] leading-snug text-evergreen-700">
-        Angles are in degrees. Use <span className="font-mono">mod</span> for remainders,{" "}
-        <span className="font-mono">^</span> for powers and <span className="font-mono">Ans</span> for the last
+        Angles are in {angleMode === "deg" ? "degrees" : "radians"} (tap DEG to switch). Use{" "}
+        <span className="font-mono">mod</span> for remainders, <span className="font-mono">^</span> for powers,{" "}
+        <span className="font-mono">a/b</span> for fractions and <span className="font-mono">Ans</span> for the last
         answer. The calculator never changes or submits your answer.
       </p>
     </div>
@@ -661,12 +721,18 @@ export function CalculatorLauncher({
   variant = "inline",
   draggable = true,
   storageKey = "evalora-calculator",
+  mode = "scientific",
+  angleMode = "deg",
 }: {
   className?: string;
   variant?: "inline" | "floating";
   /** Premium capability. When false the calculator still works, but stays put. */
   draggable?: boolean;
   storageKey?: string;
+  /** Examination-configured mode: "scientific" or "basic". */
+  mode?: "scientific" | "basic";
+  /** Examination-configured default angle mode. */
+  angleMode?: AngleMode;
 }) {
   const [open, setOpen] = useState(false);
   const [minimized, setMinimized] = useState(false);
@@ -886,6 +952,8 @@ export function CalculatorLauncher({
               className="h-full rounded-none border-0 shadow-none"
               initial={snapshot}
               onSnapshot={setSnapshot}
+              mode={mode}
+              angleMode={angleMode}
             />
           </div>
 

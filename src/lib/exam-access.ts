@@ -35,6 +35,10 @@ export interface ExamAccessSettings {
    * so this decides only what an ordinary question of this paper offers.
    */
   calculator: boolean;
+  /** Permitted calculator mode for this paper: full scientific or basic. */
+  calculatorMode: "scientific" | "basic";
+  /** Default angle mode for trigonometric functions on this paper. */
+  calculatorAngleMode: "deg" | "rad";
   proctoring: boolean;
 }
 
@@ -150,6 +154,8 @@ export function parseExamAccessSettings(
     attemptMode: normalizeAttemptMode(raw.attempt_mode),
     maxAttempts: normalizeMaxAttempts(raw.max_attempts),
     calculator: raw.calculator === true,
+    calculatorMode: raw.calculator_mode === "basic" ? "basic" : "scientific",
+    calculatorAngleMode: raw.calculator_angle_mode === "rad" ? "rad" : "deg",
     proctoring: raw.proctoring === true,
   };
 }

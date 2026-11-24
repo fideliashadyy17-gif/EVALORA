@@ -12,6 +12,7 @@ import { loadPublishedHints } from "@/lib/examHintsServer";
 import { getEntitlement } from "@/lib/entitlements";
 import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
+import { parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "@/lib/examPaper";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
@@ -194,6 +195,39 @@ export async function GET(request: Request) {
       .join("\n"),
   );
 
+  // Official paper header: organization identity + template + exam settings.
+  // The organization row is read with the service client scoped to THIS
+  // exam's organization, so branding can never leak across tenants.
+  let paperHeader = null;
+  try {
+    const [{ data: orgRow }, { data: quizRow }, { data: tplRow }] = await Promise.all([
+      admin.from("organizations").select("name, logo_url").eq("id", exam.organization_id).maybeSingle(),
+      exam.quiz_id
+        ? admin.from("quizzes").select("settings").eq("id", exam.quiz_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+      typeof settings.exam_paper_template_id === "string" && settings.exam_paper_template_id
+        ? admin.from("exam_paper_templates").select("*").eq("id", settings.exam_paper_template_id).eq("organization_id", exam.organization_id).maybeSingle()
+        : Promise.resolve({ data: null }),
+    ]);
+    const totalMarks = rows.reduce((sum, row) => sum + Number(row.points ?? row.questions.points ?? 0), 0);
+    paperHeader = resolveExamPaperHeader({
+      organizationName: (orgRow?.name as string | null) ?? "EVALORA",
+      organizationLogoUrl: (orgRow?.logo_url as string | null) ?? null,
+      examTitle: exam.title,
+      examInstructions: exam.instructions ?? null,
+      examDurationMinutes: exam.duration_minutes ?? null,
+      examSettings: settings,
+      quizSettings: ((quizRow?.settings as Record<string, unknown> | null) ?? {}),
+      template: parseExamPaperTemplate(tplRow),
+      totalMarks,
+      candidateName: candidate.full_name ?? null,
+      candidateRef: candidate.candidate_ref ?? null,
+    });
+    paperHeader = { ...paperHeader, sections: parsePaperSections(settings.sections) };
+  } catch {
+    paperHeader = null;
+  }
+
   return NextResponse.json({
     server_now: new Date(nowMs).toISOString(),
     exam: {
@@ -220,6 +254,9 @@ export async function GET(request: Request) {
       // organization is entitled to use.
       language,
       experience,
+      calculator_mode: settings.calculator_mode === "basic" ? "basic" : "scientific",
+      calculator_angle_mode: settings.calculator_angle_mode === "rad" ? "rad" : "deg",
+      paper_header: paperHeader,
     },
     candidate: {
       name: candidate.full_name,

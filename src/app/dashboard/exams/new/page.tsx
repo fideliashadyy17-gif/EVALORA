@@ -13,12 +13,19 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
-  const { data: quizzes } = await supabase
-    .from("quizzes")
-    .select("id, title")
-    .eq("organization_id", org.id)
-    .eq("status", "published")
-    .order("title");
+  const [{ data: quizzes }, { data: templates }] = await Promise.all([
+    supabase
+      .from("quizzes")
+      .select("id, title")
+      .eq("organization_id", org.id)
+      .eq("status", "published")
+      .order("title"),
+    supabase
+      .from("exam_paper_templates")
+      .select("id, name, is_default")
+      .eq("organization_id", org.id)
+      .order("is_default", { ascending: false }),
+  ]);
   const ent = await getEntitlementFor(supabase, ctx, org.id);
 
   return (
@@ -76,6 +83,59 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             <Field label="Instructions">
               <Textarea name="instructions" rows={3} placeholder="Rules, permitted materials, integrity notice…" />
             </Field>
+            <Field
+              label="Question-paper content language"
+              hint="The language the paper was authored in. Candidates always see the paper in this language — switching the interface language never translates examination content."
+            >
+              <Select name="language" defaultValue="auto">
+                <option value="auto">Detect from the paper (recommended)</option>
+                <option value="en">English</option>
+                <option value="fr">French</option>
+                <option value="es">Spanish</option>
+              </Select>
+            </Field>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Examination period">
+                <Input name="exam_period" placeholder="First Term Examination" />
+              </Field>
+              <Field label="Academic year">
+                <Input name="academic_year" placeholder="2026–2027" />
+              </Field>
+              <Field label="Grade / Class">
+                <Input name="grade_label" placeholder="MYP4" />
+              </Field>
+              <Field label="Subject">
+                <Input name="subject" placeholder="Mathematics" />
+              </Field>
+            </div>
+            <Field label="Official paper template">
+              <Select name="exam_paper_template_id">
+                <option value="">Organization defaults</option>
+                {(templates ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (default)" : ""}</option>
+                ))}
+              </Select>
+            </Field>
+            <div className="rounded-xl border border-evergreen-900/10 bg-cream p-4">
+              <label className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+                <input type="checkbox" name="calculator" defaultChecked className="h-5 w-5 accent-evergreen-700" />
+                Scientific calculator available to candidates
+              </label>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label="Calculator mode">
+                  <Select name="calculator_mode" defaultValue="scientific">
+                    <option value="scientific">Scientific (full)</option>
+                    <option value="basic">Basic (four operations)</option>
+                  </Select>
+                </Field>
+                <Field label="Default angle mode">
+                  <Select name="calculator_angle_mode" defaultValue="deg">
+                    <option value="deg">Degrees</option>
+                    <option value="rad">Radians</option>
+                  </Select>
+                </Field>
+              </div>
+            </div>
             <div className="grid gap-2 rounded-xl bg-cream p-4 sm:grid-cols-2">
               {[
                 ["randomize_questions", "Randomize question order per candidate", true],

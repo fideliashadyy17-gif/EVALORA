@@ -1,6 +1,10 @@
+"use client";
+
 import { Logo } from "./Logo";
 import { PlatformCredit } from "./PlatformCredit";
 import { Card } from "./ui";
+import { LanguageSwitcher } from "./i18n/LanguageSwitcher";
+import { useI18n } from "./i18n/I18nProvider";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
@@ -15,28 +19,32 @@ export function AuthShell({
   children: ReactNode;
   footer?: ReactNode;
 }) {
+  const { t } = useI18n();
   return (
-    <main className="auth-experience flex min-h-screen flex-col justify-center px-4 py-8 sm:px-6 lg:px-10">
+    <main className="auth-experience relative flex min-h-screen flex-col justify-center px-4 py-8 sm:px-6 lg:px-10">
+      <div className="pointer-events-auto absolute right-4 top-4 z-10 sm:right-6 sm:top-5">
+        <LanguageSwitcher variant="dark" />
+      </div>
       <div className="mx-auto grid w-full max-w-5xl items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,0.9fr)] lg:gap-14">
         <section className="auth-story hidden lg:block" aria-label="About EVALORA">
           <Logo className="mb-12" />
-          <p className="auth-kicker">A better way to learn and lead</p>
+          <p className="auth-kicker">{t("auth.storyKicker")}</p>
           <h2 className="mt-4 max-w-xl font-display text-5xl font-semibold leading-[1.08] text-white">
-            Every learner deserves a fair chance to shine.
+            {t("auth.storyTitle")}
           </h2>
           <p className="mt-5 max-w-md text-base leading-7 text-emerald-50/80">
-            One trusted place for classrooms, live competitions and secure examinations — built around the people who make learning matter.
+            {t("auth.storyBody")}
           </p>
           <div className="auth-story-note mt-10 max-w-md rounded-2xl p-5 text-sm text-emerald-50">
-            <span className="block text-xs font-bold uppercase tracking-[0.16em] text-gold-300">Your workspace, your progress</span>
-            <span className="mt-2 block leading-6">Pick up where you left off. Your school community and learning tools are ready when you are.</span>
+            <span className="block text-xs font-bold uppercase tracking-[0.16em] text-gold-300">{t("auth.storyNoteKicker")}</span>
+            <span className="mt-2 block leading-6">{t("auth.storyNote")}</span>
           </div>
         </section>
         <div className="mx-auto w-full max-w-md">
           <div className="mb-5 flex justify-center lg:hidden"><Logo /></div>
           <Card className="auth-card w-full p-6 sm:p-9">
             <div className="mb-5 hidden border-b border-evergreen-900/10 pb-5 lg:block">
-              <p className="auth-kicker">Secure access</p>
+              <p className="auth-kicker">{t("auth.secureAccess")}</p>
             </div>
             <h1 className="font-display text-2xl font-semibold text-evergreen-950 sm:text-[1.8rem]">{title}</h1>
             {subtitle && <p className="mt-2 text-sm leading-6 text-ink-soft">{subtitle}</p>}
@@ -44,7 +52,7 @@ export function AuthShell({
           </Card>
           {footer && <div className="mt-5 text-center text-sm text-ink-soft">{footer}</div>}
           <p className="mt-6 text-center text-xs text-ink-soft">
-            Protected by server-side authorization · <Link href="/privacy" className="font-medium underline underline-offset-2">Privacy</Link>
+            {t("auth.protectedBy")} · <Link href="/privacy" className="font-medium underline underline-offset-2">{t("public.privacy")}</Link>
           </p>
           <PlatformCredit className="mt-4 text-center" />
         </div>

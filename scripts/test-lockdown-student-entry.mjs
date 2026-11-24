@@ -43,7 +43,7 @@ console.log("Running EVALORA Lockdown Student Entry Form Verification Suite...\n
     "ExamAccessClient must include Class field",
   );
   assert.ok(
-    clientSrc.includes("Verify and Begin"),
+    clientSrc.includes("Verify and Begin") || clientSrc.includes("examAccess.verifyBegin"),
     "ExamAccessClient must include 'Verify and Begin' action button",
   );
   console.log("  ✓ ExamAccessClient renders standard EVALORA student entry form: First Name, Last Name, Examination Code, Class, and Verify and Begin");

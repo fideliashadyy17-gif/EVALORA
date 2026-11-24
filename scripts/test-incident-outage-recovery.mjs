@@ -422,6 +422,7 @@ const stateRoute = compile("src/app/api/exam/state/route.ts", "scripts/__inciden
   "@/lib/integrity": { parseIntegrityPolicy: () => ({ mode: "off" }) },
   "@/lib/examHintsServer": { loadPublishedHints: async () => new Map() },
   "@/lib/examFormulas": { parseFormulaSheet: () => null },
+  "@/lib/examPaper": { parseExamPaperTemplate: () => null, parsePaperSections: () => [], resolveExamPaperHeader: (x) => ({ organizationName: x.organizationName, organizationLogoUrl: x.organizationLogoUrl ?? null, showLogo: true, title: x.examTitle, period: null, academicYear: null, gradeLabel: null, subject: null, durationMinutes: x.examDurationMinutes ?? null, totalMarks: x.totalMarks ?? null, instructions: x.examInstructions ?? null, candidateName: x.candidateName ?? null, candidateRef: x.candidateRef ?? null }) },
   "@/lib/lockdown": { parseLockdownSettings: (s) => s ?? null, DEFAULT_EXAM_LOCKDOWN: { enabled: false, require_app: false } },
   "@/lib/entitlements": { getEntitlement: async () => ({ limits: { premium_exam_experience: true, exam_duplicate_protection: true, exam_language_lock: true, floating_calculator: true, interactive_math_tools: true, premium_math_interface: true } }) },
   "@/lib/examExperience": { examExperienceFromLimits: () => ({ premium: true, duplicateProtection: true, languageLock: true, floatingCalculator: true, interactiveMathTools: true, premiumMathInterface: true }) },

@@ -502,7 +502,7 @@ export function PublicScreenClient({
           <Logo variant="light" href={null} />
           {data.organization?.logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={data.organization.logo_url} alt="" className="hidden h-12 w-12 rounded-full bg-white object-contain p-1 md:block" />
+            <img src={data.organization.logo_url} alt="" className="hidden h-12 w-auto max-w-[9rem] rounded-xl bg-white object-contain p-1 md:block" />
           )}
           <div>
             <p className="font-display text-xl font-semibold sm:text-2xl">{data.title}</p>

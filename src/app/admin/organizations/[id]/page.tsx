@@ -86,7 +86,7 @@ export default async function OrganizationDetailPage({
           <div className="flex items-start gap-4">
             {org.logo_url && (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={org.logo_url} alt="" className="h-14 w-14 rounded-xl object-cover ring-1 ring-evergreen-900/15" />
+              <img src={org.logo_url} alt="" className="h-14 w-auto max-w-[10rem] rounded-xl object-contain ring-1 ring-evergreen-900/15" />
             )}
             <div>
               <h1 className="font-display text-2xl font-semibold text-evergreen-950">{org.name}</h1>

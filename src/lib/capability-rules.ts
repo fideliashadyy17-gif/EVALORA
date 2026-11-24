@@ -6,7 +6,13 @@ import type { PlanLimits } from "./entitlements";
  * Owner privilege is a separate authorization context from a customer plan;
  * an Institutional organization never gains the owner's unrestricted access.
  */
-export type FeatureKey = "live_quizzes" | "examinations" | "proctoring";
+export type FeatureKey =
+  | "live_quizzes"
+  | "examinations"
+  | "proctoring"
+  | "question_paper_builder"
+  | "scientific_calculator"
+  | "official_exam_paper";
 export type FeatureFlags = Record<FeatureKey, boolean>;
 
 export type CapabilityKey =
@@ -15,6 +21,7 @@ export type CapabilityKey =
   | "question_bank"
   | "quiz_management"
   | "examinations"
+  | "question_paper_builder"
   | "live_competitions"
   | "proctoring"
   | "reports_analytics"
@@ -35,6 +42,7 @@ export const CAPABILITY_KEYS: CapabilityKey[] = [
   "question_bank",
   "quiz_management",
   "examinations",
+  "question_paper_builder",
   "live_competitions",
   "proctoring",
   "reports_analytics",
@@ -70,6 +78,7 @@ export function resolveCapabilities(input: CapabilityInput): CapabilitySet {
 
   const live = flags.live_quizzes !== false;
   const examinations = flags.examinations !== false && limits.max_exams !== 0;
+  const paperBuilder = flags.question_paper_builder !== false && examinations;
   const proctoring = flags.proctoring !== false && limits.proctoring === true;
   const reports = limits.advanced_reports === true;
   const institutionalAdmin = institutional;
@@ -80,6 +89,7 @@ export function resolveCapabilities(input: CapabilityInput): CapabilitySet {
     question_bank: live,
     quiz_management: live,
     examinations,
+    question_paper_builder: paperBuilder,
     live_competitions: live,
     proctoring,
     reports_analytics: reports,
@@ -100,6 +110,7 @@ export const CAPABILITY_LABELS: Record<CapabilityKey, string> = {
   question_bank: "Question Bank",
   quiz_management: "Quiz Management",
   examinations: "Examination Management",
+  question_paper_builder: "Question Paper Builder",
   live_competitions: "Live Competitions",
   proctoring: "Proctoring",
   reports_analytics: "Reports & Analytics",

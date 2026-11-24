@@ -1,8 +1,11 @@
 "use server";
 
 import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
-import { getCapabilities } from "@/lib/capabilities";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
+import { audit } from "@/lib/admin";
 import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
@@ -69,10 +72,21 @@ export async function createExam(formData: FormData) {
     ends_at: end?.toISOString() ?? null,
     status: "draft",
     settings: {
+      // Content language, authored by the exam creator. Independent of the
+      // viewer's interface locale (lib/i18n) — the paper never re-translates.
+      language: normalizeExamLanguage(formData.get("language")) ?? "auto",
       proctoring: proctoringWanted,
       require_screen_share: proctoringWanted && formData.get("require_screen_share") === "on",
       randomize_questions: formData.get("randomize_questions") === "on",
       randomize_options: formData.get("randomize_options") === "on",
+      calculator: formData.get("calculator") === "on" && moduleEnabled(ent.modules, "exam_calculator"),
+      calculator_mode: formData.get("calculator_mode") === "basic" ? "basic" : "scientific",
+      calculator_angle_mode: formData.get("calculator_angle_mode") === "rad" ? "rad" : "deg",
+      exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
+      academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
+      grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
+      subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
+      exam_paper_template_id: String(formData.get("exam_paper_template_id") ?? "").trim() || null,
       lockdown: {
         enabled: lockdownWanted,
         require_app: true,
@@ -208,6 +222,46 @@ export async function updateExamLockdown(formData: FormData) {
   revalidatePath("/dashboard/exams");
   revalidatePath(`/dashboard/exams/${id}`);
   redirect(`/dashboard/exams/${id}?ok=lockdown`);
+}
+
+/** Per-examination scientific calculator + official paper header settings. */
+export async function updateExamCalculator(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const id = String(formData.get("id") ?? "");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  const supabase = await createClient();
+  const { data: exam, error: readError } = await supabase.from("exams").select("settings").eq("id", id).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  const currentSettings = (exam.settings ?? {}) as Record<string, unknown>;
+  const templateId = String(formData.get("exam_paper_template_id") ?? "").trim() || null;
+  // A template id must belong to this organization.
+  if (templateId) {
+    const { data: tpl } = await supabase.from("exam_paper_templates").select("id").eq("id", templateId).eq("organization_id", org.id).maybeSingle();
+    if (!tpl) redirect(`/dashboard/exams/${id}?e=calculator`);
+  }
+
+  const updatedSettings = {
+    ...currentSettings,
+    calculator: formData.get("calculator") === "on",
+    calculator_mode: formData.get("calculator_mode") === "basic" ? "basic" : "scientific",
+    calculator_angle_mode: formData.get("calculator_angle_mode") === "rad" ? "rad" : "deg",
+    exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
+    academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
+    grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
+    subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
+    exam_paper_template_id: templateId,
+  };
+
+  const { error: updateError } = await supabase.from("exams").update({ settings: updatedSettings }).eq("id", id).eq("organization_id", org.id);
+  if (updateError) redirect(`/dashboard/exams/${id}?e=calculator`);
+
+  revalidatePath("/dashboard/exams");
+  revalidatePath(`/dashboard/exams/${id}`);
+  redirect(`/dashboard/exams/${id}?ok=calculator`);
 }
 
 export async function deleteExam(formData: FormData) {
@@ -651,10 +705,21 @@ export async function publishResults(formData: FormData) {
   const value = String(formData.get("publish") ?? "");
   if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
   const supabase = await createClient();
+  // Plan & Module Management: publication is an entitlement, enforced here
+  // server-side (menus are cosmetic). Roles already applied above.
+  const { entitlement: pubEnt } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(pubEnt, "exam_publication", `${back}?e=module`);
   const { data: exam, error: readError } = await supabase.from("exams").select("settings")
     .eq("id", examId).eq("organization_id", org.id).maybeSingle();
   if (readError || !exam) redirect(`${back}?publish_error=1`);
-  const settings = { ...((exam.settings as object) ?? {}), results_published: value === "1" };
+  const currentSettings = ((exam.settings as Record<string, unknown> | null) ?? {});
+  // Mandatory publication workflow: results MUST be validated before they can
+  // be published. Unpublishing stays free so corrections can be reviewed and
+  // re-validated (history lives in audit_logs + grade history).
+  if (value === "1" && currentSettings.results_validated !== true) {
+    redirect(`${back}?publish_error=validation`);
+  }
+  const settings = { ...currentSettings, results_published: value === "1" };
   // Publishing stamps who released the marks; the audit log keeps every change
   // that led to them.
   const published = value === "1";
@@ -666,8 +731,88 @@ export async function publishResults(formData: FormData) {
     })
     .eq("id", examId).eq("organization_id", org.id).select("id").maybeSingle();
   if (updateError || !updated) redirect(`${back}?publish_error=1`);
+  // Who published/unpublished, when — appended to the platform audit log.
+  await audit(
+    ctx,
+    published ? "exam.results_published" : "exam.results_unpublished",
+    "exams",
+    examId,
+    org.id,
+    { source: "workspace", validated: currentSettings.results_validated === true },
+  );
   revalidatePath(back);
   redirect(`${back}?publish_ok=1`);
+}
+
+/**
+ * Mandatory stage 6 of the publication workflow — validate provisional
+ * results so publication becomes possible. Writes settings.results_validated
+ * plus who/when stamps; audited. Requires at least one attempt (nothing to
+ * validate otherwise) and cannot run once published (unpublish first).
+ */
+export async function validateResults(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
+  const back = `/dashboard/exams/${examId}`;
+  const supabase = await createClient();
+  const { entitlement: valEnt } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(valEnt, "exam_validation", `${back}?e=module`);
+  const { data: exam, error: readError } = await supabase.from("exams")
+    .select("settings").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`${back}?validation_error=1`);
+  const settings = ((exam.settings as Record<string, unknown> | null) ?? {});
+  if (settings.results_published === true) redirect(`${back}?validation_error=published`);
+  const { count, error: countError } = await supabase.from("exam_attempts")
+    .select("id", { count: "exact", head: true }).eq("exam_id", examId);
+  if (countError || !count) redirect(`${back}?validation_error=empty`);
+  const now = new Date().toISOString();
+  const next = {
+    ...settings,
+    results_validated: true,
+    results_validated_by: ctx.user.id,
+    results_validated_at: now,
+  };
+  const { data: updated, error: updateError } = await supabase.from("exams")
+    .update({ settings: next }).eq("id", examId).eq("organization_id", org.id)
+    .select("id").maybeSingle();
+  if (updateError || !updated) redirect(`${back}?validation_error=1`);
+  await audit(ctx, "exam.results_validated", "exams", examId, org.id, { source: "workspace", attempts: count });
+  revalidatePath(back);
+  redirect(`${back}?ok=validated`);
+}
+
+/** Reopen validation (only while unpublished) — audited, e.g. before a correction pass. */
+export async function unvalidateResults(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const examId = String(formData.get("exam_id") ?? "");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
+  const back = `/dashboard/exams/${examId}`;
+  const supabase = await createClient();
+  const { entitlement: valEnt } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(valEnt, "exam_validation", `${back}?e=module`);
+  const { data: exam, error: readError } = await supabase.from("exams")
+    .select("settings").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  if (readError || !exam) redirect(`${back}?validation_error=1`);
+  const settings = ((exam.settings as Record<string, unknown> | null) ?? {});
+  if (settings.results_published === true) redirect(`${back}?validation_error=published`);
+  const next = {
+    ...settings,
+    results_validated: false,
+    results_validated_by: null,
+    results_validated_at: null,
+  };
+  const { data: updated, error: updateError } = await supabase.from("exams")
+    .update({ settings: next }).eq("id", examId).eq("organization_id", org.id)
+    .select("id").maybeSingle();
+  if (updateError || !updated) redirect(`${back}?validation_error=1`);
+  await audit(ctx, "exam.results_validation_reopened", "exams", examId, org.id, { source: "workspace" });
+  revalidatePath(back);
+  redirect(`${back}?ok=unvalidated`);
 }
 
 /** Record an observation without allowing a workspace to target another exam. */
@@ -752,6 +897,10 @@ export async function updateWorkspaceExamAccess(formData: FormData) {
   else redirect(`${back}?access_error=invalid`);
 
   const supabase = await createClient();
+  // Share links, access codes and personal-link rotation are a distinct
+  // entitlement (Plan & Module Management), enforced server-side.
+  const { entitlement: accessEnt } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(accessEnt, "exam_share_codes", `${back}?e=module`);
   const { data: updated, error } = await supabase.from("exams").update(patch)
     .eq("id", id).eq("organization_id", org.id).select("id").maybeSingle();
   if (error || !updated) redirect(`${back}?access_error=failed`);
