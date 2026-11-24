@@ -16,7 +16,7 @@ export default async function NewPaperPage() {
   const { capabilities } = await getCapabilities(supabase, ctx, org.id);
   if (!capabilities.question_paper_builder) notFound();
 
-  const [{ data: bank }, { data: templates }] = await Promise.all([
+  const [{ data: bank }, { data: templates }, { data: gradingSystems }] = await Promise.all([
     supabase
       .from("questions")
       .select("id, type, prompt, prompt_doc, points, status, topic, config")
@@ -30,6 +30,12 @@ export default async function NewPaperPage() {
       .eq("organization_id", org.id)
       .order("is_default", { ascending: false })
       .order("created_at", { ascending: false }),
+    supabase
+      .from("grading_systems")
+      .select("id, name, curriculum, config")
+      .eq("organization_id", org.id)
+      .eq("status", "active")
+      .order("name"),
   ]);
 
   return (
@@ -54,6 +60,12 @@ export default async function NewPaperPage() {
             : null,
         }))}
         templates={(templates ?? []).map((t) => ({ id: t.id, name: t.name, is_default: Boolean(t.is_default) }))}
+        gradingSystems={(gradingSystems ?? []).map((gs) => ({
+          id: gs.id,
+          name: gs.name,
+          curriculum: gs.curriculum,
+          config: (gs.config ?? {}) as Record<string, unknown>,
+        }))}
       />
     </>
   );

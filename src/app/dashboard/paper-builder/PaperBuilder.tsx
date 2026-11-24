@@ -7,6 +7,8 @@ import { ArrowDown, ArrowUp, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { saveQuiz } from "../quizzes/actions";
+import { QuestionAssessmentPanel, type GradingSystemOption } from "@/components/grading/QuestionAssessmentPanel";
+import type { QuestionAssessment } from "@/lib/questionAssessment";
 
 interface BankQ {
   id: string;
@@ -31,6 +33,7 @@ export function PaperBuilder({
   initial,
   bank,
   templates,
+  gradingSystems = [],
 }: {
   initial?: {
     id?: string;
@@ -51,9 +54,11 @@ export function PaperBuilder({
     subject: string;
     instructions: string;
     template_id: string;
+    assessment_of?: Record<string, QuestionAssessment | null>;
   };
   bank: BankQ[];
   templates: { id: string; name: string; is_default: boolean }[];
+  gradingSystems?: GradingSystemOption[];
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? "");
@@ -70,6 +75,9 @@ export function PaperBuilder({
     }
     return map;
   });
+  const [assessmentOf, setAssessmentOf] = useState<Record<string, QuestionAssessment | null>>(
+    () => initial?.assessment_of ?? {},
+  );
   const [sections, setSections] = useState<PaperSectionDraft[]>(
     initial?.sections.length
       ? initial.sections
@@ -138,6 +146,7 @@ export function PaperBuilder({
           .reduce((sum, id) => sum + Number(byId.get(id)?.points ?? 0), 0),
       })),
       section_of: sectionOf,
+      assessment_of: assessmentOf,
       calculator,
       calculator_mode: calculatorMode,
       calculator_angle_mode: angleMode,
@@ -307,6 +316,13 @@ export function PaperBuilder({
                           {sections.map((s) => <option key={s.id} value={s.id}>{s.id}</option>)}
                         </Select>
                       </label>
+                      <QuestionAssessmentPanel
+                        value={assessmentOf[id] ?? null}
+                        onChange={(next) => setAssessmentOf((prev) => ({ ...prev, [id]: next }))}
+                        gradingSystems={gradingSystems}
+                        testId={`assessment-mapping-${i + 1}`}
+                        questionLabel={`question ${i + 1}`}
+                      />
                     </div>
                     <div className="flex shrink-0 gap-1">
                       <button onClick={() => move(i, -1)} className="rounded p-1 text-ink-soft hover:bg-white" aria-label="Move up"><ArrowUp className="h-4 w-4" /></button>

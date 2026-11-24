@@ -85,9 +85,28 @@ export async function saveGradingSystem(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const name = String(formData.get("name") ?? "").trim().slice(0, 160);
   const curriculumRaw = String(formData.get("curriculum") ?? "");
-  const curriculum = (GRADING_CURRICULA as readonly string[]).includes(curriculumRaw)
+  let curriculum: GradingCurriculum | null = (GRADING_CURRICULA as readonly string[]).includes(curriculumRaw)
     ? (curriculumRaw as GradingCurriculum)
     : null;
+
+  // Editing: a stale client (or a disabled/absent curriculum field) must
+  // not wipe the stored framework — fall back to the row's own curriculum
+  // instead of failing the whole save. Only a genuinely invalid CREATE
+  // (no id, no valid curriculum) is rejected.
+  if (id) {
+    if (!UUID.test(id)) fail("id");
+    const supabaseEarly = await createClient();
+    const { data: existing } = await supabaseEarly
+      .from("grading_systems")
+      .select("curriculum")
+      .eq("id", id)
+      .eq("organization_id", org.id)
+      .maybeSingle();
+    if (!existing) fail("missing");
+    if (!curriculum && (GRADING_CURRICULA as readonly string[]).includes(existing.curriculum)) {
+      curriculum = existing.curriculum;
+    }
+  }
   if (!name || !curriculum) fail("fields");
 
   const subjectRaw = String(formData.get("subject_id") ?? "");

@@ -180,11 +180,13 @@ export function GradingSystemsClient({
                 <Input name="name" required defaultValue={editing?.name ?? ""} maxLength={160} placeholder="Grade 10 — Beninese /20" />
               </Field>
               <Field label="Curriculum family">
+                {/* Always enabled: a disabled select submits nothing, which
+                    made every edit-save fail server-side validation. */}
                 <Select
                   name="curriculum"
                   value={curriculum}
                   onChange={(e) => setCurriculum(e.target.value)}
-                  disabled={Boolean(editing)}
+                  data-testid="grading-curriculum-select"
                 >
                   {CURRICULA.map((c) => (
                     <option key={c.value} value={c.value}>{c.label}</option>

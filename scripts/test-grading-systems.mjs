@@ -154,4 +154,320 @@ const migration = readFileSync("supabase/migrations/20261124200000_formula_libra
 assert.ok(migration.includes("create table if not exists public.grading_systems"), "grading_systems table exists");
 assert.ok(migration.includes("curriculum text not null"), "curriculum column present");
 
-console.log("grading-systems: 52 checks passed");
+
+// ══════════════════════════════════════════════════════════════════════
+// PART 1 — curriculum dropdown behaviour + save/reload workflow (executed)
+// ══════════════════════════════════════════════════════════════════════
+import { Module } from "node:module";
+import { randomUUID } from "node:crypto";
+import path from "node:path";
+import ts from "typescript";
+import React from "react";
+import TestRenderer, { act } from "react-test-renderer";
+globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+
+let extra = 0;
+const ok = (cond, msg) => { assert.ok(cond, msg); extra += 1; };
+
+// ── A. Interactive curriculum dropdown (real component, real state) ──────
+const clientFile = path.resolve("scripts/__grading_client.cjs");
+const loadTranspiled = (srcPath, outFile, stubFor) => {
+  const orig = Module._load;
+  Module._load = function (req, parent) {
+    if (parent?.filename === outFile || parent?.filename === srcPath) {
+      const stub = stubFor(req);
+      if (stub !== undefined) return stub;
+    }
+    return orig.apply(this, arguments);
+  };
+  const js = ts.transpileModule(readFileSync(srcPath, "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: true },
+  }).outputText;
+  const m = new Module(outFile);
+  m.filename = outFile;
+  m.paths = Module._nodeModulePaths(path.dirname(outFile));
+  m._compile(js, outFile);
+  Module._load = orig;
+  return m.exports;
+};
+
+const uiStub = {
+  Badge: ({ children, tone }) => React.createElement("span", { "data-tone": tone }, children),
+  Button: ({ children, ...p }) => React.createElement("button", { type: p.type ?? "button", ...p }, children),
+  Field: ({ label, children }) => React.createElement("label", null, label, children),
+  Input: (p) => React.createElement("input", p),
+  Select: (p) => React.createElement("select", p),
+  Textarea: (p) => React.createElement("textarea", p),
+  Card: ({ children, ...p }) => React.createElement("div", p, children),
+};
+const clientExports = loadTranspiled(
+  "src/components/grading/GradingSystemsClient.tsx",
+  clientFile,
+  (req) => {
+    if (req === "@/components/ui") return uiStub;
+    if (req === "@/app/dashboard/grading/actions") return { saveGradingSystem: () => {}, archiveGradingSystem: () => {} };
+    if (req === "lucide-react") return { Plus: () => null, Pencil: () => null };
+    return undefined;
+  },
+);
+const GradingSystemsClient = clientExports.GradingSystemsClient;
+
+const textOf = (node) => {
+  if (node == null) return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(textOf).join(" ");
+  if (typeof node === "object") return `${textOf(node.props?.children ?? "")}`;
+  return "";
+};
+const findAll = (node, pred, out = []) => {
+  if (node && typeof node === "object") {
+    if (Array.isArray(node)) { node.forEach((x) => findAll(x, pred, out)); return out; }
+    if (node.props !== undefined && pred(node)) out.push(node);
+    if (node.props) findAll(node.props, pred, out);
+    if (node.children) findAll(node.children, pred, out);
+  }
+  return out;
+};
+const existingRow = { id: "g1", name: "Benin /20", curriculum: "beninese", subject_id: null, grade_label: null, assessment_kind: "any", config: { scale_max: 20, pass_percent: 50 }, status: "active" };
+let tree;
+const mount = (systems) => {
+  act(() => { tree = TestRenderer.create(React.createElement(GradingSystemsClient, { systems, subjects: [], canEdit: true })); });
+};
+const click = (node) => act(() => { node.props.onClick(); });
+
+mount([existingRow]);
+// New → editor opens, dropdown enabled with every curriculum option
+const newBtn = findAll(tree.root, (n) => n.type === "button" && textOf(n).includes("New grading system"))[0];
+ok(!!newBtn, "New grading system button renders");
+click(newBtn);
+let sel = tree.root.findAll((n) => n.type === "select" && n.props.name === "curriculum")[0];
+ok(!!sel, "curriculum select renders in the editor");
+ok(!sel.props.disabled, "curriculum select is ENABLED when creating");
+const optionValues = (sel.props.children ?? []).map((o) => o?.props?.value);
+assert.deepEqual(optionValues, ["beninese", "custom", "ap", "myp", "cambridge", "british"], "all six curricula offered");
+extra += 1;
+// Changing curriculum actually drives the form (sections switch)
+act(() => { sel.props.onChange({ target: { value: "myp" } }); });
+sel = tree.root.findAll((n) => n.type === "select" && n.props.name === "curriculum")[0];
+ok(sel.props.value === "myp", "controlled value follows the selection");
+ok(findAll(tree.root, (n) => n.type === "p").some((p) => textOf(p).includes("MYP achievement levels")), "framework-specific section switches to MYP");
+act(() => { sel.props.onChange({ target: { value: "beninese" } }); });
+ok(findAll(tree.root, (n) => n.type === "p").some((p) => textOf(p).includes("Beninese /20 rules")), "switching back restores Beninese rules");
+
+// Edit → the curriculum select must stay ENABLED (a disabled select posts
+// nothing, which was the root cause of every edit-save failing).
+act(() => { tree.unmount(); });
+mount([existingRow]);
+const editBtn = findAll(tree.root, (n) => n.type === "button" && n.props["aria-label"] === "Edit Benin /20")[0];
+ok(!!editBtn, "edit button renders for the stored system");
+click(editBtn);
+const editSel = tree.root.findAll((n) => n.type === "select" && n.props.name === "curriculum")[0];
+ok(!!editSel && !editSel.props.disabled, "curriculum select is ENABLED when editing (regression: was disabled → empty POST → ?e=fields)");
+ok(editSel.props.value === "beninese", "edit reopens with the persisted curriculum selected");
+const editFields = tree.root.findAll((n) => n.type === "input" || n.type === "select").map((n) => ({ name: n.props.name, disabled: !!n.props.disabled }));
+ok(editFields.every((f) => !f.disabled), "no form field is disabled on edit — every value submits");
+ok(editFields.some((f) => f.name === "curriculum"), "curriculum field present in the edit POST");
+
+// ── B. saveGradingSystem executed against a fake persistence layer ──────
+const authStub = {
+  requireUser: async () => ({ user: { id: "u-test" }, profile: { platform_role: "user", status: "active" } }),
+  activeOrg: () => ({ id: "org-1", role: "owner", status: "active" }),
+  can: () => true,
+  CREATOR_ROLES: ["owner", "admin", "teacher", "organizer"],
+  MANAGER_ROLES: ["owner", "admin"],
+};
+const auditCalls = [];
+const adminStub = { audit: async (...args) => { auditCalls.push(args); } };
+const realGrading = await import("../src/lib/gradingSystems.ts");
+const realMypExam = await import("../src/lib/mypExamConfig.ts");
+
+function makeDb() {
+  const tables = { grading_systems: [], subjects: [] };
+  const match = (row, f) => {
+    if (f[0] === "__in") return f[2].includes(row[f[1]]);
+    return row[f[0]] === f[1];
+  };
+  const from = (table) => {
+    const st = { op: "select", filters: [], nots: [], patch: null, rows: null, head: false };
+    const apply = () => {
+      let rows = [...(tables[table] ?? [])];
+      rows = rows.filter((r) => st.filters.every((f) => match(r, f)));
+      for (const [k, op, val] of st.nots) {
+        if (op === "in") {
+          const ids = String(val).replace(/[()]/g, "").split(",").filter(Boolean);
+          rows = rows.filter((r) => !ids.includes(r[k]));
+        }
+      }
+      return rows;
+    };
+    const run = async () => {
+      if (st.op === "select") {
+        const rows = apply();
+        return { data: st.head ? null : rows, count: st.head ? rows.length : null, error: null };
+      }
+      if (st.op === "insert" || st.op === "upsert") {
+        const written = [];
+        for (const row of st.rows) {
+          if (st.op === "upsert" && table === "quiz_questions") {
+            const existing = (tables[table] ?? []).find((r) => r.quiz_id === row.quiz_id && r.question_id === row.question_id);
+            if (existing) { Object.assign(existing, row); written.push(existing); continue; }
+          }
+          const stored = { ...row };
+          if (!stored.id) stored.id = randomUUID();
+          // Mirror the DB default so tests read the same row production does.
+          if (table === "grading_systems" && !stored.status) stored.status = "active";
+          (tables[table] ??= []).push(stored);
+          written.push(stored);
+        }
+        return { data: written, error: null };
+      }
+      if (st.op === "update") {
+        const rows = apply();
+        rows.forEach((r) => Object.assign(r, st.patch));
+        return { data: rows, error: null };
+      }
+      if (st.op === "delete") {
+        const rows = apply();
+        tables[table] = (tables[table] ?? []).filter((r) => !rows.includes(r));
+        return { data: rows, error: null };
+      }
+      return { data: null, error: { message: "unsupported" } };
+    };
+    const q = {
+      select(cols, opts) { if (st.op !== "insert" && st.op !== "upsert") st.op = "select"; st.head = !!opts?.head; return q; },
+      insert(rows) { st.op = "insert"; st.rows = Array.isArray(rows) ? rows : [rows]; return q; },
+      upsert(rows) { st.op = "upsert"; st.rows = Array.isArray(rows) ? rows : [rows]; return q; },
+      update(patch) { st.op = "update"; st.patch = patch; return q; },
+      delete() { st.op = "delete"; return q; },
+      eq(k, v) { st.filters.push([k, v]); return q; },
+      in(k, arr) { st.filters.push(["__in", k, arr]); return q; },
+      not(k, op, val) { st.nots.push([k, op, val]); return q; },
+      order() { return q; },
+      async maybeSingle() {
+        const res = await run();
+        return { data: res.data?.[0] ?? null, error: res.error ?? null };
+      },
+      async single() {
+        const res = await run();
+        const first = Array.isArray(res.data) ? res.data[0] : res.data;
+        if (res.error || first == null) return { data: null, error: res.error ?? { message: "no rows" } };
+        return { data: first, error: null };
+      },
+      then(resolve, reject) {
+        return run().then(resolve, reject);
+      },
+    };
+    return q;
+  };
+  return { from, tables };
+}
+
+const db = makeDb();
+const serverStub = { createClient: async () => db };
+const navStub = {
+  redirect: (url) => { const e = new Error(`REDIRECT:${url}`); e.isRedirect = true; e.url = url; throw e; },
+};
+const cacheStub = { revalidatePath: () => {} };
+
+const actionsFile = path.resolve("scripts/__grading_actions.cjs");
+const gradingActionsExec = (() => {
+  const orig = Module._load;
+  Module._load = function (req, parent) {
+    if (parent?.filename === actionsFile) {
+      if (req === "@/lib/auth") return authStub;
+      if (req === "@/lib/admin") return adminStub;
+      if (req === "@/lib/supabase/server") return serverStub;
+      if (req === "@/lib/gradingSystems") return realGrading;
+      if (req === "@/lib/mypExamConfig") return realMypExam;
+      if (req === "next/cache") return cacheStub;
+      if (req === "next/navigation") return navStub;
+    }
+    return orig.apply(this, arguments);
+  };
+  const js = ts.transpileModule(readFileSync("src/app/dashboard/grading/actions.ts", "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, esModuleInterop: true },
+  }).outputText;
+  const m = new Module(actionsFile);
+  m.filename = actionsFile;
+  m.paths = Module._nodeModulePaths(path.dirname(actionsFile));
+  m._compile(js, actionsFile);
+  Module._load = orig;
+  return m.exports;
+})();
+
+const runSave = async (fields) => {
+  const fd = new FormData();
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue;
+    if (Array.isArray(v)) for (const item of v) fd.append(k, String(item));
+    else fd.append(k, String(v));
+  }
+  try {
+    await gradingActionsExec.saveGradingSystem(fd);
+    return { url: null };
+  } catch (e) {
+    if (e?.isRedirect) return { url: e.url };
+    throw e;
+  }
+};
+
+// B1. CREATE succeeds and the row persists (reload = read the stored row).
+const created = await runSave({ name: "Grade 10 /20", curriculum: "beninese", assessment_kind: "exam", pass_percent: "50", scale_max: "20", benin_min: ["18", "0"], benin_label: ["Très Bien", "Insuffisant"] });
+assert.equal(created.url, "/dashboard/grading?ok=saved", "create redirects to ok=saved");
+extra += 1;
+const row1 = db.tables.grading_systems[0];
+ok(!!row1, "create inserted a grading_systems row");
+ok(row1.curriculum === "beninese" && row1.status === "active" && row1.organization_id === "org-1", "row stores curriculum/status/org");
+ok(row1.config.scale_max === 20 && Array.isArray(row1.config.benin_letters) && row1.config.benin_letters[0].label === "Très Bien", "rule config persisted");
+ok(auditCalls.some((c) => c[1] === "grading_system.created"), "creation audited");
+
+// B2. EDIT with NO curriculum field in the POST (the old disabled-select
+//     payload) must NOT fail — it falls back to the stored curriculum.
+const editNoCurriculum = await runSave({ id: row1.id, name: "Grade 10 /20 (edited)", assessment_kind: "any", pass_percent: "45" });
+assert.equal(editNoCurriculum.url, "/dashboard/grading?ok=saved", "edit without curriculum field still saves (regression: ?e=fields)");
+extra += 1;
+ok(db.tables.grading_systems[0].name === "Grade 10 /20 (edited)", "edited name persisted");
+ok(db.tables.grading_systems[0].curriculum === "beninese", "curriculum preserved via stored-row fallback");
+ok(db.tables.grading_systems[0].config.pass_percent === 45, "config updated on edit");
+
+// B3. EDIT that genuinely changes curriculum applies the new framework.
+const editChange = await runSave({ id: row1.id, name: "Custom scheme", curriculum: "custom", assessment_kind: "any", pass_percent: "50", boundary_min: ["80", "0"], boundary_label: ["A", "F"] });
+assert.equal(editChange.url, "/dashboard/grading?ok=saved", "curriculum change on edit saves");
+extra += 1;
+ok(db.tables.grading_systems[0].curriculum === "custom", "curriculum switch persisted");
+ok(Array.isArray(db.tables.grading_systems[0].config.boundaries) && db.tables.grading_systems[0].config.boundaries.length === 2, "custom boundaries persisted");
+
+// B4. CREATE without a curriculum is genuinely invalid.
+const noCurriculum = await runSave({ name: "No framework", assessment_kind: "any" });
+assert.equal(noCurriculum.url, "/dashboard/grading?e=fields", "create without curriculum rejected with fields");
+extra += 1;
+
+// B5. Editing a foreign/unknown id fails cleanly.
+const unknown = await runSave({ id: "11111111-2222-3333-4444-555555555555", name: "Ghost", curriculum: "ap" });
+assert.equal(unknown.url, "/dashboard/grading?e=missing", "unknown id rejected with missing");
+extra += 1;
+
+// B6. Subject must belong to the acting organisation.
+const foreignSubjectId = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+db.tables.subjects.push({ id: foreignSubjectId, organization_id: "org-other", name: "Maths" });
+const foreignSubject = await runSave({ name: "With subject", curriculum: "myp", subject_id: foreignSubjectId });
+assert.equal(foreignSubject.url, "/dashboard/grading?e=subject", "foreign subject rejected");
+extra += 1;
+
+// B7. Archive / restore round-trip keeps the row (no deletion).
+const archiveRun = async (id) => {
+  const fd = new FormData();
+  fd.append("id", id);
+  try { await gradingActionsExec.archiveGradingSystem(fd); return null; } catch (e) { if (e?.isRedirect) return e.url; throw e; }
+};
+const archivedUrl = await archiveRun(row1.id);
+assert.equal(archivedUrl, "/dashboard/grading?ok=archived", "archive redirects ok=archived");
+extra += 1;
+ok(db.tables.grading_systems[0].status === "archived", "row archived, not deleted");
+const restoredUrl = await archiveRun(row1.id);
+assert.equal(restoredUrl, "/dashboard/grading?ok=restored", "restore redirects ok=restored");
+extra += 1;
+ok(db.tables.grading_systems[0].status === "active", "row restored to active");
+
+console.log(`grading-systems: ${52 + extra} checks passed`);
+
