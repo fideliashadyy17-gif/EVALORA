@@ -12,9 +12,10 @@ import Link from "next/link";
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
 
-export default async function DashboardPage() {
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  const sp = await searchParams;
   const supabase = await createClient();
 
   type Overview = {
@@ -121,6 +122,12 @@ export default async function DashboardPage() {
 
   return (
     <>
+      {sp?.e === "module" && (
+        <p role="alert" className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          That module is disabled for this organization. Its page, navigation entry and direct links are all
+          restricted by the current plan configuration — a Super Admin can enable it in Plan &amp; Module Management.
+        </p>
+      )}
       <section className="workspace-dashboard-hero mb-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.6rem] p-6 sm:p-8">
         <div className="max-w-2xl">
           <p className="workspace-dashboard-kicker">Assessment workspace</p>

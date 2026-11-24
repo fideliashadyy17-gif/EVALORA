@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { loadRubrics } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -27,6 +28,8 @@ export default async function RubricsPage({
   const sp = await searchParams;
   const canMark = can(ctx, org.id, MARKER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "rubrics", "/dashboard?e=module");
   const rubrics = await loadRubrics(supabase, org.id);
   const curriculumFilter = typeof sp.curriculum === "string" && sp.curriculum ? sp.curriculum : "";
   const visibleRubrics = curriculumFilter

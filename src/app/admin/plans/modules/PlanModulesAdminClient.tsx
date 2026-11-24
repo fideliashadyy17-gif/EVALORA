@@ -14,7 +14,13 @@
 import { useMemo, useState } from "react";
 import { Badge, Button, Card, EmptyState } from "@/components/ui";
 import { useI18n } from "@/components/i18n/I18nProvider";
-import { MODULE_GROUPS, MODULE_DEFAULTS, type ModuleGroup } from "@/lib/modules";
+import {
+  MODULE_GROUPS,
+  MODULE_DEFAULTS,
+  resolveEffectiveModule,
+  type ModuleEntitlementSource,
+  type ModuleGroup,
+} from "@/lib/modules";
 import { savePlanModules, saveSubscriptionModules } from "./actions";
 import { cn } from "@/lib/utils";
 
@@ -33,6 +39,8 @@ export interface SubRow {
   status: string;
   planName: string;
   planSlug: string;
+  /** The assigned plan's module map — the INHERIT source of truth. */
+  planModules: Record<string, boolean> | null;
   modulesOverride: Record<string, boolean> | null;
 }
 
@@ -83,6 +91,14 @@ export function PlanModulesAdminClient({
   const planCustom = plan?.modules != null;
   const overrideCount = sub?.modulesOverride
     ? Object.keys(sub.modulesOverride).length
+    : 0;
+  const sourceLabel: Record<ModuleEntitlementSource, string> = {
+    plan: t("admin.pmmSourcePlan"),
+    override: t("admin.pmmSourceOverride"),
+    default: t("admin.pmmSourceDefault"),
+  };
+  const planEnabledCount = sub
+    ? catalog.filter((m) => resolveEffectiveModule(sub.planModules, null, m.key).effective).length
     : 0;
 
   return (
@@ -203,6 +219,14 @@ export function PlanModulesAdminClient({
                 count: overrideCount,
               })}
             </p>
+            <p className="mt-1 rounded-lg bg-cream px-3 py-2 text-xs text-ink-soft" data-testid="pmm-plan-summary">
+              {t("admin.pmmPlanSummary", {
+                plan: sub.planName,
+                enabled: String(planEnabledCount),
+                total: String(catalog.length),
+              })}{" "}
+              {t("admin.pmmPlanSummaryNote")}
+            </p>
             {MODULE_GROUPS.map((group) => (
               <section key={group}>
                 <h3 className="text-[11px] font-bold uppercase tracking-wider text-evergreen-700">
@@ -210,16 +234,15 @@ export function PlanModulesAdminClient({
                 </h3>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                   {(grouped.get(group) ?? []).map((m) => {
-                    const state =
-                      sub.modulesOverride && m.key in sub.modulesOverride
-                        ? sub.modulesOverride[m.key]
-                          ? "on"
-                          : "off"
-                        : "inherit";
-                    const effective =
-                      state === "inherit"
-                        ? MODULE_DEFAULTS[m.key] ?? true
-                        : state === "on";
+                    // THE FIX: effective state = override ?? PLAN ?? platform
+                    // default — never the bare default while INHERIT, so the
+                    // console can no longer disagree with the dashboard.
+                    const resolved = resolveEffectiveModule(
+                      sub.planModules,
+                      sub.modulesOverride,
+                      m.key,
+                    );
+                    const state = resolved.configured;
                     return (
                       <label
                         key={m.key}
@@ -232,12 +255,26 @@ export function PlanModulesAdminClient({
                               : "border-red-700/40 bg-red-50",
                         )}
                         title={m.description}
+                        data-testid={`pmm-module-${m.key}`}
+                        data-configured={state}
+                        data-effective={resolved.effective ? "enabled" : "disabled"}
+                        data-source={resolved.source}
                       >
                         <span className="min-w-0 flex-1">
                           <span className="block font-semibold text-evergreen-950">{m.label}</span>
-                          <span className="mt-0.5 block text-xs text-ink-soft">
-                            {t("admin.pmmEffective")}:{" "}
-                            {effective ? t("admin.enabled") : t("admin.disabled")}
+                          <span className="mt-0.5 block text-xs">
+                            {t("admin.pmmConfigured")}: <strong>{state === "inherit" ? t("admin.pmmInherit") : state === "on" ? t("admin.pmmOn") : t("admin.pmmOff")}</strong>
+                          </span>
+                          <span
+                            className={cn(
+                              "mt-0.5 block text-xs font-semibold",
+                              resolved.effective ? "text-emerald-700" : "text-red-700",
+                            )}
+                          >
+                            {t("admin.pmmEffective")}: {resolved.effective ? t("admin.enabled") : t("admin.disabled")}
+                          </span>
+                          <span className="mt-0.5 block text-[11px] text-ink-soft">
+                            {t("admin.pmmSource")}: {sourceLabel[resolved.source]}
                           </span>
                         </span>
                         <select

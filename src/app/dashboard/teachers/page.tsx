@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
@@ -45,6 +46,8 @@ export default async function TeachersPage({
 
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "teachers", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 20;
 

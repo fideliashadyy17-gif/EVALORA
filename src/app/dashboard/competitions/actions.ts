@@ -3,6 +3,8 @@
 import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { audit } from "@/lib/admin";
+import { getCapabilities } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -70,12 +72,17 @@ export async function createOrgCompetition(formData: FormData) {
     .single();
   if (error || !data) redirect("/dashboard/competitions?e=failed");
 
-  // Every competition starts with one shareable admission code.
-  for (let attempt = 0; attempt < 6; attempt++) {
-    const { error: codeError } = await admin
-      .from("competition_access_codes")
-      .insert({ competition_id: data!.id, code: await accessCode(), label: "General admission", created_by: ctx.user.id });
-    if (!codeError) break;
+  // Every competition starts with one shareable admission code — only while
+  // the Assessment Code module is enabled for this organization (same
+  // entitlement the navigation and pages resolve).
+  const { entitlement } = await getCapabilities(admin, ctx, org.id);
+  if (moduleEnabled(entitlement.modules, "competition_code")) {
+    for (let attempt = 0; attempt < 6; attempt++) {
+      const { error: codeError } = await admin
+        .from("competition_access_codes")
+        .insert({ competition_id: data!.id, code: await accessCode(), label: "General admission", created_by: ctx.user.id });
+      if (!codeError) break;
+    }
   }
 
   await audit(ctx, "competition.created", "competitions", data!.id, org.id, { title, format, source: "organization_dashboard" });

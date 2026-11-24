@@ -1,4 +1,6 @@
 import { PageTitle, ButtonLink, Card } from "@/components/ui";
+import { requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { MypFilters } from "@/components/myp/MypFilters";
 import { MypAnalyticsCards, MypResultsTable } from "@/components/myp/MypResultsTable";
 import { isMypLearner, mypAccess, parseMypFilters } from "@/lib/mypAccess";
@@ -47,6 +49,14 @@ export default async function MypResultsPage({ searchParams }: { searchParams: S
   };
 
   const supabase = await createClient();
+  {
+    const guardCtx = await requireUser();
+    const guardOrg = access.org;
+    if (guardOrg) {
+      const { entitlement } = await getCapabilities(supabase, guardCtx, guardOrg.id);
+      requireModule(entitlement, "exam_reports", "/dashboard?e=module");
+    }
+  }
   const filters = parseMypFilters(query, access);
   const dataset = await loadMypResults(supabase, filters);
   const params = exportQuery(query);

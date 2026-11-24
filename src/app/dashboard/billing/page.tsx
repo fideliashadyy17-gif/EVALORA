@@ -1,5 +1,6 @@
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select } from "@/components/ui";
 import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime, money } from "@/lib/utils";
@@ -24,6 +25,8 @@ export default async function BillingPage({
   const sp = await searchParams;
   const isManager = can(ctx, org.id, MANAGER_ROLES);
   const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "billing", "/dashboard?e=module");
 
   const [{ data: plans }, { data: payments }, { data: setting }, ent, usage] = await Promise.all([
     supabase.from("plans").select("*").eq("is_active", true).order("sort"),
