@@ -118,6 +118,7 @@ export const en = {
     formulas: "Formula Library",
     gradingSystems: "Grading Systems",
     proctoring: "Proctoring",
+    resultsManagement: "Results & Management",
     resultsReports: "Results & Reports",
     mypResults: "MYP Results",
     switchWorkspace: "Switch workspace",

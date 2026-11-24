@@ -55,7 +55,7 @@ interface AttemptRow {
 export default async function ExaminationResultsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ exam?: string; outcome?: string; ok?: string; e?: string; page?: string }>;
+  searchParams: Promise<{ exam?: string; outcome?: string; ok?: string; e?: string; page?: string; org?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -143,6 +143,14 @@ export default async function ExaminationResultsPage({
       />
 
       <Notice ok={sp.ok} e={sp.e} messages={MESSAGES} />
+
+      {/* Cross-organization operational overview — publication & validation
+          status at a glance. Rows open the detailed view below. */}
+      <Overview
+        exams={exams}
+        orgFilter={sp.org ?? ""}
+        selectedId={selected?.id ?? null}
+      />
 
       {!selected ? (
         <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-12 text-center text-sm text-ink-soft">No examinations exist yet.</p>
@@ -325,5 +333,92 @@ export default async function ExaminationResultsPage({
         </>
       )}
     </>
+  );
+}
+
+
+interface OverviewProps {
+  exams: ExamRow[];
+  orgFilter: string;
+  selectedId: string | null;
+}
+
+/** Cross-org status table: submissions, missing scores, validation and
+ *  publication state for up to 300 examinations. Marking detail lives in
+ *  the per-exam view below (and the marking queue). */
+async function Overview({ exams, orgFilter, selectedId }: OverviewProps) {
+  const admin = createAdminClient();
+  const orgs = new Map<string, string>();
+  for (const exam of exams) orgs.set(exam.organization_id, exam.organizations?.name ?? "Organization");
+  const [{ data: attemptRows }] = await Promise.all([
+    admin.from("exam_attempts").select("exam_id, status, score").limit(5000),
+  ]);
+  const byExam = new Map<string, { total: number; submitted: number; missing: number }>();
+  for (const row of (attemptRows ?? []) as { exam_id: string; status: string; score: number | null }[]) {
+    const stat = byExam.get(row.exam_id) ?? { total: 0, submitted: 0, missing: 0 };
+    stat.total += 1;
+    if (row.status !== "in_progress") {
+      stat.submitted += 1;
+      if (row.score == null) stat.missing += 1;
+    }
+    byExam.set(row.exam_id, stat);
+  }
+  const rows = exams
+    .filter((exam) => !orgFilter || exam.organization_id === orgFilter)
+    .slice(0, 50);
+
+  return (
+    <Section
+      title="Cross-organization overview"
+      hint="Operational status across every tenant — open an examination for candidate-level results, validation and publication."
+    >
+      <form method="get" className="mb-3 flex flex-wrap items-end gap-3">
+        {selectedId && <input type="hidden" name="exam" value={selectedId} />}
+        <label className="block min-w-[260px]">
+          <span className="mb-1.5 block text-sm font-medium text-evergreen-900">Organization</span>
+          <Select name="org" defaultValue={orgFilter}>
+            <option value="">All organizations</option>
+            {[...orgs.entries()].map(([id, name]) => (
+              <option key={id} value={id}>{name}</option>
+            ))}
+          </Select>
+        </label>
+        <Button type="submit" variant="outline">Filter</Button>
+      </form>
+      {rows.length === 0 ? (
+        <p className="rounded-2xl border border-dashed border-evergreen-900/30 bg-paper px-6 py-8 text-center text-sm text-ink-soft">
+          No examinations match this organization filter.
+        </p>
+      ) : (
+        <Table head={["Examination", "Organization", "Exam status", "Attempts", "Missing scores", "Validation", "Publication"]}>
+          {rows.map((exam) => {
+            const settings = (exam.settings ?? {}) as Record<string, unknown>;
+            const stat = byExam.get(exam.id) ?? { total: 0, submitted: 0, missing: 0 };
+            const validated = settings.results_validated === true;
+            const published = Boolean(settings.results_published);
+            return (
+              <tr key={exam.id} data-testid="admin-results-overview-row">
+                <td>
+                  <Link
+                    href={`/admin/examinations/results?exam=${exam.id}${orgFilter ? `&org=${orgFilter}` : ""}`}
+                    className="font-medium text-evergreen-700 underline underline-offset-2"
+                  >
+                    {exam.title}
+                  </Link>
+                </td>
+                <td className="text-sm">{exam.organizations?.name ?? "—"}</td>
+                <td><StatusBadge status={exam.status} /></td>
+                <td className="tabular-nums text-sm">{stat.submitted}/{stat.total} submitted</td>
+                <td className="tabular-nums text-sm">
+                  {stat.missing > 0 ? <span className="font-semibold text-amber-800">{stat.missing}</span> : "0"}
+                </td>
+                <td>{validated ? <Badge tone="green">Validated</Badge> : <Badge tone="amber">Awaiting</Badge>}</td>
+                <td>{published ? <Badge tone="green">Published</Badge> : <Badge tone="gray">Withheld</Badge>}</td>
+              </tr>
+            );
+          })}
+        </Table>
+      )}
+    </Section>
   );
 }
