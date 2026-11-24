@@ -201,7 +201,7 @@ export function DashboardChrome({
           <div className="flex items-center gap-2">
             {orgLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={orgLogoUrl} alt="" className="h-8 w-8 shrink-0 rounded-md bg-white object-contain p-0.5 ring-1 ring-evergreen-900/10" />
+              <img src={orgLogoUrl} alt="" className="h-8 w-auto max-w-[7rem] shrink-0 rounded-md bg-white object-contain p-0.5 ring-1 ring-evergreen-900/10" />
             ) : null}
             <p className="truncate text-sm font-semibold text-evergreen-950">{orgName}</p>
           </div>

@@ -43,6 +43,17 @@ const QuizSchema = z.object({
   exam_paper_template_id: z.string().nullable().optional(),
 });
 
+/** Turn database errors into something a teacher can act on — notably the
+ *  assessment-source guard, which fires when a paper's questions belong to an
+ *  attempt that is already in progress. */
+function friendlySaveError(error: { message?: string } | null): string {
+  const message = error?.message ?? "Unknown database error.";
+  if (message.includes("ASSESSMENT_SOURCE_IMMUTABLE")) {
+    return "This paper's questions belong to an examination attempt that is already in progress, so its question content and structure are locked. The paper title, template, instructions and other settings can still be saved.";
+  }
+  return message;
+}
+
 export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
@@ -100,8 +111,7 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   let quizId = q.id;
   if (quizId) {
     const { error } = await supabase.from("quizzes").update(payload).eq("id", quizId).eq("organization_id", org.id);
-    if (error) return { error: error.message };
-    await supabase.from("quiz_questions").delete().eq("quiz_id", quizId);
+    if (error) return { error: friendlySaveError(error) };
   } else {
     const { data, error } = await supabase.from("quizzes").insert(payload).select().single();
     if (error && isPlanLimitError(error)) return { error: planLimitMessage(error) };
@@ -109,32 +119,60 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
     quizId = data.id;
   }
 
-  if (q.question_ids.length > 0) {
-    // Verify the questions belong to this org (RLS also enforces on read).
-    const { data: owned } = await supabase
-      .from("questions").select("id, config").eq("organization_id", org.id).in("id", q.question_ids);
-    const ownedIds = new Set((owned ?? []).map((r) => r.id));
-    const rows = q.question_ids
-      .filter((id) => ownedIds.has(id))
-      .map((question_id, i) => ({ quiz_id: quizId!, question_id, position: i }));
-    if (rows.length) {
-      const { error } = await supabase.from("quiz_questions").insert(rows);
-      if (error) return { error: error.message };
+  // Verify the questions belong to this org (RLS also enforces on read).
+  // An empty in-list is skipped: PostgREST treats `in.()` inconsistently and
+  // a paper with no questions simply has nothing to verify.
+  const { data: owned } = q.question_ids.length
+    ? await supabase.from("questions").select("id, config").eq("organization_id", org.id).in("id", q.question_ids)
+    : { data: [] as { id: string; config: Record<string, unknown> | null }[] };
+  const ownedIds = new Set((owned ?? []).map((r) => r.id));
+  const desired = q.question_ids.filter((id) => ownedIds.has(id));
+
+  // Skip membership writes when the set and order are already correct: an
+  // attempt-locked paper must still save its settings, and a no-op write
+  // would trip the assessment-source guard for no reason.
+  const { data: currentRows } = await supabase
+    .from("quiz_questions")
+    .select("question_id")
+    .eq("quiz_id", quizId!)
+    .order("position", { ascending: true });
+  const current = (currentRows ?? []).map((r) => r.question_id);
+  const membershipUnchanged =
+    current.length === desired.length && current.every((id, index) => id === desired[index]);
+
+  if (!membershipUnchanged) {
+    // Membership: upsert the desired question set FIRST, then remove anything
+    // no longer on the paper. Deleting before writing meant a single failed
+    // insert silently emptied the paper's question list — checked writes only.
+    if (desired.length) {
+      const rows = desired.map((question_id, i) => ({ quiz_id: quizId!, question_id, position: i }));
+      const { error } = await supabase.from("quiz_questions").upsert(rows, { onConflict: "quiz_id,question_id" });
+      if (error) return { error: friendlySaveError(error) };
     }
+    {
+      const deleteQuery = supabase.from("quiz_questions").delete().eq("quiz_id", quizId!);
+      const { error: removeError } = desired.length
+        ? await deleteQuery.not("question_id", "in", `(${desired.join(",")})`)
+        : await deleteQuery;
+      if (removeError) return { error: friendlySaveError(removeError) };
+    }
+  }
+
+  if (q.section_of) {
     // Persist per-question section assignment without touching wording,
-    // options, keys or marks. Only the paper_section config key changes.
-    if (q.section_of) {
-      for (const row of owned ?? []) {
-        const section = q.section_of[row.id];
-        if (!section) continue;
-        const cfg = ((row as { config?: Record<string, unknown> | null }).config ?? {}) as Record<string, unknown>;
-        if (cfg.paper_section === section) continue;
-        await supabase
-          .from("questions")
-          .update({ config: { ...cfg, paper_section: section }, updated_at: new Date().toISOString() })
-          .eq("id", row.id)
-          .eq("organization_id", org.id);
-      }
+    // options, keys or marks. Only the paper_section config key changes —
+    // and a guard rejection here must surface, never vanish silently.
+    for (const row of owned ?? []) {
+      const section = q.section_of[row.id];
+      if (!section) continue;
+      const cfg = ((row as { config?: Record<string, unknown> | null }).config ?? {}) as Record<string, unknown>;
+      if (cfg.paper_section === section) continue;
+      const { error: sectionError } = await supabase
+        .from("questions")
+        .update({ config: { ...cfg, paper_section: section }, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("organization_id", org.id);
+      if (sectionError) return { error: friendlySaveError(sectionError) };
     }
   }
 

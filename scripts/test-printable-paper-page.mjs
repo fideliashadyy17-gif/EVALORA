@@ -37,4 +37,13 @@ await test('the answer sheet view numbers every question with writing space',asy
 await test('candidate packets carry one named packet per candidate',async()=>{const html=await render('packets');assert.match(html,/Candidate packets/);assert.match(html,/Ada Lovelace/);assert.match(html,/Bo Chen/);assert.equal((html.match(/Answer sheet/g)||[]).length>=2,true,'each packet repeats the sheet');assert.match(html,/print:break-before-page/,'later packets start on a new page');});
 await test('the marker grid view prints a table for the marker',async()=>{const html=await render('markers');assert.match(html,/marker grid/i);assert.match(html,/Awarded/);assert.match(html,/Single mark/);});
 await test('an unknown mode falls back to the question paper',async()=>{const html=await render('nonsense');assert.match(html,/Examination questions/);assert.doesNotMatch(html,/paper-packet/,'no packet body is rendered for an unknown mode');});
+await test('matching and multi-part questions render their structure on paper',async()=>{
+  prepared=[
+    {quiz_question_id:'qq',question_id:'q1',type:'matching',prompt:'Match each rule to its description',points:5,options:[],match_mode:'match',matching_lefts:['Rule one','Rule two'],matching_rights:['Choice B','Choice A'],answerLines:3},
+    {quiz_question_id:'qq2',question_id:'q2',type:'assess_parts',prompt:'Answer the survey',points:10,options:[],assess_parts:[{id:'p1',label:'(a)',prompt:'Name the variable',kind:'text',points:4},{id:'p2',label:'(b)',prompt:'State the type',kind:'text',points:6}],answerLines:8},
+  ];
+  const html=await render();
+  for(const text of ['Match each rule to its description','Rule one','Rule two','Choice A','Choice B','Answer the survey','Name the variable','State the type','[4 marks]','[6 marks]'])assert.ok(html.includes(text),text);
+  assert.match(html,/Answer space for part/,'each part gets its own writing space');
+});
 console.log(`\n${n} paper page checks passed (server render; mocked auth/database).`);

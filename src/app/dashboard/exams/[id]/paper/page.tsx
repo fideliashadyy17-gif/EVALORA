@@ -103,6 +103,7 @@ export default async function PrintableExam({
     type: q.type,
     points: Number(q.points),
     options: q.options,
+    answerLines: q.answerLines,
   }));
 
   let packets: ReturnType<typeof buildCandidatePackets> = [];
@@ -198,7 +199,7 @@ export default async function PrintableExam({
           <header className="paper-cover border-b-2 border-black pb-8 text-center">
             {header.showLogo && header.organizationLogoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={header.organizationLogoUrl} alt="" className="mx-auto h-16 w-16 object-contain" />
+              <img src={header.organizationLogoUrl} alt="" className="mx-auto h-16 w-auto max-w-[20rem] object-contain" />
             ) : null}
             <p className="mt-2 text-lg font-bold uppercase tracking-wide">{header.organizationName}</p>
             <p className="mt-1 text-sm font-semibold uppercase tracking-[0.2em]">Official Examination Paper</p>
@@ -244,8 +245,39 @@ export default async function PrintableExam({
                       <img src={q.media_url} alt="Question illustration" className="mt-4 max-h-64 max-w-full object-contain" />
                     )}
                     <div className="mt-3"><RichContent doc={q.prompt_doc} text={q.prompt} /></div>
+                    {q.type === "matching" && <MatchingPrint q={q} />}
                     {q.options.length > 0 && <ol className="mt-4 space-y-2">{q.options.map((o, j) => <li key={o.id} className="flex gap-3"><span>☐ {String.fromCharCode(65 + j)}.</span><RichContent doc={o.content_doc} text={o.label} /></li>)}</ol>}
-                    {q.options.length === 0 && <div aria-label="Answer space" className="paper-answer mt-5">{Array.from({length: q.type === "open_ended" ? 7 : 2}, (_, line) => <div key={line} className="h-8 border-b border-gray-400" />)}</div>}
+                    {q.type === "ordering" && q.options.length > 0 && (
+                      <div aria-label="Answer space" className="paper-answer mt-4">
+                        {Array.from({ length: q.answerLines ?? q.options.length }, (_, line) => (
+                          <div key={line} className="flex items-baseline gap-2 py-1">
+                            <span className="w-6 text-sm font-semibold">{line + 1}.</span>
+                            <div className="h-6 flex-1 border-b border-gray-400" />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {q.type === "assess_parts" && (q.assess_parts?.length ?? 0) > 0 && (
+                      <div className="mt-4 space-y-4">
+                        {(q.assess_parts ?? []).map((part) => (
+                          <div key={part.id}>
+                            <p className="flex flex-wrap items-baseline gap-2">
+                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full bg-black px-1.5 text-xs font-bold text-white">{part.label}</span>
+                              <span className="min-w-0 flex-1 font-medium"><RichContent text={part.prompt} /></span>
+                              <span className="shrink-0 text-sm">[{part.points} mark{part.points === 1 ? "" : "s"}]</span>
+                            </p>
+                            <div aria-label={`Answer space for part ${part.label}`} className="paper-answer mt-2">
+                              {Array.from({ length: part.kind === "numeric" ? 2 : 3 }, (_, line) => (
+                                <div key={line} className="h-7 border-b border-gray-400" />
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {q.options.length === 0 && q.type !== "assess_parts" && q.type !== "ordering" && !(q.type === "matching" && (q.matching_lefts?.length ?? 0) > 0) && (
+                      <div aria-label="Answer space" className="paper-answer mt-5">{Array.from({length: q.type === "open_ended" ? 7 : 2}, (_, line) => <div key={line} className="h-8 border-b border-gray-400" />)}</div>
+                    )}
                   </div>
                 </div>
               );
@@ -253,6 +285,69 @@ export default async function PrintableExam({
           </section>
         </article>
       )}
+    </div>
+  );
+}
+
+/** Matching questions on paper: statements with blanks plus the shuffled
+ *  choice bank (match), tile bank with category boxes (sort), or numbered
+ *  rows with a blank box (letters — the bank itself prints in prompt_doc).
+ *  The right-hand choices come from the candidate-safe payload, so the
+ *  correct pairing is never printed on the paper. */
+function MatchingPrint({ q }: { q: ReturnType<typeof preparePrintableQuestions>[number] }) {
+  const lefts = q.matching_lefts ?? [];
+  const rights = q.matching_rights ?? [];
+  const rows = q.matching_rows ?? [];
+  if (q.match_mode === "letters" && rows.length > 0) {
+    return (
+      <ol className="mt-4 space-y-2">
+        {rows.map((row, idx) => (
+          <li key={idx} className="flex items-baseline gap-2">
+            <span className="shrink-0 font-semibold">{row.label}.</span>
+            <span className="min-w-0 flex-1"><RichContent text={row.left} /></span>
+            <span className="shrink-0 text-sm">[ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</span>
+          </li>
+        ))}
+      </ol>
+    );
+  }
+  if (q.match_mode === "sort" && lefts.length > 0) {
+    return (
+      <div className="mt-4 space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {lefts.map((tile, idx) => (
+            <span key={idx} className="rounded-lg border border-gray-400 px-2 py-1 text-sm"><RichContent text={tile} /></span>
+          ))}
+        </div>
+        {rights.map((zone) => (
+          <div key={zone} className="rounded border border-gray-400 p-2">
+            <p className="font-medium"><RichContent text={zone} /></p>
+            <div className="mt-1 h-12 border-b border-gray-300" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (lefts.length === 0) return null;
+  return (
+    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+      <ol className="space-y-2">
+        {lefts.map((left, idx) => (
+          <li key={idx} className="flex items-baseline gap-2">
+            <span className="shrink-0 font-semibold">{idx + 1}.</span>
+            <span className="min-w-0 flex-1"><RichContent text={left} /></span>
+            <span className="shrink-0 text-sm">[ &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ]</span>
+          </li>
+        ))}
+      </ol>
+      <ol className="space-y-2">
+        {rights.map((right, idx) => (
+          <li key={idx} className="flex items-baseline gap-2">
+            <span className="shrink-0 font-semibold">{String.fromCharCode(65 + idx)}.</span>
+            <span className="min-w-0 flex-1"><RichContent text={right} /></span>
+          </li>
+        ))}
+      </ol>
     </div>
   );
 }

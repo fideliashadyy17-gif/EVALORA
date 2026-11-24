@@ -36,7 +36,7 @@ export function LogoUpload({ currentUrl }: { currentUrl: string | null }) {
       <div className="flex items-center gap-4">
         {preview || currentUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={preview ?? currentUrl ?? ""} alt="Organization logo preview" className="h-20 w-20 rounded-xl bg-white object-contain p-1 ring-1 ring-evergreen-900/15" />
+          <img src={preview ?? currentUrl ?? ""} alt="Organization logo preview" className="h-20 w-auto max-w-[14rem] rounded-xl bg-white object-contain p-1 ring-1 ring-evergreen-900/15" />
         ) : (
           <div className="flex h-20 w-20 items-center justify-center rounded-xl bg-cream text-xs text-ink-soft ring-1 ring-evergreen-900/15">
             No logo
