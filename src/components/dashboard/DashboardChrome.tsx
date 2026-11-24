@@ -11,6 +11,7 @@ import { filterNavItems, workspaceLabel, type NavAudience } from "@/lib/navAcces
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
+  Award,
   BarChart3,
   BookOpenCheck,
   CreditCard,
@@ -76,6 +77,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/competitions", label: "Live Competitions", labelKey: "nav.competitions", icon: Trophy, audience: "staff" },
       { href: "/dashboard/rubrics", label: "Rubrics", labelKey: "nav.rubrics", icon: ListChecks, audience: "staff" },
       { href: "/dashboard/proctoring", label: "Proctoring", labelKey: "nav.proctoring", icon: ShieldCheck, audience: "staff" },
+      { href: "/dashboard/results", label: "Results & Management", labelKey: "nav.resultsManagement", icon: Award, audience: "staff" },
       { href: "/dashboard/reports", label: "Results & Reports", labelKey: "nav.resultsReports", icon: BarChart3, audience: "staff" },
       { href: "/dashboard/myp-results", label: "MYP Results", labelKey: "nav.mypResults", icon: GraduationCap, audience: "staff" },
     ],
@@ -111,6 +113,7 @@ const MODULE_FOR_HREF: Record<string, string> = {
   "/dashboard/competitions": "competitions",
   "/dashboard/rubrics": "rubrics",
   "/dashboard/proctoring": "proctoring",
+  "/dashboard/results": "org_reports",
   "/dashboard/reports": "org_reports",
   "/dashboard/myp-results": "exam_reports",
   "/dashboard/platform": "platform",

@@ -1,6 +1,6 @@
 "use server";
 
-import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { validateSheetDraft } from "@/lib/formulaLibrary";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
@@ -767,14 +767,24 @@ export async function moderateAnswer(formData: FormData) {
   redirect(`${back}?moderation_ok=${decision}`);
 }
 
+
+/** Safe in-app return path for results actions (validates caller-supplied back). */
+function resultsBack(formData: FormData, fallback: string): string {
+  const raw = String(formData.get("back") ?? "");
+  if (raw.startsWith("/dashboard/") && !raw.startsWith("//") && !raw.includes("?") && !raw.includes("#")) return raw;
+  return fallback;
+}
 export async function publishResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  // Publication is an explicit, audited administrator action — teachers and
+  // markers can mark, but only owners/admins release results to candidates.
+  if (!org) redirect("/dashboard/exams");
+  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   // Avoid using an untrusted path segment in redirects or database queries.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
-  const back = `/dashboard/exams/${examId}`;
+  const back = resultsBack(formData, `/dashboard/exams/${examId}`);
   const value = String(formData.get("publish") ?? "");
   if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
   const supabase = await createClient();
@@ -826,10 +836,12 @@ export async function publishResults(formData: FormData) {
 export async function validateResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  // Validation is an explicit administrator sign-off before publication.
+  if (!org) redirect("/dashboard/exams");
+  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
-  const back = `/dashboard/exams/${examId}`;
+  const back = resultsBack(formData, `/dashboard/exams/${examId}`);
   const supabase = await createClient();
   const { entitlement: valEnt } = await getCapabilities(supabase, ctx, org.id);
   requireModule(valEnt, "exam_validation", `${back}?e=module`);
@@ -861,10 +873,11 @@ export async function validateResults(formData: FormData) {
 export async function unvalidateResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org) redirect("/dashboard/exams");
+  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
-  const back = `/dashboard/exams/${examId}`;
+  const back = resultsBack(formData, `/dashboard/exams/${examId}`);
   const supabase = await createClient();
   const { entitlement: valEnt } = await getCapabilities(supabase, ctx, org.id);
   requireModule(valEnt, "exam_validation", `${back}?e=module`);

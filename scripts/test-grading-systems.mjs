@@ -10,6 +10,8 @@ import {
   weightedAverage,
   gradeFromBoundaries,
   gradeAp,
+  gradeCambridge,
+  cambridgeSectionsPercent,
   applyGrading,
 } from "../src/lib/gradingSystems.ts";
 
@@ -468,6 +470,73 @@ const restoredUrl = await archiveRun(row1.id);
 assert.equal(restoredUrl, "/dashboard/grading?ok=restored", "restore redirects ok=restored");
 extra += 1;
 ok(db.tables.grading_systems[0].status === "active", "row restored to active");
+
+// ── Cambridge as a DISTINCT framework (Part 4.5) ───────────────────────
+const camThresholds = [
+  { min_percent: 80, grade: "A*" },
+  { min_percent: 70, grade: "A" },
+  { min_percent: 60, grade: "B" },
+  { min_percent: 0, grade: "E" },
+];
+ok(gradeCambridge(85, { cambridge_thresholds: camThresholds }).grade === "A*", "cambridge own thresholds → A*");
+ok(gradeCambridge(72, { cambridge_thresholds: camThresholds }).grade === "A", "cambridge own thresholds → A (inclusive)");
+ok(gradeCambridge(5, { cambridge_thresholds: camThresholds }).grade === "E", "cambridge own thresholds → lowest grade");
+const belowAll = gradeCambridge(30, { cambridge_thresholds: camThresholds.filter((t) => t.min_percent > 0) });
+ok(belowAll.grade === null && belowAll.note === "no_matching_threshold", "below every threshold reported honestly, never guessed");
+const camFallback = gradeCambridge(72, { boundaries: [{ min_percent: 70, label: "B" }, { min_percent: 0, label: "C" }] });
+ok(camFallback.grade === "B", "legacy cambridge configs using boundaries keep working");
+const camNone = gradeCambridge(72, {});
+ok(camNone.grade === null && camNone.note === "thresholds_not_configured", "no thresholds → thresholds_not_configured, no fabricated grade");
+ok(gradeCambridge(null, {}).note === "no_marks", "no marks → no_marks");
+
+const camComponents = [
+  { name: "Paper 1", weight_percent: 60 },
+  { name: "Paper 2", weight_percent: 40 },
+];
+const weightedCam = cambridgeSectionsPercent(
+  [
+    { name: "Paper 1", raw: 40, max: 50 },
+    { name: "Paper 2", raw: 14, max: 20 },
+  ],
+  { cambridge_components: camComponents },
+);
+ok(weightedCam === 76, `component weighting 80%×60 + 70%×40 = 76 (got ${weightedCam})`);
+const partialCam = cambridgeSectionsPercent([{ name: "Paper 1", raw: 45, max: 50 }], { cambridge_components: camComponents });
+ok(partialCam === 90, "unscored component renormalised away, never counted as zero");
+
+const camApplied = applyGrading(
+  { id: "g7", organization_id: "o", name: "IGCSE", curriculum: "cambridge", config: { cambridge_thresholds: camThresholds, cambridge_components: camComponents } },
+  { sections: [{ name: "Paper 1", raw: 40, max: 50 }, { name: "Paper 2", raw: 14, max: 20 }] },
+);
+ok(camApplied.curriculum === "cambridge" && camApplied.percent === 76 && camApplied.label === "A", `applyGrading cambridge path: weighted percent 76 → grade A (got ${camApplied.percent}/${camApplied.label})`);
+ok(camApplied.score === null, "cambridge never invents a 1–5 style score");
+
+// Executed: creating a Cambridge system persists its qualification structure.
+const camSave = await runSave({
+  name: "Cambridge IGCSE",
+  curriculum: "cambridge",
+  assessment_kind: "exam",
+  pass_percent: "50",
+  cambridge_qualification: "Cambridge IGCSE",
+  cambridge_level: "Grade 10",
+  cambridge_component_code: ["P1", "P2"],
+  cambridge_component_name: ["Paper 1", "Paper 2"],
+  cambridge_component_weight: ["60", "40"],
+  cambridge_min: ["80", "0"],
+  cambridge_grade: ["A*", "E"],
+});
+assert.equal(camSave.url, "/dashboard/grading?ok=saved", "cambridge grading system saves");
+extra += 1;
+const camRow = db.tables.grading_systems.find((r) => r.name === "Cambridge IGCSE");
+ok(Boolean(camRow), "cambridge row persisted");
+ok(camRow.config.cambridge_qualification === "Cambridge IGCSE" && camRow.config.cambridge_level === "Grade 10", "qualification & level persisted");
+ok(camRow.config.cambridge_components?.length === 2 && camRow.config.cambridge_components[0].weight_percent === 60, "components with weighting persisted");
+ok(camRow.config.cambridge_thresholds?.length === 2 && camRow.config.cambridge_thresholds[0].grade === "A*", "institution thresholds persisted (sorted desc)");
+ok(validateCamLike(camRow.config), "stored cambridge config re-reads cleanly");
+
+function validateCamLike(cfg) {
+  return Array.isArray(cfg.cambridge_thresholds) && cfg.cambridge_thresholds.every((t) => typeof t.min_percent === "number" && t.grade);
+}
 
 console.log(`grading-systems: ${52 + extra} checks passed`);
 

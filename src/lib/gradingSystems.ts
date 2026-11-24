@@ -33,6 +33,13 @@ export interface GradingSystemConfig {
   coefficients?: { subject: string; coefficient: number }[];
   /** beninese: letter labels for /20 thresholds (organisation-owned). */
   benin_letters?: { min: number; label: string }[];
+  /** cambridge: qualification & level (organisation-configured, never official thresholds). */
+  cambridge_qualification?: string;
+  cambridge_level?: string;
+  /** cambridge: assessment components with institution-defined weighting. */
+  cambridge_components?: { code: string; name: string; weight_percent: number }[];
+  /** cambridge: institution-defined grade thresholds (min percent → grade). */
+  cambridge_thresholds?: { min_percent: number; grade: string }[];
   /** ap: course code + section weights that must total 100. */
   ap_course?: string;
   ap_sections?: { name: string; weight_percent: number; question_types?: string[] }[];
@@ -199,6 +206,55 @@ export interface GradingOutcome {
 }
 
 /** Apply a stored grading system to raw input. Never publishes anything. */
+export interface CambridgeOutcome {
+  grade: string | null;
+  note: "no_marks" | "thresholds_not_configured" | "no_matching_threshold" | null;
+}
+
+/**
+ * Cambridge grades come from the ORGANISATION'S OWN thresholds — EVALORA
+ * never fabricates official Cambridge grade boundaries. Falls back to the
+ * shared `boundaries` rule so existing Cambridge configs keep working.
+ */
+export function gradeCambridge(percent: number | null, config: GradingSystemConfig): CambridgeOutcome {
+  if (percent === null || !Number.isFinite(percent)) return { grade: null, note: "no_marks" };
+  const own = (config.cambridge_thresholds ?? [])
+    .filter((t) => typeof t.min_percent === "number" && t.grade)
+    .sort((a, b) => b.min_percent - a.min_percent);
+  if (own.length) {
+    const match = own.find((t) => percent >= t.min_percent);
+    return match ? { grade: match.grade, note: null } : { grade: null, note: "no_matching_threshold" };
+  }
+  if (config.boundaries?.length) {
+    return { grade: gradeFromBoundaries(percent, config.boundaries), note: null };
+  }
+  return { grade: null, note: "thresholds_not_configured" };
+}
+
+/**
+ * Weighted percent across configured Cambridge components (raw/max per
+ * component, weights from the org's configuration). Unscored components are
+ * renormalised away — never counted as zero.
+ */
+export function cambridgeSectionsPercent(
+  sections: { name: string; raw?: unknown; max?: unknown }[],
+  config: GradingSystemConfig,
+): number | null {
+  const weights = new Map((config.cambridge_components ?? []).map((c) => [c.name, c.weight_percent]));
+  let earned = 0;
+  let weightSum = 0;
+  for (const section of sections) {
+    const max = Number(section.max);
+    const raw = Number(section.raw);
+    if (!Number.isFinite(max) || max <= 0 || !Number.isFinite(raw)) continue;
+    const weight = weights.get(section.name) ?? 1;
+    earned += (raw / max) * weight;
+    weightSum += weight;
+  }
+  if (weightSum <= 0) return null;
+  return Math.round((earned / weightSum) * 1000) / 10;
+}
+
 export function applyGrading(system: GradingSystem, input: GradingInput): GradingOutcome {
   const config = system.config ?? {};
   switch (system.curriculum) {
@@ -242,6 +298,21 @@ export function applyGrading(system: GradingSystem, input: GradingInput): Gradin
         label: null,
         score: null,
         note: percent === null ? "no_marks" : "see_myp_results_for_levels",
+      };
+    }
+    case "cambridge": {
+      const scale = input.scale_max && Number(input.scale_max) > 0 ? Number(input.scale_max) : 100;
+      const percent = input.sections?.length
+        ? cambridgeSectionsPercent(input.sections, config)
+        : toPercent(input.mark, scale);
+      const cg = gradeCambridge(percent, config);
+      return {
+        curriculum: "cambridge",
+        percent,
+        mark20: null,
+        label: cg.grade,
+        score: null,
+        note: cg.note === "no_marks" ? "no_marks" : cg.note,
       };
     }
     default: {

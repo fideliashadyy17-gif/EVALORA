@@ -4,7 +4,7 @@ import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -240,6 +240,8 @@ export default async function ExamDetailPage({
     };
   };
   const canMark = can(ctx, org.id, MARKER_ROLES);
+  // Validation & publication are administrator sign-offs (owners/admins only).
+  const isResultsManager = can(ctx, org.id, MANAGER_ROLES);
 
   const markErrors: Record<string, string> = {
     invalid: "The answer, examination or paper could not be verified. No mark was saved.",
@@ -660,32 +662,38 @@ export default async function ExamDetailPage({
                 ✓ {t("results.validatedBadge")}
               </span>
             )}
-            {(attempts ?? []).length > 0 && settings.results_validated !== true && !settings.results_published && (
+            {isResultsManager && (attempts ?? []).length > 0 && settings.results_validated !== true && !settings.results_published && (
               <form action={validateResults}>
                 <input type="hidden" name="exam_id" value={id} />
                 <Button type="submit" variant="primary">{t("results.validateBtn")}</Button>
               </form>
             )}
-            {settings.results_validated === true && !settings.results_published && (
+            {isResultsManager && settings.results_validated === true && !settings.results_published && (
               <form action={unvalidateResults}>
                 <input type="hidden" name="exam_id" value={id} />
                 <Button type="submit" variant="outline">{t("results.unvalidateBtn")}</Button>
               </form>
             )}
-            <form action={publishResults}>
-              <input type="hidden" name="exam_id" value={id} />
-              <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
-              <Button
-                type="submit"
-                variant={settings.results_published ? "outline" : "primary"}
-                disabled={!settings.results_published && settings.results_validated !== true}
-              >
-                {settings.results_published ? "Unpublish all results" : "Publish all results"}
-              </Button>
-              {!settings.results_published && settings.results_validated !== true && (
-                <p className="mt-1.5 max-w-[16rem] text-xs text-amber-800">{t("results.publishGated")}</p>
-              )}
-            </form>
+            {isResultsManager ? (
+              <form action={publishResults}>
+                <input type="hidden" name="exam_id" value={id} />
+                <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
+                <Button
+                  type="submit"
+                  variant={settings.results_published ? "outline" : "primary"}
+                  disabled={!settings.results_published && settings.results_validated !== true}
+                >
+                  {settings.results_published ? "Unpublish all results" : "Publish all results"}
+                </Button>
+                {!settings.results_published && settings.results_validated !== true && (
+                  <p className="mt-1.5 max-w-[16rem] text-xs text-amber-800">{t("results.publishGated")}</p>
+                )}
+              </form>
+            ) : (
+              <p className="max-w-[18rem] text-xs text-ink-soft">
+                Validation and publication are restricted to organization administrators.
+              </p>
+            )}
           </div>
         </div>
 

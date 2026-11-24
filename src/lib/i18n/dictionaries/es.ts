@@ -111,6 +111,7 @@ export const es = {
     formulas: "Biblioteca de fórmulas",
     gradingSystems: "Sistemas de calificación",
     proctoring: "Vigilancia por video",
+    resultsManagement: "Gestión de resultados",
     resultsReports: "Resultados e informes",
     mypResults: "Resultados MYP",
     switchWorkspace: "Cambiar espacio de trabajo",

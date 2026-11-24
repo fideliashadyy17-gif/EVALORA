@@ -54,6 +54,31 @@ function parseConfig(curriculum: GradingCurriculum, formData: FormData): Grading
     if (letters.length) config.benin_letters = letters;
   }
 
+  if (curriculum === "cambridge") {
+    const qualification = String(formData.get("cambridge_qualification") ?? "").trim().slice(0, 120);
+    const level = String(formData.get("cambridge_level") ?? "").trim().slice(0, 80);
+    if (qualification) config.cambridge_qualification = qualification;
+    if (level) config.cambridge_level = level;
+    const codes = formData.getAll("cambridge_component_code").map(String);
+    const names = formData.getAll("cambridge_component_name").map(String);
+    const weights = formData.getAll("cambridge_component_weight").map(String);
+    const components = codes
+      .map((code, i) => ({
+        code: code.trim().slice(0, 16),
+        name: (names[i] ?? "").trim().slice(0, 120),
+        weight_percent: num(weights[i], 0),
+      }))
+      .filter((c) => c.code && c.name && c.weight_percent > 0 && c.weight_percent <= 100);
+    if (components.length) config.cambridge_components = components;
+    const grades = formData.getAll("cambridge_grade").map(String);
+    const mins = formData.getAll("cambridge_min").map(String);
+    const thresholds = grades
+      .map((grade, i) => ({ grade: grade.trim().slice(0, 24), min_percent: num(mins[i], 0) }))
+      .filter((t) => t.grade && t.min_percent >= 0 && t.min_percent <= 100)
+      .sort((a, b) => b.min_percent - a.min_percent);
+    if (thresholds.length) config.cambridge_thresholds = thresholds;
+  }
+
   if (curriculum === "ap") {
     const course = String(formData.get("ap_course") ?? "").trim().slice(0, 80);
     if (course) config.ap_course = course;

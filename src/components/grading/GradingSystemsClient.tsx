@@ -81,6 +81,10 @@ export function GradingSystemsClient({
     ap_sections?: { name: string; weight_percent: number }[];
     ap_score_thresholds?: { score: number; min_percent: number }[];
     pass_percent?: number;
+    cambridge_qualification?: string;
+    cambridge_level?: string;
+    cambridge_components?: { code: string; name: string; weight_percent: number }[];
+    cambridge_thresholds?: { min_percent: number; grade: string }[];
   };
 
   const letters = config.benin_letters?.length ? config.benin_letters : DEFAULT_LETTERS;
@@ -350,11 +354,61 @@ export function GradingSystemsClient({
               </div>
             )}
 
-            {(curriculum === "myp" || curriculum === "cambridge" || curriculum === "british") && (
+            {curriculum === "cambridge" && (
+              <div className="rounded-lg border border-evergreen-900/15 bg-white p-3">
+                <p className="mb-2 text-sm font-semibold text-evergreen-950">Cambridge qualification structure</p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Qualification (e.g. IGCSE, AS Level)">
+                    <Input name="cambridge_qualification" defaultValue={config.cambridge_qualification ?? ""} maxLength={120} placeholder="Cambridge IGCSE" />
+                  </Field>
+                  <Field label="Level / cohort (optional)">
+                    <Input name="cambridge_level" defaultValue={config.cambridge_level ?? ""} maxLength={80} placeholder="Grade 10" />
+                  </Field>
+                </div>
+                <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">Assessment components &amp; weighting (%)</p>
+                <div className="grid gap-2">
+                  {(config.cambridge_components?.length
+                    ? config.cambridge_components
+                    : [{ code: "", name: "", weight_percent: 100 }]
+                  ).map((component, i) => (
+                    <div key={i} className="flex flex-wrap items-end gap-2">
+                      <Input name="cambridge_component_code" defaultValue={component.code} className="w-24" placeholder="Paper 1" aria-label={`Component ${i + 1} code`} />
+                      <Input name="cambridge_component_name" defaultValue={component.name} className="w-56" placeholder="Multiple choice" aria-label={`Component ${i + 1} name`} />
+                      <Input name="cambridge_component_weight" type="number" min={1} max={100} defaultValue={String(component.weight_percent)} className="w-20" aria-label={`Component ${i + 1} weight`} />
+                    </div>
+                  ))}
+                </div>
+                <p className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wide text-ink-soft">Grade thresholds — minimum percent per grade (your institution&apos;s configuration)</p>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {(config.cambridge_thresholds?.length
+                    ? config.cambridge_thresholds
+                    : [
+                        { min_percent: 80, grade: "A*" },
+                        { min_percent: 70, grade: "A" },
+                        { min_percent: 60, grade: "B" },
+                        { min_percent: 50, grade: "C" },
+                        { min_percent: 40, grade: "D" },
+                        { min_percent: 0, grade: "E" },
+                      ]
+                  ).map((threshold, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <Input name="cambridge_min" type="number" min={0} max={100} defaultValue={String(threshold.min_percent)} className="w-20" aria-label={`Threshold ${i + 1} minimum percent`} />
+                      <Input name="cambridge_grade" defaultValue={threshold.grade} aria-label={`Threshold ${i + 1} grade`} />
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-[11px] text-ink-soft">
+                  These thresholds and weightings are YOUR institution&apos;s configuration — EVALORA does not fabricate
+                  official Cambridge grade boundaries or assessment rules. Raw marks are reported alongside the grade.
+                </p>
+              </div>
+            )}
+
+            {(curriculum === "myp" || curriculum === "british") && (
               <p className="rounded-lg bg-white px-3 py-2 text-xs text-ink-soft">
                 {curriculum === "myp"
                   ? "MYP achievement levels (0–8) and 1–7 boundaries are configured per subject in MYP Results → Settings. This system acts as the selectable pointer for examinations."
-                  : "Cambridge and British systems store your institution's own boundaries and weighting rules using the custom rule engine."}
+                  : "British systems store your institution's own boundaries and weighting rules using the custom rule engine."}
               </p>
             )}
 
