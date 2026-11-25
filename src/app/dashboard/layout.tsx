@@ -13,6 +13,7 @@ export default async function DashboardLayout({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  if (org?.role === "school_founder") redirect("/supervision");
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
   let orgLogoUrl: string | null = null;
   let modules: Record<string, boolean> | undefined;

@@ -36,6 +36,9 @@ export function postAuthDestination(
   if (input.tenantDenied) return "/dashboard";
   if (input.needsSelection) return "/workspaces";
   if (!input.hasOrg) return "/onboarding";
+  if (input.role === "school_founder") return "/supervision";
+  // The supervision destination independently checks organization-scoped RBAC.
+  if (next && inArea(next, "/supervision")) return next;
   if (isLearnerRole(input.role)) {
     return next &&
       (inArea(next, "/student") || inArea(next, "/exam-access") || inArea(next, "/join") || isPublicLiveScreen(next))

@@ -45,6 +45,8 @@ export async function savePlanModules(formData: FormData) {
   // Refresh organization dashboards too: nav + pages resolve entitlements
   // per request, and this guarantees no cached RSC misrepresents the new state.
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/supervision", "page");
   redirect("/admin/plans/modules?ok=plan");
 }
 
@@ -85,5 +87,7 @@ export async function saveSubscriptionModules(formData: FormData) {
   // Refresh organization dashboards too: nav + pages resolve entitlements
   // per request, and this guarantees no cached RSC misrepresents the new state.
   revalidatePath("/dashboard");
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/supervision", "page");
   redirect("/admin/plans/modules?ok=override");
 }

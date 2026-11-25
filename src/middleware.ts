@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { getTenantSlugFromHost } from "@/lib/tenant";
 import { NextResponse, type NextRequest } from "next/server";
 
-const PRIVATE = ["/dashboard", "/admin", "/onboarding", "/student", "/workspaces"];
+const PRIVATE = ["/supervision", "/dashboard", "/admin", "/onboarding", "/student", "/workspaces"];
 const AUTH_PAGES = ["/login", "/register"];
 
 /**
