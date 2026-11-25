@@ -1,6 +1,10 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { getEntitlement } from "@/lib/entitlements";
-import { MODULE_CATALOG, resolveModuleOperationalState } from "@/lib/modules";
+import {
+  MODULE_CATALOG,
+  computeOverrideBreakdown,
+  resolveModuleOperationalState,
+} from "@/lib/modules";
 import { resolveCapabilities, CAPABILITY_LABELS } from "@/lib/capability-rules";
 import { getFeatureFlags } from "@/lib/platform";
 import { createAdminClient } from "@/lib/supabase/server";
@@ -91,8 +95,11 @@ export async function SubscriptionTab({
       { livekitConfigured },
     ),
   }));
+  const orgBreakdown = computeOverrideBreakdown(
+    activeSub ? activePlanModules : ent.modules,
+    activeSub ? activeOverrides : null,
+  );
   const operationalEnabledCount = resolvedOrgModules.filter((m) => m.state.operationallyAvailable).length;
-  const overriddenModules = resolvedOrgModules.filter((m) => m.state.source === "override");
 
   return (
     <>
@@ -169,11 +176,13 @@ export async function SubscriptionTab({
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="font-display text-lg font-semibold text-evergreen-950">
-              Effective module entitlements ({operationalEnabledCount} / {MODULE_CATALOG.length})
+              Effective module entitlements ({operationalEnabledCount} / {MODULE_CATALOG.length} — {orgBreakdown.percentLabel})
             </h2>
             <p className="mt-0.5 text-sm text-ink-soft">
-              Inherited from <strong>{ent.planName}</strong> with{" "}
-              <strong>{overriddenModules.length}</strong> explicit organization override(s). Changes take immediate effect across organization navigation, server guards, and operational routes.
+              Plan <strong>{ent.planName}</strong> ·{" "}
+              <strong>{orgBreakdown.inherited}</strong> inherited ({orgBreakdown.inheritedEnabled} enabled),{" "}
+              <strong>{orgBreakdown.explicitOn}</strong> explicitly enabled,{" "}
+              <strong>{orgBreakdown.explicitOff}</strong> explicitly disabled. Changes take immediate effect across organization navigation, server guards, and operational routes.
             </p>
           </div>
           <ButtonLink
@@ -183,32 +192,52 @@ export async function SubscriptionTab({
             Manage module overrides →
           </ButtonLink>
         </div>
+        <div
+          className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-slate-200"
+          role="progressbar"
+          aria-label="Effective organization module coverage"
+          aria-valuemin={0}
+          aria-valuemax={orgBreakdown.total}
+          aria-valuenow={operationalEnabledCount}
+        >
+          <div
+            className="h-full rounded-full bg-emerald-600"
+            style={{ width: `${orgBreakdown.percent}%` }}
+          />
+        </div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {resolvedOrgModules.map((m) => (
-            <div
-              key={m.key}
-              className="flex items-center justify-between gap-2 rounded-xl border border-evergreen-900/10 bg-cream/60 px-3 py-2 text-xs"
-            >
-              <div className="min-w-0">
-                <p className="truncate font-semibold text-evergreen-950">{m.label}</p>
-                <p className="text-[11px] text-ink-soft">
-                  {m.state.source === "override"
-                    ? "Overridden"
-                    : m.state.source === "plan"
-                      ? `Inherited (${ent.planName})`
-                      : "Default"}
-                  {m.availability === "external_dependency"
-                    ? livekitConfigured
-                      ? " · LiveKit ready"
-                      : " · LiveKit video pending"
-                    : ""}
-                </p>
+          {resolvedOrgModules.map((m) => {
+            const originLabel =
+              m.state.configured === "on"
+                ? "Explicitly enabled"
+                : m.state.configured === "off"
+                  ? "Explicitly disabled"
+                  : `Inherited from ${ent.planName}`;
+            return (
+              <div
+                key={m.key}
+                className="flex items-start justify-between gap-2 rounded-xl border border-evergreen-900/10 bg-cream/60 px-3 py-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-semibold text-evergreen-950">{m.label}</p>
+                  <p className="text-[11px] text-ink-soft">
+                    {originLabel}
+                    {m.availability === "external_dependency"
+                      ? livekitConfigured
+                        ? " · LiveKit ready"
+                        : " · LiveKit video pending"
+                      : " · Implemented"}
+                  </p>
+                  <p className="mt-0.5 truncate text-[10px] text-slate-600" title={m.workspacePath}>
+                    {m.workspacePath}
+                  </p>
+                </div>
+                <Badge tone={m.state.operationallyAvailable ? "green" : "gray"}>
+                  {m.state.operationallyAvailable ? "Enabled" : "Disabled"}
+                </Badge>
               </div>
-              <Badge tone={m.state.operationallyAvailable ? "green" : "gray"}>
-                {m.state.operationallyAvailable ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Card>
 

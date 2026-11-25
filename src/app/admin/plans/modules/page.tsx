@@ -143,6 +143,8 @@ export default async function PlanModuleManagementPage({
           recommendedPlan: m.recommendedPlan,
           availability: m.availability,
           externalDependency: m.externalDependency,
+          workspacePath: m.workspacePath,
+          adminReferenceHref: m.adminReferenceHref,
           surface: m.surface,
         }))}
         livekitConfigured={livekitConfigured}

@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, ClipboardList, FileCheck2, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { describeAiMarking } from "@/lib/ai-marking";
@@ -459,7 +460,13 @@ export default async function ExamDetailPage({
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value={exam.shared_link_enabled ? "disable" : "enable"} /><Button type="submit" variant="outline">{exam.shared_link_enabled ? "Disable shared link" : "Enable shared link"}</Button></form>
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_link" /><Button type="submit" variant="outline">Regenerate link</Button></form>
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_code" /><Button type="submit" variant="outline">Regenerate code</Button></form>
-              <p className="w-full text-xs text-ink-soft">Regenerating immediately invalidates the previous link or code. Advanced eligibility and identity settings are not yet available in this workspace.</p>
+              <p className="w-full text-xs text-ink-soft">
+                Regenerating immediately invalidates the previous link or code. Manage QR distribution, access policies, and candidate link controls across all examinations in{" "}
+                <Link href="/dashboard/exams/links" className="font-semibold text-evergreen-800 underline underline-offset-2">
+                  Exam Links &amp; Codes
+                </Link>
+                .
+              </p>
             </div>}
           </div>
           {(canEditExam || isResultsManager || canDeleteExam) && (

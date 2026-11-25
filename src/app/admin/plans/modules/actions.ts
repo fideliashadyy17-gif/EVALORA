@@ -43,12 +43,13 @@ export async function savePlanModules(formData: FormData) {
   });
   revalidatePath("/admin/plans/modules");
   revalidatePath("/admin/plans");
+  revalidatePath("/admin/organizations");
   // Refresh organization dashboards too: nav + pages resolve entitlements
   // per request, and this guarantees no cached RSC misrepresents the new state.
   revalidatePath("/dashboard");
   revalidatePath("/dashboard", "layout");
   revalidatePath("/supervision", "page");
-  redirect("/admin/plans/modules?ok=plan");
+  redirect(`/admin/plans/modules?plan=${planId}&ok=plan`);
 }
 
 /**
