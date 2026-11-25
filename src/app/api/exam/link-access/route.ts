@@ -67,6 +67,111 @@ function matchesPersonName(
   return Boolean(full) && full === `${f} ${l}`.trim();
 }
 
+const JOIN_EXAM_CACHE_TTL_MS = 10_000;
+const JOIN_CLASS_CACHE_TTL_MS = 15_000;
+const JOIN_CACHE_MAX = 128;
+
+interface CachedJoinExam {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  exam: any;
+  expiresAt: number;
+}
+
+interface CachedEligibleClasses {
+  eligibleClassIds: string[];
+  classesById: Map<string, { id: string; organization_id: string; curriculum_track?: string | null; name?: string | null }>;
+  expiresAt: number;
+}
+
+const joinExamCache = new Map<string, CachedJoinExam>();
+const joinExamInflight = new Map<string, Promise<unknown>>();
+const joinClassesCache = new Map<string, CachedEligibleClasses>();
+const joinClassesInflight = new Map<string, Promise<CachedEligibleClasses>>();
+
+function serviceRoleScope(admin: unknown): string | null {
+  if (!admin || typeof admin !== "object") return null;
+  const url = (admin as { supabaseUrl?: unknown }).supabaseUrl;
+  const key = (admin as { supabaseKey?: unknown }).supabaseKey;
+  const serviceKey = typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  return typeof url === "string" && url.length > 0 && serviceKey && key === serviceKey ? url : null;
+}
+
+async function resolveExamForJoin(
+  admin: ReturnType<typeof createAdminClient>,
+  invite_token: string | undefined,
+  access_code: string,
+) {
+  const fetchUncached = async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let exam: any = null;
+    if (invite_token) {
+      const { data } = await admin
+        .from("exams")
+        .select("*")
+        .eq("invite_token", invite_token)
+        .maybeSingle();
+      exam = data;
+    }
+    if (!exam && access_code) {
+      const normalized = normalizeCode(access_code);
+      const { data: byCode } = await admin
+        .from("exams")
+        .select("*")
+        .eq("access_code", normalized)
+        .maybeSingle();
+      exam = byCode;
+      if (!exam) {
+        const { data: byHash } = await admin
+          .from("exams")
+          .select("*")
+          .eq("access_code_hash", sha256(normalized))
+          .maybeSingle();
+        exam = byHash;
+      }
+      if (!exam) {
+        const { data: codedExams } = await admin
+          .from("exams")
+          .select("*")
+          .not("access_code", "is", null);
+        exam =
+          ((codedExams ?? []) as Record<string, unknown>[]).find((row) =>
+            accessCodeMatches(normalized, row.access_code as string | null),
+          ) ?? null;
+      }
+    }
+    return exam;
+  };
+
+  const scope = serviceRoleScope(admin);
+  if (!scope) return fetchUncached();
+
+  const cacheKey = invite_token
+    ? `${scope}::tok:${invite_token}`
+    : `${scope}::code:${normalizeCode(access_code)}`;
+  const cached = joinExamCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.exam;
+
+  const inflight = joinExamInflight.get(cacheKey);
+  if (inflight) return inflight;
+
+  const promise = fetchUncached()
+    .then((found) => {
+      if (found) {
+        if (joinExamCache.size >= JOIN_CACHE_MAX && !joinExamCache.has(cacheKey)) {
+          const oldest = joinExamCache.keys().next().value;
+          if (oldest !== undefined) joinExamCache.delete(oldest);
+        }
+        joinExamCache.set(cacheKey, { exam: found, expiresAt: Date.now() + JOIN_EXAM_CACHE_TTL_MS });
+      }
+      return found;
+    })
+    .finally(() => {
+      joinExamInflight.delete(cacheKey);
+    });
+  joinExamInflight.set(cacheKey, promise);
+  return promise;
+}
+
 /**
  * Shared-link examination admission. The persisted link token identifies ONE
  * existing examination; the separately-distributed access code is compared
@@ -81,45 +186,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enter the access code, first name, last name and a valid class." }, { status: 400 });
   const { invite_token, access_code, first_name, last_name, guest_key, class_id, class_name, identity, ignore_auth_session } = parsed.data;
   const admin = createAdminClient();
-  const supabase = await createClient();
+  const prodScope = serviceRoleScope(admin);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let exam: any = null;
-  if (invite_token) {
-    const { data } = await admin
-      .from("exams")
-      .select("*")
-      .eq("invite_token", invite_token)
-      .maybeSingle();
-    exam = data;
-  }
-  if (!exam && access_code) {
-    const normalized = normalizeCode(access_code);
-    const { data: byCode } = await admin
-      .from("exams")
-      .select("*")
-      .eq("access_code", normalized)
-      .maybeSingle();
-    exam = byCode;
-    if (!exam) {
-      const { data: byHash } = await admin
-        .from("exams")
-        .select("*")
-        .eq("access_code_hash", sha256(normalized))
-        .maybeSingle();
-      exam = byHash;
-    }
-    if (!exam) {
-      const { data: codedExams } = await admin
-        .from("exams")
-        .select("*")
-        .not("access_code", "is", null);
-      exam =
-        ((codedExams ?? []) as Record<string, unknown>[]).find((row) =>
-          accessCodeMatches(normalized, row.access_code as string | null),
-        ) ?? null;
-    }
-  }
+  const exam: any = await resolveExamForJoin(admin, invite_token, access_code);
 
   if (!exam)
     return NextResponse.json({ error: "Examination not found. Please check your access code." }, { status: 404 });
@@ -303,57 +373,116 @@ export async function POST(request: Request) {
   // with no exam_id must not make another class's examination available here.
   const stage = typeof examSettings.stage === "string" ? examSettings.stage : "elimination";
   const attemptPolicy = access.attemptPolicy;
-  const linkRows: { class_id: string | null; exam_id: string | null }[] = [];
-  if (exam.event_id) {
-    const { data: phases } = await admin
-      .from("competition_event_phases")
-      .select("id")
-      .eq("event_id", exam.event_id)
-      .eq("phase_key", stage);
-    const phaseIds = (phases ?? []).map((p) => p.id as string);
-    if (phaseIds.length) {
-      const { data: stageLinks } = await admin
-        .from("competition_phase_classes")
-        .select("class_id,exam_id")
-        .in("phase_id", phaseIds)
-        .is("exam_id", null);
-      linkRows.push(...((stageLinks ?? []) as { class_id: string | null; exam_id: string | null }[]));
-    }
-  }
-  const { data: directLinks } = await admin
-    .from("competition_phase_classes")
-    .select("class_id,exam_id")
-    .eq("exam_id", exam.id);
-  linkRows.push(...((directLinks ?? []) as { class_id: string | null; exam_id: string | null }[]));
-  const baseEligibleClasses = new Set<string>();
-  for (const row of linkRows) {
-    if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClasses.add(row.class_id);
-  }
-  if (exam.class_id) baseEligibleClasses.add(exam.class_id);
-  for (const id of access.linkedClassIds) baseEligibleClasses.add(id);
-  const eligibleClasses = new Set(mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds));
 
-  // If no specific eligible classes were configured, fall back to all classes in the organization
-  if (eligibleClasses.size === 0 && exam.organization_id) {
-    const { data: orgClasses } = await admin
-      .from("classes")
-      .select("id")
-      .eq("organization_id", exam.organization_id);
-    for (const c of orgClasses ?? []) {
-      eligibleClasses.add(c.id as string);
+  const loadEligibleClassesMeta = async (): Promise<CachedEligibleClasses> => {
+    const linkRows: { class_id: string | null; exam_id: string | null }[] = [];
+    if (exam.event_id) {
+      const { data: phases } = await admin
+        .from("competition_event_phases")
+        .select("id")
+        .eq("event_id", exam.event_id)
+        .eq("phase_key", stage);
+      const phaseIds = (phases ?? []).map((p) => p.id as string);
+      if (phaseIds.length) {
+        const { data: stageLinks } = await admin
+          .from("competition_phase_classes")
+          .select("class_id,exam_id")
+          .in("phase_id", phaseIds)
+          .is("exam_id", null);
+        linkRows.push(...((stageLinks ?? []) as { class_id: string | null; exam_id: string | null }[]));
+      }
     }
+    const { data: directLinks } = await admin
+      .from("competition_phase_classes")
+      .select("class_id,exam_id")
+      .eq("exam_id", exam.id);
+    linkRows.push(...((directLinks ?? []) as { class_id: string | null; exam_id: string | null }[]));
+    const baseEligibleClasses = new Set<string>();
+    for (const row of linkRows) {
+      if (row.class_id && (!row.exam_id || row.exam_id === exam.id)) baseEligibleClasses.add(row.class_id);
+    }
+    if (exam.class_id) baseEligibleClasses.add(exam.class_id);
+    for (const id of access.linkedClassIds) baseEligibleClasses.add(id);
+    const mergedEligible = mergeEligibleClassIds([...baseEligibleClasses], access.eligibleClassIds);
+    const eligibleSet = new Set(mergedEligible);
+    const classesById = new Map<string, { id: string; organization_id: string; curriculum_track?: string | null; name?: string | null }>();
+
+    if (eligibleSet.size === 0 && exam.organization_id) {
+      const { data: orgClasses } = await admin
+        .from("classes")
+        .select("id,organization_id,curriculum_track,name")
+        .eq("organization_id", exam.organization_id);
+      for (const c of (orgClasses ?? []) as { id: string; organization_id: string; curriculum_track?: string | null; name?: string | null }[]) {
+        eligibleSet.add(c.id);
+        classesById.set(c.id, c);
+      }
+    } else if (eligibleSet.size > 0 && prodScope) {
+      const { data: eligRows } = await admin
+        .from("classes")
+        .select("id,organization_id,curriculum_track,name")
+        .in("id", [...eligibleSet]);
+      for (const c of (eligRows ?? []) as { id: string; organization_id: string; curriculum_track?: string | null; name?: string | null }[]) {
+        classesById.set(c.id, c);
+      }
+    }
+
+    return {
+      eligibleClassIds: [...eligibleSet],
+      classesById,
+      expiresAt: Date.now() + JOIN_CLASS_CACHE_TTL_MS,
+    };
+  };
+
+  let classesMeta: CachedEligibleClasses;
+  if (prodScope) {
+    const clsKey = `${prodScope}::${exam.id}::${stage}`;
+    const cachedCls = joinClassesCache.get(clsKey);
+    if (cachedCls && Date.now() < cachedCls.expiresAt) {
+      classesMeta = cachedCls;
+    } else {
+      const inflightCls = joinClassesInflight.get(clsKey);
+      if (inflightCls) {
+        classesMeta = await inflightCls;
+      } else {
+        const promise = loadEligibleClassesMeta()
+          .then((meta) => {
+            if (joinClassesCache.size >= JOIN_CACHE_MAX && !joinClassesCache.has(clsKey)) {
+              const oldest = joinClassesCache.keys().next().value;
+              if (oldest !== undefined) joinClassesCache.delete(oldest);
+            }
+            joinClassesCache.set(clsKey, meta);
+            return meta;
+          })
+          .finally(() => {
+            joinClassesInflight.delete(clsKey);
+          });
+        joinClassesInflight.set(clsKey, promise);
+        classesMeta = await promise;
+      }
+    }
+  } else {
+    classesMeta = await loadEligibleClassesMeta();
   }
+
+  const eligibleClasses = new Set<string>(classesMeta.eligibleClassIds);
 
   let selectedClassId = class_id ?? null;
   if (!selectedClassId && class_name) {
-    const { data: orgClasses } = await admin
-      .from("classes")
-      .select("id, name")
-      .eq("organization_id", exam.organization_id);
-    const found = (orgClasses ?? []).find(
-      (c) => c.name.toLowerCase().trim() === class_name.toLowerCase().trim(),
+    const cachedByName = [...classesMeta.classesById.values()].find(
+      (c) => (c.name ?? "").toLowerCase().trim() === class_name.toLowerCase().trim(),
     );
-    if (found) selectedClassId = found.id as string;
+    if (cachedByName) {
+      selectedClassId = cachedByName.id;
+    } else {
+      const { data: orgClasses } = await admin
+        .from("classes")
+        .select("id, name")
+        .eq("organization_id", exam.organization_id);
+      const found = (orgClasses ?? []).find(
+        (c) => c.name.toLowerCase().trim() === class_name.toLowerCase().trim(),
+      );
+      if (found) selectedClassId = found.id as string;
+    }
   }
   if (!selectedClassId && eligibleClasses.size === 1) {
     selectedClassId = [...eligibleClasses][0];
@@ -364,11 +493,16 @@ export async function POST(request: Request) {
 
   if (!selectedClassId || (!eligibleClasses.has(selectedClassId) && eligibleClasses.size > 0))
     return NextResponse.json({ error: "Select an eligible class for this examination." }, { status: 403 });
-  const { data: classRow } = await admin
-    .from("classes")
-    .select("id,organization_id,curriculum_track")
-    .eq("id", selectedClassId)
-    .maybeSingle();
+
+  let classRow = classesMeta.classesById.get(selectedClassId) ?? null;
+  if (!classRow) {
+    const { data: fetchedClass } = await admin
+      .from("classes")
+      .select("id,organization_id,curriculum_track")
+      .eq("id", selectedClassId)
+      .maybeSingle();
+    classRow = (fetchedClass as { id: string; organization_id: string; curriculum_track?: string | null } | null) ?? null;
+  }
   if (!classRow || classRow.organization_id !== exam.organization_id)
     return NextResponse.json({ error: "That class does not belong to this examination." }, { status: 403 });
 
@@ -377,14 +511,27 @@ export async function POST(request: Request) {
   // (`accessMode === "shared_link"`), a lingering browser cookie from a
   // previous student must NEVER bind `student_id` to a different student or
   // reject the next student's class selection.
+  // Production burst optimization: skip Supabase Auth round-trip when shared_link
+  // mode is active and the request carries no Supabase auth cookie (or ignores auth).
   let studentId: string | null = null;
   let verifiedClassId: string | null = null;
-  const { data: auth } = await supabase.auth.getUser();
-  if (auth.user && !ignore_auth_session) {
+  const hasAuthCookie = /sb-|supabase/i.test(request.headers?.get?.("cookie") ?? "");
+  const skipAuthLookup =
+    Boolean(prodScope) &&
+    access.accessMode !== "registered_students_only" &&
+    (Boolean(ignore_auth_session) || !hasAuthCookie);
+
+  let authUser: { id: string } | null = null;
+  if (!skipAuthLookup) {
+    const supabase = await createClient();
+    const { data: auth } = await supabase.auth.getUser();
+    authUser = auth.user ?? null;
+  }
+  if (authUser && !ignore_auth_session) {
     const { data: student } = await admin
       .from("students")
       .select("id,full_name")
-      .eq("user_id", auth.user.id)
+      .eq("user_id", authUser.id)
       .eq("organization_id", exam.organization_id)
       .maybeSingle();
     if (student) {
@@ -411,7 +558,7 @@ export async function POST(request: Request) {
 
   // Registered-student-only examinations keep the institutional restriction:
   // a valid link and code alone are not sufficient authorization.
-  if (access.accessMode === "registered_students_only" && (!auth.user || ignore_auth_session || !studentId || verifiedClassId !== selectedClassId))
+  if (access.accessMode === "registered_students_only" && (!authUser || ignore_auth_session || !studentId || verifiedClassId !== selectedClassId))
     return NextResponse.json(
       { error: "This examination requires a verified student account in an eligible class. Sign in with your institutional account." },
       { status: 401 },
@@ -431,6 +578,7 @@ export async function POST(request: Request) {
     String(row.class_id ?? "") === selectedClassId;
 
   let candidateRow: Record<string, unknown> | null = matchedRosterCandidate;
+  let newlyCreatedCandidate = false;
   if (candidateRow) {
     if (candidateRow.class_id && String(candidateRow.class_id) !== selectedClassId) {
       return NextResponse.json(
@@ -439,20 +587,40 @@ export async function POST(request: Request) {
       );
     }
   } else {
-    const { data: browserCandidates } =
-      candidateKeyHashes.length === 1
-        ? await admin
-            .from("exam_candidates")
-            .select("*")
-            .eq("exam_id", exam.id)
-            .eq("guest_key_hash", rawGuestKeyHash)
-        : await admin
-            .from("exam_candidates")
-            .select("*")
-            .eq("exam_id", exam.id)
-            .in("guest_key_hash", candidateKeyHashes);
+    const canonicalNameKey = canonicalCandidateNameFromParts(first_name, last_name);
+    let combinedCandidateRows: Record<string, unknown>[] | null = null;
+    if (typeof (admin as { rpc?: unknown }).rpc === "function") {
+      const { data: v2Rows, error: v2Err } = await admin.rpc("find_exam_candidates_for_join_v2", {
+        p_exam_id: exam.id,
+        p_name_key: canonicalNameKey,
+        p_student_id: studentId ?? null,
+        p_guest_key_hashes: candidateKeyHashes,
+      });
+      if (!v2Err && Array.isArray(v2Rows)) {
+        combinedCandidateRows = v2Rows as Record<string, unknown>[];
+      }
+    }
 
-    const candidateList = (browserCandidates ?? []) as Record<string, unknown>[];
+    let candidateList: Record<string, unknown>[];
+    if (combinedCandidateRows !== null) {
+      const keySet = new Set(candidateKeyHashes);
+      candidateList = combinedCandidateRows.filter((row) => keySet.has(String(row.guest_key_hash ?? "")));
+    } else {
+      const { data: browserCandidates } =
+        candidateKeyHashes.length === 1
+          ? await admin
+              .from("exam_candidates")
+              .select("*")
+              .eq("exam_id", exam.id)
+              .eq("guest_key_hash", rawGuestKeyHash)
+          : await admin
+              .from("exam_candidates")
+              .select("*")
+              .eq("exam_id", exam.id)
+              .in("guest_key_hash", candidateKeyHashes);
+      candidateList = (browserCandidates ?? []) as Record<string, unknown>[];
+    }
+
     const exactMatch =
       candidateList.find(
         (row) => samePerson(row) && identityDataEqual((row.identity_data ?? {}) as Record<string, unknown>, identityData),
@@ -473,8 +641,9 @@ export async function POST(request: Request) {
     // organizer-defined identity fields (e.g. student ID / matricule / email).
     if (!candidateRow) {
       let rowsForExam: Record<string, unknown>[] = [];
-      if (typeof (admin as { rpc?: unknown }).rpc === "function") {
-        const canonicalNameKey = canonicalCandidateNameFromParts(first_name, last_name);
+      if (combinedCandidateRows !== null) {
+        rowsForExam = combinedCandidateRows;
+      } else if (typeof (admin as { rpc?: unknown }).rpc === "function") {
         const { data: matchedCandidates, error: rpcError } = await admin.rpc("find_exam_candidates_for_join", {
           p_exam_id: exam.id,
           p_name_key: canonicalNameKey,
@@ -594,6 +763,7 @@ export async function POST(request: Request) {
         candidateRow = winner;
       } else {
         candidateRow = data;
+        newlyCreatedCandidate = true;
       }
     }
   }
@@ -606,13 +776,18 @@ export async function POST(request: Request) {
 
   // One candidate can now legitimately own several attempts (each authorized
   // retake is a NEW row). Resume the active one, otherwise evaluate the latest.
-  const { data: attemptRows } = await admin
-    .from("exam_attempts")
-    .select("*")
-    .eq("exam_id", exam.id)
-    .eq("candidate_id", resolvedCandidate.id)
-    .order("attempt_number", { ascending: false });
-  const rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
+  // A freshly inserted candidate row has zero pre-existing attempts — skip the
+  // extra round-trip on the first-time start burst path.
+  let rowsForCandidate: Record<string, unknown>[] = [];
+  if (!newlyCreatedCandidate) {
+    const { data: attemptRows } = await admin
+      .from("exam_attempts")
+      .select("*")
+      .eq("exam_id", exam.id)
+      .eq("candidate_id", resolvedCandidate.id)
+      .order("attempt_number", { ascending: false });
+    rowsForCandidate = (attemptRows ?? []) as Record<string, unknown>[];
+  }
   const activeAttempt = rowsForCandidate.find((row) => row.status === "in_progress") ?? null;
   const latestAttempt = rowsForCandidate[0] ?? null;
   let attempt: Record<string, unknown> | null = activeAttempt;
