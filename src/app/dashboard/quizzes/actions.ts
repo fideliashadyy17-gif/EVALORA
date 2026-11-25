@@ -1,6 +1,8 @@
 "use server";
 
+import { audit } from "@/lib/admin";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
@@ -330,3 +332,141 @@ export async function startSession(formData: FormData) {
   if (!session) redirect(`/dashboard/quizzes/${quizId}?e=session`);
   redirect(`/dashboard/sessions/${session.id}/host`);
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Configure Answers & Solutions review release for one quiz (`quiz_solutions`).
+ * Stored in `quizzes.settings` and strictly guarded by RBAC + module entitlement.
+ */
+export async function updateQuizSolutionsPolicy(formData: FormData) {
+  const quizId = String(formData.get("quiz_id") ?? "");
+  if (!UUID_RE.test(quizId)) redirect("/dashboard/quizzes");
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org) redirect("/dashboard");
+
+  const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "quizzes", "/dashboard?e=module");
+  requireModule(entitlement, "quiz_solutions", `/dashboard/quizzes/${quizId}?e=module`);
+  if (!(await canOperate(ctx, org.id, "quizzes.edit", "quiz_solutions"))) {
+    redirect(`/dashboard/quizzes/${quizId}?e=forbidden`);
+  }
+
+  const releaseRaw = String(formData.get("solution_release_mode") ?? "never");
+  const solutionReleaseMode = ["never", "after_submission", "manual"].includes(releaseRaw)
+    ? releaseRaw
+    : "never";
+  const showExplanations = formData.get("show_explanations") === "on";
+  const releaseNow = formData.get("release_now") === "1";
+
+  const { data: quiz } = await supabase
+    .from("quizzes")
+    .select("id, title, settings")
+    .eq("id", quizId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!quiz) redirect("/dashboard/quizzes");
+
+  const prev = ((quiz.settings as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  const nextSettings: Record<string, unknown> = {
+    ...prev,
+    solution_release_mode: solutionReleaseMode,
+    show_explanations: showExplanations,
+    solutions_released_at:
+      solutionReleaseMode === "never"
+        ? null
+        : releaseNow
+          ? new Date().toISOString()
+          : prev.solutions_released_at ?? null,
+  };
+
+  const { error } = await supabase
+    .from("quizzes")
+    .update({ settings: nextSettings, updated_at: new Date().toISOString() })
+    .eq("id", quizId)
+    .eq("organization_id", org.id);
+  if (error) redirect(`/dashboard/quizzes/${quizId}?e=solutions`);
+
+  await audit(ctx, "quiz.solutions_policy_updated", "quizzes", quizId, org.id, {
+    quiz_title: quiz.title,
+    solution_release_mode: solutionReleaseMode,
+    show_explanations: showExplanations,
+    released_now: releaseNow,
+  });
+  revalidatePath(`/dashboard/quizzes/${quizId}`);
+  redirect(`/dashboard/quizzes/${quizId}?ok=solutions`);
+}
+
+/**
+ * Assign a quiz to an organization class and optional schedule (`quiz_assignment`).
+ * Verifies the selected class belongs to the active organization before saving.
+ */
+export async function updateQuizAssignment(formData: FormData) {
+  const quizId = String(formData.get("quiz_id") ?? "");
+  if (!UUID_RE.test(quizId)) redirect("/dashboard/quizzes");
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org) redirect("/dashboard");
+
+  const supabase = await createClient();
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "quizzes", "/dashboard?e=module");
+  requireModule(entitlement, "quiz_assignment", `/dashboard/quizzes/${quizId}?e=module`);
+  if (!(await canOperate(ctx, org.id, "quizzes.edit", "quiz_assignment"))) {
+    redirect(`/dashboard/quizzes/${quizId}?e=forbidden`);
+  }
+
+  const classIdRaw = String(formData.get("class_id") ?? "").trim();
+  let classId: string | null = null;
+  if (classIdRaw) {
+    if (!UUID_RE.test(classIdRaw)) redirect(`/dashboard/quizzes/${quizId}?e=assignment`);
+    const { data: cls } = await supabase
+      .from("classes")
+      .select("id")
+      .eq("id", classIdRaw)
+      .eq("organization_id", org.id)
+      .maybeSingle();
+    if (!cls) redirect(`/dashboard/quizzes/${quizId}?e=assignment`);
+    classId = cls.id as string;
+  }
+
+  const dueAtRaw = String(formData.get("assignment_due_at") ?? "").trim();
+  const dueAt = dueAtRaw && Number.isFinite(Date.parse(dueAtRaw)) ? new Date(dueAtRaw).toISOString() : null;
+  const note = String(formData.get("assignment_note") ?? "").trim().slice(0, 500) || null;
+
+  const { data: quiz } = await supabase
+    .from("quizzes")
+    .select("id, title, settings")
+    .eq("id", quizId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!quiz) redirect("/dashboard/quizzes");
+
+  const prev = ((quiz.settings as Record<string, unknown>) ?? {}) as Record<string, unknown>;
+  const { error } = await supabase
+    .from("quizzes")
+    .update({
+      class_id: classId,
+      settings: {
+        ...prev,
+        assignment_due_at: dueAt,
+        assignment_note: note,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", quizId)
+    .eq("organization_id", org.id);
+  if (error) redirect(`/dashboard/quizzes/${quizId}?e=assignment`);
+
+  await audit(ctx, "quiz.assignment_updated", "quizzes", quizId, org.id, {
+    quiz_title: quiz.title,
+    class_id: classId,
+    assignment_due_at: dueAt,
+  });
+  revalidatePath(`/dashboard/quizzes/${quizId}`);
+  revalidatePath("/dashboard/quizzes");
+  redirect(`/dashboard/quizzes/${quizId}?ok=assignment`);
+}
+

@@ -120,6 +120,7 @@ export async function loadMonitorSnapshot(
       candidate_ref: candidate?.candidate_ref ?? null,
       class_name: candidate?.class_id ? classNames.get(candidate.class_id) ?? null : null,
       deadline,
+      extension_minutes: Number(a.extension_minutes ?? 0),
       pause_reasons: a.pause_reasons,
       paused_at: a.paused_at,
       answers: answersByAttempt.get(a.id) ?? [],

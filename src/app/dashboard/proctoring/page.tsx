@@ -102,6 +102,19 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
     .order("started_at", { ascending: false })
     .limit(20);
 
+  const { data: recordings } = await supabase
+    .from("proctoring_recordings")
+    .select("id, exam_id, room_name, status, file_url, retention_until, created_at")
+    .eq("organization_id", org.id)
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  const livekitConfigured = Boolean(
+    process.env.LIVEKIT_API_KEY &&
+      process.env.LIVEKIT_API_SECRET &&
+      process.env.NEXT_PUBLIC_LIVEKIT_URL,
+  );
+
   const roomIds = (rooms ?? []).map((r) => r.id);
   const { data: events } = roomIds.length
     ? await supabase
@@ -131,12 +144,25 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
         title="Proctoring review"
         subtitle="Every observation and every reviewer decision in this workspace, with who decided, what they decided and when. Observations are reports for human review — never automatic proof of misconduct."
         action={
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/dashboard/monitoring" variant="outline">Live Monitoring</ButtonLink>
             <ButtonLink href="/dashboard/exams" variant="outline">Examinations</ButtonLink>
             <ButtonLink href={query({})}>Reset filters</ButtonLink>
           </div>
         }
       />
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-evergreen-900/15 bg-white px-4 py-3 text-sm">
+        <span>
+          <strong>LiveKit Video Infrastructure:</strong>{" "}
+          {livekitConfigured
+            ? "Configured — authorized supervisors can connect to live candidate camera/screen supervision rooms."
+            : "Not configured on this deployment (requires LIVEKIT_API_KEY, LIVEKIT_API_SECRET and NEXT_PUBLIC_LIVEKIT_URL). Incident reporting, review decisions, exports and retention ledger operate normally."}
+        </span>
+        <Badge tone={livekitConfigured ? "green" : "amber"}>
+          {livekitConfigured ? "LiveKit ready" : "Video infra pending"}
+        </Badge>
+      </div>
 
       {sp.ok && (
         <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Review saved and added to the audit history.</p>
@@ -322,6 +348,46 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
               </tr>
             );
           })}
+        </DataTable>
+      </div>
+
+      <h2 className="mb-3 font-display text-lg font-semibold text-evergreen-950">Authorized session recordings</h2>
+      <div className="mb-8">
+        <DataTable head={["Room", "Status", "Created", "Retention until", "Access"]} label="Proctoring session recordings">
+          {(recordings ?? []).length === 0 && (
+            <tr>
+              <td colSpan={5} className="px-4 py-6 text-center text-ink-soft">
+                No proctoring recordings are stored for this organization yet. Recordings appear here when LiveKit
+                Egress recording is active for a proctored examination.
+              </td>
+            </tr>
+          )}
+          {(recordings ?? []).map((rec) => (
+            <tr key={rec.id}>
+              <td className="font-mono text-xs">{rec.room_name}</td>
+              <td>
+                <Badge tone={rec.status === "ready" || rec.status === "completed" ? "green" : "amber"}>
+                  {rec.status}
+                </Badge>
+              </td>
+              <td className="text-ink-soft">{fmtDateTime(rec.created_at)}</td>
+              <td className="text-ink-soft">{rec.retention_until ? fmtDateTime(rec.retention_until) : "—"}</td>
+              <td>
+                {canManage && rec.file_url ? (
+                  <a
+                    href={rec.file_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs font-semibold text-evergreen-800 underline"
+                  >
+                    Review recording
+                  </a>
+                ) : (
+                  <span className="text-xs text-ink-soft">{rec.file_url ? "Restricted (proctoring.manage)" : "Unavailable"}</span>
+                )}
+              </td>
+            </tr>
+          ))}
         </DataTable>
       </div>
 

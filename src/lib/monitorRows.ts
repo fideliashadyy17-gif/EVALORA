@@ -32,6 +32,8 @@ export interface MonitorAttemptInput {
   class_name: string | null;
   /** Server-computed authoritative deadline (attemptDeadline), ISO string. */
   deadline: string;
+  /** Authorized time extension in minutes already applied to this attempt. */
+  extension_minutes?: number;
   /** Saved answers of this attempt, with the quiz row each belongs to. Other rows are ignored. */
   answers: (SavedAnswerFacts & { quiz_question_id: string | null })[];
   presence: {
@@ -54,6 +56,7 @@ export interface MonitorRow {
   started_at: string;
   submitted_at: string | null;
   deadline: string;
+  extension_minutes?: number;
   lockdown_verified?: boolean;
   lockdown_platform?: string | null;
   lockdown_app_version?: string | null;
@@ -123,6 +126,7 @@ export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[],
     started_at: attempt.started_at,
     submitted_at: attempt.submitted_at,
     deadline: attempt.deadline,
+    extension_minutes: Number(attempt.extension_minutes ?? 0),
     lockdown_verified: attempt.lockdown_verified,
     lockdown_platform: attempt.lockdown_platform,
     lockdown_app_version: attempt.lockdown_app_version,

@@ -39,6 +39,18 @@ export async function getCapabilities(
     limits: entitlement.limits,
     featureFlags,
   });
+  // Explicit per-organization ON overrides for proctoring / advanced reports
+  // can grant those capabilities even on a lower base plan (still bounded by
+  // platform-wide feature flags and never granting owner/super-admin powers).
+  if (!isSuperAdmin && entitlement.moduleOverrides) {
+    if (entitlement.moduleOverrides.proctoring === true && featureFlags.proctoring !== false) {
+      capabilities.proctoring = true;
+    }
+    if (entitlement.moduleOverrides.org_reports === true) {
+      capabilities.reports_analytics = true;
+      capabilities.imports_exports = true;
+    }
+  }
   // Module entitlements (Plan & Module Management) are ANDed into the same
   // capability set every page and server action already consults — disabling
   // a module therefore takes effect server-side everywhere at once, not just
