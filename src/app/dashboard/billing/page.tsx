@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime, money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { submitPayment } from "./actions";
 
 export const metadata: Metadata = { title: "Billing & Plan" };
@@ -24,6 +25,8 @@ export default async function BillingPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  const canViewBilling = await canOperate(ctx, org.id, "billing.view", "billing");
+  if (!canViewBilling) redirect("/dashboard?e=forbidden");
   const isManager = await canOperate(ctx, org.id, "billing.manage", "billing");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

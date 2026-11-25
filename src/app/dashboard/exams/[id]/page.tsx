@@ -244,14 +244,18 @@ export default async function ExamDetailPage({
     canMark,
     isResultsManager,
     canEditExam,
+    canDeleteExam,
     canManageLinks,
+    canAddCandidates,
     canRevokeCandidates,
     canManageProctoring,
   } = await canOperateMany(ctx, org.id, {
     canMark: { permission: "grading.edit", module: "exam_results" },
     isResultsManager: { permission: "results.publish" },
     canEditExam: { permission: "exams.edit", module: "examinations" },
+    canDeleteExam: { permission: "exams.delete", module: "examinations" },
     canManageLinks: { permission: "candidate_links.edit", module: "exam_share_codes" },
+    canAddCandidates: { permission: "candidate_links.create", module: "exam_candidates" },
     canRevokeCandidates: { permission: "candidate_links.revoke", module: "exam_candidates" },
     canManageProctoring: { permission: "proctoring.manage", module: "proctoring" },
   });
@@ -282,13 +286,13 @@ export default async function ExamDetailPage({
         subtitle={`Paper: ${(exam.quizzes as { title: string } | null)?.title ?? "—"} · ${exam.duration_minutes} minutes · Pass mark ${String(settings.pass_mark_percent ?? 50)}%`}
         action={
           <div className="flex flex-wrap gap-2">
-            {Boolean(settings.proctoring) && (
+            {Boolean(settings.proctoring) && canManageProctoring && (
               <ButtonLink href={`/dashboard/exams/${id}/proctor`} variant="gold">🎥 Proctoring room</ButtonLink>
             )}
             <ButtonLink href={`/dashboard/exams/${id}/monitor`} variant="outline">Live monitor</ButtonLink>
             <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline">Grade history</ButtonLink>
             <ButtonLink href={`/dashboard/reports/exam/${id}`} variant="outline">Report</ButtonLink>
-            <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>
+            {canEditExam && <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>}
           </div>
         }
       />
@@ -382,31 +386,54 @@ export default async function ExamDetailPage({
       {sp.e === "pause_failed" && <p role="alert" className="mb-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">The pause state could not be changed. Nothing was modified — try again.</p>}
 
       <div className="mb-6">
-        <ExaminationAccessCard
-          examTitle={exam.title}
-          organizationName={org.name}
-          shareUrl={shareUrl}
-          accessLink={accessLink}
-          accessCode={exam.access_code}
-          exam={{
-            status: exam.status,
-            starts_at: exam.starts_at,
-            ends_at: exam.ends_at,
-            shared_link_enabled: exam.shared_link_enabled,
-            invite_expires_at: exam.invite_expires_at,
-          }}
-          settings={settings}
-        />
+        {canManageLinks ? (
+          <ExaminationAccessCard
+            examTitle={exam.title}
+            organizationName={org.name}
+            shareUrl={shareUrl}
+            accessLink={accessLink}
+            accessCode={exam.access_code}
+            exam={{
+              status: exam.status,
+              starts_at: exam.starts_at,
+              ends_at: exam.ends_at,
+              shared_link_enabled: exam.shared_link_enabled,
+              invite_expires_at: exam.invite_expires_at,
+            }}
+            settings={settings}
+          />
+        ) : (
+          <Card className="p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-display text-base font-semibold text-evergreen-950">Candidate admission &amp; access status</h2>
+                <p className="mt-1 text-sm text-ink-soft">
+                  Shared candidate link is <strong>{exam.shared_link_enabled ? "enabled" : "disabled"}</strong>.
+                  Sensitive access codes, join links, and candidate bearer tokens are hidden in read-only supervision mode.
+                </p>
+              </div>
+              <Badge tone={exam.shared_link_enabled ? "green" : "gray"}>
+                {exam.shared_link_enabled ? "Admission link active" : "Admission link disabled"}
+              </Badge>
+            </div>
+          </Card>
+        )}
       </div>
 
       <Card className="mb-6 p-6">
         <div className="flex flex-wrap items-center gap-3">
           <Badge tone={exam.status === "open" ? "amber" : exam.status === "paused" ? "gold" : "gray"}>{exam.status}</Badge>
           <div className="min-w-[280px] flex-1">
-            <p className="text-sm text-ink-soft">
-              Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
-              <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
-            </p>
+            {canManageLinks ? (
+              <p className="text-sm text-ink-soft">
+                Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
+                <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
+              </p>
+            ) : (
+              <p className="text-sm text-ink-soft">
+                Examination access credentials are protected for read-only supervision accounts.
+              </p>
+            )}
             {canManageLinks && <div className="mt-4 flex flex-wrap gap-2">
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value={exam.shared_link_enabled ? "disable" : "enable"} /><Button type="submit" variant="outline">{exam.shared_link_enabled ? "Disable shared link" : "Enable shared link"}</Button></form>
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_link" /><Button type="submit" variant="outline">Regenerate link</Button></form>
@@ -414,43 +441,51 @@ export default async function ExamDetailPage({
               <p className="w-full text-xs text-ink-soft">Regenerating immediately invalidates the previous link or code. Advanced eligibility and identity settings are not yet available in this workspace.</p>
             </div>}
           </div>
-          <div className="ml-auto flex flex-wrap gap-2">
-            {exam.status === "paused" ? (
-              /* A paused examination resumes ONLY through the pause RPC so
-                 every attempt's frozen time is credited and its 'assessment'
-                 pause reason cleared — never through the plain open toggle. */
-              <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="resume" /><Button type="submit">Resume assessment</Button></form>
-            ) : exam.status !== "open" ? (
-              <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="open" /><Button type="submit">Open examination</Button></form>
-            ) : (
-              <>
-                <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="pause" /><Button type="submit" variant="outline">Pause assessment</Button></form>
-                <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="closed" /><Button type="submit" variant="danger">Close examination</Button></form>
-              </>
-            )}
-            <form action={publishResults}>
-              <input type="hidden" name="exam_id" value={id} />
-              <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
-              <Button
-                type="submit"
-                variant="outline"
-                disabled={!settings.results_published && settings.results_validated !== true}
-              >
-                {settings.results_published ? "Unpublish results" : "Publish results"}
-              </Button>
-              {!settings.results_published && settings.results_validated !== true && (
-                <p className="mt-1.5 text-xs text-amber-800">{t("results.publishGated")}</p>
+          {(canEditExam || isResultsManager || canDeleteExam) && (
+            <div className="ml-auto flex flex-wrap gap-2">
+              {canEditExam && (
+                exam.status === "paused" ? (
+                  /* A paused examination resumes ONLY through the pause RPC so
+                     every attempt's frozen time is credited and its 'assessment'
+                     pause reason cleared — never through the plain open toggle. */
+                  <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="resume" /><Button type="submit">Resume assessment</Button></form>
+                ) : exam.status !== "open" ? (
+                  <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="open" /><Button type="submit">Open examination</Button></form>
+                ) : (
+                  <>
+                    <form action={pauseExam}><input type="hidden" name="id" value={id} /><input type="hidden" name="pause_action" value="pause" /><Button type="submit" variant="outline">Pause assessment</Button></form>
+                    <form action={setExamStatus}><input type="hidden" name="id" value={id} /><input type="hidden" name="status" value="closed" /><Button type="submit" variant="danger">Close examination</Button></form>
+                  </>
+                )
               )}
-            </form>
-            <DeleteExamDialog
-              examId={id}
-              examTitle={exam.title}
-              accessCode={exam.access_code}
-              attemptCount={(attempts ?? []).length}
-              candidateCount={(candidates ?? []).length}
-              action={deleteExam}
-            />
-          </div>
+              {isResultsManager && (
+                <form action={publishResults}>
+                  <input type="hidden" name="exam_id" value={id} />
+                  <input type="hidden" name="publish" value={settings.results_published ? "0" : "1"} />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    disabled={!settings.results_published && settings.results_validated !== true}
+                  >
+                    {settings.results_published ? "Unpublish results" : "Publish results"}
+                  </Button>
+                  {!settings.results_published && settings.results_validated !== true && (
+                    <p className="mt-1.5 text-xs text-amber-800">{t("results.publishGated")}</p>
+                  )}
+                </form>
+              )}
+              {canDeleteExam && (
+                <DeleteExamDialog
+                  examId={id}
+                  examTitle={exam.title}
+                  accessCode={exam.access_code}
+                  attemptCount={(attempts ?? []).length}
+                  candidateCount={(candidates ?? []).length}
+                  action={deleteExam}
+                />
+              )}
+            </div>
+          )}
         </div>
         <p className="mt-3 text-sm text-ink-soft">
           Results are currently <strong>{settings.results_published ? "visible to candidates" : "hidden from candidates"}</strong>.
@@ -477,7 +512,7 @@ export default async function ExamDetailPage({
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {lockdown.enabled && lockdown.require_app && (
+            {canManageLinks && lockdown.enabled && lockdown.require_app && (
               <a
                 href={buildLockdownLaunchUrl({
                   token: exam.invite_token,
@@ -749,12 +784,12 @@ export default async function ExamDetailPage({
               {(attempts ?? []).map((a) => {
                 const cand = a.exam_candidates as { full_name: string; candidate_ref?: string | null; email?: string | null; access_code?: string | null } | null;
                 const candName = cand?.full_name || "Unknown Candidate";
-                const candId = cand?.candidate_ref || cand?.email || (cand?.access_code ? `Code: ${cand.access_code}` : null);
+                const candId = cand?.candidate_ref || cand?.email || (canManageLinks && cand?.access_code ? `Code: ${cand.access_code}` : null);
                 const isSubmitted = a.status === "submitted" || a.status === "auto_submitted" || a.status === "marked";
                 const pct = a.score !== null && a.max_score !== null && Number(a.max_score) > 0
                   ? ((Number(a.score) / Number(a.max_score)) * 100).toFixed(1)
                   : null;
-                const resultUrl = `${origin}/exam/result/${a.access_token}`;
+                const resultUrl = canManageLinks ? `${origin}/exam/result/${a.access_token}` : null;
 
                 return (
                   <tr key={a.id}>
@@ -790,25 +825,33 @@ export default async function ExamDetailPage({
                       </Badge>
                     </td>
                     <td className="max-w-xs">
-                      <input
-                        type="text"
-                        readOnly
-                        value={resultUrl}
-                        className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
-                        title={resultUrl}
-                      />
+                      {resultUrl ? (
+                        <input
+                          type="text"
+                          readOnly
+                          value={resultUrl}
+                          className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
+                          title={resultUrl}
+                        />
+                      ) : (
+                        <span className="text-xs text-ink-soft">Protected</span>
+                      )}
                     </td>
                     <td>
-                      <div className="flex items-center gap-1.5">
-                        <CopyResultLinkButton url={resultUrl} candidateName={candName} />
-                        <ButtonLink
-                          href={`/exam/result/${a.access_token}`}
-                          variant="ghost"
-                          className="text-xs px-2 py-1"
-                        >
-                          View
-                        </ButtonLink>
-                      </div>
+                      {resultUrl ? (
+                        <div className="flex items-center gap-1.5">
+                          <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                          <ButtonLink
+                            href={`/exam/result/${a.access_token}`}
+                            variant="ghost"
+                            className="text-xs px-2 py-1"
+                          >
+                            View
+                          </ButtonLink>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-ink-soft">Read-only</span>
+                      )}
                     </td>
                   </tr>
                 );
@@ -832,7 +875,9 @@ export default async function ExamDetailPage({
                       <span className="font-medium">{c.full_name}</span>
                       {c.candidate_ref && <span className="block text-xs text-ink-soft">{c.candidate_ref}{c.email ? ` · ${c.email}` : ""}</span>}
                     </td>
-                    <td className="font-mono font-semibold text-evergreen-800">{c.access_code}</td>
+                    <td className="font-mono font-semibold text-evergreen-800">
+                      {canManageLinks ? c.access_code : <span className="font-sans text-xs font-normal text-ink-soft">Protected</span>}
+                    </td>
                     <td><Badge tone={c.status === "submitted" ? "green" : c.status === "in_progress" ? "amber" : "gray"}>{c.status.replace(/_/g, " ")}</Badge></td>
                     <td>
                       {canRevokeCandidates && c.status === "registered" && <form action={removeCandidate}>
@@ -847,22 +892,26 @@ export default async function ExamDetailPage({
             )}
           </div>
 
-          <form action={addCandidate} className="mt-4 grid gap-2 border-t border-evergreen-900/10 pt-4 sm:grid-cols-3">
-            <input type="hidden" name="exam_id" value={id} />
-            <Input name="full_name" required placeholder="Full name" />
-            <Input name="candidate_ref" placeholder="Ref / class (optional)" />
-            <div className="flex gap-2">
-              <Input name="email" type="email" placeholder="Email (optional)" />
-              <Button type="submit">Add</Button>
-            </div>
-          </form>
-          <form action={addCandidatesBulk} className="mt-4">
-            <input type="hidden" name="exam_id" value={id} />
-            <Field label="Bulk add — one per line: Full Name, email, reference">
-              <Textarea name="bulk" rows={4} placeholder={"Aya Ndiaye, aya@example.com, G9-A\nben olsen, ben@example.com, G9-B"} />
-            </Field>
-            <Button type="submit" variant="outline" className="mt-2">Add all</Button>
-          </form>
+          {canAddCandidates && (
+            <>
+              <form action={addCandidate} className="mt-4 grid gap-2 border-t border-evergreen-900/10 pt-4 sm:grid-cols-3">
+                <input type="hidden" name="exam_id" value={id} />
+                <Input name="full_name" required placeholder="Full name" />
+                <Input name="candidate_ref" placeholder="Ref / class (optional)" />
+                <div className="flex gap-2">
+                  <Input name="email" type="email" placeholder="Email (optional)" />
+                  <Button type="submit">Add</Button>
+                </div>
+              </form>
+              <form action={addCandidatesBulk} className="mt-4">
+                <input type="hidden" name="exam_id" value={id} />
+                <Field label="Bulk add — one per line: Full Name, email, reference">
+                  <Textarea name="bulk" rows={4} placeholder={"Aya Ndiaye, aya@example.com, G9-A\nben olsen, ben@example.com, G9-B"} />
+                </Field>
+                <Button type="submit" variant="outline" className="mt-2">Add all</Button>
+              </form>
+            </>
+          )}
         </Card>
 
         <div className="space-y-6">
@@ -1028,7 +1077,7 @@ export default async function ExamDetailPage({
                         </div>
                         <p className="text-[11px] text-ink-soft">A single mark can be recorded instead by detaching the rubric from this examination.</p>
                       </form>
-                    ) : (
+                    ) : canMark ? (
                       <form action={markAnswer} className="mt-3 flex flex-wrap items-end gap-2">
                         <input type="hidden" name="answer_id" value={ans.id} />
                         <input type="hidden" name="attempt_id" value={attempt.id} />
@@ -1041,6 +1090,8 @@ export default async function ExamDetailPage({
                         </Field>
                         <Button type="submit">Save mark</Button>
                       </form>
+                    ) : (
+                      <p className="mt-3 text-xs text-ink-soft">Awaiting authorized marker (read-only view).</p>
                     )}
                   </div>
                   );

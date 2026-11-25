@@ -98,7 +98,7 @@ export default async function OrganizationCompetitionPage({
       </div>
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        {comp.session_id && (
+        {canManage && comp.session_id && (
           <ButtonLink href={`/dashboard/sessions/${comp.session_id}/host`} variant="gold">
             Open live host console
           </ButtonLink>

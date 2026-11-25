@@ -1,8 +1,9 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { QuestionForm, type QuestionFormValues, type QuestionSaveFn } from "@/components/QuestionForm";
 import { saveQuestion, uploadQuestionImage, type QuestionInput } from "../actions";
 
@@ -16,6 +17,7 @@ export default async function EditQuestionPage({
   const { id } = await params;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  if (!(await canOperate(ctx, org.id, "questions.edit", "question_bank"))) redirect("/dashboard/questions");
   const supabase = await createClient();
 
   const { data: q } = await supabase

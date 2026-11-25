@@ -104,6 +104,7 @@ export default async function SettingsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   const isManager = await canOperate(ctx, org.id, "organizations.edit", "org_settings");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

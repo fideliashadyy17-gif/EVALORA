@@ -143,7 +143,7 @@ export default async function ManageRoles({
                 <div className="space-y-2">
                   {perms.map((perm) => {
                     const checked = currentPermKeys.includes(perm.key);
-                    const disabled = isSystemRole || (isEditing && editing?.slug === "school_founder" && (!/\.(view|analytics|monitor)$/.test(perm.key) || /^(users|students|roles|permissions|proctoring)\./.test(perm.key)));
+                    const disabled = isSystemRole || (isEditing && editing?.slug === "school_founder" && (!/\.(view|analytics|monitor)$/.test(perm.key) || /^(users|roles|permissions|system|security|billing)\./.test(perm.key)));
                     return (
                       <label key={perm.id} className="flex items-start gap-3 p-2 rounded-lg hover:bg-evergreen-50/50 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">
                         <input

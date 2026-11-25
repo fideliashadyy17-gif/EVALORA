@@ -72,8 +72,12 @@ export default async function MypResultsPage({ searchParams }: { searchParams: S
             {access.canManage && (
               <ButtonLink href="/dashboard/myp-results/settings" variant="outline">Grading settings</ButtonLink>
             )}
-            <MypExportButton format="xlsx" scope="collective" query={params} label="⬇ Excel (.xlsx)" />
-            <MypExportButton format="pdf" scope="collective" query={params} label="⬇ Collective PDF" variant="primary" />
+            {access.canExport && (
+              <>
+                <MypExportButton format="xlsx" scope="collective" query={params} label="⬇ Excel (.xlsx)" />
+                <MypExportButton format="pdf" scope="collective" query={params} label="⬇ Collective PDF" variant="primary" />
+              </>
+            )}
           </div>
         }
         meta={
@@ -115,6 +119,7 @@ export default async function MypResultsPage({ searchParams }: { searchParams: S
             results={dataset.results}
             detailBase="/dashboard/myp-results"
             showOrganization={false}
+            canExport={access.canExport}
             emptyMessage="No MYP result matches these filters yet. Clear a filter, or check that the examination has been marked and its paper questions carry MYP criteria."
           />
         </div>

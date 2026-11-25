@@ -1,13 +1,14 @@
 
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { requireSuperAdmin } from "@/lib/auth";
 import { rbacListRolesAction, rbacListPermissionsAction } from "./actions";
 import type { RbacRole, RbacPermission } from "@/lib/rbac";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle } from "@/components/ui";
 import { Section, Table, Notice } from "@/app/admin/ui";
+import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 
-export const metadata: Metadata = { title: "Roles & Permissions" };
+export const metadata: Metadata = { title: "RBAC & User Role Management" };
 export const dynamic = "force-dynamic";
 
 export default async function RbacDashboard({searchParams}: {searchParams: Promise<{q?:string;type?:string}>}) {
@@ -26,8 +27,19 @@ export default async function RbacDashboard({searchParams}: {searchParams: Promi
   const permissions: RbacPermission[] = permissionsResult.ok ? permissionsResult.permissions : [];
 
   const client = await createClient();
-  const { data: history, error: auditError } = await client.from("access_audit_events").select("id,actor_id,action,entity,created_at,previous_state,new_state").order("created_at",{ascending:false}).limit(50);
+  const admin = createAdminClient();
+  const [
+    { data: history, error: auditError },
+    { data: actorProfiles },
+    { data: orgRows },
+  ] = await Promise.all([
+    client.from("access_audit_events").select("id,actor_id,organization_id,action,entity,created_at,previous_state,new_state").order("created_at",{ascending:false}).limit(50),
+    admin.from("profiles").select("id, email").limit(500),
+    admin.from("organizations").select("id, name").limit(200),
+  ]);
   if (auditError) throw new Error(auditError.message);
+  const actorEmailById = new Map((actorProfiles ?? []).map((p) => [p.id, p.email]));
+  const orgNameById = new Map((orgRows ?? []).map((o) => [o.id, o.name]));
   const systemRoles = roles.filter((r) => r.isSystem);
   const customRoles = roles.filter((r) => !r.isSystem);
   const totalAssignments = roles.reduce((sum, r) => sum + r.assignedUserCount, 0);
@@ -36,13 +48,13 @@ export default async function RbacDashboard({searchParams}: {searchParams: Promi
     <>
       <PageTitle
         eyebrow="Platform Administration · Role-Based Access Control"
-        title="Roles & Permissions"
-        subtitle="Centralized RBAC: manage system and custom roles, inspect the permission matrix, and assign roles to users. Every change is audit-logged."
+        title="RBAC & User Role Management"
+        subtitle="Centralized RBAC: search users by email, assign or revoke organization-scoped roles, provision School Founders, inspect the permission matrix, and manage custom roles. Every change is audit-logged."
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <ButtonLink href="/admin/rbac/assignments" variant="primary">User role assignments</ButtonLink>
             <ButtonLink href="/admin/rbac/roles" variant="outline">Manage roles</ButtonLink>
             <ButtonLink href="/admin/rbac/permissions" variant="outline">Permission matrix</ButtonLink>
-            <ButtonLink href="/admin/rbac/assignments" variant="outline">Role assignments</ButtonLink>
             <ButtonLink href="/admin/rbac/effective" variant="outline">Effective permissions</ButtonLink>
           </div>
         }
@@ -140,7 +152,7 @@ export default async function RbacDashboard({searchParams}: {searchParams: Promi
         )}
       </Section>
 
-      <Section title="Recent permission and assignment history" hint="Transactional audit events from the database. Ordinary users cannot modify these records."><Table head={["Time","Actor","Operation","Entity","Previous / new state"]}>{history?.map(event=><tr key={event.id}><td>{event.created_at}</td><td className="text-xs">{event.actor_id ?? "Database migration"}</td><td>{event.action}</td><td>{event.entity}</td><td><details><summary className="cursor-pointer">Inspect change</summary><pre className="max-w-lg overflow-auto text-xs">{JSON.stringify({before:event.previous_state,after:event.new_state},null,2)}</pre></details></td></tr>)}</Table></Section>
+      <Section title="Recent permission and assignment history" hint="Transactional audit events from the database. Ordinary users cannot modify these records."><Table head={["Time","Actor","Organization","Operation","Entity","Previous / new state"]}>{history?.map(event=><tr key={event.id}><td className="text-xs">{fmtDateTime(event.created_at)}</td><td className="text-xs">{(event.actor_id && actorEmailById.get(event.actor_id)) ?? event.actor_id ?? "Database migration"}</td><td className="text-xs">{(event.organization_id && orgNameById.get(event.organization_id)) ?? "Global / Platform"}</td><td><Badge tone="gray">{event.action}</Badge></td><td className="text-xs font-mono">{event.entity}</td><td><details><summary className="cursor-pointer text-xs">Inspect change</summary><pre className="max-w-lg overflow-auto text-xs">{JSON.stringify({before:event.previous_state,after:event.new_state},null,2)}</pre></details></td></tr>)}</Table></Section>
 
       <section className="mt-8">
         <h2 className="font-display text-lg font-semibold text-evergreen-950">How RBAC resolves permissions</h2>

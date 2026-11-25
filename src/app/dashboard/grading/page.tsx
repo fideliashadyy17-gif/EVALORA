@@ -24,6 +24,7 @@ export default async function GradingSystemsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   if (!isStaffRole(org.role)) redirect("/student");
 
   const supabase = await createClient();

@@ -1,7 +1,9 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { QuizBuilder } from "../QuizBuilder";
 
 export const metadata: Metadata = { title: "New quiz" };
@@ -9,6 +11,7 @@ export const metadata: Metadata = { title: "New quiz" };
 export default async function NewQuizPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  if (!(await canOperate(ctx, org.id, "quizzes.create", "quizzes"))) redirect("/dashboard/quizzes");
   const supabase = await createClient();
   const { data: bank } = await supabase
     .from("questions")

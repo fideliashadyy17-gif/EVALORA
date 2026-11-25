@@ -4,9 +4,9 @@ import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { Badge, Button, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { canOperate } from "@/lib/operationalAccess";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
-import { isStaffRole } from "@/lib/navAccess";
+import { isOperationalRole } from "@/lib/navAccess";
 import {
   collectFilterOptions,
   deriveManagementStatus,
@@ -89,9 +89,14 @@ export default async function ResultsManagementPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  if (!isStaffRole(org.role)) redirect("/student");
+  if (!isOperationalRole(org.role)) redirect("/student");
 
-  const isManager = await canOperate(ctx, org.id, "results.publish");
+  const { canView, isManager, canManageLinks } = await canOperateMany(ctx, org.id, {
+    canView: { permission: "results.view", module: "exam_results" },
+    isManager: { permission: "results.publish" },
+    canManageLinks: { permission: "candidate_links.edit", module: "exam_share_codes" },
+  });
+  if (!canView) redirect("/dashboard?e=forbidden");
   const supabase = await createClient();
   // Module activation (Plan & Module Management) gates this feature
   // server-side — disabling it hides the nav entry AND blocks the page,
@@ -363,7 +368,9 @@ export default async function ResultsManagementPage({
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <ExportButton filename={`candidate-links-${candidateSection.exam.id}.csv`} csv={candidateSection.csv} label="Export links (CSV / Excel)" />
+              {canManageLinks && (
+                <ExportButton filename={`candidate-links-${candidateSection.exam.id}.csv`} csv={candidateSection.csv} label="Export links (CSV / Excel)" />
+              )}
               <Link href={`/dashboard/results`} className="inline-flex min-h-10 items-center rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
                 Back to overview
               </Link>
@@ -391,8 +398,8 @@ export default async function ResultsManagementPage({
                 {candidateSection.attempts.map((a, idx) => {
                   const pct = a.score != null && a.max_score ? (Number(a.score) / Math.max(1, Number(a.max_score))) * 100 : null;
                   const candName = a.exam_candidates?.full_name ?? "Candidate";
-                  const candId = a.exam_candidates?.candidate_ref || a.exam_candidates?.email || (a.exam_candidates?.access_code ? `Code: ${a.exam_candidates.access_code}` : null);
-                  const resultUrl = `${candidateSection.origin}/exam/result/${a.access_token}`;
+                  const candId = a.exam_candidates?.candidate_ref || a.exam_candidates?.email || (canManageLinks && a.exam_candidates?.access_code ? `Code: ${a.exam_candidates.access_code}` : null);
+                  const resultUrl = canManageLinks ? `${candidateSection.origin}/exam/result/${a.access_token}` : null;
                   const published = candidateSection.exam.settings.results_published === true;
                   return (
                     <tr key={a.id} data-testid="candidate-link-row">
@@ -414,22 +421,30 @@ export default async function ResultsManagementPage({
                         <Badge tone={published ? "green" : "amber"}>{published ? "Published" : "Withheld"}</Badge>
                       </td>
                       <td className="max-w-xs">
-                        <input
-                          type="text"
-                          readOnly
-                          value={resultUrl}
-                          className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
-                          title={resultUrl}
-                          aria-label={`Individual result link for ${candName}`}
-                        />
+                        {resultUrl ? (
+                          <input
+                            type="text"
+                            readOnly
+                            value={resultUrl}
+                            className="w-full truncate rounded border border-evergreen-900/15 bg-cream/50 px-2 py-1 font-mono text-xs text-evergreen-950 select-all"
+                            title={resultUrl}
+                            aria-label={`Individual result link for ${candName}`}
+                          />
+                        ) : (
+                          <span className="text-xs text-ink-soft">Protected</span>
+                        )}
                       </td>
                       <td>
-                        <div className="flex items-center gap-1.5">
-                          <CopyResultLinkButton url={resultUrl} candidateName={candName} />
-                          <Link href={`/exam/result/${a.access_token}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2">
-                            View
-                          </Link>
-                        </div>
+                        {resultUrl ? (
+                          <div className="flex items-center gap-1.5">
+                            <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                            <Link href={`/exam/result/${a.access_token}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2">
+                              View
+                            </Link>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-ink-soft">Read-only</span>
+                        )}
                       </td>
                     </tr>
                   );

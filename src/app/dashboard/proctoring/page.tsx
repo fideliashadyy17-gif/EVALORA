@@ -52,8 +52,9 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  const { canProctor, isManager } = await canOperateMany(ctx, org.id, {
+  const { canProctor, canManage, isManager } = await canOperateMany(ctx, org.id, {
     canProctor: { permission: "proctoring.view" },
+    canManage: { permission: "proctoring.manage" },
     isManager: { permission: "organizations.edit" },
   });
   if (!canProctor) redirect("/dashboard");
@@ -228,19 +229,21 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
                 </div>
                 {i.note && <p className="mt-2 rounded-lg bg-cream px-3 py-2 text-sm text-ink">{i.note}</p>}
                 <p className="mt-1 text-xs text-ink-soft">Reported by {reporter?.email ?? "unknown user"}</p>
-                <form action={reviewIncident} className="mt-3 grid gap-2 sm:grid-cols-[170px_1fr_auto]">
-                  <input type="hidden" name="exam_id" value={i.exam_id} />
-                  <input type="hidden" name="id" value={i.id} />
-                  <input type="hidden" name="expected_status" value={i.status} />
-                  <input type="hidden" name="return_to" value="/dashboard/proctoring" />
-                  <Select name="status" defaultValue="investigating">
-                    <option value="investigating">Under investigation</option>
-                    <option value="valid">Confirm observation</option>
-                    <option value="invalid">Dismiss observation</option>
-                  </Select>
-                  <Input name="review_note" placeholder="Decision rationale (recorded in the audit history)" maxLength={2000} />
-                  <Button type="submit" variant="outline">Record decision</Button>
-                </form>
+                {canManage && (
+                  <form action={reviewIncident} className="mt-3 grid gap-2 sm:grid-cols-[170px_1fr_auto]">
+                    <input type="hidden" name="exam_id" value={i.exam_id} />
+                    <input type="hidden" name="id" value={i.id} />
+                    <input type="hidden" name="expected_status" value={i.status} />
+                    <input type="hidden" name="return_to" value="/dashboard/proctoring" />
+                    <Select name="status" defaultValue="investigating">
+                      <option value="investigating">Under investigation</option>
+                      <option value="valid">Confirm observation</option>
+                      <option value="invalid">Dismiss observation</option>
+                    </Select>
+                    <Input name="review_note" placeholder="Decision rationale (recorded in the audit history)" maxLength={2000} />
+                    <Button type="submit" variant="outline">Record decision</Button>
+                  </form>
+                )}
               </Card>
             );
           })}

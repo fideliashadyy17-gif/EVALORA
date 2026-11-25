@@ -3,6 +3,7 @@ import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, 
 import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { parseLockdownSettings } from "@/lib/lockdown";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDateTime } from "@/lib/utils";
@@ -23,7 +24,15 @@ export default async function ExamsPage({
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   const supabase = await createClient();
-  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  const [{ entitlement }, perms] = await Promise.all([
+    getCapabilities(supabase, ctx, org.id),
+    canOperateMany(ctx, org.id, {
+      canCreate: { permission: "exams.create", module: "examinations" },
+      canEdit: { permission: "exams.edit", module: "examinations" },
+      canDelete: { permission: "exams.delete", module: "examinations" },
+      canViewCodes: { permission: "candidate_links.edit", module: "exam_share_codes" },
+    }),
+  ]);
   requireModule(entitlement, "examinations", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
@@ -64,7 +73,7 @@ export default async function ExamsPage({
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/dashboard/rubrics" variant="outline">Grading rubrics</ButtonLink>
-            <ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>
+            {perms.canCreate && <ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>}
           </div>
         }
       />
@@ -133,8 +142,8 @@ export default async function ExamsPage({
       {(exams ?? []).length === 0 ? (
         <EmptyState
           title={sp.q || sp.status ? "No examinations match these filters" : "No examinations yet"}
-          body={sp.q || sp.status ? "Try another search or clear the filters. Existing examination records are unchanged." : "Create an examination from a published quiz, register candidates with personal access codes, and open it when ready."}
-          action={<ButtonLink href="/dashboard/exams/new">Create an examination</ButtonLink>}
+          body={sp.q || sp.status ? "Try another search or clear the filters. Existing examination records are unchanged." : "No formal examinations have been scheduled yet."}
+          action={perms.canCreate ? <ButtonLink href="/dashboard/exams/new">Create an examination</ButtonLink> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -165,11 +174,18 @@ export default async function ExamsPage({
                   Paper: {(e.quizzes as { title: string } | null)?.title ?? "—"} · {(e.exam_candidates as unknown[])?.length ?? 0} candidates · {submitted} submitted
                 </p>
                 <p className="mt-2 text-xs text-ink-soft">
-                  Exam code <span className="font-mono font-bold text-evergreen-800">{e.access_code}</span> · Created {fmtDateTime(e.created_at)}
+                  {perms.canViewCodes ? (
+                    <>Exam code <span className="font-mono font-bold text-evergreen-800">{e.access_code}</span> · </>
+                  ) : (
+                    <>Access code <span className="font-medium text-ink-soft">protected</span> · </>
+                  )}
+                  Created {fmtDateTime(e.created_at)}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-evergreen-900/10 pt-4 text-sm">
-                  <Link href={`/dashboard/exams/${e.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Manage</Link>
-                  {!isArchived && (
+                  <Link href={`/dashboard/exams/${e.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                    {perms.canEdit ? "Manage" : "Inspect"}
+                  </Link>
+                  {perms.canEdit && !isArchived && (
                     e.status === "paused" ? (
                       /* Resuming a paused exam runs the pause RPC (credits every
                          frozen attempt) — the plain open toggle can never do it. */
@@ -181,16 +197,18 @@ export default async function ExamsPage({
                     )
                   )}
                   <Link href={`/dashboard/reports/exam/${e.id}`} className="text-ink-soft underline-offset-2 hover:underline">Report</Link>
-                  <div className="ml-auto">
-                    <DeleteExamDialog
-                      examId={e.id}
-                      examTitle={e.title}
-                      accessCode={e.access_code}
-                      attemptCount={attempts.length}
-                      candidateCount={(e.exam_candidates as unknown[])?.length ?? 0}
-                      action={deleteExam}
-                    />
-                  </div>
+                  {perms.canDelete && (
+                    <div className="ml-auto">
+                      <DeleteExamDialog
+                        examId={e.id}
+                        examTitle={e.title}
+                        accessCode={e.access_code}
+                        attemptCount={attempts.length}
+                        candidateCount={(e.exam_candidates as unknown[])?.length ?? 0}
+                        action={deleteExam}
+                      />
+                    </div>
+                  )}
                 </div>
               </Card>
             );

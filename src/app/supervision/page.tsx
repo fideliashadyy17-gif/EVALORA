@@ -6,6 +6,7 @@ import { Badge, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { SignOutButton } from "@/components/SignOutButton";
 import { fmtDate, fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 export const metadata: Metadata = { title: "Institutional Supervision" };
@@ -258,15 +259,36 @@ export default async function SupervisionPage() {
   return (
     <main className="mx-auto max-w-6xl space-y-8 px-5 py-10">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Badge tone="gold">Institutional supervision · read-only</Badge>
+        <div className="flex flex-wrap items-center gap-3">
+          <Link
+            href="/dashboard"
+            className="inline-flex items-center rounded-lg border border-evergreen-900/20 bg-paper px-3.5 py-2 text-sm font-semibold text-evergreen-900 shadow-sm transition hover:bg-evergreen-50"
+          >
+            ← Organization Dashboard
+          </Link>
+          <Badge tone="gold">Institutional supervision · read-only</Badge>
+        </div>
         <SignOutButton />
       </div>
 
       <PageTitle
         title={overview.organization?.name ?? org.name}
         eyebrow="School Founder / Institutional Supervisor"
-        subtitle="Comprehensive read-only oversight for your institution across examinations, published and unpublished results, validation and correction progress, academic structures, question bank, Paper Builder, competitions, proctoring summaries, and enabled modules. Mutations, candidate PII, access codes, answer keys, and live recordings are strictly disabled."
+        subtitle="Executive read-only oversight summary for your institution across examinations, published and unpublished results, validation and correction progress, academic structures, question bank, Paper Builder, competitions, proctoring summaries, and enabled modules. Mutations, access credentials, and live recordings are strictly disabled."
       />
+
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-evergreen-900/15 bg-paper px-4 py-3 text-xs font-semibold text-evergreen-900">
+        <span className="text-ink-soft">Operational views:</span>
+        <Link href="/dashboard" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Dashboard overview</Link>
+        <Link href="/dashboard/exams" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Examinations</Link>
+        <Link href="/dashboard/results" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Results &amp; validation</Link>
+        <Link href="/dashboard/myp-results" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">MYP results</Link>
+        <Link href="/dashboard/students" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Students</Link>
+        <Link href="/dashboard/academics/classes" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Classes</Link>
+        <Link href="/dashboard/competitions" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Competitions</Link>
+        <Link href="/dashboard/proctoring" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Proctoring</Link>
+        <Link href="/dashboard/reports" className="rounded-md bg-evergreen-50 px-2.5 py-1 hover:bg-evergreen-100">Reports</Link>
+      </div>
 
       <nav aria-label="Supervision sections" className="flex flex-wrap gap-3 border-b border-evergreen-900/10 pb-3 text-sm font-semibold text-evergreen-800">
         <a href="#overview" className="hover:underline">Overview</a>

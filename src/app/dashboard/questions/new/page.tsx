@@ -1,8 +1,10 @@
 import { QuestionForm, type QuestionSaveFn } from "@/components/QuestionForm";
 import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { saveQuestion, uploadQuestionImage } from "../actions";
 
 export const metadata: Metadata = { title: "New question" };
@@ -10,6 +12,7 @@ export const metadata: Metadata = { title: "New question" };
 export default async function NewQuestionPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  if (!(await canOperate(ctx, org.id, "questions.create", "question_bank"))) redirect("/dashboard/questions");
   const supabase = await createClient();
   const { data: categories } = await supabase
     .from("question_categories")

@@ -1,6 +1,6 @@
 import { Badge, ButtonLink, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { canOperate } from "@/lib/operationalAccess";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { parsePaperSections } from "@/lib/examPaper";
 import { createClient } from "@/lib/supabase/server";
@@ -17,7 +17,13 @@ export const dynamic = "force-dynamic";
 export default async function PaperBuilderPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!(await canOperate(ctx, org.id, "paper_builder.view"))) notFound();
+  const perms = await canOperateMany(ctx, org.id, {
+    canView: { permission: "paper_builder.view" },
+    canCreate: { permission: "paper_builder.create", module: "paper_builder" },
+    canEdit: { permission: "paper_builder.edit", module: "paper_builder" },
+    canCreateExam: { permission: "exams.create", module: "examinations" },
+  });
+  if (!perms.canView) notFound();
   const supabase = await createClient();
   const { capabilities, featureFlags, entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "paper_builder", "/dashboard?e=module");
@@ -44,8 +50,8 @@ export default async function PaperBuilderPage() {
             <ButtonLink href="/dashboard/questions" variant="outline">
               <Library className="mr-1.5 h-4 w-4" /> Question Bank
             </ButtonLink>
-            <ButtonLink href="/dashboard/exams/new" variant="outline">New examination</ButtonLink>
-            <ButtonLink href="/dashboard/paper-builder/new">+ New paper</ButtonLink>
+            {perms.canCreateExam && <ButtonLink href="/dashboard/exams/new" variant="outline">New examination</ButtonLink>}
+            {perms.canCreate && <ButtonLink href="/dashboard/paper-builder/new">+ New paper</ButtonLink>}
           </div>
         }
       />
@@ -67,8 +73,8 @@ export default async function PaperBuilderPage() {
       {rows.length === 0 ? (
         <EmptyState
           title="No examination papers yet"
-          body="Build your first paper from published Question Bank questions. You can organize it into Section A and Section B, preview the official header, and publish it for an examination."
-          action={<ButtonLink href="/dashboard/paper-builder/new">Create your first paper</ButtonLink>}
+          body="No formal examination papers have been built yet."
+          action={perms.canCreate ? <ButtonLink href="/dashboard/paper-builder/new">Create your first paper</ButtonLink> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -92,20 +98,26 @@ export default async function PaperBuilderPage() {
                   {" · "}Updated {fmtDateTime(p.updated_at)}
                 </p>
                 <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-evergreen-900/10 pt-4 text-sm">
-                  <Link href={`/dashboard/paper-builder/${p.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
-                    Edit &amp; preview
-                  </Link>
-                  <form action={duplicatePaper}><input type="hidden" name="id" value={p.id} /><button className="text-ink-soft underline-offset-2 hover:underline">Duplicate</button></form>
-                  {p.status !== "published" ? (
-                    <form action={publishPaper}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value="published" /><button className="text-gold-700 underline-offset-2 hover:underline">Publish</button></form>
-                  ) : (
-                    <form action={publishPaper}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value="draft" /><button className="text-ink-soft underline-offset-2 hover:underline">Unpublish</button></form>
-                  )}
-                  {p.status !== "archived" && (
-                    <form action={archivePaper}><input type="hidden" name="id" value={p.id} /><button className="text-red-700 underline-offset-2 hover:underline">Archive</button></form>
-                  )}
-                  <Link href={`/dashboard/quizzes/${p.id}`} className="inline-flex items-center gap-1 text-ink-soft underline-offset-2 hover:underline">
-                    <PenSquare className="h-3.5 w-3.5" /> Quiz editor
+                  {perms.canEdit ? (
+                    <>
+                      <Link href={`/dashboard/paper-builder/${p.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                        Edit &amp; preview
+                      </Link>
+                      {perms.canCreate && (
+                        <form action={duplicatePaper}><input type="hidden" name="id" value={p.id} /><button className="text-ink-soft underline-offset-2 hover:underline">Duplicate</button></form>
+                      )}
+                      {p.status !== "published" ? (
+                        <form action={publishPaper}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value="published" /><button className="text-gold-700 underline-offset-2 hover:underline">Publish</button></form>
+                      ) : (
+                        <form action={publishPaper}><input type="hidden" name="id" value={p.id} /><input type="hidden" name="status" value="draft" /><button className="text-ink-soft underline-offset-2 hover:underline">Unpublish</button></form>
+                      )}
+                      {p.status !== "archived" && (
+                        <form action={archivePaper}><input type="hidden" name="id" value={p.id} /><button className="text-red-700 underline-offset-2 hover:underline">Archive</button></form>
+                      )}
+                    </>
+                  ) : null}
+                  <Link href={`/dashboard/quizzes/${p.id}`} className="inline-flex items-center gap-1 text-evergreen-700 underline-offset-2 hover:underline">
+                    <PenSquare className="h-3.5 w-3.5" /> {perms.canEdit ? "Quiz editor" : "Inspect paper"}
                   </Link>
                 </div>
               </Card>

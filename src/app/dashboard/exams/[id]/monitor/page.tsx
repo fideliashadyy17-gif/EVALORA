@@ -19,6 +19,7 @@ export default async function ExamMonitorPage({ params }: { params: Promise<{ id
   const loaded = await loadMonitorSnapshot(supabase, id);
   if (!loaded) notFound();
   if (!(await canOperate(ctx, loaded.exam.organization_id, "proctoring.view"))) redirect(`/dashboard/exams/${id}`);
+  const canManage = await canOperate(ctx, loaded.exam.organization_id, "proctoring.manage");
   // Live monitoring/supervision is an entitled module, enforced server-side.
   const { entitlement: monitorEnt } = await getCapabilities(supabase, ctx, loaded.exam.organization_id);
   requireModule(monitorEnt, "exam_monitoring", `/dashboard/exams/${id}?e=module`);
@@ -31,7 +32,7 @@ export default async function ExamMonitorPage({ params }: { params: Promise<{ id
         subtitle="Progress, connection and private messages for each candidate. Updates automatically. Messages never change answers, marks, timers or deadlines."
         action={<ButtonLink href={`/dashboard/exams/${id}`} variant="outline">← Examination</ButtonLink>}
       />
-      <ExamMonitor examId={id} initial={loaded.snapshot} />
+      <ExamMonitor examId={id} initial={loaded.snapshot} canManage={canManage} />
     </>
   );
 }

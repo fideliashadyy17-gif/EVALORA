@@ -13,7 +13,7 @@ export default async function ProctorPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!(await canOperate(ctx, org.id, "proctoring.view", "proctoring"))) redirect(`/dashboard/exams/${id}`);
+  if (!(await canOperate(ctx, org.id, "proctoring.manage", "proctoring"))) redirect(`/dashboard/exams/${id}`);
   const supabase = await createClient();
 
   const { data: exam } = await supabase.from("exams").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
