@@ -10,6 +10,7 @@ const M1 = readFileSync("supabase/migrations/20261125121000_founder_supervision.
 const M2 = readFileSync("supabase/migrations/20261125122000_reconcile_legacy_rbac.sql", "utf8");
 const M3 = readFileSync("supabase/migrations/20261125123000_legacy_membership_permission_bridge.sql", "utf8");
 const M4 = readFileSync("supabase/migrations/20261125124000_rbac_enforcement_and_founder_supervision.sql", "utf8");
+const M5 = readFileSync("supabase/migrations/20261125125000_harden_supervision_jsonb_casts.sql", "utf8");
 
 let checks = 0;
 function ok(cond, msg) {
@@ -189,12 +190,12 @@ async function setupBase(db, { withLegacyRbac = true, withStorage = true } = {})
     insert into exams(id, organization_id, title, status, duration_minutes, grades_published_at, settings) values
       ('40000000-0000-4000-8000-000000000001', '${oakId}', 'Synthetic Published Exam', 'closed', 60, now(),
        '{"results_published":true,"results_validated":true,"proctoring":true,"lockdown":true,"calculator":true}'::jsonb),
-      -- 2) Unpublished exam awaiting validation (graded, not validated)
+      -- 2) Unpublished exam awaiting validation (graded, not validated, nested lockdown disabled)
       ('40000000-0000-4000-8000-000000000002', '${oakId}', 'Synthetic Awaiting Validation Exam', 'closed', 90, null,
-       '{"results_published":false,"results_validated":false,"proctoring":true}'::jsonb),
-      -- 3) Unpublished exam with ongoing manual correction
+       '{"results_published":false,"results_validated":false,"proctoring":true,"lockdown":{"enabled":false,"require_app":false}}'::jsonb),
+      -- 3) Unpublished exam with ongoing manual correction (nested lockdown object enabled, matching live Oak)
       ('40000000-0000-4000-8000-000000000003', '${oakId}', 'Synthetic Ongoing Correction Exam', 'open', 75, null,
-       '{"results_published":false,"results_validated":false,"lockdown":true}'::jsonb),
+       '{"results_published":false,"results_validated":false,"lockdown":{"enabled":true,"require_app":true,"block_clipboard":true}}'::jsonb),
       -- 4) Other org exam (must NEVER appear in Oak overview)
       ('40000000-0000-4000-8000-000000000099', '${otherOrgId}', 'FOREIGN-SECRET-EXAM', 'open', 60, null, '{}'::jsonb);
 
@@ -225,9 +226,9 @@ async function setupBase(db, { withLegacyRbac = true, withStorage = true } = {})
       ('student-imports', '${oakId}/roster-secret.csv');
   `);
 
-  // Apply ALL 5 migrations forward-only, then re-run M4 to prove idempotency
-  for (const sql of [M0, M1, M2, M3, M4, M4]) await db.exec(sql);
-  ok(true, "all 5 forward migrations + idempotent re-run of M4 applied cleanly");
+  // Apply ALL 6 migrations forward-only, then re-run M4 & M5 to prove idempotency
+  for (const sql of [M0, M1, M2, M3, M4, M5, M4, M5]) await db.exec(sql);
+  ok(true, "all 6 forward migrations + idempotent re-run of M4 & M5 applied cleanly");
 
   // Assign synthetic School Founder via access_assign_founder as Super Admin
   await db.exec(`set test.uid='${superAdmin}';`);
@@ -360,6 +361,7 @@ async function setupBase(db, { withLegacyRbac = true, withStorage = true } = {})
   assert.equal(overview.rankings_and_reports.exam_performance_rankings.length, 3);
   assert.equal(overview.proctoring_overview.open_incidents, 1);
   assert.equal(overview.proctoring_overview.active_rooms, 1);
+  assert.equal(overview.proctoring_overview.lockdown_exams, 2, "boolean lockdown=true and nested object lockdown.enabled=true both count");
   assert.equal(overview.enabled_modules.plan_slug, "institution");
   assert.equal(overview.enabled_modules.effective_modules.competitions, true);
   assert.equal(overview.enabled_modules.effective_modules.competition_code, true);
