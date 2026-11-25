@@ -1,10 +1,11 @@
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { groupLibraryEntries, type FormulaLibraryEntry } from "@/lib/formulaLibrary";
 import { PageTitle, Card } from "@/components/ui";
 import { FormulaLibraryClient } from "@/components/formulas/FormulaLibraryClient";
-import { isStaffRole } from "@/lib/navAccess";
+import { isOperationalRole } from "@/lib/navAccess";
 import { Sigma } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -26,9 +27,12 @@ export default async function FormulasPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  if (!isStaffRole(org.role)) redirect("/student");
+  if (!isOperationalRole(org.role)) redirect("/student");
 
-  const supabase = await createClient();
+  const [supabase, canEdit] = await Promise.all([
+    createClient(),
+    canOperate(ctx, org.id, "exams.edit", "examinations"),
+  ]);
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "examinations", "/dashboard?e=module");
   const [{ data: subjects }, { data: rows }] = await Promise.all([
@@ -71,7 +75,7 @@ export default async function FormulasPage({
         <FormulaLibraryClient
           subjects={(subjects ?? []) as { id: string; name: string }[]}
           grouped={grouped}
-          canEdit
+          canEdit={canEdit}
         />
       </Card>
     </div>

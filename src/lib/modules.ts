@@ -95,7 +95,7 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
   { key: "students", group: "institution", label: "Student management", description: "Student directory, registration and imports.", capability: "student_management" , surface: {"kind": "nav", "hrefs": ["/dashboard/students"]} },
   { key: "teachers", group: "institution", label: "Teachers", description: "Teacher and staff management (Teachers page)." , surface: {"kind": "nav", "hrefs": ["/dashboard/teachers"]} },
   { key: "team", group: "institution", label: "Staff & members", description: "Workspace members and invitations." , surface: {"kind": "nav", "hrefs": ["/dashboard/team"]} },
-  { key: "accounts", group: "institution", label: "Accounts & permissions", description: "Roles and permissions within the organization." , surface: {"kind": "nav", "hrefs": ["/dashboard/accounts"]} },
+  { key: "accounts", group: "institution", label: "Accounts & permissions", description: "Roles, accounts, and RBAC access management within the organization." , surface: {"kind": "nav", "hrefs": ["/dashboard/accounts", "/dashboard/rbac"]} },
   { key: "org_settings", group: "institution", label: "Organization settings", description: "Tenant settings, branding and portal." , surface: {"kind": "nav", "hrefs": ["/dashboard/settings"]} },
   { key: "rubrics", group: "institution", label: "Rubrics", description: "Marking rubrics (Rubrics page)." , surface: {"kind": "nav", "hrefs": ["/dashboard/rubrics"]} },
   { key: "proctoring", group: "institution", label: "Proctoring", description: "Proctoring / lockdown examination supervision.", capability: "proctoring" , surface: {"kind": "nav", "hrefs": ["/dashboard/proctoring"]} },

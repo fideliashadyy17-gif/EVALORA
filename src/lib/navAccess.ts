@@ -6,7 +6,7 @@
  * so hiding a link is never the security boundary — it just stops teachers and
  * staff from being shown administration modules they cannot use.
  */
-export type NavAudience = "all" | "staff" | "managers";
+export type NavAudience = "all" | "operational" | "staff" | "managers";
 
 /** Roles that may administer the organization (team, billing, settings). */
 export const MANAGEMENT_ORG_ROLES = ["owner", "admin"] as const;
@@ -22,9 +22,14 @@ export function isStaffRole(role: string | null | undefined): boolean {
   return STAFF_ORG_ROLES.includes((role ?? "") as (typeof STAFF_ORG_ROLES)[number]);
 }
 
+export function isOperationalRole(role: string | null | undefined): boolean {
+  return isStaffRole(role) || role === "school_founder";
+}
+
 export function canSeeAudience(audience: NavAudience | undefined, role: string | null | undefined): boolean {
   if (!audience || audience === "all") return true;
   if (audience === "managers") return isManagementRole(role);
+  if (audience === "operational") return isOperationalRole(role);
   return isStaffRole(role);
 }
 
@@ -55,6 +60,8 @@ export function workspaceLabel(role: string | null | undefined): string {
       return "Supervisor workspace";
     case "corrector":
       return "Corrector workspace";
+    case "school_founder":
+      return "School Founder · Read-only supervision";
     case "student":
     case "candidate":
     case "participant":

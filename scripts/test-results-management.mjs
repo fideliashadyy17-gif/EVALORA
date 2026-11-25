@@ -106,8 +106,8 @@ check(orgPage.includes('title: "Results Management & Candidate Links"'), "org pa
 const adminResultsPage = readFileSync("src/app/admin/examinations/results/page.tsx", "utf8");
 check(adminResultsPage.includes("Results Management & Candidate Links"), "Super Admin page uses the same name");
 check(orgPage.includes("Results Management &amp; Candidate Links —"), "org candidate section titled identically to Super Admin");
-check(orgPage.includes("requireUser") && orgPage.includes("isStaffRole"), "staff guard present");
-check(orgPage.includes('canOperate(ctx, org.id, "results.publish")'), "RBAC-gated sensitive actions");
+check(orgPage.includes("requireUser") && (orgPage.includes("isStaffRole") || orgPage.includes("isOperationalRole")), "operational/staff guard present");
+check(orgPage.includes('"results.publish"') && (orgPage.includes("canOperate(") || orgPage.includes("canOperateMany(")), "RBAC-gated sensitive actions");
 check(orgPage.includes('.eq("organization_id", org.id)'), "tenant-scoped exam query");
 check(orgPage.includes('from("audit_logs")'), "publication history from the audit trail");
 for (const label of ["Awaiting submissions", "Awaiting marking", "Marking in progress", "Provisional results", "Validated", "Published"]) {
@@ -133,7 +133,7 @@ const resultsSurface = catalog.split("\n").find((l) => l.includes('key: "exam_re
 check(Boolean(resultsSurface) && resultsSurface.includes('"/dashboard/results"'), "nav route governed by the exam_results module (canonical catalog surface)");
 check(chrome.includes("isNavVisible("), "org nav visibility runs through the shared isNavVisible rule");
 const navLine = chrome.split("\n").find((l) => l.includes('href: "/dashboard/results"'));
-check(Boolean(navLine) && navLine.includes('audience: "staff"'), "nav entry visible to staff (incl. Oak)");
+check(Boolean(navLine) && (navLine.includes('audience: "staff"') || navLine.includes('audience: "operational"')), "nav entry visible to operational staff & founder (incl. Oak)");
 for (const lang of ["en", "fr", "es"]) {
   const dict = readFileSync(`src/lib/i18n/dictionaries/${lang}.ts`, "utf8");
   check(dict.includes("resultsManagement:"), `dictionary ${lang} has nav.resultsManagement`);

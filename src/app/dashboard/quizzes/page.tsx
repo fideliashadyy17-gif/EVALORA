@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { fmtDateTime } from "@/lib/utils";
@@ -17,7 +18,15 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
-  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  const [{ entitlement }, perms] = await Promise.all([
+    getCapabilities(supabase, ctx, org.id),
+    canOperateMany(ctx, org.id, {
+      canCreate: { permission: "quizzes.create", module: "quizzes" },
+      canEdit: { permission: "quizzes.edit", module: "quizzes" },
+      canDelete: { permission: "quizzes.delete", module: "quizzes" },
+      canHost: { permission: "competitions.edit", module: "competitions" },
+    }),
+  ]);
   requireModule(entitlement, "quizzes", "/dashboard?e=module");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
@@ -44,7 +53,7 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
         eyebrow="Assessment Authoring · Quiz Assembly & Live Launch"
         title="Quiz Studio"
         subtitle="Assemble quizzes from your question bank, publish them, then run live sessions or attach them to examinations."
-        action={<ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink>}
+        action={perms.canCreate ? <ButtonLink href="/dashboard/quizzes/new">+ New quiz</ButtonLink> : undefined}
       />
       {sp.e === "module" && (
         <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
@@ -71,8 +80,8 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
       {(quizzes ?? []).length === 0 ? (
         <EmptyState
           title={sp.q || sp.status ? "No quizzes match these filters" : "No quizzes yet"}
-          body={sp.q || sp.status ? "Try another search or clear the filters." : "Create a quiz, attach published questions from your bank, and start your first live session in minutes."}
-          action={<ButtonLink href="/dashboard/quizzes/new">Create your first quiz</ButtonLink>}
+          body={sp.q || sp.status ? "Try another search or clear the filters." : "No quizzes have been created in this workspace yet."}
+          action={perms.canCreate ? <ButtonLink href="/dashboard/quizzes/new">Create your first quiz</ButtonLink> : undefined}
         />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -90,7 +99,7 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
                 <p className="mt-2 text-xs text-ink-soft">Updated {fmtDateTime(q.updated_at)}</p>
 
                 <div className="mt-4 space-y-2 border-t border-evergreen-900/10 pt-4">
-                  {q.status === "published" && nQ > 0 && (
+                  {perms.canHost && q.status === "published" && nQ > 0 && (
                     <form action={startSession} className="flex gap-2">
                       <input type="hidden" name="quiz_id" value={q.id} />
                       <Select name="mode" aria-label="Session pacing mode" className="flex-1 py-2 text-sm">
@@ -103,14 +112,22 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
                     </form>
                   )}
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <Link href={`/dashboard/quizzes/${q.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Edit &amp; preview</Link>
-                    <form action={duplicateQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-ink-soft underline-offset-2 hover:underline">Duplicate</button></form>
-                    {q.status !== "published" ? (
-                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="published" /><button className="text-gold-700 underline-offset-2 hover:underline">Publish</button></form>
-                    ) : (
-                      <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="draft" /><button className="text-ink-soft underline-offset-2 hover:underline">Unpublish</button></form>
+                    <Link href={`/dashboard/quizzes/${q.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                      {perms.canEdit ? "Edit & preview" : "Inspect quiz"}
+                    </Link>
+                    {perms.canCreate && (
+                      <form action={duplicateQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-ink-soft underline-offset-2 hover:underline">Duplicate</button></form>
                     )}
-                    <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-red-700 underline-offset-2 hover:underline">Delete</button></form>
+                    {perms.canEdit && (
+                      q.status !== "published" ? (
+                        <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="published" /><button className="text-gold-700 underline-offset-2 hover:underline">Publish</button></form>
+                      ) : (
+                        <form action={setQuizStatus}><input type="hidden" name="id" value={q.id} /><input type="hidden" name="status" value="draft" /><button className="text-ink-soft underline-offset-2 hover:underline">Unpublish</button></form>
+                      )
+                    )}
+                    {perms.canDelete && (
+                      <form action={deleteQuiz}><input type="hidden" name="id" value={q.id} /><button className="text-red-700 underline-offset-2 hover:underline">Delete</button></form>
+                    )}
                   </div>
                 </div>
               </Card>

@@ -2,6 +2,7 @@ import { RichContent } from "@/components/RichContent";
 import { Badge, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -15,6 +16,10 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
+  const { canExport, canViewCodes } = await canOperateMany(ctx, org.id, {
+    canExport: { permission: "reports.export", module: "org_reports" },
+    canViewCodes: { permission: "competitions.edit", module: "competitions" },
+  });
 
   const { data: session } = await supabase.from("quiz_sessions").select("*, quizzes(title)").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!session) notFound();
@@ -56,11 +61,11 @@ export default async function SessionReportPage({ params }: { params: Promise<{ 
       <PageTitle
         eyebrow="Analytics & Evidence · Live Session Report"
         title={session.title || (session.quizzes as { title: string } | null)?.title || "Session report"}
-        subtitle={`Code ${session.join_code} · ${session.mode} · ${session.status}`}
+        subtitle={`${canViewCodes ? `Code ${session.join_code} · ` : ""}${session.mode} · ${session.status}`}
         action={
           <div className="flex flex-wrap gap-2 print:hidden">
             <ButtonLink href="/dashboard/reports" variant="outline">← All reports</ButtonLink>
-            <ExportButton filename={`session-${session.join_code}.csv`} csv={csv} />
+            {canExport && <ExportButton filename={`session-${canViewCodes ? session.join_code : session.id}.csv`} csv={csv} />}
             <PrintButton />
           </div>
         }

@@ -2,6 +2,7 @@ import { RichContent } from "@/components/RichContent";
 import { Badge, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -16,6 +17,10 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const supabase = await createClient();
+  const { canExport, canViewCodes } = await canOperateMany(ctx, org.id, {
+    canExport: { permission: "reports.export", module: "exam_reports" },
+    canViewCodes: { permission: "candidate_links.edit", module: "exam_share_codes" },
+  });
 
   const { data: exam } = await supabase.from("exams").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!exam) notFound();
@@ -93,11 +98,15 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
             {hasCriteria && (
               <>
                 <ButtonLink href={`/dashboard/myp-results?${mypQuery}`} variant="outline">MYP criterion results</ButtonLink>
-                <MypExportButton format="pdf" scope="collective" query={mypQuery} label="MYP PDF" />
-                <MypExportButton format="xlsx" scope="collective" query={mypQuery} label="MYP Excel" />
+                {canExport && (
+                  <>
+                    <MypExportButton format="pdf" scope="collective" query={mypQuery} label="MYP PDF" />
+                    <MypExportButton format="xlsx" scope="collective" query={mypQuery} label="MYP Excel" />
+                  </>
+                )}
               </>
             )}
-            <ExportButton filename={`exam-${exam.access_code}.csv`} csv={csv} />
+            {canExport && <ExportButton filename={`exam-${canViewCodes ? exam.access_code : exam.id}.csv`} csv={csv} />}
             <PrintButton />
           </div>
         }

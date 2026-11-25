@@ -92,7 +92,7 @@ export async function POST(request: Request) {
     const ctx = sessionCtx;
     if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
     const org = activeOrg(ctx);
-    if (!org || org.id !== exam.organization_id || !(await canOperate(ctx, exam.organization_id, "proctoring.view", "proctoring")))
+    if (!org || org.id !== exam.organization_id || !(await canOperate(ctx, exam.organization_id, "proctoring.manage", "proctoring")))
       return NextResponse.json({ error: "Not authorized to supervise this examination." }, { status: 403 });
     identity = `supervisor-${ctx.user.id}`;
     name = ctx.profile.full_name || ctx.profile.email;

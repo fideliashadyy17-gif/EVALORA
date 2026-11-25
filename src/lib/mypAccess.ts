@@ -53,7 +53,7 @@ export async function mypAccess(options: { global?: boolean } = {}): Promise<Myp
   }
 
   const role = org?.role ?? "";
-  if (!org || isMypLearner(role) || role === "school_founder") {
+  if (!org || isMypLearner(role)) {
     return {
       ctx,
       isSuperAdmin,

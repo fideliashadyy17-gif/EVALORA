@@ -1,4 +1,4 @@
-import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import type { RubricCriterion, RubricPerformanceLevel } from "@/lib/grading";
@@ -181,7 +181,27 @@ export default async function RubricDetailPage({
       )}
 
       {!canMark ? (
-        <EmptyState title="Read-only" body="Only owners, administrators, teachers and correctors can edit rubrics." />
+        <Card className="p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="font-display text-lg font-semibold text-evergreen-950">Criteria ({bands.length})</h2>
+            <Badge tone="gray">Read-only view</Badge>
+          </div>
+          {bands.length === 0 ? (
+            <p className="mt-4 text-sm text-ink-soft">No criteria configured on this rubric.</p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {bands.map((b) => (
+                <li key={b.id} className="rounded-xl border border-evergreen-900/10 bg-cream/40 p-4 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold text-evergreen-950">{b.label}</span>
+                    <Badge tone="gold">{Number(b.max_marks)} marks</Badge>
+                  </div>
+                  {b.description && <p className="mt-1 text-ink-soft">{b.description}</p>}
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
       ) : (
         <div className="grid gap-6 lg:grid-cols-[1.7fr_1fr]">
           <div className="space-y-6">

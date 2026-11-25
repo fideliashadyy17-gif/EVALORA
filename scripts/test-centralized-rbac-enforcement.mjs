@@ -54,11 +54,11 @@ await test("mutating /api/monitor routes require proctoring.manage (write: true)
   }
 });
 
-// 4. MYP access helper uses centralized RBAC and excludes school_founder & learners.
-await test("mypAccess delegates to canOperateMany and blocks school_founder and learners", async () => {
+// 4. MYP access helper uses centralized RBAC, excludes learners, and grants read-only access via canOperateMany.
+await test("mypAccess delegates to canOperateMany, blocks learners, and gates export/manage permissions", async () => {
   const src = readFileSync("src/lib/mypAccess.ts", "utf8");
   assert.ok(src.includes("canOperateMany"));
-  assert.ok(src.includes('role === "school_founder"'));
+  assert.ok(src.includes("isMypLearner"));
   assert.ok(src.includes('"results.view"') && src.includes('"reports.export"') && src.includes('"results.validate"'));
   assert.ok(!src.includes("can(ctx,"));
 });
@@ -228,6 +228,7 @@ await test("/supervision/page.tsx renders all 17 domains via React SSR strictly 
       };
       if (req === "@/components/SignOutButton") return { SignOutButton: () => React.createElement("button", { type: "button" }, "Sign out") };
       if (req === "@/lib/utils") return { fmtDate: (v) => String(v), fmtDateTime: (v) => String(v) };
+      if (req === "next/link") return { __esModule: true, default: ({ href, children, ...rest }) => React.createElement("a", { href, ...rest }, children) };
       if (req === "next/navigation") return { redirect: (u) => { throw new Error(`REDIRECT:${u}`); } };
     }
     return load.apply(this, arguments);

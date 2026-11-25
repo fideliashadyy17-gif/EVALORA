@@ -43,6 +43,7 @@ export default async function TeachersPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   if (!isStaffRole(org.role)) redirect("/student");
 
   const isManager = await canOperate(ctx, org.id, "organizations.manage_members", "teachers");

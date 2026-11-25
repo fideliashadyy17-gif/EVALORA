@@ -150,11 +150,13 @@ export function MypResultsTable({
   detailBase,
   showOrganization,
   emptyMessage,
+  canExport = true,
 }: {
   results: MypResult[];
   detailBase: string;
   showOrganization: boolean;
   emptyMessage: string;
+  canExport?: boolean;
 }) {
   if (!results.length) {
     return (
@@ -252,9 +254,15 @@ export function MypResultsTable({
             )}
           </td>
           <td className="whitespace-nowrap text-right">
-            <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="PDF" compact />
-            <span className="mx-1 text-ink-soft">·</span>
-            <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="Excel" compact />
+            {canExport ? (
+              <>
+                <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="PDF" compact />
+                <span className="mx-1 text-ink-soft">·</span>
+                <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="Excel" compact />
+              </>
+            ) : (
+              <span className="text-xs text-ink-soft">Read-only</span>
+            )}
           </td>
         </tr>
       ))}

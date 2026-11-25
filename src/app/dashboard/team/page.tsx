@@ -9,6 +9,7 @@ import { fmtDate } from "@/lib/utils";
 import { MailPlus, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { inviteMember, removeMember, revokeInvitation, updateMemberRole } from "./actions";
 
 export const metadata: Metadata = { title: "Team & Roles" };
@@ -22,6 +23,7 @@ export default async function TeamPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
+  if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   const isManager = await canOperate(ctx, org.id, "organizations.manage_members", "team");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

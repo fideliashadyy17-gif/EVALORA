@@ -2,6 +2,7 @@ import { RichContent } from "@/components/RichContent";
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { CheckCircle2, Clock3, FolderTree, Library } from "lucide-react";
@@ -31,7 +32,14 @@ export default async function QuestionsPage({
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 20;
   const supabase = await createClient();
-  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  const [{ entitlement }, perms] = await Promise.all([
+    getCapabilities(supabase, ctx, org.id),
+    canOperateMany(ctx, org.id, {
+      canCreate: { permission: "questions.create", module: "question_bank" },
+      canEdit: { permission: "questions.edit", module: "question_bank" },
+      canDelete: { permission: "questions.delete", module: "question_bank" },
+    }),
+  ]);
   requireModule(entitlement, "question_bank", "/dashboard?e=module");
 
   let query = supabase
@@ -70,7 +78,7 @@ export default async function QuestionsPage({
         eyebrow="Assessment Authoring · Institutional Question Bank"
         title="Question Bank"
         subtitle="Reusable questions for quizzes and examinations. Imports wait here for review before they can be published."
-        action={<ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink>}
+        action={perms.canCreate ? <ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink> : undefined}
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -111,8 +119,8 @@ export default async function QuestionsPage({
           {(questions ?? []).length === 0 ? (
             <EmptyState
               title={sp.q || sp.status || sp.class ? "No questions match these filters" : "No questions yet"}
-              body={sp.q || sp.status || sp.class ? "Try another search or clear the filters. No question content has been changed." : "Create your first question, or import a CSV — imports arrive as Pending review so nothing publishes unchecked."}
-              action={<ButtonLink href="/dashboard/questions/new">Create a question</ButtonLink>}
+              body={sp.q || sp.status || sp.class ? "Try another search or clear the filters. No question content has been changed." : "No questions exist in this workspace yet."}
+              action={perms.canCreate ? <ButtonLink href="/dashboard/questions/new">Create a question</ButtonLink> : undefined}
             />
           ) : (
             <div className="space-y-3">
@@ -137,20 +145,26 @@ export default async function QuestionsPage({
                         · {q.difficulty}
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <Link href={`/dashboard/questions/${q.id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Edit</Link>
-                      {q.status !== "published" && (
-                        <form action={setQuestionStatus}>
-                          <input type="hidden" name="id" value={q.id} />
-                          <input type="hidden" name="status" value="published" />
-                          <button className="text-sm font-medium text-gold-700 underline-offset-2 hover:underline">Publish</button>
-                        </form>
-                      )}
-                      <form action={deleteQuestion}>
-                        <input type="hidden" name="id" value={q.id} />
-                        <button className="text-sm font-medium text-red-700 underline-offset-2 hover:underline">Delete</button>
-                      </form>
-                    </div>
+                    {(perms.canEdit || perms.canDelete) && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {perms.canEdit && (
+                          <Link href={`/dashboard/questions/${q.id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Edit</Link>
+                        )}
+                        {perms.canEdit && q.status !== "published" && (
+                          <form action={setQuestionStatus}>
+                            <input type="hidden" name="id" value={q.id} />
+                            <input type="hidden" name="status" value="published" />
+                            <button className="text-sm font-medium text-gold-700 underline-offset-2 hover:underline">Publish</button>
+                          </form>
+                        )}
+                        {perms.canDelete && (
+                          <form action={deleteQuestion}>
+                            <input type="hidden" name="id" value={q.id} />
+                            <button className="text-sm font-medium text-red-700 underline-offset-2 hover:underline">Delete</button>
+                          </form>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </Card>
               ))}
@@ -159,7 +173,7 @@ export default async function QuestionsPage({
         </div>
 
         <div className="space-y-6">
-          <ImportCsv />
+          {perms.canCreate && <ImportCsv />}
           <Card className="p-5">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Categories</h2>
             <ul className="mt-3 space-y-1.5">
@@ -168,10 +182,12 @@ export default async function QuestionsPage({
               ))}
               {(categories ?? []).length === 0 && <li className="text-sm text-ink-soft">None yet.</li>}
             </ul>
-            <form action={createCategory} className="mt-4 flex gap-2">
-              <Input name="name" placeholder="New category" required />
-              <Button type="submit" variant="outline">Add</Button>
-            </form>
+            {perms.canCreate && (
+              <form action={createCategory} className="mt-4 flex gap-2">
+                <Input name="name" placeholder="New category" required />
+                <Button type="submit" variant="outline">Add</Button>
+              </form>
+            )}
           </Card>
           <Card className="p-5">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Mathematics</h2>

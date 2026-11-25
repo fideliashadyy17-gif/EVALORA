@@ -13,8 +13,8 @@ export default async function DashboardLayout({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (org?.role === "school_founder") redirect("/supervision");
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
+  const isFounder = org?.role === "school_founder";
   let orgLogoUrl: string | null = null;
   let modules: Record<string, boolean> | undefined;
   if (org) {
@@ -97,6 +97,16 @@ export default async function DashboardLayout({
               Exit workspace
             </button>
           </form>
+        </div>
+      )}
+      {isFounder && (
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 bg-evergreen-900 px-4 py-2 text-center text-sm font-medium text-cream">
+          <span>
+            Institutional Supervision (Read-Only) — viewing <strong>{org.name}</strong> in operational oversight mode.
+          </span>
+          <Link href="/supervision" className="font-semibold text-gold-300 underline underline-offset-2 hover:text-gold-200">
+            Executive Summary →
+          </Link>
         </div>
       )}
       {org.is_demo && (

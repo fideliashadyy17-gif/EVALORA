@@ -1,9 +1,11 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { createExam } from "../actions";
 
 export const metadata: Metadata = { title: "New examination" };
@@ -12,6 +14,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  if (!(await canOperate(ctx, org.id, "exams.create", "examinations"))) redirect("/dashboard/exams");
   const supabase = await createClient();
   const [{ data: quizzes }, { data: templates }, { data: mySubjectRows }] = await Promise.all([
     supabase

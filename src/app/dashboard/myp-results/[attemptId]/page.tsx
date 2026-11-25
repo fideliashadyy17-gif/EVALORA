@@ -50,8 +50,12 @@ export default async function MypResultPage({
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/dashboard/myp-results" variant="outline">← All MYP results</ButtonLink>
-            <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ PDF report" variant="primary" />
-            <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="⬇ Excel" />
+            {access.canExport && (
+              <>
+                <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ PDF report" variant="primary" />
+                <MypExportButton format="xlsx" scope="individual" attemptId={result.attemptId} label="⬇ Excel" />
+              </>
+            )}
           </div>
         }
         meta={

@@ -27,6 +27,7 @@ export default async function InstitutionPlatformPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect(ctx.profile.platform_role === "super_admin" ? "/admin/organizations/access" : "/onboarding");
+  if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
 
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

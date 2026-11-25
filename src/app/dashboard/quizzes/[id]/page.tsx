@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -20,6 +21,7 @@ export default async function EditQuizPage({
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  const canEdit = await canOperate(ctx, org.id, "quizzes.edit", "quizzes");
   const supabase = await createClient();
 
   const { data: quiz } = await supabase
@@ -42,6 +44,47 @@ export default async function EditQuizPage({
     .eq("organization_id", org.id)
     .or(`status.eq.published,id.in.(${selectedIds.length ? selectedIds.join(",") : "00000000-0000-0000-0000-000000000000"})`)
     .limit(300);
+
+  if (!canEdit) {
+    const byId = new Map((bank ?? []).map((q) => [q.id, q]));
+    const attached = ordered.map((qid) => byId.get(qid)).filter(Boolean);
+    return (
+      <>
+        <PageTitle
+          eyebrow="Assessment Authoring · Read-Only Quiz Overview"
+          title={quiz.title}
+          subtitle={quiz.description || "Read-only inspection of quiz structure and attached questions."}
+          action={<ButtonLink href="/dashboard/quizzes" variant="outline">← All quizzes</ButtonLink>}
+        />
+        <Card className="mb-6 p-5">
+          <div className="flex flex-wrap items-center gap-3 text-sm">
+            <Badge tone={quiz.status === "published" ? "green" : "gray"}>{quiz.status}</Badge>
+            <span className="text-ink-soft">{attached.length} attached question(s)</span>
+            <span className="text-ink-soft">·</span>
+            <span className="text-ink-soft">Randomize questions: {settings.randomize_questions ? "Yes" : "No"}</span>
+            <span className="text-ink-soft">·</span>
+            <span className="text-ink-soft">Randomize options: {settings.randomize_options ? "Yes" : "No"}</span>
+          </div>
+        </Card>
+        <Card className="p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Attached questions ({attached.length})</h2>
+          <ol className="mt-4 space-y-3">
+            {attached.map((q, idx) => (
+              <li key={q!.id} className="rounded-xl border border-evergreen-900/10 bg-cream/40 p-4 text-sm">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-evergreen-900">Q{idx + 1}</span>
+                  <Badge tone="green">{q!.type.replace(/_/g, " ")}</Badge>
+                  <Badge tone="gold">{Number(q!.points)} pts</Badge>
+                  {q!.topic && <Badge tone="gray">{q!.topic}</Badge>}
+                </div>
+                <p className="mt-2 line-clamp-3 text-ink">{q!.prompt}</p>
+              </li>
+            ))}
+          </ol>
+        </Card>
+      </>
+    );
+  }
 
   const selectedGradingSystemId = typeof settings.grading_system_id === "string" ? settings.grading_system_id : "";
   const { data: gradingSystems } = await supabase

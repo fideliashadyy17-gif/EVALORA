@@ -1,6 +1,7 @@
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { Badge, ButtonLink, Card, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess } from "@/lib/tenant";
@@ -46,7 +47,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // The old path issued 8 parallel REST queries plus a ninth subscription
   // query, and each exact count evaluated per-row RLS predicates.
   let degradedMetrics = false;
-  const [overviewResult, entitlement] = await Promise.all([
+  const [overviewResult, entitlement, perms] = await Promise.all([
     supabase.rpc("workspace_overview", { p_org: org.id }),
     getEntitlementFor(supabase, ctx, org.id).catch(() => ({
       planName: "Standard",
@@ -54,7 +55,17 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       trialEndsAt: null,
       currentPeriodEnd: null,
     })),
+    canOperateMany(ctx, org.id, {
+      canCreateQuestion: { permission: "questions.create", module: "question_bank" },
+      canCreateQuiz: { permission: "quizzes.create", module: "quizzes" },
+      canCreateExam: { permission: "exams.create", module: "examinations" },
+      canHostSession: { permission: "competitions.edit", module: "competitions" },
+      canViewExamCodes: { permission: "candidate_links.edit", module: "exam_share_codes" },
+      canViewBilling: { permission: "billing.view", module: "billing" },
+      canManageOrg: { permission: "organizations.edit", module: "org_settings" },
+    }),
   ]);
+  const isFounder = org.role === "school_founder";
 
   let overview: Overview | null = overviewResult.error
     ? null
@@ -128,18 +139,32 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           restricted by the current plan configuration — a Super Admin can enable it in Plan &amp; Module Management.
         </p>
       )}
+      {sp?.e === "forbidden" && (
+        <p role="alert" className="mb-6 rounded-lg bg-amber-50 px-4 py-3 text-sm font-medium text-amber-900">
+          Your role does not include access to that administrative section. Use the operational oversight modules in the sidebar.
+        </p>
+      )}
       <section className="workspace-dashboard-hero mb-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.6rem] p-6 sm:p-8">
         <div className="max-w-2xl">
-          <p className="workspace-dashboard-kicker">Assessment workspace</p>
+          <p className="workspace-dashboard-kicker">{isFounder ? "Institutional supervision workspace" : "Assessment workspace"}</p>
           <h1 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight text-evergreen-950 sm:text-4xl">
             Welcome, {ctx.profile.full_name?.split(" ")[0] || "there"}
           </h1>
-          <p className="mt-2 text-sm leading-relaxed text-ink-soft sm:text-base">{org.name} · Your workspace at a glance.</p>
+          <p className="mt-2 text-sm leading-relaxed text-ink-soft sm:text-base">
+            {org.name} · {isFounder ? "Read-only operational overview across examinations, results, classes, and activities." : "Your workspace at a glance."}
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/dashboard/questions/new" variant="outline">+ New question</ButtonLink>
-          <ButtonLink href="/dashboard/quizzes/new" variant="gold">+ New quiz</ButtonLink>
-          <ButtonLink href="/dashboard/exams/new" variant="outline">Schedule an exam</ButtonLink>
+          {perms.canCreateQuestion && <ButtonLink href="/dashboard/questions/new" variant="outline">+ New question</ButtonLink>}
+          {perms.canCreateQuiz && <ButtonLink href="/dashboard/quizzes/new" variant="gold">+ New quiz</ButtonLink>}
+          {perms.canCreateExam && <ButtonLink href="/dashboard/exams/new" variant="outline">Schedule an exam</ButtonLink>}
+          {isFounder && (
+            <>
+              <ButtonLink href="/supervision" variant="gold">Executive summary</ButtonLink>
+              <ButtonLink href="/dashboard/results" variant="outline">Results &amp; validation</ButtonLink>
+              <ButtonLink href="/dashboard/exams" variant="outline">Examinations</ButtonLink>
+            </>
+          )}
         </div>
       </section>
 
@@ -160,7 +185,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 : "Free plan — upgrade for proctoring, bigger sessions and advanced reports."}
           </p>
         </div>
-        <ButtonLink href="/dashboard/billing" variant="gold">View plan &amp; billing</ButtonLink>
+        {perms.canViewBilling && <ButtonLink href="/dashboard/billing" variant="gold">View plan &amp; billing</ButtonLink>}
       </Card>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
@@ -220,9 +245,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             copyLabel="Copy Platform Link"
             shareLabel="Share Platform Link"
           />
-          <Link href="/dashboard/platform" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
-            Platform details →
-          </Link>
+          {perms.canManageOrg && (
+            <Link href="/dashboard/platform" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
+              Platform details →
+            </Link>
+          )}
         </div>
       </Card>
 
@@ -233,18 +260,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
             <Link href="/dashboard/reports" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">All reports</Link>
           </div>
           {(recentSessions.data ?? []).length === 0 ? (
-            <p className="text-sm text-ink-soft">No sessions yet. Publish a quiz, then start a live session from the Quiz Studio.</p>
+            <p className="text-sm text-ink-soft">No sessions yet.</p>
           ) : (
             <ul className="divide-y divide-evergreen-900/10">
               {(recentSessions.data ?? []).map((s) => (
                 <li key={s.id} className="flex items-center justify-between gap-3 py-3">
                   <div>
                     <p className="font-medium text-ink">{s.title || (s.quizzes as { title: string } | null)?.title || "Live session"}</p>
-                    <p className="text-xs text-ink-soft">Code {s.join_code} · {fmtDateTime(s.created_at)}</p>
+                    <p className="text-xs text-ink-soft">
+                      {perms.canHostSession && s.join_code ? `Code ${s.join_code} · ` : ""}
+                      {fmtDateTime(s.created_at)}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge tone={s.status === "live" ? "amber" : s.status === "ended" ? "gray" : "green"}>{s.status}</Badge>
-                    {s.status !== "ended" ? (
+                    {s.status !== "ended" && perms.canHostSession ? (
                       <Link href={`/dashboard/sessions/${s.id}/host`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Host</Link>
                     ) : (
                       <Link href={`/dashboard/reports/session/${s.id}`} className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Report</Link>
@@ -259,17 +289,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between">
             <h2 className="font-display text-lg font-semibold text-evergreen-950">Examinations</h2>
-            <Link href="/dashboard/exams" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">Manage all</Link>
+            <Link href="/dashboard/exams" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">View all</Link>
           </div>
           {(upcomingExams.data ?? []).length === 0 ? (
-            <p className="text-sm text-ink-soft">No examinations yet. Create one from a published quiz and register your candidates.</p>
+            <p className="text-sm text-ink-soft">No examinations yet.</p>
           ) : (
             <ul className="divide-y divide-evergreen-900/10">
               {(upcomingExams.data ?? []).map((e) => (
                 <li key={e.id} className="flex items-center justify-between gap-3 py-3">
                   <div>
                     <p className="font-medium text-ink">{e.title}</p>
-                    <p className="text-xs text-ink-soft">{e.duration_minutes} min · Code {e.access_code}</p>
+                    <p className="text-xs text-ink-soft">
+                      {e.duration_minutes} min
+                      {perms.canViewExamCodes && e.access_code ? ` · Code ${e.access_code}` : " · Access credentials protected"}
+                    </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge tone={e.status === "open" ? "amber" : "gray"}>{e.status}</Badge>
@@ -282,21 +315,39 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </Card>
       </div>
 
-      <Card className="mt-6 p-6">
-        <h2 className="font-display text-lg font-semibold text-evergreen-950">Quick start</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {[
-            ["1 · Add questions", "Build your bank with mathematics, media and explanations.", "/dashboard/questions/new"],
-            ["2 · Assemble a quiz", "Pick questions, set timing and randomization, publish.", "/dashboard/quizzes/new"],
-            ["3 · Go live or examine", "Start a live session with a join code — or schedule a formal exam.", "/dashboard/quizzes"],
-          ].map(([t, b, href]) => (
-            <Link key={t} href={href} className="rounded-xl border border-evergreen-900/10 bg-cream p-4 transition hover:border-evergreen-600/40 hover:shadow-[var(--shadow-card)]">
-              <p className="font-semibold text-evergreen-950">{t}</p>
-              <p className="mt-1 text-sm text-ink-soft">{b}</p>
-            </Link>
-          ))}
-        </div>
-      </Card>
+      {isFounder ? (
+        <Card className="mt-6 p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Institutional oversight shortcuts</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Results & validation", "Inspect published & unpublished results, awaiting validation, and marking progress.", "/dashboard/results"],
+              ["Academic structure & classes", "Review classes, subjects, student participation, and MYP results.", "/dashboard/academics/classes"],
+              ["Executive supervision summary", "View the unified 17-domain institutional supervision summary.", "/supervision"],
+            ].map(([t, b, href]) => (
+              <Link key={t} href={href} className="rounded-xl border border-evergreen-900/10 bg-cream p-4 transition hover:border-evergreen-600/40 hover:shadow-[var(--shadow-card)]">
+                <p className="font-semibold text-evergreen-950">{t}</p>
+                <p className="mt-1 text-sm text-ink-soft">{b}</p>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : (perms.canCreateQuestion || perms.canCreateQuiz) ? (
+        <Card className="mt-6 p-6">
+          <h2 className="font-display text-lg font-semibold text-evergreen-950">Quick start</h2>
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              ["1 · Add questions", "Build your bank with mathematics, media and explanations.", "/dashboard/questions/new"],
+              ["2 · Assemble a quiz", "Pick questions, set timing and randomization, publish.", "/dashboard/quizzes/new"],
+              ["3 · Go live or examine", "Start a live session with a join code — or schedule a formal exam.", "/dashboard/quizzes"],
+            ].map(([t, b, href]) => (
+              <Link key={t} href={href} className="rounded-xl border border-evergreen-900/10 bg-cream p-4 transition hover:border-evergreen-600/40 hover:shadow-[var(--shadow-card)]">
+                <p className="font-semibold text-evergreen-950">{t}</p>
+                <p className="mt-1 text-sm text-ink-soft">{b}</p>
+              </Link>
+            ))}
+          </div>
+        </Card>
+      ) : null}
     </>
   );
 }

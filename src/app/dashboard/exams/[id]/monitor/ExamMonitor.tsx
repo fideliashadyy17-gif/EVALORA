@@ -54,7 +54,7 @@ interface ThreadState {
   error: string | null;
 }
 
-export function ExamMonitor({ examId, initial }: { examId: string; initial: MonitorSnapshot }) {
+export function ExamMonitor({ examId, initial, canManage = true }: { examId: string; initial: MonitorSnapshot; canManage?: boolean }) {
   const [snapshot, setSnapshot] = useState<MonitorSnapshot>(initial);
   const [pauseBusy, setPauseBusy] = useState<string | null>(null);
   const [pauseError, setPauseError] = useState<string | null>(null);
@@ -289,27 +289,29 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
         </span>
         <span className="text-ink-soft">Last refreshed {clock(snapshot.server_now)}</span>
         {loadError && <span role="alert" className="text-amber-900">{loadError}</span>}
-        <span className="ml-auto flex items-center gap-2">
-          {examPaused ? (
-            <button
-              type="button"
-              disabled={pauseBusy !== null}
-              onClick={() => void pauseAction("exam", "resume")}
-              className={`${pauseButtonCls} bg-evergreen-950 text-paper`}
-            >
-              {pauseBusy === "exam" ? "Resuming…" : "▶ Resume assessment"}
-            </button>
-          ) : (
-            <button
-              type="button"
-              disabled={pauseBusy !== null}
-              onClick={() => void pauseAction("exam", "pause")}
-              className={`${pauseButtonCls} bg-amber-500 text-evergreen-950`}
-            >
-              {pauseBusy === "exam" ? "Pausing…" : "⏸ Pause assessment"}
-            </button>
-          )}
-        </span>
+        {canManage && (
+          <span className="ml-auto flex items-center gap-2">
+            {examPaused ? (
+              <button
+                type="button"
+                disabled={pauseBusy !== null}
+                onClick={() => void pauseAction("exam", "resume")}
+                className={`${pauseButtonCls} bg-evergreen-950 text-paper`}
+              >
+                {pauseBusy === "exam" ? "Resuming…" : "▶ Resume assessment"}
+              </button>
+            ) : (
+              <button
+                type="button"
+                disabled={pauseBusy !== null}
+                onClick={() => void pauseAction("exam", "pause")}
+                className={`${pauseButtonCls} bg-amber-500 text-evergreen-950`}
+              >
+                {pauseBusy === "exam" ? "Pausing…" : "⏸ Pause assessment"}
+              </button>
+            )}
+          </span>
+        )}
       </div>
       {pauseError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-red-800">{pauseError}</p>}
       {examPaused && (
@@ -411,7 +413,7 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
                           >
                             Message
                           </button>
-                          {r.status === "in_progress" && (
+                          {canManage && r.status === "in_progress" && (
                             r.pause_reasons.includes("student") ? (
                               <button
                                 type="button"
@@ -475,33 +477,39 @@ export function ExamMonitor({ examId, initial }: { examId: string; initial: Moni
                 {thread?.error && <p role="alert" className="text-xs text-amber-900">{thread.error}</p>}
               </div>
 
-              <div className="border-t border-evergreen-900/10 p-3">
-                <div className="mb-2 flex flex-wrap gap-1.5">
-                  {QUICK_MESSAGES.map((text) => (
-                    <button key={text} type="button" disabled={closed} onClick={() => void send(text)} className="rounded-full border border-evergreen-900/15 px-2.5 py-1 text-left text-[11px] text-evergreen-900 hover:bg-evergreen-50 disabled:opacity-50">
-                      {text}
-                    </button>
-                  ))}
-                </div>
-                <form onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
-                  <label htmlFor="monitor-reply" className="sr-only">Message to {selected.candidate_name}</label>
-                  <textarea
-                    id="monitor-reply"
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
-                    rows={2}
-                    maxLength={MESSAGE_MAX_LENGTH}
-                    disabled={closed}
-                    placeholder={closed ? "Attempt closed" : "Write a private message…"}
-                    className="w-full resize-none rounded-xl border border-evergreen-900/20 bg-paper px-3 py-2 text-sm disabled:opacity-60"
-                  />
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <span className="text-[11px] text-ink-soft">Messages never change answers, marks or the deadline.</span>
-                    <button type="submit" disabled={closed || draft.trim().length === 0} className="rounded-xl bg-evergreen-950 px-4 py-2 text-sm font-semibold text-paper disabled:opacity-50">Send</button>
+              {canManage ? (
+                <div className="border-t border-evergreen-900/10 p-3">
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    {QUICK_MESSAGES.map((text) => (
+                      <button key={text} type="button" disabled={closed} onClick={() => void send(text)} className="rounded-full border border-evergreen-900/15 px-2.5 py-1 text-left text-[11px] text-evergreen-900 hover:bg-evergreen-50 disabled:opacity-50">
+                        {text}
+                      </button>
+                    ))}
                   </div>
-                  {sendError && <p role="alert" className="mt-2 text-xs text-red-700">{sendError}</p>}
-                </form>
-              </div>
+                  <form onSubmit={(e) => { e.preventDefault(); void send(draft); }}>
+                    <label htmlFor="monitor-reply" className="sr-only">Message to {selected.candidate_name}</label>
+                    <textarea
+                      id="monitor-reply"
+                      value={draft}
+                      onChange={(e) => setDraft(e.target.value.slice(0, MESSAGE_MAX_LENGTH))}
+                      rows={2}
+                      maxLength={MESSAGE_MAX_LENGTH}
+                      disabled={closed}
+                      placeholder={closed ? "Attempt closed" : "Write a private message…"}
+                      className="w-full resize-none rounded-xl border border-evergreen-900/20 bg-paper px-3 py-2 text-sm disabled:opacity-60"
+                    />
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <span className="text-[11px] text-ink-soft">Messages never change answers, marks or the deadline.</span>
+                      <button type="submit" disabled={closed || draft.trim().length === 0} className="rounded-xl bg-evergreen-950 px-4 py-2 text-sm font-semibold text-paper disabled:opacity-50">Send</button>
+                    </div>
+                    {sendError && <p role="alert" className="mt-2 text-xs text-red-700">{sendError}</p>}
+                  </form>
+                </div>
+              ) : (
+                <div className="border-t border-evergreen-900/10 p-3 text-xs text-ink-soft">
+                  Read-only supervision mode — pausing attempts and sending messages are restricted to authorized proctors.
+                </div>
+              )}
             </>
           )}
         </aside>
