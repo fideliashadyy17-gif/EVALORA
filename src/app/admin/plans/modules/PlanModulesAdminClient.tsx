@@ -162,6 +162,8 @@ export function PlanModulesAdminClient({
   subs,
   catalog,
   livekitConfigured = false,
+  livekitHost = null,
+  livekitMissing = [],
   initialPlanId,
   initialSubId,
 }: {
@@ -169,6 +171,8 @@ export function PlanModulesAdminClient({
   subs: SubRow[];
   catalog: CatalogRow[];
   livekitConfigured?: boolean;
+  livekitHost?: string | null;
+  livekitMissing?: string[];
   initialPlanId?: string;
   initialSubId?: string;
 }) {
@@ -289,14 +293,22 @@ export function PlanModulesAdminClient({
       );
     }
     if (avail === "external_dependency") {
+      if (livekitConfigured) {
+        return (
+          <span
+            className="inline-flex items-center rounded-full bg-sky-50 px-2.5 py-0.5 text-[11px] font-semibold text-sky-900 ring-1 ring-sky-200"
+            data-testid="pmm-tech-status"
+          >
+            Implemented &amp; operational · LiveKit configured
+          </span>
+        );
+      }
       return (
         <span
           className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-0.5 text-[11px] font-semibold text-amber-950 ring-1 ring-amber-300"
           data-testid="pmm-tech-status"
         >
-          {livekitConfigured
-            ? "External dependency · LiveKit ready"
-            : "External dependency · LiveKit pending"}
+          Core operational · LiveKit video pending
         </span>
       );
     }
@@ -450,8 +462,17 @@ export function PlanModulesAdminClient({
             <Badge tone={planCustom ? "gray" : "amber"}>
               {planCustom ? t("admin.pmmCustomBadge") : t("admin.pmmDefaultsBadge")}
             </Badge>
-            <span className="inline-flex items-center rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-950 ring-1 ring-amber-300">
-              {livekitConfigured ? "LiveKit video: configured" : "LiveKit video: not configured"}
+            <span
+              className={cn(
+                "inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1",
+                livekitConfigured
+                  ? "bg-sky-50 text-sky-900 ring-sky-200"
+                  : "bg-amber-50 text-amber-950 ring-amber-300",
+              )}
+            >
+              {livekitConfigured
+                ? `LiveKit video: configured${livekitHost ? ` (${livekitHost})` : ""}`
+                : `LiveKit video pending${livekitMissing.length ? ` (missing: ${livekitMissing.join(", ")})` : ""}`}
             </span>
           </div>
         </div>
@@ -697,8 +718,15 @@ export function PlanModulesAdminClient({
                           </div>
 
                           {m.externalDependency && (
-                            <p className="mt-1.5 pl-6 text-[11px] text-amber-900">
-                              Dependency: {m.externalDependency}
+                            <p
+                              className={cn(
+                                "mt-1.5 pl-6 text-[11px]",
+                                livekitConfigured ? "text-sky-900" : "text-amber-900",
+                              )}
+                            >
+                              {livekitConfigured
+                                ? `LiveKit Cloud configured${livekitHost ? ` (${livekitHost})` : ""} for live video & screen rooms; Supabase incident logging, review workflows, retention policies & evidence ledger operate natively.`
+                                : `${m.externalDependency}${livekitMissing.length ? ` Missing on this environment: ${livekitMissing.join(", ")}.` : ""}`}
                             </p>
                           )}
 

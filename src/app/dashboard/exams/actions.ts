@@ -112,7 +112,17 @@ export async function createExam(formData: FormData) {
   if (proctoringWanted) {
     try {
       const admin = createAdminClient();
-      const result = await admin.from("proctoring_rooms").insert({ exam_id: exam.id, room_name: `exam-${exam.id}` });
+      const now = new Date().toISOString();
+      const result = await admin.from("proctoring_rooms").insert({
+        exam_id: exam.id,
+        organization_id: org.id,
+        room_name: `exam-${exam.id}`,
+        created_by: ctx.user.id,
+        status: "active",
+        started_at: now,
+        last_event_at: now,
+        updated_at: now,
+      });
       roomError = Boolean(result.error);
     } catch { roomError = true; }
   }
@@ -968,6 +978,106 @@ export async function reviewIncident(formData: FormData) {
   revalidatePath(`/dashboard/exams/${examId}`);
   revalidatePath(`/dashboard/exams/${examId}/proctor`);
   redirect(back === "/dashboard/proctoring" ? `${back}?ok=reviewed` : `${back}?incident_ok=reviewed`);
+}
+
+/**
+ * Enable or configure LiveKit video proctoring and screen-sharing policy on an
+ * existing organization examination. Enforces org scope, RBAC, and commercial
+ * proctoring capability server-side; registers the persisted supervision room
+ * when enabled. Supabase incident logging remains active regardless of toggle.
+ */
+export async function updateExamProctoring(formData: FormData) {
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  const examId = String(formData.get("exam_id") ?? "");
+  const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuid.test(examId)) redirect("/dashboard/exams");
+  const rawReturn = String(formData.get("return_to") ?? "");
+  const back =
+    rawReturn === `/dashboard/exams/${examId}/proctor`
+      ? `/dashboard/exams/${examId}/proctor`
+      : `/dashboard/exams/${examId}`;
+  if (
+    !org ||
+    (org.status !== "active" && ctx.profile.platform_role !== "super_admin") ||
+    !(await canOperate(ctx, org.id, "exams.edit", "examinations")) ||
+    !(await canOperate(ctx, org.id, "proctoring.manage", "proctoring"))
+  ) {
+    redirect(back);
+  }
+
+  const supabase = await createClient();
+  const { capabilities } = await getCapabilities(supabase, ctx, org.id);
+  const proctoringEnabled = formData.get("proctoring") === "on";
+  const requireScreenShare = proctoringEnabled && formData.get("require_screen_share") === "on";
+  if (proctoringEnabled && !capabilities.proctoring) {
+    redirect(`${back}?e=proctoring`);
+  }
+
+  const { data: exam, error: fetchError } = await supabase
+    .from("exams")
+    .select("id, organization_id, settings")
+    .eq("id", examId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (fetchError || !exam) redirect("/dashboard/exams");
+
+  const nextSettings = {
+    ...((exam.settings as Record<string, unknown> | null) ?? {}),
+    proctoring: proctoringEnabled,
+    require_screen_share: requireScreenShare,
+  };
+  const { error: updateError } = await supabase
+    .from("exams")
+    .update({ settings: nextSettings })
+    .eq("id", examId)
+    .eq("organization_id", org.id);
+  if (updateError) redirect(`${back}?e=proctoring_save`);
+
+  if (proctoringEnabled) {
+    try {
+      const admin = createAdminClient();
+      const now = new Date().toISOString();
+      const roomName = `exam-${examId}`;
+      const { data: existing } = await admin
+        .from("proctoring_rooms")
+        .select("id")
+        .eq("room_name", roomName)
+        .maybeSingle();
+      if (existing) {
+        await admin
+          .from("proctoring_rooms")
+          .update({
+            organization_id: org.id,
+            status: "active",
+            ended_at: null,
+            last_event_at: now,
+            updated_at: now,
+          })
+          .eq("id", existing.id);
+      } else {
+        await admin.from("proctoring_rooms").insert({
+          exam_id: examId,
+          organization_id: org.id,
+          room_name: roomName,
+          created_by: ctx.user.id,
+          status: "active",
+          started_at: now,
+          last_event_at: now,
+          updated_at: now,
+        });
+      }
+    } catch {
+      // Room creation is also retried idempotently when the first token is minted.
+    }
+  }
+
+  revalidatePath(`/dashboard/exams/${examId}`);
+  revalidatePath(`/dashboard/exams/${examId}/proctor`);
+  revalidatePath(`/dashboard/exams/${examId}/monitor`);
+  revalidatePath("/dashboard/proctoring");
+  revalidatePath("/dashboard/monitoring");
+  redirect(`${back}?ok=proctoring`);
 }
 
 /** Limited organizer invitation controls. Other advanced settings remain in the global console. */

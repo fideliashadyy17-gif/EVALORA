@@ -4,6 +4,7 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { attemptDeadline } from "@/lib/exam";
 import { manualPauseMs } from "@/lib/examPause";
 import { describeIncidentType } from "@/lib/integrity";
+import { getLiveKitEnvStatus } from "@/lib/livekit";
 import { moduleEnabled } from "@/lib/modules";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { presenceConnection } from "@/lib/presence";
@@ -93,11 +94,8 @@ export default async function OrganizationMonitoringPage({
   const sp = (await searchParams) ?? {};
   const isFounder = org.role === "school_founder";
   const proctoringModuleEnabled = moduleEnabled(entitlement.modules, "proctoring");
-  const livekitConfigured = Boolean(
-    process.env.LIVEKIT_API_KEY &&
-      process.env.LIVEKIT_API_SECRET &&
-      process.env.NEXT_PUBLIC_LIVEKIT_URL,
-  );
+  const livekitStatus = getLiveKitEnvStatus();
+  const livekitConfigured = livekitStatus.configured;
 
   // Use admin client ONLY for verified org-scoped supervision tables where
   // staff RLS might otherwise hide audit_logs / retake requests, ALWAYS pinned
@@ -422,12 +420,12 @@ export default async function OrganizationMonitoringPage({
             <span>
               <strong>LiveKit Video Proctoring Infrastructure:</strong>{" "}
               {livekitConfigured
-                ? "Connected and ready for authorized proctors on proctored examinations."
-                : "Not configured on this deployment (LIVEKIT_API_KEY / LIVEKIT_API_SECRET / NEXT_PUBLIC_LIVEKIT_URL required for live camera/screen rooms). Live progress tracking, interventions, messaging and incident review remain fully operational."}
+                ? `Configured (${livekitStatus.host}) and ready for authorized proctors on proctored examinations. Live monitoring, interventions, messaging and Supabase incident review remain independently operational.`
+                : `Live video transport is pending on this environment (${livekitStatus.missing.length ? `missing: ${livekitStatus.missing.join(", ")}` : "invalid NEXT_PUBLIC_LIVEKIT_URL"}). Live progress tracking, interventions, messaging and Supabase incident review remain fully operational.`}
             </span>
           </div>
           <Badge tone={livekitConfigured ? "green" : "amber"}>
-            {livekitConfigured ? "LiveKit ready" : "Video infra pending"}
+            {livekitConfigured ? "LiveKit ready" : "Core operational · Video pending"}
           </Badge>
         </div>
       )}

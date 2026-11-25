@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { getEntitlement } from "@/lib/entitlements";
+import { getLiveKitEnvStatus } from "@/lib/livekit";
 import {
   MODULE_CATALOG,
   computeOverrideBreakdown,
@@ -81,11 +82,8 @@ export async function SubscriptionTab({
     ((activeSub?.plans as { modules?: Record<string, boolean> | null } | null)?.modules ?? null);
   const activeOverrides =
     ((activeSub as { modules_override?: Record<string, boolean> | null } | null)?.modules_override ?? null);
-  const livekitConfigured = Boolean(
-    process.env.LIVEKIT_API_KEY &&
-      process.env.LIVEKIT_API_SECRET &&
-      process.env.NEXT_PUBLIC_LIVEKIT_URL,
-  );
+  const livekitStatus = getLiveKitEnvStatus();
+  const livekitConfigured = livekitStatus.configured;
   const resolvedOrgModules = MODULE_CATALOG.map((m) => ({
     ...m,
     state: resolveModuleOperationalState(

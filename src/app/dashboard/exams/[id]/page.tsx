@@ -31,7 +31,7 @@ import { DeleteExamDialog } from "@/components/DeleteExamDialog";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
-  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateWorkspaceExamAccess, validateResults, unvalidateResults,
+  pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateExamProctoring, updateWorkspaceExamAccess, validateResults, unvalidateResults,
 } from "../actions";
 
 export const metadata: Metadata = { title: "Examination" };
@@ -1200,7 +1200,57 @@ export default async function ExamDetailPage({
             )}
           </Card>
 
-          {Boolean(settings.proctoring) && (
+          {canEditExam && canManageProctoring && (
+            <Card className="p-6">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                    Video proctoring &amp; screen sharing (LiveKit)
+                  </h2>
+                  <p className="mt-1 text-xs text-ink-soft">
+                    Configure live candidate camera, microphone, and optional screen sharing for this examination.
+                    Supabase integrity incident logging and human review remain operational regardless of live video state.
+                  </p>
+                </div>
+                <Badge tone={Boolean(settings.proctoring) ? "green" : "gray"}>
+                  {Boolean(settings.proctoring)
+                    ? Boolean(settings.require_screen_share)
+                      ? "Video + screen share"
+                      : "Video active"
+                    : "Video off"}
+                </Badge>
+              </div>
+              <form action={updateExamProctoring} className="mt-4 flex flex-wrap items-center gap-4">
+                <input type="hidden" name="exam_id" value={id} />
+                <label className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="proctoring"
+                    defaultChecked={Boolean(settings.proctoring)}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Enable LiveKit video proctoring
+                </label>
+                <label className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
+                  <input
+                    type="checkbox"
+                    name="require_screen_share"
+                    defaultChecked={Boolean(settings.require_screen_share)}
+                    className="h-4 w-4 accent-evergreen-700"
+                  />
+                  Require screen sharing
+                </label>
+                <Button type="submit" variant="outline">Save proctoring settings</Button>
+                {Boolean(settings.proctoring) && (
+                  <ButtonLink href={`/dashboard/exams/${id}/proctor`} variant="gold">
+                    Open live video room →
+                  </ButtonLink>
+                )}
+              </form>
+            </Card>
+          )}
+
+          {(Boolean(settings.proctoring) || (incidents ?? []).length > 0) && (
             <Card className="p-6">
               <h2 className="font-display text-lg font-semibold text-evergreen-950">Proctoring incidents ({(incidents ?? []).length})</h2>
               <p className="mt-1 text-xs text-ink-soft">Incidents are observations for human review — never automatic proof of misconduct.</p>

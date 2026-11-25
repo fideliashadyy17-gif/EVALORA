@@ -106,7 +106,10 @@ function ScreenShareButton() {
     } finally { setBusy(false); }
   }
   return (
-    <div>
+    <div className="space-y-1">
+      <p className="text-[11px] font-medium text-ink-soft">
+        Screen sharing: <strong className={isScreenShareEnabled ? "text-evergreen-800" : "text-amber-800"}>{isScreenShareEnabled ? "Active" : "Required — not sharing yet"}</strong>
+      </p>
       <Button variant="outline" className="w-full text-xs" disabled={busy} onClick={toggle}>
         {isScreenShareEnabled ? "Stop sharing screen" : "Share my screen"}
       </Button>

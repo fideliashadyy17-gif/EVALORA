@@ -27,11 +27,23 @@ const Body = z.object({
  * members with proctor roles) may subscribe but not publish.
  */
 export async function POST(request: Request) {
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
-  const serverUrl = process.env.NEXT_PUBLIC_LIVEKIT_URL;
-  if (!apiKey || !apiSecret || !serverUrl)
+  const apiKey = (process.env.LIVEKIT_API_KEY ?? "").trim();
+  const apiSecret = (process.env.LIVEKIT_API_SECRET ?? "").trim();
+  const rawServerUrl = (process.env.NEXT_PUBLIC_LIVEKIT_URL ?? "").trim().replace(/\/+$/, "");
+  if (!apiKey || !apiSecret || !rawServerUrl)
     return NextResponse.json({ error: "Video proctoring is not configured on this deployment." }, { status: 503 });
+  let serverUrl: string;
+  try {
+    const parsedUrl = new URL(rawServerUrl);
+    if (!["wss:", "ws:", "https:", "http:"].includes(parsedUrl.protocol) || !parsedUrl.host) {
+      return NextResponse.json({ error: "LiveKit server URL configuration is invalid." }, { status: 503 });
+    }
+    const wsProtocol = parsedUrl.protocol === "wss:" || parsedUrl.protocol === "https:" ? "wss:" : "ws:";
+    const pathPart = parsedUrl.pathname === "/" ? "" : parsedUrl.pathname.replace(/\/+$/, "");
+    serverUrl = `${wsProtocol}//${parsedUrl.host}${pathPart}`;
+  } catch {
+    return NextResponse.json({ error: "LiveKit server URL configuration is invalid." }, { status: 503 });
+  }
 
   const sessionCtx = await getSessionContext();
   // getSessionContext alone does not enforce active profile status. A
@@ -135,8 +147,12 @@ export async function POST(request: Request) {
   const at = new AccessToken(apiKey, apiSecret, { identity, name, ttl: tokenTtl });
   at.addGrant({
     roomJoin: true,
+    roomCreate: true,
     room: roomName,
     canPublish,
+    // Candidates explicitly receive camera, microphone, screen-share and
+    // screen-share-audio publish permissions (LiveKit TrackSource 1..4).
+    ...(canPublish ? { canPublishSources: [1, 2, 3, 4] } : {}),
     // Candidates must not be able to subscribe to other candidates' feeds.
     canSubscribe: role === "supervisor",
     canPublishData: false,

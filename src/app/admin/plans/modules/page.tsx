@@ -1,5 +1,6 @@
 import { PageTitle, ButtonLink } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
+import { getLiveKitEnvStatus } from "@/lib/livekit";
 import { MODULE_CATALOG } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -30,11 +31,8 @@ export default async function PlanModuleManagementPage({
   const sp = (await searchParams) ?? {};
   const admin = createAdminClient();
 
-  const livekitConfigured = Boolean(
-    process.env.LIVEKIT_API_KEY &&
-      process.env.LIVEKIT_API_SECRET &&
-      process.env.NEXT_PUBLIC_LIVEKIT_URL,
-  );
+  const livekitStatus = getLiveKitEnvStatus();
+  const livekitConfigured = livekitStatus.configured;
 
   const [{ data: plans }, { data: subs }, { data: orgs }, { data: subCounts }] =
     await Promise.all([
@@ -148,6 +146,8 @@ export default async function PlanModuleManagementPage({
           surface: m.surface,
         }))}
         livekitConfigured={livekitConfigured}
+        livekitHost={livekitStatus.host}
+        livekitMissing={livekitStatus.missing}
         initialPlanId={sp.plan}
         initialSubId={sp.sub}
       />
