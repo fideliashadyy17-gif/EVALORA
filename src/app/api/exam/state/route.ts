@@ -16,6 +16,105 @@ import { parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } fr
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 
+const STATE_STATIC_CACHE_TTL_MS = 30_000;
+const STATE_STATIC_CACHE_MAX = 64;
+
+interface StaticExamStateMeta {
+  entitlement: Awaited<ReturnType<typeof getEntitlement>> | null;
+  hintsByQuestion: Map<string, { level: number; text: string; doc: unknown | null }[]>;
+  orgRow: { name?: string | null; logo_url?: string | null } | null;
+  quizRow: { settings?: Record<string, unknown> | null } | null;
+  tplRow: unknown;
+}
+
+const stateStaticCache = new Map<string, { value: StaticExamStateMeta; expiresAt: number }>();
+const stateStaticInflight = new Map<string, Promise<StaticExamStateMeta>>();
+
+function serviceRoleScope(admin: unknown): string | null {
+  if (!admin || typeof admin !== "object") return null;
+  const url = (admin as { supabaseUrl?: unknown }).supabaseUrl;
+  const key = (admin as { supabaseKey?: unknown }).supabaseKey;
+  const serviceKey = typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  return typeof url === "string" && url.length > 0 && serviceKey && key === serviceKey ? url : null;
+}
+
+async function loadStaticExamStateMeta(
+  admin: ReturnType<typeof createAdminClient>,
+  exam: { id: string; organization_id: string; quiz_id: string | null },
+  settings: Record<string, unknown>,
+  questionIds: string[],
+): Promise<StaticExamStateMeta> {
+  const loader = async (): Promise<StaticExamStateMeta> => {
+    const templateId = typeof settings.exam_paper_template_id === "string" && settings.exam_paper_template_id
+      ? settings.exam_paper_template_id
+      : null;
+    const safeQuery = async <T,>(fn: () => PromiseLike<{ data?: T | null }>): Promise<{ data: T | null }> => {
+      try {
+        const res = await fn();
+        return { data: (res?.data ?? null) as T | null };
+      } catch {
+        return { data: null };
+      }
+    };
+    const [entitlement, hintsByQuestion, orgRes, quizRes, tplRes] = await Promise.all([
+      getEntitlement(admin, exam.organization_id).catch(() => null),
+      loadPublishedHints(admin, { id: exam.id, organization_id: exam.organization_id }, questionIds).catch(
+        () => new Map<string, { level: number; text: string; doc: unknown | null }[]>(),
+      ),
+      safeQuery<{ name?: string | null; logo_url?: string | null }>(() =>
+        admin.from("organizations").select("name, logo_url").eq("id", exam.organization_id).maybeSingle(),
+      ),
+      exam.quiz_id
+        ? safeQuery<{ settings?: Record<string, unknown> | null }>(() =>
+            admin.from("quizzes").select("settings").eq("id", exam.quiz_id).maybeSingle(),
+          )
+        : Promise.resolve({ data: null }),
+      templateId
+        ? safeQuery<unknown>(() =>
+            admin
+              .from("exam_paper_templates")
+              .select("*")
+              .eq("id", templateId)
+              .eq("organization_id", exam.organization_id)
+              .maybeSingle(),
+          )
+        : Promise.resolve({ data: null }),
+    ]);
+    return {
+      entitlement,
+      hintsByQuestion,
+      orgRow: (orgRes?.data as StaticExamStateMeta["orgRow"]) ?? null,
+      quizRow: (quizRes?.data as StaticExamStateMeta["quizRow"]) ?? null,
+      tplRow: tplRes?.data ?? null,
+    };
+  };
+
+  const scope = serviceRoleScope(admin);
+  if (!scope) return loader();
+  const templateKey = typeof settings.exam_paper_template_id === "string" ? settings.exam_paper_template_id : "";
+  const cacheKey = `${scope}::${exam.id}::${exam.organization_id}::${exam.quiz_id ?? ""}::${templateKey}`;
+  const cached = stateStaticCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.value;
+
+  const existing = stateStaticInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = loader()
+    .then((value) => {
+      if (stateStaticCache.size >= STATE_STATIC_CACHE_MAX && !stateStaticCache.has(cacheKey)) {
+        const oldest = stateStaticCache.keys().next().value;
+        if (oldest !== undefined) stateStaticCache.delete(oldest);
+      }
+      stateStaticCache.set(cacheKey, { value, expiresAt: Date.now() + STATE_STATIC_CACHE_TTL_MS });
+      return value;
+    })
+    .finally(() => {
+      stateStaticInflight.delete(cacheKey);
+    });
+  stateStaticInflight.set(cacheKey, promise);
+  return promise;
+}
+
 /**
  * Full candidate view of an attempt (answers restored for recovery).
  *
@@ -111,10 +210,6 @@ export async function GET(request: Request) {
   // instant, which the client renders as "no countdown" rather than as an expiry.
   const deadlineIso = window.deadline ?? new Date(8.64e15).toISOString();
 
-  // Resolve the premium examination entitlement in parallel with the paper.
-  // A failure degrades to the conservative defaults in examExperienceFromLimits
-  // rather than making the examination unavailable.
-  const entitlementPromise = getEntitlement(admin, exam.organization_id).catch(() => null);
   let rows: Awaited<ReturnType<typeof attemptRows>>;
   try {
     rows = await attemptRows(admin, exam, attempt);
@@ -147,35 +242,33 @@ export async function GET(request: Request) {
     }
   }
 
-  const { data: saved, error: savedError } = await admin.from("exam_answers").select("*").eq("attempt_id", attempt.id);
+  // Load candidate-specific saved answers + hint usage in parallel with the
+  // cached exam-level static metadata (entitlement, published hints, header rows).
+  const [savedRes, hintUsageRes, staticMeta] = await Promise.all([
+    admin.from("exam_answers").select("*").eq("attempt_id", attempt.id),
+    (async () => {
+      try {
+        return await admin
+          .from("exam_hint_usage")
+          .select("question_id, part_id, level, times_opened")
+          .eq("attempt_id", attempt.id);
+      } catch {
+        return { data: [] as { question_id: string; part_id: string; level: number; times_opened: number }[] };
+      }
+    })(),
+    loadStaticExamStateMeta(
+      admin,
+      { id: exam.id, organization_id: exam.organization_id, quiz_id: exam.quiz_id },
+      settings,
+      rows.map((row) => row.questions.id),
+    ),
+  ]);
+
+  const { data: saved, error: savedError } = savedRes;
   if (savedError || !saved) return NextResponse.json({ error: "Saved answers could not be loaded. Reload or contact your invigilator." }, { status: 500, headers });
   const savedByQ = new Map((saved ?? []).map((a) => [a.question_id, a]));
-
-  // Hints ride along with the paper in ONE extra query, so the control below
-  // each question can open instantly. A hint failure degrades to "no hints";
-  // it can never fail the examination payload. Only published guidance text is
-  // attached — never an answer, key or marking scheme.
-  let hintsByQuestion = new Map<string, { level: number; text: string; doc: unknown | null }[]>();
-  try {
-    hintsByQuestion = await loadPublishedHints(
-      admin,
-      { id: exam.id, organization_id: exam.organization_id },
-      rows.map((row) => row.questions.id),
-    );
-  } catch {
-    hintsByQuestion = new Map();
-  }
-
-  // Hint usage is a formative record, shown back to the candidate in their
-  // feedback summary and to the teacher in the report. A failure here must
-  // never fail the paper, so it degrades to an empty list.
-  let hintUsage: { question_id: string; part_id: string; level: number; times_opened: number }[] = [];
-  try {
-    const { data } = await admin.from("exam_hint_usage")
-      .select("question_id, part_id, level, times_opened")
-      .eq("attempt_id", attempt.id);
-    hintUsage = data ?? [];
-  } catch { hintUsage = []; }
+  const hintsByQuestion = staticMeta.hintsByQuestion;
+  const hintUsage = (hintUsageRes?.data ?? []) as { question_id: string; part_id: string; level: number; times_opened: number }[];
 
   const submitted = attempt.status !== "in_progress";
   const resultsPublished = Boolean(settings.results_published);
@@ -186,7 +279,7 @@ export async function GET(request: Request) {
       (candidate as { invite_token?: string }).invite_token) ||
     null;
   const entryHref = rawInviteToken ? `/exam/join/${rawInviteToken}` : "/exam-access";
-  const entitlement = await entitlementPromise;
+  const entitlement = staticMeta.entitlement;
   const experience = examExperienceFromLimits(entitlement?.limits);
   const language = detectExamLanguage(
     settings.language,
@@ -200,25 +293,16 @@ export async function GET(request: Request) {
   // exam's organization, so branding can never leak across tenants.
   let paperHeader = null;
   try {
-    const [{ data: orgRow }, { data: quizRow }, { data: tplRow }] = await Promise.all([
-      admin.from("organizations").select("name, logo_url").eq("id", exam.organization_id).maybeSingle(),
-      exam.quiz_id
-        ? admin.from("quizzes").select("settings").eq("id", exam.quiz_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-      typeof settings.exam_paper_template_id === "string" && settings.exam_paper_template_id
-        ? admin.from("exam_paper_templates").select("*").eq("id", settings.exam_paper_template_id).eq("organization_id", exam.organization_id).maybeSingle()
-        : Promise.resolve({ data: null }),
-    ]);
     const totalMarks = rows.reduce((sum, row) => sum + Number(row.points ?? row.questions.points ?? 0), 0);
     paperHeader = resolveExamPaperHeader({
-      organizationName: (orgRow?.name as string | null) ?? "EVALORA",
-      organizationLogoUrl: (orgRow?.logo_url as string | null) ?? null,
+      organizationName: (staticMeta.orgRow?.name as string | null) ?? "EVALORA",
+      organizationLogoUrl: (staticMeta.orgRow?.logo_url as string | null) ?? null,
       examTitle: exam.title,
       examInstructions: exam.instructions ?? null,
       examDurationMinutes: exam.duration_minutes ?? null,
       examSettings: settings,
-      quizSettings: ((quizRow?.settings as Record<string, unknown> | null) ?? {}),
-      template: parseExamPaperTemplate(tplRow),
+      quizSettings: ((staticMeta.quizRow?.settings as Record<string, unknown> | null) ?? {}),
+      template: parseExamPaperTemplate(staticMeta.tplRow),
       totalMarks,
       candidateName: candidate.full_name ?? null,
       candidateRef: candidate.candidate_ref ?? null,

@@ -36,12 +36,21 @@ export interface MonitorAttemptInput {
   extension_minutes?: number;
   /** Saved answers of this attempt, with the quiz row each belongs to. Other rows are ignored. */
   answers: (SavedAnswerFacts & { quiz_question_id: string | null })[];
+  /** Optional SQL-aggregated progress counts (avoids transferring raw answer JSONB at scale). */
+  answer_stats?: {
+    answered: number;
+    correct: number;
+    incorrect: number;
+    awaiting_grading: number;
+    marked: number;
+  } | null;
   presence: {
     last_seen_at: string;
     current_question: number | null;
     pending_saves: number;
   } | null;
   unread_from_candidate: number;
+  incident_count?: number;
   lockdown_verified?: boolean;
   lockdown_platform?: string | null;
   lockdown_app_version?: string | null;
@@ -80,6 +89,8 @@ export interface MonitorRow {
   /** Answers the candidate's browser reports as not yet saved. Browser-reported, not from the database. */
   pending_saves: number;
   unread_from_candidate: number;
+  /** Recorded integrity / proctoring incidents for this attempt. */
+  incident_count?: number;
 }
 
 export interface MonitorSnapshot {
@@ -112,10 +123,26 @@ function parseRowPauseReasons(value: unknown): ("assessment" | "student" | "conn
 }
 
 export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[], nowMs: number): MonitorRow {
-  const paperIds = new Set(paper.map((r) => r.id));
-  // Only answers to questions on this candidate's paper count toward progress.
-  const saved = attempt.answers.filter((a) => a.quiz_question_id !== null && paperIds.has(a.quiz_question_id));
-  const summary = summarizeProgress(paper.length, saved);
+  const safeTotal = Math.max(0, paper.length);
+  let summary: ReturnType<typeof summarizeProgress>;
+  if (attempt.answer_stats) {
+    const answered = Math.max(0, Math.min(safeTotal, Math.floor(attempt.answer_stats.answered || 0)));
+    summary = {
+      total: safeTotal,
+      answered,
+      unanswered: Math.max(0, safeTotal - answered),
+      correct: Math.max(0, Math.floor(attempt.answer_stats.correct || 0)),
+      incorrect: Math.max(0, Math.floor(attempt.answer_stats.incorrect || 0)),
+      awaiting_grading: Math.max(0, Math.floor(attempt.answer_stats.awaiting_grading || 0)),
+      marked: Math.max(0, Math.floor(attempt.answer_stats.marked || 0)),
+      progress_percent: safeTotal > 0 ? Math.round((answered / safeTotal) * 100) : 0,
+    };
+  } else {
+    const paperIds = new Set(paper.map((r) => r.id));
+    // Only answers to questions on this candidate's paper count toward progress.
+    const saved = attempt.answers.filter((a) => a.quiz_question_id !== null && paperIds.has(a.quiz_question_id));
+    summary = summarizeProgress(safeTotal, saved);
+  }
   const presence = attempt.presence;
   return {
     attempt_id: attempt.id,
@@ -147,6 +174,7 @@ export function buildMonitorRow(attempt: MonitorAttemptInput, paper: PaperRow[],
     progress_percent: summary.progress_percent,
     pending_saves: presence ? presence.pending_saves : 0,
     unread_from_candidate: attempt.unread_from_candidate,
+    incident_count: Math.max(0, Math.floor(attempt.incident_count ?? 0)),
   };
 }
 

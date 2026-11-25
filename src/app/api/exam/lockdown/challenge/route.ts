@@ -43,7 +43,10 @@ export async function POST(request: Request) {
     .eq("exam_id", exam.id).eq("session_id_hash", sessionHash)
     .gt("created_at", new Date(now.getTime() - 10_000).toISOString()).limit(1).maybeSingle();
   if (recent) return NextResponse.json({ error: "Please wait briefly before requesting another Secure Browser challenge." }, { status: 429, headers: { "Cache-Control": "no-store" } });
-  await admin.from("exam_lockdown_challenges").delete().lt("expires_at", new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
+  // Probabilistic opportunistic pruning (~2% of requests) avoids write-lock contention during 1,000-student start bursts.
+  if (Math.random() < 0.02) {
+    await admin.from("exam_lockdown_challenges").delete().lt("expires_at", new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString());
+  }
   const nonce = createLockdownChallengeNonce();
   const expiresAt = new Date(now.getTime() + LOCKDOWN_CHALLENGE_TTL_MS).toISOString();
   const id = randomUUID();
@@ -52,7 +55,7 @@ export async function POST(request: Request) {
     exam_id: exam.id,
     exam_code: examCode,
     candidate_binding: parsed.data.candidate_binding,
-    session_id_hash: createHash("sha256").update(parsed.data.session_id).digest("hex"),
+    session_id_hash: sessionHash,
     nonce,
     public_key_pem: publicKey,
     platform: parsed.data.platform,

@@ -72,7 +72,9 @@ export async function attemptRows(
     }
     return order.map((id) => byId.get(id)!);
   }
-  return exam.settings.randomize_questions ? randomizeQuestionRows(rows, attempt.id) : rows;
+  return exam.settings.randomize_questions
+    ? randomizeQuestionRows(rows, attempt.id, exam.settings.sections)
+    : rows;
 }
 
 /** Totals and status counts from one complete grading run. */
@@ -217,16 +219,26 @@ export async function gradeAttemptDetailed(
     resolvedMax += maxPoints;
     gradedCount++;
   }
-  for (const update of updates) {
-    const { data: updated, error: updateError } = await admin
-      .from("exam_answers")
-      .update(update)
-      .eq("id", update.id)
-      .is("marked_by", null)
-      .select("id")
-      .maybeSingle();
-    // Separate DB writes remain non-atomic if a later write fails.
-    if (updateError || !updated) throw new Error("Could not persist examination grading.");
+  if (updates.length > 0) {
+    if (typeof (admin as { rpc?: unknown }).rpc === "function") {
+      const { data: updatedCount, error: rpcError } = await admin.rpc("apply_graded_exam_answers", {
+        p_updates: updates,
+      });
+      if (rpcError || Number(updatedCount) !== updates.length) {
+        throw new Error("Could not persist examination grading.");
+      }
+    } else {
+      for (const update of updates) {
+        const { data: updated, error: updateError } = await admin
+          .from("exam_answers")
+          .update(update)
+          .eq("id", update.id)
+          .is("marked_by", null)
+          .select("id")
+          .maybeSingle();
+        if (updateError || !updated) throw new Error("Could not persist examination grading.");
+      }
+    }
   }
   return {
     score: Math.round(score * 100) / 100,

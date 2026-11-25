@@ -166,6 +166,7 @@ export default async function SharedExamJoinPage({
       language={language}
       languageLock={experience.languageLock}
       lockdownRequired={lockdownRequired}
+      strictMultiDisplay={Boolean(lockdown.enabled && lockdown.strict_multi_display)}
       lockdownLaunchUrl={lockdownLaunchUrl}
     />
   );

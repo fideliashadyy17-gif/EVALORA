@@ -190,11 +190,17 @@ function ExamMessengerInner({ attemptId, token, active, questionNumber, totalQue
         setConnection("reconnecting");
       }
       if (stopped) return;
-      timer = setTimeout(tick, nextPollDelay({
+      const baseDelay = nextPollDelay({
         open: openRef.current,
         visible: typeof document === "undefined" || document.visibilityState === "visible",
         failures: failuresRef.current,
-      }));
+      });
+      // When the chat drawer is closed and healthy, stretch polling to ~30-35s
+      // with jitter to avoid synchronized polling bursts across 1,000 candidates.
+      const delay = !openRef.current && failuresRef.current === 0
+        ? Math.max(baseDelay, 30_000) + Math.floor(Math.random() * 5_000)
+        : baseDelay;
+      timer = setTimeout(tick, delay);
     };
 
     void tick();

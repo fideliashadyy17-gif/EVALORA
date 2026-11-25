@@ -101,7 +101,10 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
 
   const scheduleRefresh = useCallback(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => { debounceRef.current = null; void refresh(); }, MONITOR_REFRESH_DEBOUNCE_MS);
+    // Coalesce high-volume realtime bursts (e.g. 500-1,000 candidates saving concurrently)
+    // to at least 4s so the monitoring view never triggers back-to-back reload storms.
+    const delayMs = Math.max(MONITOR_REFRESH_DEBOUNCE_MS, 4_000);
+    debounceRef.current = setTimeout(() => { debounceRef.current = null; void refresh(); }, delayMs);
   }, [refresh]);
 
   // Organizer pause/resume. The backend re-checks authorization on every call
@@ -406,6 +409,11 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
                           )}
                           {r.unread_from_candidate > 0 && (
                             <span className="inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[11px] font-bold text-evergreen-950">{r.unread_from_candidate} new</span>
+                          )}
+                          {(r.incident_count ?? 0) > 0 && (
+                            <span className="inline-block rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800">
+                              {r.incident_count} {r.incident_count === 1 ? "flag" : "flags"}
+                            </span>
                           )}
                         </div>
                       </td>

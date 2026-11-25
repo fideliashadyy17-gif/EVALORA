@@ -253,6 +253,10 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   const lastPresenceSentAtRef = useRef(0);
   const activeRef = useRef(false);
   const dirtyRef = useRef(false);
+  const flushDraftRef = useRef<(() => boolean) | null>(null);
+  const registerDraftFlush = useCallback((fn: (() => boolean) | null) => {
+    flushDraftRef.current = fn;
+  }, []);
   const [answerDirty, setAnswerDirtyState] = useState(false);
   const [draftWarning, setDraftWarning] = useState(false);
   const [runnerVersion, setRunnerVersion] = useState(0);
@@ -627,6 +631,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
 
     void heartbeat("heartbeat");
+    // Add modest jitter (0-6s) so 1,000 concurrent students never synchronize
+    // heartbeats onto the same millisecond while staying well inside the 45s online window.
+    const heartbeatIntervalMs = PRESENCE_HEARTBEAT_MS + Math.floor(Math.random() * 6_000);
     const beat = setInterval(() => {
       if (pageHidden()) return;
       if (outageRef.current.lostAt !== null) {
@@ -636,7 +643,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         return;
       }
       void heartbeat("heartbeat");
-    }, PRESENCE_HEARTBEAT_MS);
+    }, heartbeatIntervalMs);
 
     // While an outage window is open, time the page spends hidden is tracked
     // so the server can subtract it (a lid closed for 20 minutes is not a
@@ -683,16 +690,30 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   useEffect(() => {
     if (!token || !attemptActive) return;
     let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleNext = (baseMs: number) => {
+      if (stopped) return;
+      if (timer) clearTimeout(timer);
+      const jitterMs = Math.floor(Math.random() * 8_000);
+      timer = setTimeout(() => { void refresh(); }, Math.max(PRESENCE_REFRESH_MS, baseMs) + jitterMs);
+    };
     const refresh = async () => {
-      if (stopped || pageHidden() || presenceBusy.current) return;
+      if (stopped || pageHidden() || presenceBusy.current) {
+        scheduleNext(45_000);
+        return;
+      }
       presenceBusy.current = true;
+      let nextDelayMs = 45_000;
       try {
         const res = await fetch(`/api/exam/presence?attempt_id=${encodeURIComponent(attemptId)}`, {
           headers: { Authorization: `Bearer ${token}` },
           cache: "no-store",
         });
-        const data = (await res.json().catch(() => null)) as { roster?: PresenceRoster } | null;
+        const data = (await res.json().catch(() => null)) as { roster?: PresenceRoster; refresh_ms?: number } | null;
         if (stopped) return;
+        if (typeof data?.refresh_ms === "number" && Number.isFinite(data.refresh_ms)) {
+          nextDelayMs = Math.max(30_000, data.refresh_ms);
+        }
         if (res.ok && data?.roster) {
           setPresence(data.roster);
           setPresenceError(null);
@@ -703,17 +724,17 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
         if (!stopped) setPresenceError("Connection interrupted — the list refreshes itself when you are back.");
       } finally {
         presenceBusy.current = false;
+        scheduleNext(nextDelayMs);
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), PRESENCE_REFRESH_MS);
     const onVisible = () => {
       if (!pageHidden()) void refresh();
     };
     if (typeof document !== "undefined") document.addEventListener("visibilitychange", onVisible);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      if (timer) clearTimeout(timer);
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
   }, [attemptActive, attemptId, token]);
@@ -722,7 +743,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
   useEffect(() => {
     if (!token || !attemptActive || !hasLoadedStateRef.current) return;
     const elapsed = Date.now() - lastPresenceSentAtRef.current;
-    const delay = Math.max(400, 4_000 - elapsed);
+    const delay = Math.max(500, 15_000 - elapsed);
     const timer = setTimeout(() => {
       if (pageHidden()) return;
       lastPresenceSentAtRef.current = Date.now();
@@ -840,6 +861,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   function navigateTo(nextIndex: number) {
     if (nextIndex === index) return;
+    if (dirtyRef.current && flushDraftRef.current) {
+      flushDraftRef.current();
+    }
     if (dirtyRef.current && !window.confirm("This answer has unsaved changes. Discard them and leave this question?")) return;
     setAnswerDirty(false);
     setIndex(nextIndex);
@@ -847,6 +871,9 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
 
   function requestSubmit() {
     if (manualPauseRef.current.paused) return;
+    if (dirtyRef.current && flushDraftRef.current) {
+      flushDraftRef.current();
+    }
     if (dirtyRef.current) { setDraftWarning(true); return; }
     setSubmitError(null);
     setConfirmSubmit(true);
@@ -937,8 +964,8 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       try {
         void fetch("/api/exam/presence", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ attempt_id: attemptId, token, action: "leave" }),
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ attempt_id: attemptId, event: "leave" }),
           keepalive: true,
         }).catch(() => {});
       } catch {
@@ -1698,6 +1725,7 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                     }).catch(() => { /* best-effort formative record */ });
                   }}
                   onDirtyChange={setAnswerDirty}
+                  onRegisterFlush={registerDraftFlush}
                   markings={currentMarkings}
                   experience={experience}
                   displayQuestionNumber={sectionModel?.localNumber.get(index) ?? index + 1}
