@@ -204,7 +204,7 @@ export async function POST(request: Request) {
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const rows = track ? paperForTrack(rows0, track) : rows0;
     const ordered = settings.randomize_questions
-      ? randomizeQuestionRows(rows, `${exam.id}:${candidate.id}`)
+      ? randomizeQuestionRows(rows, `${exam.id}:${candidate.id}`, settings.sections)
       : rows;
     const { data, error } = await admin
       .from("exam_attempts")

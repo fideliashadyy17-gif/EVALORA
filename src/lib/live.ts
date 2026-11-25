@@ -272,14 +272,38 @@ export function seededShuffle<T>(arr: T[], seed: string): T[] {
   return a;
 }
 
+export interface ExamSectionMeta {
+  id?: string;
+  title?: string;
+  randomize?: boolean;
+  randomize_questions?: boolean;
+  instructions?: string;
+}
+
+function sectionDisablesRandomization(sec: string, sections?: unknown): boolean {
+  if (!Array.isArray(sections)) return false;
+  const target = sec.trim().toUpperCase();
+  const meta = (sections as ExamSectionMeta[]).find(
+    (entry) => typeof entry?.id === "string" && entry.id.trim().toUpperCase() === target,
+  );
+  if (!meta) return false;
+  if (meta.randomize === false || meta.randomize_questions === false) return true;
+  if (typeof meta.instructions === "string" && /randomization\s+is\s+disabled/i.test(meta.instructions)) {
+    return true;
+  }
+  return false;
+}
+
 /**
  * Randomize question rows deterministically for an attempt.
- * Preserves sections (e.g. Part A questions stay within Part A, Part B within Part B).
+ * Preserves sections (e.g. Part A questions stay within Part A, Part B within Part B)
+ * and keeps sections whose settings disable randomization in their authored order.
  * Guarantees no duplicate or missing questions.
  */
 export function randomizeQuestionRows<T extends { questions?: { config?: unknown } | null }>(
   rows: T[],
   seed: string,
+  sections?: unknown,
 ): T[] {
   if (!rows || rows.length <= 1) return rows ? [...rows] : [];
   const hasSections = rows.some((r) => {
@@ -306,7 +330,11 @@ export function randomizeQuestionRows<T extends { questions?: { config?: unknown
   const out: T[] = [];
   for (const sec of sectionOrder) {
     const group = sectionGroups.get(sec) ?? [];
-    out.push(...seededShuffle(group, `${seed}:${sec}`));
+    if (sectionDisablesRandomization(sec, sections)) {
+      out.push(...group);
+    } else {
+      out.push(...seededShuffle(group, `${seed}:${sec}`));
+    }
   }
   return out;
 }
@@ -332,7 +360,25 @@ export interface SessionQuestionRow {
   };
 }
 
-export async function loadQuizQuestions(
+export type QuizQuestionRow = SessionQuestionRow;
+
+const QUIZ_CACHE_TTL_MS = 30_000;
+const QUIZ_CACHE_MAX = 64;
+const quizQuestionCache = new Map<string, { rows: SessionQuestionRow[]; expiresAt: number }>();
+const quizQuestionInflight = new Map<string, Promise<SessionQuestionRow[]>>();
+
+function serviceRoleQuizCacheKey(supabase: unknown, quizId: string): string | null {
+  if (!supabase || typeof supabase !== "object") return null;
+  const url = (supabase as { supabaseUrl?: unknown }).supabaseUrl;
+  const key = (supabase as { supabaseKey?: unknown }).supabaseKey;
+  const serviceKey = typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  if (typeof url === "string" && url.length > 0 && serviceKey && key === serviceKey) {
+    return `${url}::${quizId}`;
+  }
+  return null;
+}
+
+async function fetchQuizQuestionsUncached(
   supabase: SupabaseClient,
   quizId: string,
   options: { failOnError?: boolean } = {},
@@ -353,6 +399,39 @@ export async function loadQuizQuestions(
       ),
     },
   })) as SessionQuestionRow[];
+}
+
+export async function loadQuizQuestions(
+  supabase: SupabaseClient,
+  quizId: string,
+  options: { failOnError?: boolean } = {},
+): Promise<SessionQuestionRow[]> {
+  const cacheKey = serviceRoleQuizCacheKey(supabase, quizId);
+  if (!cacheKey) return fetchQuizQuestionsUncached(supabase, quizId, options);
+
+  const cached = quizQuestionCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) return cached.rows;
+
+  const existing = quizQuestionInflight.get(cacheKey);
+  if (existing) return existing;
+
+  const promise = fetchQuizQuestionsUncached(supabase, quizId, options)
+    .then((rows) => {
+      if (rows.length > 0) {
+        if (quizQuestionCache.size >= QUIZ_CACHE_MAX && !quizQuestionCache.has(cacheKey)) {
+          const oldest = quizQuestionCache.keys().next().value;
+          if (oldest !== undefined) quizQuestionCache.delete(oldest);
+        }
+        quizQuestionCache.set(cacheKey, { rows, expiresAt: Date.now() + QUIZ_CACHE_TTL_MS });
+      }
+      return rows;
+    })
+    .finally(() => {
+      quizQuestionInflight.delete(cacheKey);
+    });
+
+  quizQuestionInflight.set(cacheKey, promise);
+  return promise;
 }
 
 /**

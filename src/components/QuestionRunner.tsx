@@ -101,6 +101,7 @@ export function QuestionRunner({
   question,
   onAnswer,
   onDirtyChange,
+  onRegisterFlush,
   disabled: initiallyDisabled = false,
   initial,
   submitLabel = "Submit answer",
@@ -114,6 +115,8 @@ export function QuestionRunner({
   onAnswer: (payload: Record<string, unknown>) => void | boolean | Promise<void | boolean>;
   /** Optional exam-only signal: changes have not yet been handed to onAnswer. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Optional exam-only hook: lets the host flush an unsaved draft synchronously before navigation/submit. */
+  onRegisterFlush?: (flush: (() => boolean) | null) => void;
   disabled?: boolean;
   initial?: Record<string, unknown> | null;
   submitLabel?: string;
@@ -168,6 +171,18 @@ export function QuestionRunner({
     ? ((initial as { parts: Record<string, unknown> }).parts) : {};
   const [partValues, setPartValues] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(savedParts).map(([k, v]) => [k, typeof v === "string" || typeof v === "number" ? String(v) : ""])));
+  const partValuesRef = useRef<Record<string, string>>(partValues);
+  partValuesRef.current = partValues;
+  const textRef = useRef(text);
+  textRef.current = text;
+  const numRef = useRef(num);
+  numRef.current = num;
+  const pairsRef = useRef(pairs);
+  pairsRef.current = pairs;
+  const orderRef = useRef(order);
+  orderRef.current = order;
+  const partAutosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const localDirtyRef = useRef(false);
   const [openPartHints, setOpenPartHints] = useState<Record<string, number>>({});
   const savedWorking = (initial && typeof initial === "object" && (initial as { working?: unknown }).working
     && typeof (initial as { working?: unknown }).working === "object" && !Array.isArray((initial as { working?: unknown }).working))
@@ -198,15 +213,22 @@ export function QuestionRunner({
   useEffect(() => {
     const saved = latestInitialRef.current;
     const activeQuestion = latestQuestionRef.current;
+    if (partAutosaveTimerRef.current) {
+      clearTimeout(partAutosaveTimerRef.current);
+      partAutosaveTimerRef.current = null;
+    }
+    localDirtyRef.current = false;
     setSelected(isStringArray(saved?.option_ids) ? saved.option_ids : typeof saved?.option_id === "string" ? [saved.option_id] : []);
     setText(typeof saved?.text === "string" ? saved.text : "");
     setNum(typeof saved?.value === "string" || typeof saved?.value === "number" ? String(saved.value) : "");
     setOrder(isStringArray(saved?.order) ? saved.order : activeQuestion.options.map((option) => option.label));
     setPairs(Object.fromEntries((isPairs(saved?.pairs) ? saved.pairs : []).map((pair) => [pair.left, pair.right])));
     setSelectedChip(null);
-    setPartValues(Object.fromEntries(Object.entries(
+    const restoredParts = Object.fromEntries(Object.entries(
       (saved && typeof saved === "object" && !Array.isArray(saved) && (saved as { parts?: Record<string, unknown> }).parts) || {},
-    ).map(([key, value]) => [key, typeof value === "string" || typeof value === "number" ? String(value) : ""])));
+    ).map(([key, value]) => [key, typeof value === "string" || typeof value === "number" ? String(value) : ""]));
+    setPartValues(restoredParts);
+    partValuesRef.current = restoredParts;
     setOpenPartHints({});
     const restoredWorking = (saved && typeof saved === "object" && !Array.isArray(saved)
       && (saved as { working?: unknown }).working && typeof (saved as { working?: unknown }).working === "object"
@@ -218,14 +240,28 @@ export function QuestionRunner({
   }, [question.quiz_question_id, question.question_id]); // reset per question
 
   const editRevision = useRef(0);
-  useEffect(() => () => { editRevision.current += 1; }, []);
+  useEffect(() => () => {
+    editRevision.current += 1;
+    if (partAutosaveTimerRef.current) {
+      clearTimeout(partAutosaveTimerRef.current);
+      partAutosaveTimerRef.current = null;
+    }
+  }, []);
 
-  function changed() { editRevision.current += 1; onDirtyChange?.(true); }
+  function changed() {
+    editRevision.current += 1;
+    localDirtyRef.current = true;
+    onDirtyChange?.(true);
+  }
   // The structured response editor reports dirtiness itself *and* saves through
   // emit(), which also clears the draft flag. Notify the parent of "clean" only
   // once so a save does not produce duplicate state updates.
   const structuredDirty = useRef(false);
   function emit(payload: Record<string, unknown>): boolean | void {
+    if (partAutosaveTimerRef.current) {
+      clearTimeout(partAutosaveTimerRef.current);
+      partAutosaveTimerRef.current = null;
+    }
     // Leave existing live-session callback behavior unchanged when draft
     // tracking is not requested.
     if (!onDirtyChange) { void onAnswer(payload); return; }
@@ -233,10 +269,16 @@ export function QuestionRunner({
     try {
       const result = onAnswer(payload);
       if (result instanceof Promise) {
-        void result.then((accepted) => { if (accepted !== false && revision === editRevision.current) onDirtyChange?.(false); }).catch(() => {});
+        void result.then((accepted) => {
+          if (accepted !== false && revision === editRevision.current) {
+            localDirtyRef.current = false;
+            onDirtyChange?.(false);
+          }
+        }).catch(() => {});
         return true;
       }
       if (result === false) return false;
+      localDirtyRef.current = false;
       onDirtyChange?.(false);
       return true;
     } catch {
@@ -244,6 +286,61 @@ export function QuestionRunner({
       return false;
     }
   }
+
+  function scheduleAssessPartsAutosave(nextParts: Record<string, string>) {
+    if (!autosave || disabled) return;
+    if (partAutosaveTimerRef.current) clearTimeout(partAutosaveTimerRef.current);
+    partAutosaveTimerRef.current = setTimeout(() => {
+      partAutosaveTimerRef.current = null;
+      const hasAnyValue = Object.values(nextParts).some((val) => val.trim().length > 0);
+      const hasAnyWorking = Object.keys(workingPartsRef.current).length > 0;
+      const hadSaved = Boolean(latestInitialRef.current);
+      if (!hasAnyValue && !hasAnyWorking && !hadSaved) return;
+      emit(hasWorkingWorkspace ? { parts: partValuesRef.current, working: workingPartsRef.current } : { parts: partValuesRef.current });
+    }, 500);
+  }
+
+  // Register a synchronous draft-flush callback when autosave is enabled so
+  // clicking Next / Previous / Submit commits pending typed/matching/numeric
+  // drafts immediately instead of showing a discard confirmation dialog.
+  const flushDraftImplRef = useRef<() => boolean>(() => false);
+  flushDraftImplRef.current = () => {
+    if (disabled || !localDirtyRef.current) return false;
+    if (partAutosaveTimerRef.current) {
+      clearTimeout(partAutosaveTimerRef.current);
+      partAutosaveTimerRef.current = null;
+    }
+    if (t === "assess_parts") {
+      return emit(hasWorkingWorkspace ? { parts: partValuesRef.current, working: workingPartsRef.current } : { parts: partValuesRef.current }) !== false;
+    }
+    if (t === "short_answer") {
+      if (!textRef.current.trim() && !latestInitialRef.current) return false;
+      return emit({ text: textRef.current }) !== false;
+    }
+    if (t === "numeric") {
+      const trimmed = numRef.current.trim();
+      if (!trimmed || !Number.isFinite(Number(trimmed))) return false;
+      return emit({ value: Number(trimmed) }) !== false;
+    }
+    if (t === "matching") {
+      const built = Object.entries(pairsRef.current)
+        .filter(([, right]) => Boolean(right))
+        .map(([left, right]) => ({ left, right }));
+      if (!built.length && !latestInitialRef.current) return false;
+      return emit({ pairs: built }) !== false;
+    }
+    if (t === "ordering") {
+      return emit({ order: orderRef.current }) !== false;
+    }
+    return false;
+  };
+
+  useEffect(() => {
+    if (!onRegisterFlush || !autosave) return;
+    const handle = () => flushDraftImplRef.current();
+    onRegisterFlush(handle);
+    return () => onRegisterFlush(null);
+  }, [onRegisterFlush, autosave]);
 
   return (
     <div className="question-runner" data-question-type={t}>
@@ -697,8 +794,14 @@ export function QuestionRunner({
                       questionId={question.question_id}
                       fieldId={part.id}
                       floatingKeyboard={experience.premiumMathInterface}
-                      onChange={(next) => { changed(); setPartValues((v) => ({ ...v, [part.id]: next })); }}
-                      onCommit={() => emit(hasWorkingWorkspace ? { parts: partValues, working: workingPartsRef.current } : { parts: partValues })}
+                      onChange={(next) => {
+                        changed();
+                        const updated = { ...partValuesRef.current, [part.id]: next };
+                        partValuesRef.current = updated;
+                        setPartValues(updated);
+                        scheduleAssessPartsAutosave(updated);
+                      }}
+                      onCommit={() => emit(hasWorkingWorkspace ? { parts: partValuesRef.current, working: workingPartsRef.current } : { parts: partValuesRef.current })}
                     />
                   </div>
                   {workingWorkspace && openWorking[part.id] ? (

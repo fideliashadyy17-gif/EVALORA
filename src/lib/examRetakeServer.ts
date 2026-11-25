@@ -194,7 +194,9 @@ export async function startRetakeAttempt(
       const baseRows = await loadQuizQuestions(admin, exam.quiz_id, { failOnError: true });
       const paper = track ? paperForTrack(baseRows, track) : baseRows;
       const seed = retakeOrderSeed(exam.id, candidate.id, nextNumber);
-      ordered = settings.randomize_questions ? randomizeQuestionRows(paper, seed) : paper;
+      ordered = settings.randomize_questions
+        ? randomizeQuestionRows(paper, seed, settings.sections)
+        : paper;
     } catch {
       return { ok: false, error: "The examination paper is unavailable. Contact your institution." };
     }

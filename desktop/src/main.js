@@ -57,6 +57,7 @@ function isTrustedEVALORAPage(url) {
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") return false;
     const host = parsed.host.toLowerCase();
     if (ALLOWED_HOSTS.has(host)) return true;
+    if (host.endsWith(".evalora-edu.online")) return true;
     if (host.endsWith(".vercel.app")) return true;
     if (host === "localhost" || host.startsWith("localhost:") || host === "127.0.0.1" || host.startsWith("127.0.0.1:")) return true;
     return false;

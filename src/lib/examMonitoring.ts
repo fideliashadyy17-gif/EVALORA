@@ -6,8 +6,8 @@ import { buildMonitorRow, paperForAttempt, sortMonitorRows, type MonitorSnapshot
 import type { SavedAnswerFacts } from "./examMessaging";
 
 /** Attempts shown on one dashboard. Older attempts are reachable through the results pages. */
-export const MONITOR_ATTEMPT_LIMIT = 500;
-const IN_CHUNK = 150;
+export const MONITOR_ATTEMPT_LIMIT = 1500;
+const IN_CHUNK = 250;
 
 function chunks<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -50,30 +50,29 @@ export async function loadMonitorSnapshot(
   const classIds = [...new Set(attempts.map((a) => a.exam_candidates?.class_id).filter((id): id is string => Boolean(id)))];
   const classNames = new Map<string, string>();
   const answersByAttempt = new Map<string, (SavedAnswerFacts & { quiz_question_id: string | null })[]>();
+  const answerStatsByAttempt = new Map<
+    string,
+    { answered: number; correct: number; incorrect: number; awaiting_grading: number; marked: number }
+  >();
   const presenceByAttempt = new Map<string, { last_seen_at: string; current_question: number | null; pending_saves: number }>();
   const unreadByAttempt = new Map<string, number>();
+  const incidentsByAttempt = new Map<string, number>();
+  let usedRpcStats = false;
 
-  // Load paper structure, class labels, saved answers, live presence, and unread
-  // candidate messages concurrently to cut live monitor snapshot latency.
-  const [quizRowsResult, classChunks, answerChunks, presenceResult, unreadResult] = await Promise.all([
+  // Load paper structure, class labels, live presence, unread candidate messages,
+  // and integrity incident counts concurrently.
+  const [quizRowsResult, classChunks, presenceResult, unreadResult, incidentResult] = await Promise.all([
     exam.quiz_id
       ? supabase.from("quiz_questions").select("id, questions(id, config)").eq("quiz_id", exam.quiz_id).order("position")
       : Promise.resolve({ data: [] as unknown[] }),
     Promise.all(
       chunks(classIds, IN_CHUNK).map((part) => supabase.from("classes").select("id, name").in("id", part)),
     ),
-    Promise.all(
-      chunks(attemptIds, IN_CHUNK).map((part) =>
-        supabase
-          .from("exam_answers")
-          .select("attempt_id, quiz_question_id, answer, is_correct, points_awarded")
-          .in("attempt_id", part),
-      ),
-    ),
     supabase
       .from("exam_presence")
       .select("attempt_id, last_seen_at, current_question, pending_saves")
-      .eq("exam_id", examId),
+      .eq("exam_id", examId)
+      .limit(MONITOR_ATTEMPT_LIMIT),
     supabase
       .from("exam_messages")
       .select("attempt_id")
@@ -81,25 +80,95 @@ export async function loadMonitorSnapshot(
       .eq("sender_kind", "candidate")
       .is("read_at", null)
       .limit(5000),
+    (async () => {
+      try {
+        return await supabase
+          .from("proctoring_incidents")
+          .select("attempt_id")
+          .eq("exam_id", examId)
+          .limit(10000);
+      } catch {
+        return { data: [] as { attempt_id: string | null }[] };
+      }
+    })(),
   ]);
 
   const paper = ((quizRowsResult.data ?? []) as unknown as { id: string; questions: { config?: unknown } | null }[])
     .map((r) => ({ id: r.id, questions: r.questions ?? {} })) as PaperRow[];
+  const paperQuizQuestionIds = paper.map((r) => r.id);
+
+  // Prefer the RLS-preserving SQL aggregation RPC (`exam_monitor_answer_stats`)
+  // so 1,000+ candidates never transfer 34,000 raw JSONB answer payloads across
+  // the network. Automatically falls back to raw rows if RPC is unavailable.
+  if (attemptIds.length > 0) {
+    if (typeof (supabase as { rpc?: unknown }).rpc === "function") {
+      try {
+        const rpcChunks = await Promise.all(
+          chunks(attemptIds, 500).map((part) =>
+            supabase.rpc("exam_monitor_answer_stats", {
+              p_attempt_ids: part,
+              p_paper_quiz_question_ids: paperQuizQuestionIds.length ? paperQuizQuestionIds : null,
+            }),
+          ),
+        );
+        if (rpcChunks.every((r) => !r.error && Array.isArray(r.data))) {
+          usedRpcStats = true;
+          for (const res of rpcChunks) {
+            for (const row of (res.data ?? []) as {
+              attempt_id: string;
+              answered: number;
+              correct: number;
+              incorrect: number;
+              awaiting_grading: number;
+              marked: number;
+            }[]) {
+              answerStatsByAttempt.set(row.attempt_id, {
+                answered: Number(row.answered ?? 0),
+                correct: Number(row.correct ?? 0),
+                incorrect: Number(row.incorrect ?? 0),
+                awaiting_grading: Number(row.awaiting_grading ?? 0),
+                marked: Number(row.marked ?? 0),
+              });
+            }
+          }
+        }
+      } catch {
+        usedRpcStats = false;
+      }
+    }
+
+    if (!usedRpcStats) {
+      const answerChunks = await Promise.all(
+        chunks(attemptIds, IN_CHUNK).map((part) =>
+          supabase
+            .from("exam_answers")
+            .select("attempt_id, quiz_question_id, answer, is_correct, points_awarded")
+            .in("attempt_id", part),
+        ),
+      );
+      for (const res of answerChunks) {
+        for (const a of (res.data ?? []) as { attempt_id: string; quiz_question_id: string | null; answer: unknown; is_correct: boolean | null; points_awarded: number | null }[]) {
+          const list = answersByAttempt.get(a.attempt_id) ?? [];
+          list.push({ answer: a.answer, is_correct: a.is_correct, points_awarded: a.points_awarded, quiz_question_id: a.quiz_question_id });
+          answersByAttempt.set(a.attempt_id, list);
+        }
+      }
+    }
+  }
+
   for (const res of classChunks) {
     for (const c of res.data ?? []) classNames.set(c.id as string, c.name as string);
-  }
-  for (const res of answerChunks) {
-    for (const a of (res.data ?? []) as { attempt_id: string; quiz_question_id: string | null; answer: unknown; is_correct: boolean | null; points_awarded: number | null }[]) {
-      const list = answersByAttempt.get(a.attempt_id) ?? [];
-      list.push({ answer: a.answer, is_correct: a.is_correct, points_awarded: a.points_awarded, quiz_question_id: a.quiz_question_id });
-      answersByAttempt.set(a.attempt_id, list);
-    }
   }
   for (const p of (presenceResult.data ?? []) as { attempt_id: string; last_seen_at: string; current_question: number | null; pending_saves: number }[]) {
     presenceByAttempt.set(p.attempt_id, { last_seen_at: p.last_seen_at, current_question: p.current_question, pending_saves: p.pending_saves });
   }
   for (const u of (unreadResult.data ?? []) as { attempt_id: string }[]) {
     unreadByAttempt.set(u.attempt_id, (unreadByAttempt.get(u.attempt_id) ?? 0) + 1);
+  }
+  for (const inc of ((incidentResult as { data?: { attempt_id?: string | null }[] | null })?.data ?? [])) {
+    if (inc?.attempt_id) {
+      incidentsByAttempt.set(inc.attempt_id, (incidentsByAttempt.get(inc.attempt_id) ?? 0) + 1);
+    }
   }
 
   const rows = attempts.map((a) => {
@@ -109,6 +178,9 @@ export async function loadMonitorSnapshot(
     const deadline = attemptDeadline(exam, a.started_at, Number(a.extension_minutes ?? 0), manualPauseMs(a, nowMs)).toISOString();
     const candidate = a.exam_candidates;
     const attemptPaper = paperForAttempt(paper, a.question_order, track);
+    const rpcStats = usedRpcStats
+      ? answerStatsByAttempt.get(a.id) ?? { answered: 0, correct: 0, incorrect: 0, awaiting_grading: 0, marked: 0 }
+      : null;
     return buildMonitorRow({
       id: a.id,
       status: a.status,
@@ -124,8 +196,10 @@ export async function loadMonitorSnapshot(
       pause_reasons: a.pause_reasons,
       paused_at: a.paused_at,
       answers: answersByAttempt.get(a.id) ?? [],
+      answer_stats: rpcStats,
       presence: presenceByAttempt.get(a.id) ?? null,
       unread_from_candidate: unreadByAttempt.get(a.id) ?? 0,
+      incident_count: incidentsByAttempt.get(a.id) ?? 0,
       lockdown_verified: a.lockdown_verified,
       lockdown_platform: a.lockdown_platform,
       lockdown_app_version: a.lockdown_app_version,

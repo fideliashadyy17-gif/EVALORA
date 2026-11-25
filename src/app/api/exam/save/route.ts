@@ -9,6 +9,37 @@ import { z } from "zod";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 const CLOCK_SKEW_MS = 5_000;
+const QUESTION_TYPE_CACHE_TTL_MS = 300_000;
+const QUESTION_TYPE_CACHE_MAX = 4096;
+const questionTypeCache = new Map<string, { type: string; expiresAt: number }>();
+
+function serviceRoleScope(admin: unknown): string | null {
+  if (!admin || typeof admin !== "object") return null;
+  const url = (admin as { supabaseUrl?: unknown }).supabaseUrl;
+  const key = (admin as { supabaseKey?: unknown }).supabaseKey;
+  const serviceKey = typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  return typeof url === "string" && url.length > 0 && serviceKey && key === serviceKey ? url : null;
+}
+
+async function resolveCachedQuestionType(
+  admin: ReturnType<typeof createAdminClient>,
+  scope: string,
+  questionId: string,
+): Promise<string | null> {
+  const key = `${scope}::${questionId}`;
+  const cached = questionTypeCache.get(key);
+  if (cached && Date.now() < cached.expiresAt) return cached.type;
+  const { data } = await admin.from("questions").select("type").eq("id", questionId).maybeSingle();
+  const type = (data as { type?: string | null } | null)?.type ?? null;
+  if (type) {
+    if (questionTypeCache.size >= QUESTION_TYPE_CACHE_MAX && !questionTypeCache.has(key)) {
+      const oldest = questionTypeCache.keys().next().value;
+      if (oldest !== undefined) questionTypeCache.delete(oldest);
+    }
+    questionTypeCache.set(key, { type, expiresAt: Date.now() + QUESTION_TYPE_CACHE_TTL_MS });
+  }
+  return type;
+}
 
 const Body = z.object({
   attempt_id: z.string().uuid(),
@@ -56,6 +87,53 @@ export async function POST(request: Request) {
   } = parsed.data;
 
   const admin = createAdminClient();
+  const rpcScope = serviceRoleScope(admin);
+  if (!recovery && rpcScope && typeof (admin as { rpc?: unknown }).rpc === "function") {
+    const cachedType = await resolveCachedQuestionType(admin, rpcScope, question_id);
+    if (cachedType !== null) {
+      const validatedFast = validateAnswerPayload(cachedType, answer);
+      if (!validatedFast.ok) {
+        return NextResponse.json({ error: validatedFast.error ?? "Invalid answer." }, { status: 400, headers: NO_STORE });
+      }
+      const fastNowIso = new Date().toISOString();
+      const { data: rpcData, error: rpcError } = await admin.rpc("save_exam_answer_fast", {
+        p_attempt_id: attempt_id,
+        p_access_token: token,
+        p_question_id: question_id,
+        p_quiz_question_id: quiz_question_id ?? null,
+        p_answer: validatedFast.answer,
+        p_flagged: flagged ?? null,
+        p_now: fastNowIso,
+      });
+      if (!rpcError && rpcData && typeof rpcData === "object") {
+        const res = rpcData as { ok?: boolean; code?: string; saved_at?: string };
+        if (res.ok) {
+          return NextResponse.json(
+            {
+              ok: true,
+              saved_at: res.saved_at ?? fastNowIso,
+              ...(idempotency_key ? { idempotency_key } : {}),
+            },
+            { headers: NO_STORE },
+          );
+        }
+        if (res.code === "not_found") {
+          return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
+        }
+        if (res.code === "question_not_in_paper") {
+          return NextResponse.json({ error: "Question not in this paper." }, { status: 400, headers: NO_STORE });
+        }
+        if (res.code === "quiz_question_mismatch") {
+          return NextResponse.json({ error: "Question does not match this paper." }, { status: 400, headers: NO_STORE });
+        }
+        if (res.code === "question_not_in_candidate_paper") {
+          return NextResponse.json({ error: "Question not in this candidate's paper." }, { status: 400, headers: NO_STORE });
+        }
+        // code === "fallback_needed": fall through to full pause / deadline / recovery path below.
+      }
+    }
+  }
+
   const ctx = await loadAttemptContext(admin, attempt_id, token);
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
   const { attempt, exam } = ctx;

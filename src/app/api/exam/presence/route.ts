@@ -39,6 +39,29 @@ import { z } from "zod";
  * status itself can say "handed in".
  */
 const NO_STORE = { "Cache-Control": "private, no-store" };
+const PRESENCE_SNAPSHOT_TTL_MS = 15_000;
+const PRESENCE_SNAPSHOT_MAX = 64;
+
+interface CachedPresenceSnapshot {
+  attempts: {
+    id: string;
+    status: string;
+    exam_candidates: { full_name: string | null } | null;
+  }[];
+  seenBy: Map<string, string | null>;
+}
+
+const presenceSnapshotCache = new Map<string, { value: CachedPresenceSnapshot; expiresAt: number }>();
+const presenceSnapshotInflight = new Map<string, Promise<CachedPresenceSnapshot>>();
+
+function serviceRoleScope(admin: unknown): string | null {
+  if (!admin || typeof admin !== "object") return null;
+  const url = (admin as { supabaseUrl?: unknown }).supabaseUrl;
+  const key = (admin as { supabaseKey?: unknown }).supabaseKey;
+  const serviceKey = typeof process !== "undefined" ? process.env?.SUPABASE_SERVICE_ROLE_KEY : undefined;
+  return typeof url === "string" && url.length > 0 && serviceKey && key === serviceKey ? url : null;
+}
+
 const Count = z.number().int().min(0).max(1000);
 const Body = z.object({
   attempt_id: z.string().uuid(),
@@ -71,6 +94,53 @@ export async function POST(request: Request) {
   const body = parsed.data;
 
   const admin = createAdminClient();
+  const rpcScope = serviceRoleScope(admin);
+  if (body.event !== "restored" && rpcScope && typeof (admin as { rpc?: unknown }).rpc === "function") {
+    const fastNowIso = new Date().toISOString();
+    const { data: rpcData, error: rpcError } = await admin.rpc("record_exam_heartbeat", {
+      p_attempt_id: body.attempt_id,
+      p_access_token: token,
+      p_event: body.event ?? "heartbeat",
+      p_current_question: typeof body.current_question === "number" ? body.current_question : null,
+      p_total_questions: typeof body.total_questions === "number" ? body.total_questions : null,
+      p_saved_count: typeof body.saved_count === "number" ? body.saved_count : null,
+      p_pending_saves: typeof body.pending_saves === "number" ? body.pending_saves : null,
+      p_now: fastNowIso,
+    });
+    if (!rpcError && rpcData && typeof rpcData === "object") {
+      const res = rpcData as {
+        ok?: boolean;
+        code?: string;
+        server_now?: string;
+        deadline?: string | null;
+        paused?: boolean;
+        pause_reasons?: string[] | null;
+        paused_at?: string | null;
+      };
+      if (res.ok) {
+        return NextResponse.json(
+          {
+            ok: true,
+            server_now: res.server_now ?? fastNowIso,
+            heartbeat_ms: PRESENCE_HEARTBEAT_MS,
+            deadline: res.deadline ?? new Date(8.64e15).toISOString(),
+            pause_credit: null,
+            paused: Boolean(res.paused),
+            pause_notice: pauseNoticeKind({
+              pause_reasons: res.pause_reasons ?? null,
+              paused_at: res.paused_at ?? null,
+            }),
+          },
+          { headers: NO_STORE },
+        );
+      }
+      if (res.code === "not_found") {
+        return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
+      }
+      // code === "fallback_needed": fall through to full connection-pause recovery / 409 path below.
+    }
+  }
+
   const ctx = await loadAttemptContext(admin, body.attempt_id, token);
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
   const { attempt, exam } = ctx;
@@ -326,54 +396,88 @@ export async function GET(request: Request) {
 
   // Only the attempts of this examination. `exam_id` is taken from the
   // authenticated attempt, never from the query string.
-  const { data: attempts } = await admin
-    .from("exam_attempts")
-    .select("id, status, started_at, submitted_at, exam_candidates(full_name)")
-    .eq("exam_id", attempt.exam_id)
-    .in("status", ["in_progress", "submitted", "expired"])
-    .order("started_at", { ascending: true })
-    .limit(2000);
+  const loadSnapshot = async (): Promise<CachedPresenceSnapshot> => {
+    const [{ data: attempts }, { data: presence }] = await Promise.all([
+      admin
+        .from("exam_attempts")
+        .select("id, status, started_at, submitted_at, exam_candidates(full_name)")
+        .eq("exam_id", attempt.exam_id)
+        .in("status", ["in_progress", "submitted", "expired"])
+        .order("started_at", { ascending: true })
+        .limit(2000),
+      admin
+        .from("exam_presence")
+        .select("attempt_id, last_seen_at")
+        .eq("exam_id", attempt.exam_id)
+        .limit(2000),
+    ]);
 
-  const { data: presence } = await admin
-    .from("exam_presence")
-    .select("attempt_id, last_seen_at")
-    .eq("exam_id", attempt.exam_id)
-    .limit(2000);
+    const seenBy = new Map<string, string | null>();
+    for (const row of (presence ?? []) as { attempt_id: string; last_seen_at: string | null }[]) {
+      seenBy.set(row.attempt_id, row.last_seen_at);
+    }
 
-  const seenBy = new Map<string, string | null>();
-  for (const row of (presence ?? []) as { attempt_id: string; last_seen_at: string | null }[]) {
-    seenBy.set(row.attempt_id, row.last_seen_at);
+    // Supervisor-visible "connection lost" flag. When a roster refresh notices a
+    // live attempt whose device has been silent past the online window, mark it
+    // (idempotent: only rows not already flagged). Runs at most once per cache fill.
+    const nowMs = Date.now();
+    const silentIds = ((attempts ?? []) as { id: string; status: string }[])
+      .filter((row) => row.status === "in_progress")
+      .filter((row) => {
+        const seen = seenBy.get(row.id) ?? null;
+        return seen !== null && nowMs - Date.parse(seen) > PRESENCE_ONLINE_MS;
+      })
+      .map((row) => row.id);
+    if (silentIds.length) {
+      await admin
+        .from("exam_presence")
+        .update({ unconfirmed_lost_at: new Date().toISOString() })
+        .in("attempt_id", silentIds)
+        .is("unconfirmed_lost_at", null);
+    }
+
+    return {
+      attempts: (attempts ?? []) as unknown as CachedPresenceSnapshot["attempts"],
+      seenBy,
+    };
+  };
+
+  let snapshot: CachedPresenceSnapshot;
+  const cacheScope = serviceRoleScope(admin);
+  if (cacheScope) {
+    const cacheKey = `${cacheScope}::${attempt.exam_id}`;
+    const cached = presenceSnapshotCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt) {
+      snapshot = cached.value;
+    } else {
+      const existing = presenceSnapshotInflight.get(cacheKey);
+      if (existing) {
+        snapshot = await existing;
+      } else {
+        const promise = loadSnapshot()
+          .then((value) => {
+            if (presenceSnapshotCache.size >= PRESENCE_SNAPSHOT_MAX && !presenceSnapshotCache.has(cacheKey)) {
+              const oldest = presenceSnapshotCache.keys().next().value;
+              if (oldest !== undefined) presenceSnapshotCache.delete(oldest);
+            }
+            presenceSnapshotCache.set(cacheKey, { value, expiresAt: Date.now() + PRESENCE_SNAPSHOT_TTL_MS });
+            return value;
+          })
+          .finally(() => {
+            presenceSnapshotInflight.delete(cacheKey);
+          });
+        presenceSnapshotInflight.set(cacheKey, promise);
+        snapshot = await promise;
+      }
+    }
+  } else {
+    snapshot = await loadSnapshot();
   }
 
-  // Supervisor-visible "connection lost" flag. When a roster refresh notices a
-  // live attempt whose device has been silent past the online window, mark it
-  // (idempotent: only rows not already flagged). This never grants time and
-  // never closes anything — it tells supervisors the timer will be compensated
-  // automatically when the student returns. Any heartbeat clears it.
-  const nowMs = Date.now();
-  const silentIds = ((attempts ?? []) as { id: string; status: string }[])
-    .filter((row) => row.status === "in_progress")
-    .filter((row) => {
-      const seen = seenBy.get(row.id) ?? null;
-      return seen !== null && nowMs - Date.parse(seen) > PRESENCE_ONLINE_MS;
-    })
-    .map((row) => row.id);
-  if (silentIds.length) {
-    await admin
-      .from("exam_presence")
-      .update({ unconfirmed_lost_at: new Date().toISOString() })
-      .in("attempt_id", silentIds)
-      .is("unconfirmed_lost_at", null);
-  }
-
-  const rows: PresenceSourceRow[] = ((attempts ?? []) as unknown as {
-    id: string;
-    status: string;
-    exam_candidates: { full_name: string | null } | null;
-  }[]).map((row) => ({
+  const rows: PresenceSourceRow[] = snapshot.attempts.map((row) => ({
     key: row.id,
     display_name: row.exam_candidates?.full_name ?? null,
-    last_seen_at: row.status === "in_progress" ? seenBy.get(row.id) ?? null : null,
+    last_seen_at: row.status === "in_progress" ? snapshot.seenBy.get(row.id) ?? null : null,
     status: row.status === "in_progress" ? "in_progress" : "finished",
   }));
 
@@ -389,7 +493,7 @@ export async function GET(request: Request) {
       roster,
       server_now: new Date().toISOString(),
       heartbeat_ms: PRESENCE_HEARTBEAT_MS,
-      refresh_ms: 15_000,
+      refresh_ms: 45_000,
     },
     { headers: NO_STORE },
   );

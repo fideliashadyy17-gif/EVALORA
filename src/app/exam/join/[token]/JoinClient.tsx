@@ -36,6 +36,7 @@ export function ExamJoinClient({
   language,
   languageLock,
   lockdownRequired,
+  strictMultiDisplay,
   lockdownLaunchUrl,
 }: {
   token: string;
@@ -53,6 +54,7 @@ export function ExamJoinClient({
   language: PaperLanguage;
   languageLock: boolean;
   lockdownRequired?: boolean;
+  strictMultiDisplay?: boolean;
   lockdownLaunchUrl?: string;
 }) {
   const router = useRouter();
@@ -139,8 +141,23 @@ export function ExamJoinClient({
       const lockdownApi = (window as unknown as {
         __EVALORA_SECURE_LOCKDOWN__?: {
           getAttestation: (examCode: string, context: { first_name: string; last_name: string; class_id: string; guest_key: string; identity: Record<string, string>; candidate_binding: string }) => Promise<unknown>;
+          checkIntegrity?: () => Promise<{ secure?: boolean; display_count?: number }>;
         };
       }).__EVALORA_SECURE_LOCKDOWN__;
+      if (strictMultiDisplay && lockdownApi && typeof lockdownApi.checkIntegrity === "function") {
+        try {
+          const integrity = await lockdownApi.checkIntegrity();
+          if (integrity && (integrity.secure === false || Number(integrity.display_count ?? 1) > 1)) {
+            const count = Number(integrity.display_count ?? 2);
+            setBusy(false);
+            return setError(
+              `Multiple displays detected (${count} monitors connected). This examination requires a single display — disconnect external screens and try again.`,
+            );
+          }
+        } catch (e) {
+          console.warn("Could not verify single-display integrity:", e);
+        }
+      }
       if (lockdownApi) {
         try {
           const candidateContext = { first_name: firstName.trim(), last_name: lastName.trim(), class_id: classId, guest_key: guestKey, identity };

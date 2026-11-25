@@ -32,8 +32,13 @@ export async function GET(request: Request) {
   if (!isUuid(attemptId) || !isUuid(token)) return NextResponse.json({ error: "Missing credentials." }, { status: 400, headers: NO_STORE });
 
   const admin = createAdminClient();
-  const ctx = await loadAttemptContext(admin, attemptId, token);
-  if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
+  const { data: authAttempt } = await admin
+    .from("exam_attempts")
+    .select("id")
+    .eq("id", attemptId)
+    .eq("access_token", token)
+    .maybeSingle();
+  if (!authAttempt) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
 
   const after = searchParams.get("after");
   let query = admin.from("exam_messages").select(COLUMNS).eq("attempt_id", attemptId);
@@ -46,7 +51,15 @@ export async function GET(request: Request) {
   } else {
     query = query.order("created_at", { ascending: false }).limit(MESSAGE_PAGE_SIZE);
   }
-  const { data, error } = await query;
+  const [{ data, error }, { count }] = await Promise.all([
+    query,
+    admin
+      .from("exam_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("attempt_id", attemptId)
+      .eq("sender_kind", "staff")
+      .is("read_at", null),
+  ]);
   if (error || !data) return NextResponse.json({ error: "Messages could not be loaded." }, { status: 500, headers: NO_STORE });
   const messages = after ? data : [...data].reverse();
 
@@ -55,13 +68,6 @@ export async function GET(request: Request) {
   if (undelivered.length) {
     await admin.from("exam_messages").update({ delivered_at: now }).in("id", undelivered).is("delivered_at", null);
   }
-
-  const { count } = await admin
-    .from("exam_messages")
-    .select("id", { count: "exact", head: true })
-    .eq("attempt_id", attemptId)
-    .eq("sender_kind", "staff")
-    .is("read_at", null);
 
   return NextResponse.json({
     server_now: now,

@@ -1,6 +1,7 @@
 import { attemptDeadline } from "@/lib/exam";
 import {
   candidateNamesMatch,
+  canonicalCandidateNameFromParts,
   DUPLICATE_EXAM_CANDIDATE_MESSAGE,
 } from "@/lib/candidateIdentity";
 import { canonicalIdentityFingerprint } from "@/lib/examSaveQueue";
@@ -471,11 +472,30 @@ export async function POST(request: Request) {
     // original record: a verified student account (student_id) or the matching
     // organizer-defined identity fields (e.g. student ID / matricule / email).
     if (!candidateRow) {
-      const { data: examCandidates } = await admin
-        .from("exam_candidates")
-        .select("*")
-        .eq("exam_id", exam.id);
-      const rowsForExam = (examCandidates ?? []) as Record<string, unknown>[];
+      let rowsForExam: Record<string, unknown>[] = [];
+      if (typeof (admin as { rpc?: unknown }).rpc === "function") {
+        const canonicalNameKey = canonicalCandidateNameFromParts(first_name, last_name);
+        const { data: matchedCandidates, error: rpcError } = await admin.rpc("find_exam_candidates_for_join", {
+          p_exam_id: exam.id,
+          p_name_key: canonicalNameKey,
+          p_student_id: studentId ?? null,
+        });
+        if (!rpcError && Array.isArray(matchedCandidates)) {
+          rowsForExam = matchedCandidates as Record<string, unknown>[];
+        } else {
+          const { data: examCandidates } = await admin
+            .from("exam_candidates")
+            .select("*")
+            .eq("exam_id", exam.id);
+          rowsForExam = (examCandidates ?? []) as Record<string, unknown>[];
+        }
+      } else {
+        const { data: examCandidates } = await admin
+          .from("exam_candidates")
+          .select("*")
+          .eq("exam_id", exam.id);
+        rowsForExam = (examCandidates ?? []) as Record<string, unknown>[];
+      }
       const byStudent = studentId
         ? rowsForExam.find((row) => String(row.student_id ?? "") === studentId) ?? null
         : null;
@@ -696,7 +716,9 @@ export async function POST(request: Request) {
     const track = decision.track;
     const rows0 = exam.quiz_id ? await loadQuizQuestions(admin, exam.quiz_id) : [];
     const rows = track ? paperForTrack(rows0, track) : rows0;
-    const ordered = settings.randomize_questions ? randomizeQuestionRows(rows, `${exam.id}:${resolvedCandidate.id}`) : rows;
+    const ordered = settings.randomize_questions
+      ? randomizeQuestionRows(rows, `${exam.id}:${resolvedCandidate.id}`, settings.sections)
+      : rows;
     const { data, error } = await admin
       .from("exam_attempts")
       .insert({

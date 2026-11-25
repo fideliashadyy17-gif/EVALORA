@@ -1,0 +1,42 @@
+name: Live Production Exam Readiness & Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Target production URL"
+        required: true
+        default: "https://evalora-edu.online"
+      stages:
+        description: "Comma-separated concurrent candidate stages"
+        required: true
+        default: "100,250,500,1000"
+      run_tag:
+        description: "Synthetic candidate cleanup tag"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  live-load-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Run Live Production E2E & Concurrency Load Test
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          STAGES: ${{ github.event.inputs.stages }}
+          RUN_TAG: ${{ github.event.inputs.run_tag }}
+          MYP4_INVITE_TOKEN: ${{ secrets.AUDIT_MYP4_INVITE_TOKEN }}
+          MYP4_ACCESS_CODE: ${{ secrets.AUDIT_MYP4_ACCESS_CODE }}
+          MYP4_CLASS_ID: ${{ secrets.AUDIT_MYP4_CLASS_ID }}
+          MYP5_INVITE_TOKEN: ${{ secrets.AUDIT_MYP5_INVITE_TOKEN }}
+          MYP5_ACCESS_CODE: ${{ secrets.AUDIT_MYP5_ACCESS_CODE }}
+          MYP5_CLASS_ID: ${{ secrets.AUDIT_MYP5_CLASS_ID }}
+        run: node scripts/live-exam-load-test.mjs
