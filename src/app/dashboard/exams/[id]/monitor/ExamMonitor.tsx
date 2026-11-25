@@ -224,13 +224,13 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
     }).catch(() => undefined);
   }, [selectedId, selectedThread, scheduleRefresh]);
 
-  // Realtime: presence, answer-progress signals and messages for THIS examination only.
-  // Under RLS a teacher receives only rows of organizations they may monitor.
+  // Realtime: organizer pauses and candidate/staff messages for THIS examination.
+  // Presence/progress updates are reconciled by the 15s monitor loop below so
+  // high-frequency student heartbeats do not fan out Realtime WAL/RLS storms.
   useEffect(() => {
     const supabase = createClient();
     const channel = supabase
       .channel(`exam-monitor-${examId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "exam_presence", filter: `exam_id=eq.${examId}` }, () => scheduleRefresh())
       .on("postgres_changes", { event: "INSERT", schema: "public", table: "exam_pause_events", filter: `exam_id=eq.${examId}` }, () => scheduleRefresh())
       .on("postgres_changes", { event: "*", schema: "public", table: "exam_messages", filter: `exam_id=eq.${examId}` }, (payload) => {
         scheduleRefresh();
