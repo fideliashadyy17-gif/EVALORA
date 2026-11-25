@@ -1,6 +1,6 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
-import { MODULE_CATALOG, resolveEffectiveModule } from "@/lib/modules";
+import { computePlanCoverage } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -63,9 +63,7 @@ export default async function AdminPlans() {
             {(plans ?? []).map((p) => {
               const lim = (p.limits as Record<string, unknown> | null) ?? {};
               const planMods = (p.modules as Record<string, boolean> | null) ?? null;
-              const enabledMods = MODULE_CATALOG.filter(
-                (m) => resolveEffectiveModule(planMods, null, m.key).effective,
-              ).length;
+              const cov = computePlanCoverage(planMods);
               return (
                 <tr key={p.id}>
                   <td className="font-semibold text-evergreen-950">{p.name}</td>
@@ -78,9 +76,9 @@ export default async function AdminPlans() {
                   <td>
                     <Link
                       href={`/admin/plans/modules?plan=${p.id}`}
-                      className="font-semibold text-evergreen-800 underline-offset-2 hover:underline"
+                      className="font-semibold tabular-nums text-evergreen-800 underline-offset-2 hover:underline"
                     >
-                      {enabledMods} / {MODULE_CATALOG.length}
+                      {cov.enabled} / {cov.total} ({cov.percentLabel})
                     </Link>
                   </td>
                   <td><Badge tone={lim.proctoring ? "green" : "gray"}>{lim.proctoring ? "Included" : "Off"}</Badge></td>

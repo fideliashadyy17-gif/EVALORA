@@ -32,12 +32,14 @@ export default async function ExamsPage({
       canEdit: { permission: "exams.edit", module: "examinations" },
       canDelete: { permission: "exams.delete", module: "examinations" },
       canViewCodes: { permission: "candidate_links.edit", module: "exam_share_codes" },
+      canManageTemplates: { permission: "organizations.edit", module: "exam_templates" },
     }),
   ]);
   requireModule(entitlement, "examinations", "/dashboard?e=module");
   const examLinksEnabled = moduleEnabled(entitlement.modules, "exam_links");
   const examMonitoringEnabled = moduleEnabled(entitlement.modules, "exam_monitoring");
   const rubricsEnabled = moduleEnabled(entitlement.modules, "rubrics");
+  const examTemplatesEnabled = moduleEnabled(entitlement.modules, "exam_templates");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
 
@@ -79,6 +81,9 @@ export default async function ExamsPage({
             {examLinksEnabled && <ButtonLink href="/dashboard/exams/links" variant="outline">Exam Links &amp; Codes</ButtonLink>}
             {examMonitoringEnabled && <ButtonLink href="/dashboard/monitoring" variant="outline">Live Monitoring</ButtonLink>}
             {rubricsEnabled && <ButtonLink href="/dashboard/rubrics" variant="outline">Grading rubrics</ButtonLink>}
+            {examTemplatesEnabled && perms.canManageTemplates && (
+              <ButtonLink href="/dashboard/settings/templates" variant="outline">Paper templates</ButtonLink>
+            )}
             {perms.canCreate && <ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>}
           </div>
         }

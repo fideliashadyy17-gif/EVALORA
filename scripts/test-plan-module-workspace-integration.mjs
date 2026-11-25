@@ -237,6 +237,121 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
     "Super Admin org SubscriptionTab displays effective module entitlements and override link");
 }
 
+// ── 6. Final-fix invariants: dynamic coverage, controlled UI, exact workspace paths, zero stale messages ──
+{
+  const freeCov = M.computePlanCoverage(M.recommendedModulesForPlan("free"));
+  const premCov = M.computePlanCoverage(M.recommendedModulesForPlan("premium"));
+  const instCov = M.computePlanCoverage(M.recommendedModulesForPlan("institution"));
+  ok(
+    freeCov.enabled === 12 && freeCov.total === 41 && freeCov.percentLabel === "29.27%",
+    `Free plan coverage computed dynamically: ${freeCov.enabled}/${freeCov.total} (${freeCov.percentLabel})`,
+  );
+  ok(
+    premCov.enabled === 26 && premCov.total === 41 && premCov.percentLabel === "63.41%",
+    `Premium plan coverage computed dynamically: ${premCov.enabled}/${premCov.total} (${premCov.percentLabel})`,
+  );
+  ok(
+    instCov.enabled === 41 && instCov.total === 41 && instCov.percentLabel === "100%",
+    `Institution plan coverage computed dynamically: ${instCov.enabled}/${instCov.total} (${instCov.percentLabel})`,
+  );
+
+  // Verify dynamic recalculation when a custom DB map has 15 modules (not hardcoded).
+  const customMap = Object.fromEntries(M.MODULE_KEYS.map((k, idx) => [k, idx < 15]));
+  const customCov = M.computePlanCoverage(customMap);
+  ok(
+    customCov.enabled === 15 && customCov.total === 41 && customCov.percentLabel === "36.59%",
+    `Custom saved plan map recalculates dynamically: ${customCov.enabled}/${customCov.total} (${customCov.percentLabel})`,
+  );
+
+  // Institution with NULL modules (pure default inheritance) ALSO yields 41/41 — 100%.
+  const nullPlanCov = M.computePlanCoverage(null);
+  ok(
+    nullPlanCov.enabled === 41 && nullPlanCov.total === 41 && nullPlanCov.percentLabel === "100%",
+    "Null plan modules default-inherit all 41 modules (100%)",
+  );
+
+  // Override breakdown for Oak International School (Institution + null overrides)
+  const oakBreakdown = M.computeOverrideBreakdown(M.recommendedModulesForPlan("institution"), null);
+  ok(
+    oakBreakdown.enabled === 41 &&
+      oakBreakdown.total === 41 &&
+      oakBreakdown.percentLabel === "100%" &&
+      oakBreakdown.inherited === 41 &&
+      oakBreakdown.inheritedEnabled === 41 &&
+      oakBreakdown.explicitOn === 0 &&
+      oakBreakdown.explicitOff === 0,
+    "Oak Institution breakdown: 41/41 (100%), 41 inherited, 0 explicitly enabled, 0 explicitly disabled",
+  );
+
+  // Override breakdown for Free with 2 explicitly enabled & 1 explicitly disabled
+  const mixedBreakdown = M.computeOverrideBreakdown(M.recommendedModulesForPlan("free"), {
+    proctoring: true,
+    exam_monitoring: true,
+    quizzes: false,
+  });
+  ok(
+    mixedBreakdown.enabled === 13 &&
+      mixedBreakdown.inherited === 38 &&
+      mixedBreakdown.inheritedEnabled === 11 &&
+      mixedBreakdown.explicitOn === 2 &&
+      mixedBreakdown.explicitOff === 1,
+    `Mixed override breakdown accurately separates inherited vs explicit on/off (got enabled=${mixedBreakdown.enabled})`,
+  );
+
+  // Every single one of the 41 modules has a verified workspacePath, real existing /dashboard route file,
+  // zero "none" surfaces, zero "not_implemented" availability, and strictly /admin/* reference links.
+  const routeToPageFile = (href) => {
+    const clean = href.split("?")[0].replace(/\/+$/, "");
+    if (!clean.startsWith("/dashboard")) return null;
+    const rel = clean.slice("/dashboard".length).replace(/^\/+/, "");
+    return rel ? `src/app/dashboard/${rel}/page.tsx` : "src/app/dashboard/page.tsx";
+  };
+  for (const m of M.MODULE_CATALOG) {
+    ok(
+      typeof m.workspacePath === "string" && m.workspacePath.startsWith("Dashboard → "),
+      `${m.key}: has explicit workspacePath (${m.workspacePath})`,
+    );
+    ok(m.surface.kind !== "none", `${m.key}: has real organization workspace surface (${m.surface.kind})`);
+    ok(m.availability !== "not_implemented", `${m.key}: availability is operational (${m.availability})`);
+    if (m.adminReferenceHref) {
+      ok(
+        m.adminReferenceHref.startsWith("/admin/"),
+        `${m.key}: adminReferenceHref stays strictly under /admin/* (${m.adminReferenceHref})`,
+      );
+    }
+    const hrefs = m.surface.kind === "nav" ? m.surface.hrefs : m.surface.kind === "page" ? [m.surface.href] : [];
+    ok(hrefs.length > 0, `${m.key}: exposes at least one real organization route`);
+    for (const h of hrefs) {
+      const pageFile = routeToPageFile(h);
+      ok(pageFile && existsSync(pageFile), `${m.key}: route ${h} exists on disk at ${pageFile}`);
+    }
+  }
+
+  // PlanModulesAdminClient uses 100% controlled inputs, distinct color coding, progress bars, and workspace locations.
+  const pmmClient = read("src/app/admin/plans/modules/PlanModulesAdminClient.tsx");
+  ok(!pmmClient.includes("defaultChecked"), "PlanModulesAdminClient does not use uncontrolled defaultChecked");
+  ok(!pmmClient.includes("defaultValue"), "PlanModulesAdminClient does not use uncontrolled defaultValue");
+  ok(pmmClient.includes("checked={isIncluded}"), "PlanModulesAdminClient binds checkboxes via controlled checked={isIncluded}");
+  ok(pmmClient.includes("value={state}"), "PlanModulesAdminClient binds override dropdowns via controlled value={state}");
+  ok(pmmClient.includes("Organization Workspace Location"), "PlanModulesAdminClient renders Organization Workspace Location");
+  ok(pmmClient.includes("Included in plan") && pmmClient.includes("Not included in plan"), "PlanModulesAdminClient separates Included vs Not included badges");
+  ok(pmmClient.includes("Implemented &amp; operational") && pmmClient.includes("External dependency") && pmmClient.includes("Not implemented"), "PlanModulesAdminClient renders explicit technical implementation status pills");
+  ok(pmmClient.includes('role="progressbar"'), "PlanModulesAdminClient renders visual coverage progress bars");
+  ok(pmmClient.includes("Explicitly enabled") && pmmClient.includes("Explicitly disabled") && pmmClient.includes("Inherited from"), "PlanModulesAdminClient distinguishes inherited vs explicitly enabled/disabled org overrides");
+
+  const pmmActions = read("src/app/admin/plans/modules/actions.ts");
+  ok(pmmActions.includes("redirect(`/admin/plans/modules?plan=${planId}&ok=plan`)"), "savePlanModules preserves selected plan on redirect");
+
+  // Zero stale "not yet available in this workspace" / "not yet available in the organization workspace" strings in dashboard.
+  const { execFileSync } = await import("node:child_process");
+  const staleHits = execFileSync(
+    "bash",
+    ["-lc", 'grep -Rni "not yet available in \\(this\\|the organization\\) workspace" src/app/dashboard || true'],
+    { encoding: "utf8" },
+  ).trim();
+  ok(staleHits === "", `Zero stale 'not yet available' workspace messages in src/app/dashboard (found: ${staleHits || "none"})`);
+}
+
 if (failures.length) {
   console.error(`plan-module-workspace-integration: ${failures.length} FAILURE(S) (${checks} checks)`);
   for (const f of failures) console.error(`  ✗ ${f}`);

@@ -1,8 +1,8 @@
 /**
  * Central platform module catalog — the single source of truth behind
  * Super Admin "Plan & Module Management", dynamic organization workspace
- * navigation, server-side entitlement guards, and operational availability
- * reporting.
+ * navigation, server-side entitlement guards, coverage calculations, and
+ * operational availability reporting.
  *
  * Storage (additive, backward compatible):
  *   - `plans.modules`                 jsonb — the plan's entitlement map
@@ -46,6 +46,17 @@ export interface ModuleDef {
   /** Exact external infrastructure requirement when availability is external_dependency. */
   externalDependency?: string;
   /**
+   * Exact, verified navigation path inside the organization dashboard
+   * (derived from actual DashboardChrome items and dashboard routes — never invented).
+   */
+  workspacePath: string;
+  /**
+   * Optional clickable Super Admin reference route inside `/admin/*` for
+   * platform operators inspecting the corresponding capability (never links
+   * across customer tenants).
+   */
+  adminReferenceHref?: string;
+  /**
    * Capability key this module gates 1:1 in getCapabilities (when set, the
    * capability is ANDed with the module automatically — one enforcement
    * point, no per-page duplication).
@@ -79,6 +90,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Create and manage live competitions and assessment events (the Assessment section of the workspace).",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions",
+    adminReferenceHref: "/admin/competitions",
     capability: "live_competitions",
     surface: { kind: "nav", hrefs: ["/dashboard/competitions"] },
   },
@@ -89,6 +102,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Event settings, formats and competition configuration screens.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Create / Select Competition → Configuration",
+    adminReferenceHref: "/admin/competitions/configuration",
     surface: { kind: "page", href: "/dashboard/competitions", where: "the New competition form and event settings" },
   },
   {
@@ -98,6 +113,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Assessment join & access codes — shown on the Live Competitions page and its competition detail screens.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Admission Code & Select Competition → Access Codes",
+    adminReferenceHref: "/admin/competitions/codes",
     surface: { kind: "page", href: "/dashboard/competitions", where: "the Admission code column, code minting and the detail-page code panel" },
   },
   {
@@ -107,6 +124,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Participant registration, eligibility and rosters.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Select Competition → Participants",
+    adminReferenceHref: "/admin/competitions/participants",
     surface: { kind: "page", href: "/dashboard/competitions", where: "the participant roster on each competition detail page" },
   },
   {
@@ -116,6 +135,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Phase design, qualification review and progression inside Live Competitions.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Select Competition → Event Phases",
+    adminReferenceHref: "/admin/competitions/events",
     surface: { kind: "page", href: "/dashboard/competitions", where: "Event phases & qualification progression on each competition detail page" },
   },
   {
@@ -125,6 +146,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Competition question sets, attached pools and mark allocations.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Select Competition → Question Set",
+    adminReferenceHref: "/admin/competitions/questions",
     surface: { kind: "page", href: "/dashboard/competitions", where: "the attached question pool and mark breakdown on each competition detail page" },
   },
   {
@@ -134,6 +157,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Leaderboards, rankings and competition results.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Rankings & Results",
+    adminReferenceHref: "/admin/competitions/results",
     surface: { kind: "nav", hrefs: ["/dashboard/competitions/rankings"], requires: "competitions" },
   },
   {
@@ -143,6 +168,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Real-time monitoring and host control launch for running competition sessions.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Select Competition → Live Monitoring & Host Control",
+    adminReferenceHref: "/admin/competitions/live",
     surface: { kind: "page", href: "/dashboard/competitions", where: "live session status and host monitoring controls on each competition detail page" },
   },
   {
@@ -152,6 +179,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Competition analytics, completion metrics and exportable session reports.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Competitions → Select Competition → Analytics & Session Reports",
+    adminReferenceHref: "/admin/competitions/reports",
     surface: { kind: "page", href: "/dashboard/competitions", where: "competition analytics and report summaries on each competition detail page" },
   },
 
@@ -163,6 +192,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Create, publish and operate quizzes.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Quizzes",
+    adminReferenceHref: "/admin/quizzes",
     capability: "quiz_management",
     surface: { kind: "nav", hrefs: ["/dashboard/quizzes"] },
   },
@@ -173,6 +204,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "The existing Paper Builder workflow (single shared builder — never duplicated).",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Question Paper Builder",
+    adminReferenceHref: "/admin/quizzes",
     capability: "question_paper_builder",
     surface: { kind: "nav", hrefs: ["/dashboard/paper-builder"] },
   },
@@ -183,6 +216,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Answer keys, worked solutions and controlled review release on quiz detail pages.",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Quizzes → Select Quiz → Answers & Solutions",
+    adminReferenceHref: "/admin/questions/solutions",
     surface: { kind: "page", href: "/dashboard/quizzes", where: "Answers & Solutions key review and release settings on each quiz page" },
   },
   {
@@ -192,6 +227,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Assign quizzes to classes, cohorts and scheduled delivery windows.",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Quizzes → Select Quiz → Class Assignment & Schedule",
+    adminReferenceHref: "/admin/quizzes/assignments",
     surface: { kind: "page", href: "/dashboard/quizzes", where: "class and schedule assignment controls on each quiz page" },
   },
   {
@@ -201,6 +238,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Question bank, categories, types and imports.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Question Bank",
+    adminReferenceHref: "/admin/questions",
     capability: "question_bank",
     surface: { kind: "nav", hrefs: ["/dashboard/questions"] },
   },
@@ -211,6 +250,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Quiz session results, participant score summaries and session reports.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Quizzes → Select Quiz → Results & Session Reports",
+    adminReferenceHref: "/admin/quizzes/results",
     surface: { kind: "page", href: "/dashboard/quizzes", where: "quiz session history, scores and report links on each quiz page" },
   },
 
@@ -222,6 +263,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Create, configure and operate formal examinations.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Examinations (+ Formula Library & Grading Systems)",
+    adminReferenceHref: "/admin/examinations",
     capability: "examinations",
     surface: { kind: "nav", hrefs: ["/dashboard/exams", "/dashboard/formulas", "/dashboard/grading"] },
   },
@@ -232,7 +275,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Examination invitation links, activation/expiry windows and link lifecycle controls.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "Exam Link & Expiration lifecycle controls (/dashboard/exams/links and each examination page)" },
+    workspacePath: "Dashboard → Examinations → Exam Links & Codes",
+    adminReferenceHref: "/admin/examinations/links",
+    surface: { kind: "page", href: "/dashboard/exams/links", where: "Exam Links & Codes lifecycle (expiration, activation, disable/reactivate)" },
   },
   {
     key: "exam_share_codes",
@@ -241,7 +286,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Shared links, access codes and candidate admission codes.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "share links and access codes on examination actions" },
+    workspacePath: "Dashboard → Examinations → Select Exam → Admission Link & Share Code",
+    adminReferenceHref: "/admin/examinations/codes",
+    surface: { kind: "page", href: "/dashboard/exams", where: "share links and access codes on each examination page" },
   },
   {
     key: "exam_hints",
@@ -250,7 +297,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Guided hint authoring, leak checks and controlled publication inside an examination.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "Examination Hints authoring and publishing (/dashboard/exams/[id]/hints)" },
+    workspacePath: "Dashboard → Examinations → Select Exam → Exam Hints",
+    adminReferenceHref: "/admin/examinations/hints",
+    surface: { kind: "page", href: "/dashboard/exams", where: "Examination Hints studio (/dashboard/exams/[id]/hints)" },
   },
   {
     key: "exam_candidate_links",
@@ -259,6 +308,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Per-candidate direct admission links, access codes and published result links.",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Examinations → Select Exam → Candidates & Results Management → Candidate Links",
+    adminReferenceHref: "/admin/examinations/invitations",
     surface: { kind: "page", href: "/dashboard/exams", where: "per-candidate admission and result links inside each examination and Results Management" },
   },
   {
@@ -268,6 +319,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Candidate registration, rosters and access management.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Examinations → Select Exam → Registered Candidates",
+    adminReferenceHref: "/admin/examinations/candidates",
     surface: { kind: "page", href: "/dashboard/exams", where: "candidate registration and rosters inside an examination" },
   },
   {
@@ -277,9 +330,11 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Live examination dashboard, real-time candidate progress, time extensions, pause/resume, retake authorization and intervention history.",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Live Monitoring (and Examinations → Select Exam → Live Monitor)",
+    adminReferenceHref: "/admin/examinations/monitoring",
     surface: { kind: "nav", hrefs: ["/dashboard/monitoring"] },
   },
-  { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication and individual candidate result links.", recommendedPlan: "free", availability: "implemented", surface: { kind: "nav", hrefs: ["/dashboard/results"] } },
+  { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication and individual candidate result links.", recommendedPlan: "free", availability: "implemented", workspacePath: "Dashboard → Results Management & Candidate Links", adminReferenceHref: "/admin/examinations/results", surface: { kind: "nav", hrefs: ["/dashboard/results"] } },
   {
     key: "exam_validation",
     group: "exams",
@@ -287,7 +342,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Mandatory validation step before publication.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "the mandatory validation step before publication" },
+    workspacePath: "Dashboard → Results Management & Candidate Links → Validate Results (and Select Exam → Validation)",
+    adminReferenceHref: "/admin/examinations/results",
+    surface: { kind: "page", href: "/dashboard/results", where: "mandatory results validation actions before publication" },
   },
   {
     key: "exam_publication",
@@ -296,7 +353,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Publish validated results to candidates (audited).",
     recommendedPlan: "free",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "results publication actions" },
+    workspacePath: "Dashboard → Results Management & Candidate Links → Publish Results (and Select Exam → Publish)",
+    adminReferenceHref: "/admin/examinations/results",
+    surface: { kind: "page", href: "/dashboard/results", where: "audited results publication controls" },
   },
   {
     key: "exam_reports",
@@ -305,6 +364,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Examination reports, exports and MYP results (MYP Results pages).",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → MYP Results",
+    adminReferenceHref: "/admin/myp-results",
     surface: { kind: "nav", hrefs: ["/dashboard/myp-results"] },
   },
   {
@@ -314,7 +375,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Candidate-printable paper rendering.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "the candidate printable paper route" },
+    workspacePath: "Dashboard → Examinations → Select Exam → Print Paper",
+    adminReferenceHref: "/admin/examinations",
+    surface: { kind: "page", href: "/dashboard/exams", where: "the candidate printable paper route (/dashboard/exams/[id]/paper)" },
   },
   {
     key: "exam_templates",
@@ -323,6 +386,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Official exam paper templates and institutional headers.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Organization Settings → Paper Templates (also linked from Examinations)",
+    adminReferenceHref: "/admin/examinations",
     surface: { kind: "page", href: "/dashboard/settings/templates", where: "examination paper templates" },
   },
   {
@@ -332,7 +397,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Scientific/basic calculator offered to candidates.",
     recommendedPlan: "premium",
     availability: "implemented",
-    surface: { kind: "page", href: "/dashboard/exams", where: "the calculator option when creating an examination" },
+    workspacePath: "Dashboard → Examinations → New Examination → Calculator Settings",
+    adminReferenceHref: "/admin/examinations",
+    surface: { kind: "page", href: "/dashboard/exams/new", where: "the scientific/basic calculator option when configuring an examination" },
   },
 
   // ── Institution (existing capabilities retained) ──────────────────────
@@ -343,6 +410,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Classes and class assignments.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Classes",
+    adminReferenceHref: "/admin/classes",
     capability: "class_management",
     surface: { kind: "nav", hrefs: ["/dashboard/academics/classes"] },
   },
@@ -353,6 +422,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Academic years, terms, departments, subjects and structures.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Academic Structure",
+    adminReferenceHref: "/admin/classes",
     surface: { kind: "nav", hrefs: ["/dashboard/academics"] },
   },
   {
@@ -362,6 +433,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Student directory, registration and imports.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Students",
+    adminReferenceHref: "/admin/students",
     capability: "student_management",
     surface: { kind: "nav", hrefs: ["/dashboard/students"] },
   },
@@ -372,6 +445,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Teacher and staff management (Teachers page).",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Teachers",
+    adminReferenceHref: "/admin/users/teachers",
     surface: { kind: "nav", hrefs: ["/dashboard/teachers"] },
   },
   {
@@ -381,6 +456,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Workspace members and invitations.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Staff & Members",
+    adminReferenceHref: "/admin/users",
     surface: { kind: "nav", hrefs: ["/dashboard/team"] },
   },
   {
@@ -390,6 +467,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Roles, accounts, and RBAC access management within the organization.",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → Accounts & Permissions (+ Role & Access Management)",
+    adminReferenceHref: "/admin/rbac",
     surface: { kind: "nav", hrefs: ["/dashboard/accounts", "/dashboard/rbac"] },
   },
   {
@@ -399,6 +478,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Tenant settings, branding and portal.",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Organization Settings",
+    adminReferenceHref: "/admin/organizations/settings",
     surface: { kind: "nav", hrefs: ["/dashboard/settings"] },
   },
   {
@@ -408,6 +489,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Marking rubrics (Rubrics page).",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Rubrics",
+    adminReferenceHref: "/admin/examinations/marking",
     surface: { kind: "nav", hrefs: ["/dashboard/rubrics"] },
   },
   {
@@ -419,6 +502,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     availability: "external_dependency",
     externalDependency:
       "LiveKit server credentials (LIVEKIT_API_KEY, LIVEKIT_API_SECRET, NEXT_PUBLIC_LIVEKIT_URL) are required for live video/screen rooms; incident logging, review workflows, retention policies and evidence ledger operate natively via Supabase.",
+    workspacePath: "Dashboard → Proctoring (and Examinations → Select Exam → Proctoring Room)",
+    adminReferenceHref: "/admin/proctoring",
     capability: "proctoring",
     surface: { kind: "nav", hrefs: ["/dashboard/proctoring"] },
   },
@@ -429,6 +514,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Organization-wide results, analytics and exportable reports (Results & Reports page).",
     recommendedPlan: "premium",
     availability: "implemented",
+    workspacePath: "Dashboard → Results & Reports",
+    adminReferenceHref: "/admin/examinations/reports",
     capability: "reports_analytics",
     surface: { kind: "nav", hrefs: ["/dashboard/reports"] },
   },
@@ -439,6 +526,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Public platform page management for the organization (My Platform page).",
     recommendedPlan: "institution",
     availability: "implemented",
+    workspacePath: "Dashboard → My Platform",
+    adminReferenceHref: "/admin/organizations/access",
     surface: { kind: "nav", hrefs: ["/dashboard/platform"] },
   },
   {
@@ -448,6 +537,8 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Billing, subscription and plan views (Billing & Plan page).",
     recommendedPlan: "free",
     availability: "implemented",
+    workspacePath: "Dashboard → Billing & Plan",
+    adminReferenceHref: "/admin/subscriptions",
     surface: { kind: "nav", hrefs: ["/dashboard/billing"] },
   },
 ] as const;
@@ -522,6 +613,113 @@ export interface ModuleOperationalState extends EffectiveModuleState {
   operationallyAvailable: boolean;
   externalDependency?: string;
   externalInfrastructureReady?: boolean;
+}
+
+export interface PlanCoverageStats {
+  enabled: number;
+  total: number;
+  /** Percentage rounded to 2 decimal places (e.g. 29.27, 63.41, 100). */
+  percent: number;
+  /** Human-readable percentage without trailing .00 (e.g. "29.27%", "63.41%", "100%"). */
+  percentLabel: string;
+}
+
+export interface OverrideBreakdownStats extends PlanCoverageStats {
+  /** Number of modules inheriting their effective value directly from the plan (or default). */
+  inherited: number;
+  /** Number of inherited modules that are enabled. */
+  inheritedEnabled: number;
+  /** Number of modules explicitly forced ON on this subscription. */
+  explicitOn: number;
+  /** Number of modules explicitly forced OFF on this subscription. */
+  explicitOff: number;
+}
+
+/** Exact inclusion boolean for a single module on a plan row. */
+export function resolvePlanModuleIncluded(
+  planModules: Record<string, boolean> | null | undefined,
+  key: string,
+): boolean {
+  return resolveEffectiveModule(planModules, null, key).effective;
+}
+
+/** Format a coverage percentage cleanly (e.g. 29.27%, 63.41%, 100%, 0%). */
+export function formatCoveragePercent(enabled: number, total: number): {
+  percent: number;
+  percentLabel: string;
+} {
+  const raw = total > 0 ? (enabled / total) * 100 : 0;
+  const percent = Math.round(raw * 100) / 100;
+  const percentLabel = Number.isInteger(percent) ? `${percent}%` : `${percent.toFixed(2)}%`;
+  return { percent, percentLabel };
+}
+
+/**
+ * Dynamically calculate included module totals and exact coverage percentage
+ * from saved database maps (`plans.modules` and optional `modules_override`).
+ * Never hardcoded.
+ */
+export function computePlanCoverage(
+  planModules: Record<string, boolean> | null | undefined,
+  overrideModules?: Record<string, boolean> | null | undefined,
+): PlanCoverageStats {
+  const total = MODULE_CATALOG.length;
+  let enabled = 0;
+  for (const m of MODULE_CATALOG) {
+    if (resolveEffectiveModule(planModules, overrideModules, m.key).effective) {
+      enabled += 1;
+    }
+  }
+  const { percent, percentLabel } = formatCoveragePercent(enabled, total);
+  return { enabled, total, percent, percentLabel };
+}
+
+/** Compute live coverage from a controlled client-side boolean selection map. */
+export function computeSelectionCoverage(
+  selection: Record<string, boolean>,
+): PlanCoverageStats {
+  const total = MODULE_CATALOG.length;
+  let enabled = 0;
+  for (const m of MODULE_CATALOG) {
+    if (selection[m.key] === true) enabled += 1;
+  }
+  const { percent, percentLabel } = formatCoveragePercent(enabled, total);
+  return { enabled, total, percent, percentLabel };
+}
+
+/** Breakdown of inherited vs explicit ON/OFF overrides for one organization subscription. */
+export function computeOverrideBreakdown(
+  planModules: Record<string, boolean> | null | undefined,
+  overrideModules: Record<string, boolean> | null | undefined,
+): OverrideBreakdownStats {
+  const total = MODULE_CATALOG.length;
+  let enabled = 0;
+  let inherited = 0;
+  let inheritedEnabled = 0;
+  let explicitOn = 0;
+  let explicitOff = 0;
+
+  for (const m of MODULE_CATALOG) {
+    const res = resolveEffectiveModule(planModules, overrideModules, m.key);
+    if (res.effective) enabled += 1;
+    if (res.configured === "on") explicitOn += 1;
+    else if (res.configured === "off") explicitOff += 1;
+    else {
+      inherited += 1;
+      if (res.effective) inheritedEnabled += 1;
+    }
+  }
+  const { percent, percentLabel } = formatCoveragePercent(enabled, total);
+  return {
+    enabled,
+    total,
+    percent,
+    percentLabel,
+    inherited,
+    inheritedEnabled,
+    explicitOn,
+    explicitOff,
+  };
 }
 
 export function resolveEffectiveModule(
