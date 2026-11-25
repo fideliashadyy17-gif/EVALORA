@@ -501,7 +501,7 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     recommendedPlan: "premium",
     availability: "external_dependency",
     externalDependency:
-      "LiveKit server credentials (LIVEKIT_API_KEY, LIVEKIT_API_SECRET, NEXT_PUBLIC_LIVEKIT_URL) are required for live video/screen rooms; incident logging, review workflows, retention policies and evidence ledger operate natively via Supabase.",
+      "Core proctoring (incident logging, review workflows, retention policies & evidence ledger) runs natively on Supabase. Live video & screen-sharing rooms connect to LiveKit Cloud.",
     workspacePath: "Dashboard → Proctoring (and Examinations → Select Exam → Proctoring Room)",
     adminReferenceHref: "/admin/proctoring",
     capability: "proctoring",

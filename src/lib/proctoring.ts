@@ -94,13 +94,19 @@ export async function ensureProctoringRoom(
     .maybeSingle();
 
   if (existing) {
-    // Re-open a previously ended room: a new sitting of the same exam needs a
-    // live room again, and the token route is the only place that grants media.
+    // Re-open a previously ended room and backfill organization_id if a legacy
+    // insert omitted it: a new sitting of the same exam needs a live room again.
     await admin
       .from("proctoring_rooms")
-      .update({ status: "active", ended_at: null, last_event_at: now, updated_at: now })
+      .update({
+        organization_id: exam.organization_id,
+        status: "active",
+        ended_at: null,
+        last_event_at: now,
+        updated_at: now,
+      })
       .eq("id", existing.id);
-    return existing as ProctoringRoom;
+    return { ...(existing as ProctoringRoom), organization_id: exam.organization_id };
   }
 
   const { data: inserted, error } = await admin

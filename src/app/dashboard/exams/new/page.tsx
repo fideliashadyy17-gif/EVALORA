@@ -1,7 +1,7 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities } from "@/lib/capabilities";
 import { canOperate } from "@/lib/operationalAccess";
-import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -45,7 +45,8 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
       ? [firstSubjectRel.subjects]
       : [];
   const defaultSubjectName = firstSubjectList[0]?.name ?? "";
-  const ent = await getEntitlementFor(supabase, ctx, org.id);
+  const { entitlement: ent, capabilities } = await getCapabilities(supabase, ctx, org.id);
+  const canEnableProctoring = Boolean(capabilities.proctoring);
 
   return (
     <>
@@ -159,7 +160,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
               {[
                 ["randomize_questions", "Randomize question order per candidate", true],
                 ["randomize_options", "Randomize answer options", true],
-                ["proctoring", `Enable LiveKit video proctoring${ent.limits.proctoring ? "" : " (Premium)"}`, false],
+                ["proctoring", `Enable LiveKit video proctoring${canEnableProctoring ? "" : " (Premium)"}`, false],
                 ["require_screen_share", "Require screen sharing (with proctoring)", false],
               ].map(([name, label, checked]) => (
                 <label key={name as string} className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
@@ -167,7 +168,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                     type="checkbox"
                     name={name as string}
                     defaultChecked={Boolean(checked)}
-                    disabled={name === "proctoring" && !ent.limits.proctoring}
+                    disabled={(name === "proctoring" || name === "require_screen_share") && !canEnableProctoring}
                     className="h-5 w-5 accent-evergreen-700"
                   />
                   {label}
@@ -215,7 +216,7 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                 </div>
               </div>
             </div>
-            {!ent.limits.proctoring && (
+            {!canEnableProctoring && (
               <p className="text-sm text-amber-800">
                 Proctoring needs Premium — your current entitlement is <strong>{ent.planName}</strong>.{" "}
                 <Link href="/dashboard/billing" className="font-semibold underline">View billing</Link>

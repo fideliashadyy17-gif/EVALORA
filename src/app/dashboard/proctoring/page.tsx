@@ -13,6 +13,7 @@ import {
 } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { getLiveKitEnvStatus } from "@/lib/livekit";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -109,11 +110,8 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
     .order("created_at", { ascending: false })
     .limit(25);
 
-  const livekitConfigured = Boolean(
-    process.env.LIVEKIT_API_KEY &&
-      process.env.LIVEKIT_API_SECRET &&
-      process.env.NEXT_PUBLIC_LIVEKIT_URL,
-  );
+  const livekitStatus = getLiveKitEnvStatus();
+  const livekitConfigured = livekitStatus.configured;
 
   const roomIds = (rooms ?? []).map((r) => r.id);
   const { data: events } = roomIds.length
@@ -156,11 +154,11 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
         <span>
           <strong>LiveKit Video Infrastructure:</strong>{" "}
           {livekitConfigured
-            ? "Configured — authorized supervisors can connect to live candidate camera/screen supervision rooms."
-            : "Not configured on this deployment (requires LIVEKIT_API_KEY, LIVEKIT_API_SECRET and NEXT_PUBLIC_LIVEKIT_URL). Incident reporting, review decisions, exports and retention ledger operate normally."}
+            ? `Configured (${livekitStatus.host}) — authorized supervisors can connect to live candidate camera and screen-sharing rooms. Supabase incident logging, review workflows, retention policies and evidence ledger operate independently.`
+            : `Live video transport is pending on this environment (${livekitStatus.missing.length ? `missing: ${livekitStatus.missing.join(", ")}` : "invalid NEXT_PUBLIC_LIVEKIT_URL"}). Supabase incident logging, review decisions, exports, retention policies and the evidence ledger remain fully operational.`}
         </span>
         <Badge tone={livekitConfigured ? "green" : "amber"}>
-          {livekitConfigured ? "LiveKit ready" : "Video infra pending"}
+          {livekitConfigured ? "LiveKit ready" : "Core operational · Video pending"}
         </Badge>
       </div>
 

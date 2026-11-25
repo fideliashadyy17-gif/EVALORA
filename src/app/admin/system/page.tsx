@@ -1,10 +1,12 @@
 import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
+import { getLiveKitEnvStatus } from "@/lib/livekit";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import { Activity, Database, HardDrive, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { Section, Table } from "../ui";
+import { LiveKitVerifyCard } from "./LiveKitVerifyCard";
 
 export const metadata: Metadata = { title: "System Health" };
 export const dynamic = "force-dynamic";
@@ -28,6 +30,8 @@ export default async function AdminSystem() {
   const { data, error } = await supabase.rpc("admin_platform_stats");
   const stats = (error ? null : (data as unknown as Stats)) ?? null;
 
+  const livekitStatus = getLiveKitEnvStatus();
+
   const integrations: { name: string; scope: string; ok: boolean; note: string }[] = [
     {
       name: "Supabase PostgREST, Auth & Storage",
@@ -44,8 +48,12 @@ export default async function AdminSystem() {
     {
       name: "LiveKit Cloud Real-Time Video",
       scope: "Online proctoring rooms",
-      ok: Boolean(process.env.NEXT_PUBLIC_LIVEKIT_URL && process.env.LIVEKIT_API_KEY && process.env.LIVEKIT_API_SECRET),
-      note: "Room tokens minted server-side; signing secret never leaves the server",
+      ok: livekitStatus.configured,
+      note: livekitStatus.configured
+        ? `Configured for ${livekitStatus.host} — room tokens minted server-side; signing secret never leaves the server`
+        : livekitStatus.missing.length
+          ? `Missing environment variable(s): ${livekitStatus.missing.join(", ")}`
+          : "NEXT_PUBLIC_LIVEKIT_URL is not a valid wss:// or ws:// URL",
     },
     {
       name: "Canonical Public App Origin",
@@ -101,6 +109,14 @@ export default async function AdminSystem() {
                   </Badge>
                 </Card>
               ))}
+            </div>
+            <div className="mt-4">
+              <LiveKitVerifyCard
+                initialConfigured={livekitStatus.configured}
+                initialHost={livekitStatus.host}
+                initialPresent={livekitStatus.present}
+                initialMissing={livekitStatus.missing}
+              />
             </div>
           </Section>
 

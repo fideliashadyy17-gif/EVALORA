@@ -134,8 +134,13 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
       `Module ${m.key} has honest availability (${m.availability})`);
   }
   const proctor = M.MODULE_CATALOG.find((m) => m.key === "proctoring");
-  ok(proctor.availability === "external_dependency" && typeof proctor.externalDependency === "string" && proctor.externalDependency.includes("LIVEKIT"),
-    "Proctoring explicitly documents its LiveKit external infrastructure dependency");
+  ok(
+    proctor.availability === "external_dependency" &&
+      typeof proctor.externalDependency === "string" &&
+      /livekit/i.test(proctor.externalDependency) &&
+      /supabase/i.test(proctor.externalDependency),
+    "Proctoring documents LiveKit video transport alongside native Supabase incident/review independence",
+  );
 
   // Unimplemented / unknown module is NEVER reported as operationallyAvailable.
   const ghost = M.resolveModuleOperationalState({ imaginary_module: true }, { imaginary_module: true }, "imaginary_module");

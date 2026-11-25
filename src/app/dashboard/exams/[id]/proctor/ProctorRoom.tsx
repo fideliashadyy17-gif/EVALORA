@@ -34,7 +34,7 @@ function Grid({ candidates, onRetry, connectionError }: { candidates: { id: stri
   return (
     <div>
       <div className="mb-3 flex flex-wrap items-center gap-2 text-sm text-ink-soft">
-        <Badge tone="amber">{connection === "connected" ? "Video room connected" : connection === "connecting" ? "Connecting" : connection === "reconnecting" || connection === "signalReconnecting" ? "Reconnecting" : "Disconnected"}</Badge>
+        <Badge tone={connection === "connected" ? "green" : connection === "disconnected" ? "red" : "amber"}>{connection === "connected" ? "Video room connected" : connection === "connecting" ? "Connecting" : connection === "reconnecting" || connection === "signalReconnecting" ? "Reconnecting" : "Disconnected"}</Badge>
         {connection === "connected" && <span>{participants.filter((p) => p.identity.startsWith("candidate-")).length} candidate(s) connected · {candidateTracks.length} video feed(s)</span>}
         {(connection === "disconnected" || connectionError) && <Button variant="outline" onClick={onRetry}>Retry video connection</Button>}
         {!focus && pages > 1 && (
@@ -161,16 +161,21 @@ export function ProctorRoom({ examId, candidates }: { examId: string; candidates
       .then(async (r) => {
         const d = await r.json().catch(() => null);
         if (!r.ok || typeof d?.token !== "string" || !d.token || typeof d?.serverUrl !== "string" || !d.serverUrl)
-          throw new Error("Video access unavailable");
+          throw new Error(typeof d?.error === "string" && d.error ? d.error : "Video access unavailable");
         if (!cancelled) setLk({ token: d.token, serverUrl: d.serverUrl });
       })
-      .catch(() => { if (!cancelled) setError("Could not request video access. Retry or contact your administrator."); });
+      .catch((err) => {
+        if (!cancelled) {
+          const reason = err instanceof Error && err.message && err.message !== "Video access unavailable" ? ` (${err.message})` : "";
+          setError(`Could not request video access${reason}. Retry or contact your administrator.`);
+        }
+      });
     return () => { cancelled = true; };
   }, [examId, retry]);
 
   return <>
     {lk ? <LiveKitRoom token={lk.token} serverUrl={lk.serverUrl} connect video={false} audio={false} data-lk-theme="default"
-      onError={() => setConnectionError("Video connection failed. Retry or contact your administrator.")}
+      onError={(err) => setConnectionError(`Video connection failed${err?.message ? ` (${err.message})` : ""}. Retry or contact your administrator.`)}
       onConnected={() => setConnectionError(null)}>
       <Grid candidates={candidates} onRetry={retryConnection} connectionError={connectionError} />
     </LiveKitRoom> : error ? <div role="alert" className="space-y-2 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">

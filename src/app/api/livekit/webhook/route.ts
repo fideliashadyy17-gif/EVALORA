@@ -26,8 +26,8 @@ const EVENT_MAP: Record<string, string> = {
 };
 
 export async function POST(request: Request) {
-  const apiKey = process.env.LIVEKIT_API_KEY;
-  const apiSecret = process.env.LIVEKIT_API_SECRET;
+  const apiKey = (process.env.LIVEKIT_API_KEY ?? "").trim();
+  const apiSecret = (process.env.LIVEKIT_API_SECRET ?? "").trim();
   if (!apiKey || !apiSecret)
     return NextResponse.json({ error: "LiveKit is not configured on this deployment." }, { status: 503 });
 
