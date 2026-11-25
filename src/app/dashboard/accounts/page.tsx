@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { ASSIGNABLE_STAFF_ROLES, MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
 import { ORG_ROLES } from "@/lib/brand";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -33,7 +34,7 @@ export default async function AccountsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "organizations.manage_members", "accounts"))) redirect("/dashboard?e=forbidden");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
 

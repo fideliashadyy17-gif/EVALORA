@@ -66,7 +66,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
   if (!isUuid(attemptId) || !parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400, headers: NO_STORE });
   const found = await monitoredAttempt(attemptId);
   if (!found) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
-  const access = await staffExamAccess(found.exam.id as string);
+  const access = await staffExamAccess(found.exam.id as string, { write: true });
   if (!access.ok) return access.response;
   const { attempt, exam, supabase } = found;
   if (attempt.status !== "in_progress") {

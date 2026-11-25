@@ -1,6 +1,7 @@
 "use server";
 
-import { can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { applyLiveCommand, type LiveCommand } from "@/lib/liveControl";
 import { createNextRoundSession, loadControlTiming, saveRankingSnapshot } from "@/lib/liveControlServer";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
@@ -15,7 +16,8 @@ async function loadOwnedSession(sessionId: string) {
   const supabase = await createClient();
   const { data } = await supabase.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
   if (!data) return null;
-  if (!can(ctx, data.organization_id, CREATOR_ROLES) && data.host_id !== ctx.user.id) return null;
+  // Centralized RBAC + module entitlement check (no host_id bypass when revoked/OFF).
+  if (!(await canOperate(ctx, data.organization_id, "competitions.edit", "competitions"))) return null;
   return { supabase, session: data, ctx };
 }
 

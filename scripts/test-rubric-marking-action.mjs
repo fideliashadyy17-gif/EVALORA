@@ -143,6 +143,7 @@ const stub = {
     MARKER_ROLES: [],
     PROCTOR_ROLES: [],
   },
+  '@/lib/operationalAccess': {canOperate: async (ctx) => ctx.allowed},
   '@/lib/entitlements': {withinLimit: () => true},
   '@/lib/ai-marking': {describeAiMarking: () => ({configured: false, reason: 'not configured'})},
   '@/lib/capabilities': {getCapabilities: async () => ({entitlement: {}, capabilities: {}})},

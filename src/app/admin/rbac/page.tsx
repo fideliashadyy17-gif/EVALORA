@@ -48,7 +48,7 @@ export default async function RbacDashboard({searchParams}: {searchParams: Promi
         }
       />
 
-      <Card className="mb-5 border-amber-500/40 bg-amber-50 p-4"><h2 className="font-semibold">Staged rollout boundary</h2><p className="mt-1 text-sm">This permission system controls the new institutional supervision workspace. Existing operational modules still enforce their legacy membership guards. A custom role does not yet replace or grant access through all legacy actions. Do not treat this console as a completed platform-wide RBAC rollout.</p></Card>
+      <Card className="mb-5 border-evergreen-700/30 bg-evergreen-50 p-4"><h2 className="font-semibold text-evergreen-950">Centralized enforcement active</h2><p className="mt-1 text-sm text-evergreen-900">Effective permissions resolved by PostgreSQL <code className="text-xs">access_has_permission</code> govern operational API routes, server actions, workspace surfaces, and the read-only institutional supervision workspace, intersected with organization module entitlements from Plan &amp; Module Management.</p></Card>
       <Notice
         ok={undefined}
         e={undefined}

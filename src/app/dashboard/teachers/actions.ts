@@ -14,7 +14,8 @@
  * can never wipe existing assignments.
  */
 
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { audit } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -42,7 +43,7 @@ export async function loadTeacherSubjects(profileId: string): Promise<{ id: stri
 export async function setTeacherSubjects(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, MANAGER_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "organizations.manage_members", "teachers"))) {
     redirect("/dashboard/teachers?e=forbidden");
   }
   const profileId = String(formData.get("profile_id") ?? "");

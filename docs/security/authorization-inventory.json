@@ -2,8 +2,9 @@
   "version": 2,
   "notice": "Static call-site inventory, not proof of enforcement. Inspect ownership/token checks, raw platform_role branches, SQL policies and service-role queries independently.",
   "counts": {
-    "can": 114,
-    "canOperate": 5,
+    "canOperate": 95,
+    "canOperateMany": 7,
+    "checkPermissions": 1,
     "getCapabilities": 40,
     "getSessionContext": 19,
     "hasPermission": 1,
@@ -13,7 +14,7 @@
     "requireSuperAdmin": 249,
     "requireUser": 123,
     "resolvePermission": 3,
-    "rpc": 36
+    "rpc": 38
   },
   "sites": [
     {
@@ -1942,18 +1943,7 @@
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 146,
-      "operation": "authorize",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "session.organization_id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/api/live/control/route.ts",
-      "line": 146,
+      "line": 145,
       "operation": "authorize",
       "guard": "canOperate",
       "arguments": [
@@ -1965,25 +1955,14 @@
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 186,
+      "line": 185,
       "operation": "GET",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 200,
-      "operation": "GET",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "session.organization_id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/api/live/control/route.ts",
-      "line": 200,
+      "line": 198,
       "operation": "GET",
       "guard": "canOperate",
       "arguments": [
@@ -2002,24 +1981,13 @@
     },
     {
       "file": "src/app/api/live/host/state/route.ts",
-      "line": 38,
-      "operation": "GET",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "session.organization_id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/api/live/host/state/route.ts",
-      "line": 38,
+      "line": 39,
       "operation": "GET",
       "guard": "canOperate",
       "arguments": [
         "ctx",
         "session.organization_id",
-        "\"competitions.view\"",
+        "\"competitions.edit\"",
         "\"competitions\""
       ]
     },
@@ -2042,18 +2010,7 @@
     },
     {
       "file": "src/app/api/live/participants/extra-time/route.ts",
-      "line": 59,
-      "operation": "POST",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "session.organization_id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/api/live/participants/extra-time/route.ts",
-      "line": 59,
+      "line": 58,
       "operation": "POST",
       "guard": "canOperate",
       "arguments": [
@@ -2075,20 +2032,21 @@
     },
     {
       "file": "src/app/api/livekit/token/route.ts",
-      "line": 34,
+      "line": 35,
       "operation": "POST",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/app/api/livekit/token/route.ts",
-      "line": 94,
+      "line": 95,
       "operation": "POST",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "exam.organization_id",
-        "PROCTOR_ROLES"
+        "\"proctoring.view\"",
+        "\"proctoring\""
       ]
     },
     {
@@ -2113,20 +2071,21 @@
     },
     {
       "file": "src/app/api/proctoring/export/route.ts",
-      "line": 19,
+      "line": 20,
       "operation": "GET",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/app/api/proctoring/export/route.ts",
-      "line": 24,
+      "line": 25,
       "operation": "GET",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "PROCTOR_ROLES"
+        "\"proctoring.view\"",
+        "\"proctoring\""
       ]
     },
     {
@@ -2145,38 +2104,40 @@
     },
     {
       "file": "src/app/api/students/import/extract/route.ts",
-      "line": 16,
+      "line": 17,
       "operation": "POST",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/app/api/students/import/extract/route.ts",
-      "line": 23,
+      "line": 27,
       "operation": "POST",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
-        "org.id",
-        "CREATOR_ROLES"
+        "org?.id ?? null",
+        "\"students.create\"",
+        "org ? \"students\" : undefined"
       ]
     },
     {
       "file": "src/app/api/students/import/route.ts",
-      "line": 42,
+      "line": 43,
       "operation": "POST",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/app/api/students/import/route.ts",
-      "line": 70,
+      "line": 71,
       "operation": "POST",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "orgId",
-        "CREATOR_ROLES"
+        "\"students.create\"",
+        "\"students\""
       ]
     },
     {
@@ -2188,72 +2149,63 @@
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 28,
+      "line": 29,
       "operation": "schoolCtx",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 31,
+      "line": 32,
       "operation": "schoolCtx",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
-        "org!.id",
-        "roles"
+        "org.id",
+        "permission",
+        "mod"
       ]
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 196,
+      "line": 197,
       "operation": "saveClassInline",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 199,
+      "line": 200,
       "operation": "saveClassInline",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "input.id ? \"classes.edit\" : \"classes.create\"",
+        "\"classes\""
       ]
     },
     {
       "file": "src/app/dashboard/academics/classes/page.tsx",
-      "line": 19,
+      "line": 20,
       "operation": "ClassesPage",
       "guard": "requireUser",
       "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/academics/classes/page.tsx",
-      "line": 21,
-      "operation": "ClassesPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
     },
     {
       "file": "src/app/dashboard/academics/classes/page.tsx",
       "line": 22,
       "operation": "ClassesPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "{\n    canEdit: { permission: \"classes.edit\", module: \"classes\" },\n    isManager: { permission: \"classes.delete\", module: \"classes\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/academics/classes/page.tsx",
-      "line": 24,
+      "line": 27,
       "operation": "ClassesPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2264,7 +2216,7 @@
     },
     {
       "file": "src/app/dashboard/academics/classes/page.tsx",
-      "line": 25,
+      "line": 28,
       "operation": "ClassesPage",
       "guard": "requireModule",
       "arguments": [
@@ -2275,25 +2227,26 @@
     },
     {
       "file": "src/app/dashboard/academics/page.tsx",
-      "line": 28,
+      "line": 29,
       "operation": "AcademicStructurePage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/academics/page.tsx",
-      "line": 30,
+      "line": 31,
       "operation": "AcademicStructurePage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.edit\"",
+        "\"academics\""
       ]
     },
     {
       "file": "src/app/dashboard/academics/page.tsx",
-      "line": 32,
+      "line": 33,
       "operation": "AcademicStructurePage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2304,7 +2257,7 @@
     },
     {
       "file": "src/app/dashboard/academics/page.tsx",
-      "line": 33,
+      "line": 34,
       "operation": "AcademicStructurePage",
       "guard": "requireModule",
       "arguments": [
@@ -2315,79 +2268,83 @@
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 43,
+      "line": 44,
       "operation": "resetMemberPassword",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 46,
+      "line": 47,
       "operation": "resetMemberPassword",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"accounts\""
       ]
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 89,
+      "line": 90,
       "operation": "setMemberStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 92,
+      "line": 93,
       "operation": "setMemberStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"accounts\""
       ]
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 133,
+      "line": 134,
       "operation": "createStaffAccount",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 136,
+      "line": 137,
       "operation": "createStaffAccount",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"accounts\""
       ]
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 33,
+      "line": 34,
       "operation": "AccountsPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 36,
+      "line": 37,
       "operation": "AccountsPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"accounts\""
       ]
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 41,
+      "line": 42,
       "operation": "AccountsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2398,7 +2355,7 @@
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 42,
+      "line": 43,
       "operation": "AccountsPage",
       "guard": "requireModule",
       "arguments": [
@@ -2409,43 +2366,45 @@
     },
     {
       "file": "src/app/dashboard/billing/actions.ts",
-      "line": 13,
+      "line": 14,
       "operation": "submitPayment",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/billing/actions.ts",
-      "line": 15,
+      "line": 16,
       "operation": "submitPayment",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"billing.manage\"",
+        "\"billing\""
       ]
     },
     {
       "file": "src/app/dashboard/billing/page.tsx",
-      "line": 23,
+      "line": 24,
       "operation": "BillingPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/billing/page.tsx",
-      "line": 26,
+      "line": 27,
       "operation": "BillingPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"billing.manage\"",
+        "\"billing\""
       ]
     },
     {
       "file": "src/app/dashboard/billing/page.tsx",
-      "line": 28,
+      "line": 29,
       "operation": "BillingPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2456,7 +2415,7 @@
     },
     {
       "file": "src/app/dashboard/billing/page.tsx",
-      "line": 29,
+      "line": 30,
       "operation": "BillingPage",
       "guard": "requireModule",
       "arguments": [
@@ -2467,7 +2426,7 @@
     },
     {
       "file": "src/app/dashboard/billing/page.tsx",
-      "line": 39,
+      "line": 40,
       "operation": "BillingPage",
       "guard": "rpc",
       "arguments": [
@@ -2477,14 +2436,14 @@
     },
     {
       "file": "src/app/dashboard/competitions/[id]/page.tsx",
-      "line": 35,
+      "line": 36,
       "operation": "OrganizationCompetitionPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/competitions/[id]/page.tsx",
-      "line": 38,
+      "line": 39,
       "operation": "OrganizationCompetitionPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2495,7 +2454,7 @@
     },
     {
       "file": "src/app/dashboard/competitions/[id]/page.tsx",
-      "line": 41,
+      "line": 42,
       "operation": "OrganizationCompetitionPage",
       "guard": "requireModule",
       "arguments": [
@@ -2506,47 +2465,37 @@
     },
     {
       "file": "src/app/dashboard/competitions/[id]/page.tsx",
-      "line": 70,
-      "operation": "OrganizationCompetitionPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/competitions/[id]/page.tsx",
       "line": 71,
       "operation": "OrganizationCompetitionPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "{\n    canManage: { permission: \"competitions.edit\", module: \"competitions\" },\n    isManager: { permission: \"competitions.delete\", module: \"competitions\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 34,
+      "line": 35,
       "operation": "createOrgCompetition",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 37,
+      "line": 38,
       "operation": "createOrgCompetition",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"competitions.create\"",
+        "\"competitions\""
       ]
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 44,
+      "line": 45,
       "operation": "createOrgCompetition",
       "guard": "getCapabilities",
       "arguments": [
@@ -2557,7 +2506,7 @@
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 45,
+      "line": 46,
       "operation": "createOrgCompetition",
       "guard": "requireModule",
       "arguments": [
@@ -2568,72 +2517,63 @@
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 100,
+      "line": 101,
       "operation": "setOrgCompetitionStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 103,
+      "line": 104,
       "operation": "setOrgCompetitionStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"competitions.edit\"",
+        "\"competitions\""
       ]
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 144,
+      "line": 145,
       "operation": "deleteDraftCompetition",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 147,
+      "line": 148,
       "operation": "deleteDraftCompetition",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"competitions.delete\"",
+        "\"competitions\""
       ]
     },
     {
       "file": "src/app/dashboard/competitions/page.tsx",
-      "line": 61,
+      "line": 62,
       "operation": "OrganizationCompetitionsPage",
       "guard": "requireUser",
       "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/competitions/page.tsx",
-      "line": 63,
-      "operation": "OrganizationCompetitionsPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
     },
     {
       "file": "src/app/dashboard/competitions/page.tsx",
       "line": 64,
       "operation": "OrganizationCompetitionsPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "[\"owner\", \"admin\"]"
+        "{\n    canCreate: { permission: \"competitions.create\", module: \"competitions\" },\n    isManager: { permission: \"competitions.delete\", module: \"competitions\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/competitions/page.tsx",
-      "line": 66,
+      "line": 69,
       "operation": "OrganizationCompetitionsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2644,7 +2584,7 @@
     },
     {
       "file": "src/app/dashboard/competitions/page.tsx",
-      "line": 67,
+      "line": 70,
       "operation": "OrganizationCompetitionsPage",
       "guard": "requireModule",
       "arguments": [
@@ -2655,14 +2595,14 @@
     },
     {
       "file": "src/app/dashboard/competitions/rankings/page.tsx",
-      "line": 36,
+      "line": 38,
       "operation": "CompetitionRankingsPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/competitions/rankings/page.tsx",
-      "line": 39,
+      "line": 41,
       "operation": "CompetitionRankingsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2673,7 +2613,7 @@
     },
     {
       "file": "src/app/dashboard/competitions/rankings/page.tsx",
-      "line": 40,
+      "line": 42,
       "operation": "CompetitionRankingsPage",
       "guard": "requireModule",
       "arguments": [
@@ -2684,13 +2624,25 @@
     },
     {
       "file": "src/app/dashboard/competitions/rankings/page.tsx",
-      "line": 41,
+      "line": 43,
       "operation": "CompetitionRankingsPage",
       "guard": "requireModule",
       "arguments": [
         "entitlement",
         "\"competition_results\"",
         "\"/dashboard?e=module\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/competitions/rankings/page.tsx",
+      "line": 44,
+      "operation": "CompetitionRankingsPage",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"competitions.view\"",
+        "\"competition_results\""
       ]
     },
     {
@@ -2702,25 +2654,25 @@
     },
     {
       "file": "src/app/dashboard/exams/[id]/monitor/page.tsx",
-      "line": 15,
+      "line": 16,
       "operation": "ExamMonitorPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/[id]/monitor/page.tsx",
-      "line": 20,
+      "line": 21,
       "operation": "ExamMonitorPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "loaded.exam.organization_id",
-        "PROCTOR_ROLES"
+        "\"proctoring.view\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/[id]/monitor/page.tsx",
-      "line": 22,
+      "line": 23,
       "operation": "ExamMonitorPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2731,7 +2683,7 @@
     },
     {
       "file": "src/app/dashboard/exams/[id]/monitor/page.tsx",
-      "line": 23,
+      "line": 24,
       "operation": "ExamMonitorPage",
       "guard": "requireModule",
       "arguments": [
@@ -2742,142 +2694,43 @@
     },
     {
       "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 48,
+      "line": 49,
       "operation": "ExamDetailPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 242,
+      "line": 250,
       "operation": "ExamDetailPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 244,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 397,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 485,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 541,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 596,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 608,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 637,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 825,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/[id]/page.tsx",
-      "line": 1123,
-      "operation": "ExamDetailPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "PROCTOR_ROLES"
+        "{\n    canMark: { permission: \"grading.edit\", module: \"exam_results\" },\n    isResultsManager: { permission: \"results.publish\" },\n    canEditExam: { permission: \"exams.edit\", module: \"examinations\" },\n    canManageLinks: { permission: \"candidate_links.edit\", module: \"exam_share_codes\" },\n    canRevokeCandidates: { permission: \"candidate_links.revoke\", module: \"exam_candidates\" },\n    canManageProctoring: { permission: \"proctoring.manage\", module: \"proctoring\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/exams/[id]/paper/page.tsx",
-      "line": 34,
+      "line": 35,
       "operation": "PrintableExam",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/[id]/paper/page.tsx",
-      "line": 36,
+      "line": 37,
       "operation": "PrintableExam",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/[id]/paper/page.tsx",
-      "line": 40,
+      "line": 41,
       "operation": "PrintableExam",
       "guard": "getCapabilities",
       "arguments": [
@@ -2888,7 +2741,7 @@
     },
     {
       "file": "src/app/dashboard/exams/[id]/paper/page.tsx",
-      "line": 41,
+      "line": 42,
       "operation": "PrintableExam",
       "guard": "requireModule",
       "arguments": [
@@ -2899,43 +2752,45 @@
     },
     {
       "file": "src/app/dashboard/exams/[id]/proctor/page.tsx",
-      "line": 13,
+      "line": 14,
       "operation": "ProctorPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/[id]/proctor/page.tsx",
-      "line": 15,
+      "line": 16,
       "operation": "ProctorPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "PROCTOR_ROLES"
+        "\"proctoring.view\"",
+        "\"proctoring\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 18,
+      "line": 19,
       "operation": "createExam",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 20,
+      "line": 21,
       "operation": "createExam",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.create\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 22,
+      "line": 23,
       "operation": "createExam",
       "guard": "getCapabilities",
       "arguments": [
@@ -2946,43 +2801,45 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 123,
+      "line": 124,
       "operation": "setExamStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 127,
+      "line": 128,
       "operation": "setExamStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 155,
+      "line": 156,
       "operation": "pauseExam",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 157,
+      "line": 158,
       "operation": "pauseExam",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 168,
+      "line": 169,
       "operation": "pauseExam",
       "guard": "rpc",
       "arguments": [
@@ -2992,205 +2849,204 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 194,
+      "line": 195,
       "operation": "updateExamLockdown",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 197,
+      "line": 198,
       "operation": "updateExamLockdown",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 236,
+      "line": 237,
       "operation": "updateExamFormulaSheet",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 238,
+      "line": 239,
       "operation": "updateExamFormulaSheet",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 302,
+      "line": 303,
       "operation": "updateExamCalculator",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 305,
+      "line": 306,
       "operation": "updateExamCalculator",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 341,
+      "line": 342,
       "operation": "deleteExam",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 344,
+      "line": 345,
       "operation": "deleteExam",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.delete\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 418,
+      "line": 419,
       "operation": "addCandidate",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 420,
+      "line": 421,
       "operation": "addCandidate",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"candidate_links.create\"",
+        "\"exam_candidates\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 439,
+      "line": 440,
       "operation": "addCandidatesBulk",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 441,
+      "line": 442,
       "operation": "addCandidatesBulk",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"candidate_links.create\"",
+        "\"exam_candidates\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 464,
+      "line": 465,
       "operation": "removeCandidate",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 469,
+      "line": 470,
       "operation": "removeCandidate",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"candidate_links.revoke\"",
+        "\"exam_candidates\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 483,
+      "line": 484,
       "operation": "markAnswer",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 485,
+      "line": 486,
       "operation": "markAnswer",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 638,
+      "line": 639,
       "operation": "markWithRubric",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 640,
+      "line": 641,
       "operation": "markWithRubric",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 711,
+      "line": 712,
       "operation": "moderateAnswer",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 713,
+      "line": 714,
       "operation": "moderateAnswer",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 778,
+      "line": 779,
       "operation": "publishResults",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 783,
-      "operation": "publishResults",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/exams/actions.ts",
-      "line": 793,
+      "line": 790,
       "operation": "publishResults",
       "guard": "canOperate",
       "arguments": [
@@ -3202,7 +3058,7 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 800,
+      "line": 797,
       "operation": "publishResults",
       "guard": "getCapabilities",
       "arguments": [
@@ -3213,7 +3069,7 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 801,
+      "line": 798,
       "operation": "publishResults",
       "guard": "requireModule",
       "arguments": [
@@ -3224,25 +3080,26 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 844,
+      "line": 841,
       "operation": "validateResults",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 848,
+      "line": 845,
       "operation": "validateResults",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"results.validate\"",
+        "\"exam_validation\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 853,
+      "line": 850,
       "operation": "validateResults",
       "guard": "getCapabilities",
       "arguments": [
@@ -3253,7 +3110,7 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 854,
+      "line": 851,
       "operation": "validateResults",
       "guard": "requireModule",
       "arguments": [
@@ -3261,28 +3118,29 @@
         "\"exam_validation\"",
         "`${back}?e=module`"
       ]
+    },
+    {
+      "file": "src/app/dashboard/exams/actions.ts",
+      "line": 878,
+      "operation": "unvalidateResults",
+      "guard": "requireUser",
+      "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
       "line": 881,
       "operation": "unvalidateResults",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/exams/actions.ts",
-      "line": 884,
-      "operation": "unvalidateResults",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"results.validate\"",
+        "\"exam_validation\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 889,
+      "line": 886,
       "operation": "unvalidateResults",
       "guard": "getCapabilities",
       "arguments": [
@@ -3293,7 +3151,7 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 890,
+      "line": 887,
       "operation": "unvalidateResults",
       "guard": "requireModule",
       "arguments": [
@@ -3304,61 +3162,64 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
+      "line": 910,
+      "operation": "logIncident",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/exams/actions.ts",
       "line": 913,
       "operation": "logIncident",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/exams/actions.ts",
-      "line": 916,
-      "operation": "logIncident",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "PROCTOR_ROLES"
+        "\"proctoring.manage\"",
+        "\"proctoring\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 946,
+      "line": 943,
       "operation": "reviewIncident",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 953,
+      "line": 950,
       "operation": "reviewIncident",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "PROCTOR_ROLES"
+        "\"proctoring.manage\"",
+        "\"proctoring\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 978,
+      "line": 975,
       "operation": "updateWorkspaceExamAccess",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 983,
+      "line": 980,
       "operation": "updateWorkspaceExamAccess",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"candidate_links.edit\"",
+        "\"exam_share_codes\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 995,
+      "line": 992,
       "operation": "updateWorkspaceExamAccess",
       "guard": "getCapabilities",
       "arguments": [
@@ -3369,7 +3230,7 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 996,
+      "line": 993,
       "operation": "updateWorkspaceExamAccess",
       "guard": "requireModule",
       "arguments": [
@@ -3380,38 +3241,40 @@
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1022,
+      "line": 1019,
       "operation": "proposeAiMarks",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1024,
+      "line": 1021,
       "operation": "proposeAiMarks",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1097,
+      "line": 1094,
       "operation": "decideAiProposal",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1099,
+      "line": 1096,
       "operation": "decideAiProposal",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
@@ -3452,38 +3315,40 @@
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 29,
+      "line": 30,
       "operation": "saveFormula",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 31,
+      "line": 32,
       "operation": "saveFormula",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.edit\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 84,
+      "line": 85,
       "operation": "deleteFormula",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 86,
+      "line": 87,
       "operation": "deleteFormula",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.delete\"",
+        "\"question_bank\""
       ]
     },
     {
@@ -3517,110 +3382,116 @@
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 104,
+      "line": 105,
       "operation": "saveGradingSystem",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 106,
+      "line": 107,
       "operation": "saveGradingSystem",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"grading.validate\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 197,
+      "line": 198,
       "operation": "archiveGradingSystem",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 199,
+      "line": 200,
       "operation": "archiveGradingSystem",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"grading.validate\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 228,
+      "line": 229,
       "operation": "setExamGradingSystem",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 230,
+      "line": 231,
       "operation": "setExamGradingSystem",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 278,
+      "line": 279,
       "operation": "setQuizGradingSystem",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 280,
+      "line": 281,
       "operation": "setQuizGradingSystem",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"quizzes.edit\"",
+        "\"quizzes\""
       ]
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 335,
+      "line": 336,
       "operation": "saveMypExamGrading",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 337,
+      "line": 338,
       "operation": "saveMypExamGrading",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 381,
+      "line": 382,
       "operation": "generateMypRubricFromConfig",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 383,
+      "line": 384,
       "operation": "generateMypRubricFromConfig",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"exams.edit\"",
+        "\"examinations\""
       ]
     },
     {
@@ -3681,22 +3552,24 @@
       "file": "src/app/dashboard/myp-results/actions.ts",
       "line": 29,
       "operation": "staffGuard",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "[\"owner\", \"admin\"]"
+        "\"grading.validate\"",
+        "\"exam_results\""
       ]
     },
     {
       "file": "src/app/dashboard/myp-results/actions.ts",
       "line": 30,
       "operation": "staffGuard",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "[...MYP_STAFF_ROLES]"
+        "\"grading.edit\"",
+        "\"exam_results\""
       ]
     },
     {
@@ -3761,123 +3634,124 @@
     },
     {
       "file": "src/app/dashboard/paper-builder/[id]/page.tsx",
-      "line": 16,
-      "operation": "EditPaperPage",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/[id]/page.tsx",
-      "line": 18,
-      "operation": "EditPaperPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/[id]/page.tsx",
-      "line": 20,
-      "operation": "EditPaperPage",
-      "guard": "getCapabilities",
-      "arguments": [
-        "supabase",
-        "ctx",
-        "org.id"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 10,
-      "operation": "guardBuilder",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 12,
-      "operation": "guardBuilder",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 14,
-      "operation": "guardBuilder",
-      "guard": "getCapabilities",
-      "arguments": [
-        "supabase",
-        "ctx",
-        "org.id"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/new/page.tsx",
-      "line": 12,
-      "operation": "NewPaperPage",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/new/page.tsx",
-      "line": 14,
-      "operation": "NewPaperPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/new/page.tsx",
-      "line": 16,
-      "operation": "NewPaperPage",
-      "guard": "getCapabilities",
-      "arguments": [
-        "supabase",
-        "ctx",
-        "org.id"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/page.tsx",
       "line": 17,
+      "operation": "EditPaperPage",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/[id]/page.tsx",
+      "line": 19,
+      "operation": "EditPaperPage",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"paper_builder.edit\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/[id]/page.tsx",
+      "line": 21,
+      "operation": "EditPaperPage",
+      "guard": "getCapabilities",
+      "arguments": [
+        "supabase",
+        "ctx",
+        "org.id"
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/actions.ts",
+      "line": 11,
+      "operation": "guardBuilder",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/actions.ts",
+      "line": 13,
+      "operation": "guardBuilder",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "permission",
+        "\"paper_builder\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/actions.ts",
+      "line": 15,
+      "operation": "guardBuilder",
+      "guard": "getCapabilities",
+      "arguments": [
+        "supabase",
+        "ctx",
+        "org.id"
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/new/page.tsx",
+      "line": 13,
+      "operation": "NewPaperPage",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/new/page.tsx",
+      "line": 15,
+      "operation": "NewPaperPage",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"paper_builder.create\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/new/page.tsx",
+      "line": 17,
+      "operation": "NewPaperPage",
+      "guard": "getCapabilities",
+      "arguments": [
+        "supabase",
+        "ctx",
+        "org.id"
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/page.tsx",
+      "line": 18,
       "operation": "PaperBuilderPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/paper-builder/page.tsx",
-      "line": 19,
+      "line": 20,
       "operation": "PaperBuilderPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/paper-builder/page.tsx",
-      "line": 21,
-      "operation": "PaperBuilderPage",
-      "guard": "getCapabilities",
-      "arguments": [
-        "supabase",
-        "ctx",
-        "org.id"
+        "\"paper_builder.view\""
       ]
     },
     {
       "file": "src/app/dashboard/paper-builder/page.tsx",
       "line": 22,
+      "operation": "PaperBuilderPage",
+      "guard": "getCapabilities",
+      "arguments": [
+        "supabase",
+        "ctx",
+        "org.id"
+      ]
+    },
+    {
+      "file": "src/app/dashboard/paper-builder/page.tsx",
+      "line": 23,
       "operation": "PaperBuilderPage",
       "guard": "requireModule",
       "arguments": [
@@ -3917,25 +3791,25 @@
     },
     {
       "file": "src/app/dashboard/proctoring/page.tsx",
-      "line": 51,
+      "line": 52,
       "operation": "ProctoringReviewPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/proctoring/page.tsx",
-      "line": 54,
+      "line": 55,
       "operation": "ProctoringReviewPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "PROCTOR_ROLES"
+        "{\n    canProctor: { permission: \"proctoring.view\" },\n    isManager: { permission: \"organizations.edit\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/proctoring/page.tsx",
-      "line": 60,
+      "line": 65,
       "operation": "ProctoringReviewPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -3946,24 +3820,13 @@
     },
     {
       "file": "src/app/dashboard/proctoring/page.tsx",
-      "line": 61,
+      "line": 66,
       "operation": "ProctoringReviewPage",
       "guard": "requireModule",
       "arguments": [
         "entitlement",
         "\"proctoring\"",
         "\"/dashboard?e=module\""
-      ]
-    },
-    {
-      "file": "src/app/dashboard/proctoring/page.tsx",
-      "line": 333,
-      "operation": "ProctoringReviewPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
       ]
     },
     {
@@ -3975,110 +3838,116 @@
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 50,
+      "line": 51,
       "operation": "saveQuestion",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 52,
+      "line": 53,
       "operation": "saveQuestion",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "raw?.id ? \"questions.edit\" : \"questions.create\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 166,
+      "line": 167,
       "operation": "deleteQuestion",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 168,
+      "line": 169,
       "operation": "deleteQuestion",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.delete\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 176,
+      "line": 177,
       "operation": "setQuestionStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 178,
+      "line": 180,
       "operation": "setQuestionStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "status === \"published\" ? \"questions.publish\" : \"questions.edit\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 201,
+      "line": 202,
       "operation": "createCategory",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 203,
+      "line": 204,
       "operation": "createCategory",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.create\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 213,
+      "line": 214,
       "operation": "importQuestionsCsv",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 215,
+      "line": 216,
       "operation": "importQuestionsCsv",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.create\"",
+        "\"question_bank\""
       ]
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 326,
+      "line": 327,
       "operation": "uploadQuestionImage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 328,
+      "line": 329,
       "operation": "uploadQuestionImage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"questions.edit\"",
+        "\"question_bank\""
       ]
     },
     {
@@ -4126,97 +3995,102 @@
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 66,
+      "line": 67,
       "operation": "saveQuiz",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 68,
+      "line": 69,
       "operation": "saveQuiz",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "raw?.id ? \"quizzes.edit\" : \"quizzes.create\"",
+        "\"quizzes\""
       ]
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 244,
+      "line": 245,
       "operation": "duplicateQuiz",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 246,
+      "line": 247,
       "operation": "duplicateQuiz",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"quizzes.create\"",
+        "\"quizzes\""
       ]
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 274,
+      "line": 275,
       "operation": "deleteQuiz",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 276,
+      "line": 277,
       "operation": "deleteQuiz",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"quizzes.delete\"",
+        "\"quizzes\""
       ]
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 283,
+      "line": 284,
       "operation": "setQuizStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 285,
+      "line": 286,
       "operation": "setQuizStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"quizzes.edit\"",
+        "\"quizzes\""
       ]
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 293,
+      "line": 294,
       "operation": "startSession",
       "guard": "requireUser",
       "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 295,
-      "operation": "startSession",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
       "line": 296,
+      "operation": "startSession",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"competitions.create\"",
+        "\"competitions\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/quizzes/actions.ts",
+      "line": 297,
       "operation": "startSession",
       "guard": "isFeatureEnabledFor",
       "arguments": [
@@ -4305,25 +4179,25 @@
     },
     {
       "file": "src/app/dashboard/results/page.tsx",
-      "line": 88,
+      "line": 89,
       "operation": "ResultsManagementPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/results/page.tsx",
-      "line": 93,
+      "line": 94,
       "operation": "ResultsManagementPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"results.publish\""
       ]
     },
     {
       "file": "src/app/dashboard/results/page.tsx",
-      "line": 98,
+      "line": 99,
       "operation": "ResultsManagementPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4334,7 +4208,7 @@
     },
     {
       "file": "src/app/dashboard/results/page.tsx",
-      "line": 99,
+      "line": 100,
       "operation": "ResultsManagementPage",
       "guard": "requireModule",
       "arguments": [
@@ -4345,61 +4219,64 @@
     },
     {
       "file": "src/app/dashboard/rubrics/[id]/page.tsx",
-      "line": 113,
+      "line": 114,
       "operation": "RubricDetailPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/rubrics/[id]/page.tsx",
-      "line": 115,
+      "line": 116,
       "operation": "RubricDetailPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"rubrics\""
       ]
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 17,
+      "line": 18,
       "operation": "guard",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 20,
+      "line": 21,
       "operation": "guard",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"rubrics\""
       ]
     },
     {
       "file": "src/app/dashboard/rubrics/page.tsx",
-      "line": 26,
+      "line": 27,
       "operation": "RubricsPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/rubrics/page.tsx",
-      "line": 29,
+      "line": 30,
       "operation": "RubricsPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MARKER_ROLES"
+        "\"grading.edit\"",
+        "\"rubrics\""
       ]
     },
     {
       "file": "src/app/dashboard/rubrics/page.tsx",
-      "line": 31,
+      "line": 32,
       "operation": "RubricsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4410,7 +4287,7 @@
     },
     {
       "file": "src/app/dashboard/rubrics/page.tsx",
-      "line": 32,
+      "line": 33,
       "operation": "RubricsPage",
       "guard": "requireModule",
       "arguments": [
@@ -4421,61 +4298,64 @@
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 14,
+      "line": 15,
       "operation": "loadOwnedSession",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 18,
+      "line": 20,
       "operation": "loadOwnedSession",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "data.organization_id",
-        "CREATOR_ROLES"
+        "\"competitions.edit\"",
+        "\"competitions\""
       ]
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/page.tsx",
-      "line": 14,
+      "line": 15,
       "operation": "HostPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/page.tsx",
-      "line": 29,
+      "line": 30,
       "operation": "HostPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"competitions.edit\"",
+        "\"competitions\""
       ]
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 18,
+      "line": 19,
       "operation": "updateOrgLogo",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 20,
+      "line": 21,
       "operation": "updateOrgLogo",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.edit\"",
+        "\"org_settings\""
       ]
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 23,
+      "line": 24,
       "operation": "updateOrgLogo",
       "guard": "getCapabilities",
       "arguments": [
@@ -4486,7 +4366,7 @@
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 24,
+      "line": 25,
       "operation": "updateOrgLogo",
       "guard": "requireModule",
       "arguments": [
@@ -4497,32 +4377,33 @@
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 64,
+      "line": 65,
       "operation": "updateProfile",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 73,
+      "line": 74,
       "operation": "updateOrg",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 75,
+      "line": 76,
       "operation": "updateOrg",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.edit\"",
+        "\"org_settings\""
       ]
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 80,
+      "line": 81,
       "operation": "updateOrg",
       "guard": "getCapabilities",
       "arguments": [
@@ -4533,7 +4414,7 @@
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 81,
+      "line": 82,
       "operation": "updateOrg",
       "guard": "requireModule",
       "arguments": [
@@ -4544,32 +4425,33 @@
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 89,
+      "line": 90,
       "operation": "changePassword",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 103,
+      "line": 104,
       "operation": "SettingsPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 106,
+      "line": 107,
       "operation": "SettingsPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.edit\"",
+        "\"org_settings\""
       ]
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 108,
+      "line": 109,
       "operation": "SettingsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4580,7 +4462,7 @@
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 109,
+      "line": 110,
       "operation": "SettingsPage",
       "guard": "requireModule",
       "arguments": [
@@ -4591,97 +4473,101 @@
     },
     {
       "file": "src/app/dashboard/settings/proctoring/actions.ts",
-      "line": 12,
+      "line": 13,
       "operation": "guard",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/proctoring/actions.ts",
-      "line": 16,
-      "operation": "guard",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/settings/proctoring/page.tsx",
-      "line": 27,
-      "operation": "ProctoringRetentionPage",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/settings/proctoring/page.tsx",
-      "line": 30,
-      "operation": "ProctoringRetentionPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 14,
-      "operation": "saveTemplate",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 16,
-      "operation": "saveTemplate",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 53,
-      "operation": "deleteTemplate",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 55,
-      "operation": "deleteTemplate",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "MANAGER_ROLES"
-      ]
-    },
-    {
-      "file": "src/app/dashboard/settings/templates/page.tsx",
       "line": 17,
+      "operation": "guard",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"organizations.edit\"",
+        "\"proctoring\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/settings/proctoring/page.tsx",
+      "line": 28,
+      "operation": "ProctoringRetentionPage",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/settings/proctoring/page.tsx",
+      "line": 31,
+      "operation": "ProctoringRetentionPage",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"organizations.edit\"",
+        "\"proctoring\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/settings/templates/actions.ts",
+      "line": 15,
+      "operation": "saveTemplate",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/settings/templates/actions.ts",
+      "line": 17,
+      "operation": "saveTemplate",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"organizations.edit\"",
+        "\"exam_templates\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/settings/templates/actions.ts",
+      "line": 54,
+      "operation": "deleteTemplate",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/settings/templates/actions.ts",
+      "line": 56,
+      "operation": "deleteTemplate",
+      "guard": "canOperate",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "\"organizations.edit\"",
+        "\"exam_templates\""
+      ]
+    },
+    {
+      "file": "src/app/dashboard/settings/templates/page.tsx",
+      "line": 18,
       "operation": "TemplatesPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/settings/templates/page.tsx",
-      "line": 19,
+      "line": 20,
       "operation": "TemplatesPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.edit\""
       ]
     },
     {
       "file": "src/app/dashboard/settings/templates/page.tsx",
-      "line": 22,
+      "line": 23,
       "operation": "TemplatesPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4692,7 +4578,7 @@
     },
     {
       "file": "src/app/dashboard/settings/templates/page.tsx",
-      "line": 23,
+      "line": 24,
       "operation": "TemplatesPage",
       "guard": "requireModule",
       "arguments": [
@@ -4703,90 +4589,82 @@
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 35,
+      "line": 36,
       "operation": "registerStudent",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 38,
+      "line": 39,
       "operation": "registerStudent",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"students.create\"",
+        "\"students\""
       ]
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 108,
+      "line": 109,
       "operation": "setStudentStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 110,
+      "line": 111,
       "operation": "setStudentStatus",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"students.edit\"",
+        "\"students\""
       ]
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 126,
+      "line": 127,
       "operation": "createStudentLogin",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 128,
+      "line": 129,
       "operation": "createStudentLogin",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "CREATOR_ROLES"
+        "\"students.edit\"",
+        "\"students\""
       ]
     },
     {
       "file": "src/app/dashboard/students/page.tsx",
-      "line": 33,
+      "line": 34,
       "operation": "DashboardStudentsPage",
       "guard": "requireUser",
       "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/students/page.tsx",
-      "line": 35,
-      "operation": "DashboardStudentsPage",
-      "guard": "can",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "CREATOR_ROLES"
-      ]
     },
     {
       "file": "src/app/dashboard/students/page.tsx",
       "line": 36,
       "operation": "DashboardStudentsPage",
-      "guard": "can",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "{\n    canEdit: { permission: \"students.edit\", module: \"students\" },\n    canManageClasses: { permission: \"classes.edit\", module: \"classes\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/students/page.tsx",
-      "line": 38,
+      "line": 41,
       "operation": "DashboardStudentsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4797,7 +4675,7 @@
     },
     {
       "file": "src/app/dashboard/students/page.tsx",
-      "line": 39,
+      "line": 42,
       "operation": "DashboardStudentsPage",
       "guard": "requireModule",
       "arguments": [
@@ -4808,50 +4686,52 @@
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 27,
+      "line": 28,
       "operation": "loadTeacherSubjects",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 43,
+      "line": 44,
       "operation": "setTeacherSubjects",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 45,
+      "line": 46,
       "operation": "setTeacherSubjects",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"teachers\""
       ]
     },
     {
       "file": "src/app/dashboard/teachers/page.tsx",
-      "line": 42,
+      "line": 43,
       "operation": "TeachersPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/teachers/page.tsx",
-      "line": 47,
+      "line": 48,
       "operation": "TeachersPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"teachers\""
       ]
     },
     {
       "file": "src/app/dashboard/teachers/page.tsx",
-      "line": 49,
+      "line": 50,
       "operation": "TeachersPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4862,7 +4742,7 @@
     },
     {
       "file": "src/app/dashboard/teachers/page.tsx",
-      "line": 50,
+      "line": 51,
       "operation": "TeachersPage",
       "guard": "requireModule",
       "arguments": [
@@ -4873,97 +4753,102 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 11,
+      "line": 12,
       "operation": "inviteMember",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 13,
+      "line": 14,
       "operation": "inviteMember",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"team\""
       ]
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 39,
+      "line": 40,
       "operation": "revokeInvitation",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 41,
+      "line": 42,
       "operation": "revokeInvitation",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"team\""
       ]
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 48,
+      "line": 49,
       "operation": "updateMemberRole",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 50,
+      "line": 51,
       "operation": "updateMemberRole",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"team\""
       ]
-    },
-    {
-      "file": "src/app/dashboard/team/actions.ts",
-      "line": 61,
-      "operation": "removeMember",
-      "guard": "requireUser",
-      "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
       "line": 63,
       "operation": "removeMember",
-      "guard": "can",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/team/actions.ts",
+      "line": 65,
+      "operation": "removeMember",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"team\""
       ]
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 21,
+      "line": 22,
       "operation": "TeamPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 24,
+      "line": 25,
       "operation": "TeamPage",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
         "ctx",
         "org.id",
-        "MANAGER_ROLES"
+        "\"organizations.manage_members\"",
+        "\"team\""
       ]
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 26,
+      "line": 27,
       "operation": "TeamPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4974,7 +4859,7 @@
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 27,
+      "line": 28,
       "operation": "TeamPage",
       "guard": "requireModule",
       "arguments": [
@@ -5065,15 +4950,15 @@
     },
     {
       "file": "src/app/supervision/page.tsx",
-      "line": 12,
-      "operation": "Supervision",
+      "line": 245,
+      "operation": "SupervisionPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/supervision/page.tsx",
-      "line": 15,
-      "operation": "Supervision",
+      "line": 248,
+      "operation": "SupervisionPage",
       "guard": "requirePermission",
       "arguments": [
         "ctx",
@@ -5083,8 +4968,8 @@
     },
     {
       "file": "src/app/supervision/page.tsx",
-      "line": 18,
-      "operation": "Supervision",
+      "line": 251,
+      "operation": "SupervisionPage",
       "guard": "rpc",
       "arguments": [
         "\"access_supervision_overview\"",
@@ -5152,38 +5037,61 @@
     },
     {
       "file": "src/lib/monitorAccess.ts",
-      "line": 19,
+      "line": 21,
       "operation": "requireStaffSession",
       "guard": "getSessionContext",
       "arguments": []
     },
     {
       "file": "src/lib/monitorAccess.ts",
-      "line": 33,
+      "line": 53,
       "operation": "staffExamAccess",
-      "guard": "can",
+      "guard": "canOperate",
       "arguments": [
-        "ctx",
+        "session.ctx",
         "exam.organization_id as string",
-        "MONITOR_ROLES"
+        "permission",
+        "\"exam_monitoring\""
       ]
     },
     {
       "file": "src/lib/mypAccess.ts",
-      "line": 33,
+      "line": 34,
       "operation": "mypAccess",
       "guard": "requireUser",
       "arguments": []
     },
     {
+      "file": "src/lib/mypAccess.ts",
+      "line": 66,
+      "operation": "mypAccess",
+      "guard": "canOperateMany",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "{\n    view: { permission: \"results.view\", module: \"exam_results\" },\n    export: { permission: \"reports.export\", module: \"exam_reports\" },\n    manage: { permission: \"results.validate\", module: \"exam_results\" },\n  }"
+      ]
+    },
+    {
       "file": "src/lib/operationalAccess.ts",
-      "line": 20,
+      "line": 21,
       "operation": "canOperate",
       "guard": "hasPermission",
       "arguments": [
         "ctx",
         "organizationId",
         "permission"
+      ]
+    },
+    {
+      "file": "src/lib/operationalAccess.ts",
+      "line": 55,
+      "operation": "canOperateMany",
+      "guard": "checkPermissions",
+      "arguments": [
+        "ctx",
+        "organizationId",
+        "keys"
       ]
     },
     {
@@ -5198,7 +5106,7 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 130,
+      "line": 137,
       "operation": "resolvePermission",
       "guard": "rpc",
       "arguments": [
@@ -5208,7 +5116,7 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 146,
+      "line": 153,
       "operation": "hasPermission",
       "guard": "resolvePermission",
       "arguments": [
@@ -5219,7 +5127,27 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 160,
+      "line": 175,
+      "operation": "checkPermissions",
+      "guard": "rpc",
+      "arguments": [
+        "\"access_check_permissions\"",
+        "{\n      p_user_id: user.id,\n      p_organization_id: organizationId,\n      p_permission_keys: unique,\n    }"
+      ]
+    },
+    {
+      "file": "src/lib/rbac.ts",
+      "line": 188,
+      "operation": "checkPermissions",
+      "guard": "rpc",
+      "arguments": [
+        "\"access_has_permission\"",
+        "{\n          p_user_id: user.id,\n          p_organization_id: organizationId,\n          p_permission_key: k,\n        }"
+      ]
+    },
+    {
+      "file": "src/lib/rbac.ts",
+      "line": 213,
       "operation": "getUserPermissions",
       "guard": "resolvePermission",
       "arguments": [
@@ -5230,7 +5158,7 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 174,
+      "line": 227,
       "operation": "requirePermission",
       "guard": "resolvePermission",
       "arguments": [
@@ -5241,28 +5169,28 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 192,
+      "line": 245,
       "operation": "listPermissions",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 218,
+      "line": 271,
       "operation": "listRoles",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 266,
+      "line": 319,
       "operation": "assignRole",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 284,
+      "line": 337,
       "operation": "assignRole",
       "guard": "rpc",
       "arguments": [
@@ -5272,28 +5200,28 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 320,
+      "line": 373,
       "operation": "revokeRole",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 366,
+      "line": 419,
       "operation": "listUserRoles",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 411,
+      "line": 464,
       "operation": "createCustomRole",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 414,
+      "line": 467,
       "operation": "createCustomRole",
       "guard": "rpc",
       "arguments": [
@@ -5303,14 +5231,14 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 434,
+      "line": 487,
       "operation": "updateCustomRole",
       "guard": "requireSuperAdmin",
       "arguments": []
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 437,
+      "line": 490,
       "operation": "updateCustomRole",
       "guard": "rpc",
       "arguments": [
@@ -5320,7 +5248,7 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 451,
+      "line": 504,
       "operation": "deleteCustomRole",
       "guard": "requireSuperAdmin",
       "arguments": []
@@ -6199,12 +6127,12 @@
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 177,
+      "line": 176,
       "operation": "GET"
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 218,
+      "line": 216,
       "operation": "POST"
     },
     {
@@ -6239,7 +6167,7 @@
     },
     {
       "file": "src/app/api/livekit/token/route.ts",
-      "line": 27,
+      "line": 28,
       "operation": "POST"
     },
     {
@@ -6284,7 +6212,7 @@
     },
     {
       "file": "src/app/api/proctoring/export/route.ts",
-      "line": 18,
+      "line": 19,
       "operation": "GET"
     },
     {
@@ -6299,12 +6227,12 @@
     },
     {
       "file": "src/app/api/students/import/extract/route.ts",
-      "line": 15,
+      "line": 16,
       "operation": "POST"
     },
     {
       "file": "src/app/api/students/import/route.ts",
-      "line": 41,
+      "line": 42,
       "operation": "POST"
     },
     {
@@ -6324,232 +6252,232 @@
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 43,
+      "line": 44,
       "operation": "saveAcademicYear"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 69,
+      "line": 70,
       "operation": "deleteAcademicYear"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 88,
+      "line": 89,
       "operation": "saveStructureItem"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 123,
+      "line": 124,
       "operation": "deleteStructureItem"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 195,
+      "line": 196,
       "operation": "saveClassInline"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 238,
+      "line": 239,
       "operation": "saveClassForm"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 256,
+      "line": 257,
       "operation": "classLifecycle"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 283,
+      "line": 284,
       "operation": "transferStudent"
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 312,
+      "line": 313,
       "operation": "withdrawEnrollment"
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 42,
+      "line": 43,
       "operation": "resetMemberPassword"
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 88,
+      "line": 89,
       "operation": "setMemberStatus"
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 132,
+      "line": 133,
       "operation": "createStaffAccount"
     },
     {
       "file": "src/app/dashboard/billing/actions.ts",
-      "line": 12,
+      "line": 13,
       "operation": "submitPayment"
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 33,
+      "line": 34,
       "operation": "createOrgCompetition"
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 99,
+      "line": 100,
       "operation": "setOrgCompetitionStatus"
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 143,
+      "line": 144,
       "operation": "deleteDraftCompetition"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 17,
+      "line": 18,
       "operation": "createExam"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 122,
+      "line": 123,
       "operation": "setExamStatus"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 154,
+      "line": 155,
       "operation": "pauseExam"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 193,
+      "line": 194,
       "operation": "updateExamLockdown"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 235,
+      "line": 236,
       "operation": "updateExamFormulaSheet"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 301,
+      "line": 302,
       "operation": "updateExamCalculator"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 340,
+      "line": 341,
       "operation": "deleteExam"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 417,
+      "line": 418,
       "operation": "addCandidate"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 438,
+      "line": 439,
       "operation": "addCandidatesBulk"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 463,
+      "line": 464,
       "operation": "removeCandidate"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 482,
+      "line": 483,
       "operation": "markAnswer"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 637,
+      "line": 638,
       "operation": "markWithRubric"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 710,
+      "line": 711,
       "operation": "moderateAnswer"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 777,
+      "line": 778,
       "operation": "publishResults"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 843,
+      "line": 840,
       "operation": "validateResults"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 880,
+      "line": 877,
       "operation": "unvalidateResults"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 912,
+      "line": 909,
       "operation": "logIncident"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 945,
+      "line": 942,
       "operation": "reviewIncident"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 977,
+      "line": 974,
       "operation": "updateWorkspaceExamAccess"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1021,
+      "line": 1018,
       "operation": "proposeAiMarks"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 1096,
+      "line": 1093,
       "operation": "decideAiProposal"
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 28,
+      "line": 29,
       "operation": "saveFormula"
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 83,
+      "line": 84,
       "operation": "deleteFormula"
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 109,
+      "line": 110,
       "operation": "loadFormulaLibrary"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 103,
+      "line": 104,
       "operation": "saveGradingSystem"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 196,
+      "line": 197,
       "operation": "archiveGradingSystem"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 227,
+      "line": 228,
       "operation": "setExamGradingSystem"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 277,
+      "line": 278,
       "operation": "setQuizGradingSystem"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 334,
+      "line": 335,
       "operation": "saveMypExamGrading"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 380,
+      "line": 381,
       "operation": "generateMypRubricFromConfig"
     },
     {
@@ -6584,282 +6512,282 @@
     },
     {
       "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 19,
+      "line": 20,
       "operation": "duplicatePaper"
     },
     {
       "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 47,
+      "line": 48,
       "operation": "publishPaper"
     },
     {
       "file": "src/app/dashboard/paper-builder/actions.ts",
-      "line": 57,
+      "line": 58,
       "operation": "archivePaper"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 49,
+      "line": 50,
       "operation": "saveQuestion"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 165,
+      "line": 166,
       "operation": "deleteQuestion"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 175,
+      "line": 176,
       "operation": "setQuestionStatus"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 200,
+      "line": 201,
       "operation": "createCategory"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 212,
+      "line": 213,
       "operation": "importQuestionsCsv"
     },
     {
       "file": "src/app/dashboard/questions/actions.ts",
-      "line": 325,
+      "line": 326,
       "operation": "uploadQuestionImage"
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 65,
+      "line": 66,
       "operation": "saveQuiz"
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 243,
+      "line": 244,
       "operation": "duplicateQuiz"
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 273,
+      "line": 274,
       "operation": "deleteQuiz"
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 282,
+      "line": 283,
       "operation": "setQuizStatus"
     },
     {
       "file": "src/app/dashboard/quizzes/actions.ts",
-      "line": 292,
+      "line": 293,
       "operation": "startSession"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 28,
+      "line": 29,
       "operation": "createRubric"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 53,
+      "line": 54,
       "operation": "updateRubric"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 116,
+      "line": 117,
       "operation": "duplicateRubric"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 173,
+      "line": 174,
       "operation": "addCriterion"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 221,
+      "line": 222,
       "operation": "updateCriterion"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 258,
+      "line": 259,
       "operation": "deleteCriterion"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 282,
+      "line": 283,
       "operation": "attachRubric"
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 334,
+      "line": 335,
       "operation": "detachRubric"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 110,
+      "line": 112,
       "operation": "hostStart"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 150,
+      "line": 152,
       "operation": "hostNext"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 187,
+      "line": 189,
       "operation": "hostPauseToggle"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 244,
+      "line": 246,
       "operation": "hostEnd"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 261,
+      "line": 263,
       "operation": "hostSetPhase"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 287,
+      "line": 289,
       "operation": "hostSetAdmission"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 297,
+      "line": 299,
       "operation": "hostSetApprovalRequired"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 325,
+      "line": 327,
       "operation": "hostSetParticipantStatus"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 350,
+      "line": 352,
       "operation": "hostRemoveParticipant"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 372,
+      "line": 374,
       "operation": "hostUpdateLiveSettings"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 419,
+      "line": 421,
       "operation": "hostToggleLeaderboard"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 423,
+      "line": 425,
       "operation": "hostRotateDisplayToken"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 442,
+      "line": 444,
       "operation": "hostRevokeDisplayToken"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 457,
+      "line": 459,
       "operation": "hostPrev"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 461,
+      "line": 463,
       "operation": "hostSetAnswerLock"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 465,
+      "line": 467,
       "operation": "hostRevealResults"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 469,
+      "line": 471,
       "operation": "hostRevealNextPlace"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 473,
+      "line": 475,
       "operation": "hostShowFullBoard"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 477,
+      "line": 479,
       "operation": "hostReplayPodium"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 481,
+      "line": 483,
       "operation": "hostFinishPresentation"
     },
     {
       "file": "src/app/dashboard/settings/page.tsx",
-      "line": 98,
+      "line": 99,
       "operation": "SettingsPage"
     },
     {
       "file": "src/app/dashboard/settings/proctoring/actions.ts",
-      "line": 25,
+      "line": 26,
       "operation": "saveProctoringRetention"
     },
     {
       "file": "src/app/dashboard/settings/proctoring/actions.ts",
-      "line": 75,
+      "line": 76,
       "operation": "applyProctoringRetention"
     },
     {
       "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 13,
+      "line": 14,
       "operation": "saveTemplate"
     },
     {
       "file": "src/app/dashboard/settings/templates/actions.ts",
-      "line": 52,
+      "line": 53,
       "operation": "deleteTemplate"
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 34,
+      "line": 35,
       "operation": "registerStudent"
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 107,
+      "line": 108,
       "operation": "setStudentStatus"
     },
     {
       "file": "src/app/dashboard/students/actions.ts",
-      "line": 125,
+      "line": 126,
       "operation": "createStudentLogin"
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 26,
+      "line": 27,
       "operation": "loadTeacherSubjects"
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 42,
+      "line": 43,
       "operation": "setTeacherSubjects"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 10,
+      "line": 11,
       "operation": "inviteMember"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 38,
+      "line": 39,
       "operation": "revokeInvitation"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 47,
+      "line": 48,
       "operation": "updateMemberRole"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 60,
+      "line": 62,
       "operation": "removeMember"
     },
     {
@@ -6980,55 +6908,55 @@
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 146,
+      "line": 145,
       "operation": "authorize",
-      "condition": "(!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) || !await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
+      "condition": "!await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
     },
     {
       "file": "src/app/api/live/control/route.ts",
-      "line": 200,
+      "line": 198,
       "operation": "GET",
-      "condition": "(!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) || !await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
+      "condition": "!await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
     },
     {
       "file": "src/app/api/live/host/state/route.ts",
-      "line": 38,
+      "line": 39,
       "operation": "GET",
-      "condition": "!can(ctx, session.organization_id, CREATOR_ROLES) || !await canOperate(ctx, session.organization_id, \"competitions.view\", \"competitions\")"
+      "condition": "!await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
     },
     {
       "file": "src/app/api/live/participants/extra-time/route.ts",
-      "line": 59,
+      "line": 58,
       "operation": "POST",
-      "condition": "(!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) || !await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
+      "condition": "!await canOperate(ctx, session.organization_id, \"competitions.edit\", \"competitions\")"
     },
     {
       "file": "src/app/api/livekit/token/route.ts",
-      "line": 40,
+      "line": 41,
       "operation": "POST",
       "condition": "!(await isFeatureEnabled(\"proctoring\", { ownerBypass: sessionCtx?.profile.platform_role === \"super_admin\" }))"
     },
     {
       "file": "src/app/api/livekit/token/route.ts",
-      "line": 94,
+      "line": 95,
       "operation": "POST",
-      "condition": "!org || org.id !== exam.organization_id || !can(ctx, exam.organization_id, PROCTOR_ROLES)"
+      "condition": "!org || org.id !== exam.organization_id || !(await canOperate(ctx, exam.organization_id, \"proctoring.view\", \"proctoring\"))"
     },
     {
       "file": "src/app/api/students/import/extract/route.ts",
-      "line": 22,
+      "line": 23,
       "operation": "POST",
-      "condition": "ctx.profile.status === \"suspended\" || ctx.tenantDenied ||\n      (ctx.profile.platform_role !== \"super_admin\" && (!org || !can(ctx, org.id, CREATOR_ROLES)))"
+      "condition": "ctx.profile.status === \"suspended\" ||\n    ctx.tenantDenied ||\n    (ctx.profile.platform_role !== \"super_admin\" && !org) ||\n    !(await canOperate(ctx, org?.id ?? null, \"students.create\", org ? \"students\" : undefined))"
     },
     {
       "file": "src/app/api/students/import/route.ts",
-      "line": 59,
+      "line": 60,
       "operation": "POST",
       "condition": "ctx.profile.platform_role === \"super_admin\" && body.organization_id"
     },
     {
       "file": "src/app/api/students/import/route.ts",
-      "line": 64,
+      "line": 65,
       "operation": "POST",
       "condition": "org && body.organization_id && body.organization_id !== org.id"
     },
@@ -7040,177 +6968,177 @@
     },
     {
       "file": "src/app/dashboard/academics/actions.ts",
-      "line": 187,
+      "line": 188,
       "operation": "assertOrgRefs",
       "condition": "!profile || profile.platform_role !== \"super_admin\""
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 170,
+      "line": 171,
       "operation": "createStaffAccount",
       "condition": "existingProfile!.platform_role === \"super_admin\""
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 54,
+      "line": 55,
       "operation": "createOrgCompetition",
       "condition": "!quiz || quiz.organization_id !== org.id"
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 119,
+      "line": 120,
       "operation": "setOrgCompetitionStatus",
       "condition": "!comp || comp.organization_id !== org.id"
     },
     {
       "file": "src/app/dashboard/competitions/actions.ts",
-      "line": 156,
+      "line": 157,
       "operation": "deleteDraftCompetition",
       "condition": "!comp || comp.organization_id !== org.id"
     },
     {
       "file": "src/app/dashboard/exams/[id]/monitor/page.tsx",
-      "line": 20,
+      "line": 21,
       "operation": "ExamMonitorPage",
-      "condition": "!can(ctx, loaded.exam.organization_id, PROCTOR_ROLES)"
+      "condition": "!(await canOperate(ctx, loaded.exam.organization_id, \"proctoring.view\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 20,
+      "line": 21,
       "operation": "createExam",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.create\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 46,
+      "line": 47,
       "operation": "createExam",
       "condition": "paperError || !rows || paperCount === null || paperCount === 0 || rows.length !== paperCount || rows.some((row) => {\n    const points = Number(row.points ?? row.questions?.points);\n    return !row.questions || row.questions.organization_id !== org.id || !Number.isFinite(points) || points < 0;\n  })"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 127,
+      "line": 128,
       "operation": "setExamStatus",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 157,
+      "line": 158,
       "operation": "pauseExam",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 197,
+      "line": 198,
       "operation": "updateExamLockdown",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 238,
+      "line": 239,
       "operation": "updateExamFormulaSheet",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 305,
+      "line": 306,
       "operation": "updateExamCalculator",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 344,
+      "line": 345,
       "operation": "deleteExam",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.delete\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 469,
+      "line": 470,
       "operation": "removeCandidate",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES) || !uuid.test(id) || !uuid.test(examId)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !uuid.test(id) || !uuid.test(examId) || !(await canOperate(ctx, org.id, \"candidate_links.revoke\", \"exam_candidates\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 506,
+      "line": 507,
       "operation": "markAnswer",
       "condition": "!question || question.organization_id !== org.id || question.type !== \"open_ended\""
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 586,
+      "line": 587,
       "operation": "loadRubricMarkingContext",
       "condition": "!question || question.organization_id !== orgId || question.type !== \"open_ended\""
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 739,
+      "line": 740,
       "operation": "moderateAnswer",
       "condition": "!question || question.organization_id !== org.id || ![\"open_ended\", \"assess_parts\"].includes(question.type)"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 916,
+      "line": 913,
       "operation": "logIncident",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, PROCTOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"proctoring.manage\", \"proctoring\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 953,
+      "line": 950,
       "operation": "reviewIncident",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !uuid.test(examId) || !uuid.test(incidentId) || !(await canOperate(ctx, org.id, \"proctoring.manage\", \"proctoring\"))"
     },
     {
       "file": "src/app/dashboard/exams/actions.ts",
-      "line": 983,
+      "line": 980,
       "operation": "updateWorkspaceExamAccess",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"candidate_links.edit\", \"exam_share_codes\"))"
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 31,
+      "line": 32,
       "operation": "saveFormula",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"questions.edit\", \"question_bank\"))"
     },
     {
       "file": "src/app/dashboard/formulas/actions.ts",
-      "line": 86,
+      "line": 87,
       "operation": "deleteFormula",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"questions.delete\", \"question_bank\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 106,
+      "line": 107,
       "operation": "saveGradingSystem",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, MANAGER_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"grading.validate\", \"exam_results\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 199,
+      "line": 200,
       "operation": "archiveGradingSystem",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, MANAGER_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"grading.validate\", \"exam_results\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 230,
+      "line": 231,
       "operation": "setExamGradingSystem",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 280,
+      "line": 281,
       "operation": "setQuizGradingSystem",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"quizzes.edit\", \"quizzes\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 337,
+      "line": 338,
       "operation": "saveMypExamGrading",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/grading/actions.ts",
-      "line": 383,
+      "line": 384,
       "operation": "generateMypRubricFromConfig",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, CREATOR_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"exams.edit\", \"examinations\"))"
     },
     {
       "file": "src/app/dashboard/myp-results/actions.ts",
@@ -7232,37 +7160,31 @@
     },
     {
       "file": "src/app/dashboard/rubrics/actions.ts",
-      "line": 19,
+      "line": 20,
       "operation": "guard",
       "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\")"
     },
     {
       "file": "src/app/dashboard/sessions/[id]/host/actions.ts",
-      "line": 18,
+      "line": 20,
       "operation": "loadOwnedSession",
-      "condition": "!can(ctx, data.organization_id, CREATOR_ROLES) && data.host_id !== ctx.user.id"
-    },
-    {
-      "file": "src/app/dashboard/sessions/[id]/host/page.tsx",
-      "line": 29,
-      "operation": "HostPage",
-      "condition": "!can(ctx, org.id, CREATOR_ROLES) && session.host_id !== ctx.user.id"
+      "condition": "!(await canOperate(ctx, data.organization_id, \"competitions.edit\", \"competitions\"))"
     },
     {
       "file": "src/app/dashboard/settings/proctoring/actions.ts",
-      "line": 14,
+      "line": 15,
       "operation": "guard",
       "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\")"
     },
     {
       "file": "src/app/dashboard/teachers/actions.ts",
-      "line": 45,
+      "line": 46,
       "operation": "setTeacherSubjects",
-      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !can(ctx, org.id, MANAGER_ROLES)"
+      "condition": "!org || (org.status !== \"active\" && ctx.profile.platform_role !== \"super_admin\") || !(await canOperate(ctx, org.id, \"organizations.manage_members\", \"teachers\"))"
     },
     {
       "file": "src/app/dashboard/teachers/page.tsx",
-      "line": 99,
+      "line": 100,
       "operation": "TeachersPage",
       "condition": "!exam.created_by"
     },
@@ -7334,15 +7256,27 @@
     },
     {
       "file": "src/lib/monitorAccess.ts",
-      "line": 33,
+      "line": 53,
       "operation": "staffExamAccess",
-      "condition": "!exam || !can(ctx, exam.organization_id as string, MONITOR_ROLES)"
+      "condition": "!(await canOperate(session.ctx, exam.organization_id as string, permission, \"exam_monitoring\"))"
     },
     {
       "file": "src/lib/mypResults.ts",
       "line": 441,
       "operation": "loadMypResults",
       "condition": "filters.organizationId && exam.organization_id !== filters.organizationId"
+    },
+    {
+      "file": "src/lib/operationalAccess.ts",
+      "line": 20,
+      "operation": "canOperate",
+      "condition": "!organizationId && ctx.profile.platform_role !== \"super_admin\""
+    },
+    {
+      "file": "src/lib/operationalAccess.ts",
+      "line": 50,
+      "operation": "canOperateMany",
+      "condition": "!organizationId && ctx.profile.platform_role !== \"super_admin\""
     },
     {
       "file": "src/lib/printablePaper.ts",
@@ -7352,25 +7286,37 @@
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 276,
+      "line": 129,
+      "operation": "resolvePermission",
+      "condition": "!organizationId && ctx.profile.platform_role !== \"super_admin\""
+    },
+    {
+      "file": "src/lib/rbac.ts",
+      "line": 170,
+      "operation": "checkPermissions",
+      "condition": "!organizationId && ctx.profile.platform_role !== \"super_admin\""
+    },
+    {
+      "file": "src/lib/rbac.ts",
+      "line": 329,
       "operation": "assignRole",
       "condition": "!actor || actor.platform_role !== \"super_admin\" || actor.status !== \"active\""
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 298,
+      "line": 351,
       "operation": "assignRole",
       "condition": "role.organization_id && role.organization_id !== organizationId"
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 329,
+      "line": 382,
       "operation": "revokeRole",
       "condition": "!actor || actor.platform_role !== \"super_admin\" || actor.status !== \"active\""
     },
     {
       "file": "src/lib/rbac.ts",
-      "line": 460,
+      "line": 513,
       "operation": "deleteCustomRole",
       "condition": "!actor || actor.platform_role !== \"super_admin\" || actor.status !== \"active\""
     }

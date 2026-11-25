@@ -107,7 +107,7 @@ const adminResultsPage = readFileSync("src/app/admin/examinations/results/page.t
 check(adminResultsPage.includes("Results Management & Candidate Links"), "Super Admin page uses the same name");
 check(orgPage.includes("Results Management &amp; Candidate Links —"), "org candidate section titled identically to Super Admin");
 check(orgPage.includes("requireUser") && orgPage.includes("isStaffRole"), "staff guard present");
-check(orgPage.includes("MANAGER_ROLES"), "manager-gated sensitive actions");
+check(orgPage.includes('canOperate(ctx, org.id, "results.publish")'), "RBAC-gated sensitive actions");
 check(orgPage.includes('.eq("organization_id", org.id)'), "tenant-scoped exam query");
 check(orgPage.includes('from("audit_logs")'), "publication history from the audit trail");
 for (const label of ["Awaiting submissions", "Awaiting marking", "Marking in progress", "Provisional results", "Validated", "Published"]) {
@@ -157,7 +157,7 @@ check(examPage.includes("isResultsManager && (attempts ?? []).length > 0"), "val
 check(examPage.includes("isResultsManager ? ("), "publish form hidden from teachers");
 check(examPage.includes("restricted to organization administrators"), "teachers see the explanation, not a dead button");
 const examActionsSrc = readFileSync("src/app/dashboard/exams/actions.ts", "utf8");
-check((examActionsSrc.match(/MANAGER_ROLES/g) ?? []).length >= 3, "validate/unvalidate/publish all require MANAGER_ROLES");
+check(examActionsSrc.includes('"results.validate"') && examActionsSrc.includes('"results.publish"') && examActionsSrc.includes('"results.unpublish"'), "validate/unvalidate/publish all require centralized RBAC permissions");
 check(examActionsSrc.includes("function resultsBack"), "return path is validated (no open redirect)");
 check(examActionsSrc.includes("results_validated !== true"), "publish-before-validate gate preserved server-side");
 check(examActionsSrc.includes('"exam.results_validated"') && examActionsSrc.includes('"exam.results_published"'), "validation and publication remain audited");
@@ -226,6 +226,14 @@ const authStub = {
 };
 const stubs = {
   "@/lib/auth": authStub,
+  "@/lib/operationalAccess": {
+    canOperate: async (c, _org, permission) => {
+      const roles = permission === "results.validate" || permission === "results.publish" || permission === "results.unpublish"
+        ? authStub.MANAGER_ROLES
+        : authStub.MARKER_ROLES;
+      return authStub.can(c, _org, roles);
+    },
+  },
   "@/lib/examLanguage": { normalizeExamLanguage: () => null },
   "@/lib/formulaLibrary": { validateSheetDraft: () => ({ ok: true, groups: [] }) },
   "@/lib/entitlements": { isPlanLimitError: () => false, withinLimit: () => true },

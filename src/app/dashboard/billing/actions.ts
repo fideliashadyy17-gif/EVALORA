@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -12,7 +13,7 @@ import { redirect } from "next/navigation";
 export async function submitPayment(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/billing");
+  if (!(await canOperate(ctx, org.id, "billing.manage", "billing"))) redirect("/dashboard/billing");
 
   const planId = String(formData.get("plan_id") ?? "");
   const period = String(formData.get("billing_period") ?? "monthly") === "yearly" ? "yearly" : "monthly";

@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!parsed.success) return NextResponse.json({ error: "Invalid request." }, { status: 400, headers: NO_STORE });
   const { scope, action } = parsed.data;
 
-  const access = await staffExamAccess(id);
+  const access = await staffExamAccess(id, { write: true });
   if (!access.ok) return access.response;
   const { ctx, organization_id: orgId } = access;
 

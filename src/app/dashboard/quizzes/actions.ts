@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
 import {
@@ -64,8 +65,8 @@ function friendlySaveError(error: { message?: string } | null): string {
 
 export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to edit quizzes." };
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, raw?.id ? "quizzes.edit" : "quizzes.create", "quizzes"))) return { error: "You don't have permission to edit quizzes." };
   const parsed = QuizSchema.safeParse(raw);
   if (!parsed.success) return { error: "Please check the form." };
   const q = parsed.data;
@@ -242,8 +243,8 @@ export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
 
 export async function duplicateQuiz(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "quizzes.create", "quizzes"))) redirect("/dashboard/quizzes");
   const id = String(formData.get("id"));
   const supabase = await createClient();
   const { data: src } = await supabase.from("quizzes").select("*").eq("id", id).eq("organization_id", org.id).single();
@@ -272,8 +273,8 @@ export async function duplicateQuiz(formData: FormData) {
 
 export async function deleteQuiz(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "quizzes.delete", "quizzes"))) redirect("/dashboard/quizzes");
   const supabase = await createClient();
   await supabase.from("quizzes").delete().eq("id", String(formData.get("id"))).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
@@ -281,8 +282,8 @@ export async function deleteQuiz(formData: FormData) {
 
 export async function setQuizStatus(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "quizzes.edit", "quizzes"))) redirect("/dashboard/quizzes");
   const supabase = await createClient();
   await supabase.from("quizzes").update({ status: String(formData.get("status")) }).eq("id", String(formData.get("id"))).eq("organization_id", org.id);
   revalidatePath("/dashboard/quizzes");
@@ -291,8 +292,8 @@ export async function setQuizStatus(formData: FormData) {
 /** Create a live session (lobby) for a published quiz and go to the host console. */
 export async function startSession(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/quizzes");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "competitions.create", "competitions"))) redirect("/dashboard/quizzes");
   if (!(await isFeatureEnabledFor(ctx, "live_quizzes"))) redirect("/dashboard/quizzes?e=module");
   const quizId = String(formData.get("quiz_id"));
   const mode = String(formData.get("mode") ?? "synchronized");

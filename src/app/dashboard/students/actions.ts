@@ -1,7 +1,8 @@
 "use server";
 
 import { audit } from "@/lib/admin";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { isValidEmail, normalizeDateOfBirth, normalizeGender } from "@/lib/studentImport";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -35,7 +36,7 @@ export async function registerStudent(input: RegisterStudentInput): Promise<Regi
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) return { ok: false, error: "No active school workspace." };
-  if (!can(ctx, org.id, CREATOR_ROLES)) return { ok: false, error: "You do not have permission to register students." };
+  if (!(await canOperate(ctx, org.id, "students.create", "students"))) return { ok: false, error: "You do not have permission to register students." };
 
   const fullName = String(input.full_name ?? "").trim().slice(0, 160);
   if (!fullName) return { ok: false, error: "The student's full name is required." };
@@ -107,7 +108,7 @@ const str = (fd: FormData, key: string, max = 200) => String(fd.get(key) ?? "").
 export async function setStudentStatus(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/students");
+  if (!org || !(await canOperate(ctx, org.id, "students.edit", "students"))) redirect("/dashboard/students");
   const id = str(formData, "id", 60);
   const status = String(formData.get("status") ?? "");
   if (!id || !["active", "suspended", "graduated", "withdrawn"].includes(status)) {
@@ -125,7 +126,7 @@ export async function setStudentStatus(formData: FormData) {
 export async function createStudentLogin(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/students");
+  if (!org || !(await canOperate(ctx, org.id, "students.edit", "students"))) redirect("/dashboard/students");
   const id = str(formData, "id", 60);
   const supabase = await createClient();
   const { data: student } = await supabase.from("students").select("*")

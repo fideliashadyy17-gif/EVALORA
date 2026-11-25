@@ -259,7 +259,7 @@ ok("ranking history names the leader of each question", JSON.stringify(
 const answerRoute = readFileSync("src/app/api/live/answer/route.ts", "utf8");
 ok("the answer endpoint refuses submissions while answers are locked", /answer_locked/.test(answerRoute) && answerRoute.includes("423"));
 const controlRoute = readFileSync("src/app/api/live/control/route.ts", "utf8");
-ok("the control endpoint re-authorizes organizer access on every POST", controlRoute.includes("can(ctx, session.organization_id, CREATOR_ROLES)"));
+ok("the control endpoint re-authorizes organizer access on every POST", controlRoute.includes('canOperate(ctx, session.organization_id, "competitions.edit", "competitions")'));
 ok("the control endpoint only accepts known commands", controlRoute.includes("LIVE_COMMANDS.includes(command)"));
 ok("conflicting transitions are rejected with a compare-and-set", controlRoute.includes("CAS_COMMANDS"));
 const screenRoute = readFileSync("src/app/api/live/screen/route.ts", "utf8");

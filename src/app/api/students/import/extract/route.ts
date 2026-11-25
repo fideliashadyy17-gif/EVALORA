@@ -1,4 +1,5 @@
-import { activeOrg, can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { activeOrg, getSessionContext } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { extractStudentRows, IMPORT_FILE_EXTENSIONS } from "@/lib/extractServer";
 import { NextResponse } from "next/server";
 
@@ -19,8 +20,12 @@ export async function POST(request: Request) {
   // Match the student-import creator roles before reading the request body;
   // platform administrators can use the separate cross-organization wizard.
   const org = activeOrg(ctx);
-  if (ctx.profile.status === "suspended" || ctx.tenantDenied ||
-      (ctx.profile.platform_role !== "super_admin" && (!org || !can(ctx, org.id, CREATOR_ROLES)))) {
+  if (
+    ctx.profile.status === "suspended" ||
+    ctx.tenantDenied ||
+    (ctx.profile.platform_role !== "super_admin" && !org) ||
+    !(await canOperate(ctx, org?.id ?? null, "students.create", org ? "students" : undefined))
+  ) {
     return NextResponse.json({ error: "You do not have permission to import students in this workspace." }, { status: 403 });
   }
 

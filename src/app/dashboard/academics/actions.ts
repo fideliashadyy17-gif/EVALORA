@@ -1,7 +1,8 @@
 "use server";
 
 import { audit } from "@/lib/admin";
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -24,12 +25,12 @@ const back = (fd: FormData, fallback: string) => {
 };
 const sep = (u: string) => (u.includes("?") ? "&" : "?");
 
-async function schoolCtx(roles = CREATOR_ROLES) {
+async function schoolCtx(permission: string, mod: string) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org!.id, roles)) redirect("/dashboard/academics?e=forbidden");
-  return { ctx, org: org!, supabase: await createClient() };
+  if (!(await canOperate(ctx, org.id, permission, mod))) redirect("/dashboard/academics?e=forbidden");
+  return { ctx, org, supabase: await createClient() };
 }
 
 function revalidateAcademics() {
@@ -41,7 +42,7 @@ function revalidateAcademics() {
 /* ─── Academic years ─────────────────────────────────────────────── */
 
 export async function saveAcademicYear(formData: FormData) {
-  const { ctx, org, supabase } = await schoolCtx(MANAGER_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("organizations.edit", "academics");
   const dest = back(formData, "/dashboard/academics");
   const id = str(formData, "id", 60);
   const name = str(formData, "name", 80);
@@ -67,7 +68,7 @@ export async function saveAcademicYear(formData: FormData) {
 }
 
 export async function deleteAcademicYear(formData: FormData) {
-  const { ctx, org, supabase } = await schoolCtx(MANAGER_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("organizations.edit", "academics");
   const dest = back(formData, "/dashboard/academics");
   const id = str(formData, "id", 60);
   if (!id) redirect(dest);
@@ -86,7 +87,7 @@ export async function deleteAcademicYear(formData: FormData) {
 const STRUCTURE_TABLES = { level: "education_levels", department: "departments", subject: "subjects" } as const;
 
 export async function saveStructureItem(formData: FormData) {
-  const { ctx, org, supabase } = await schoolCtx(MANAGER_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("organizations.edit", "academics");
   const dest = back(formData, "/dashboard/academics");
   const kind = String(formData.get("kind") ?? "") as keyof typeof STRUCTURE_TABLES;
   const table = STRUCTURE_TABLES[kind];
@@ -121,7 +122,7 @@ export async function saveStructureItem(formData: FormData) {
 }
 
 export async function deleteStructureItem(formData: FormData) {
-  const { ctx, org, supabase } = await schoolCtx(MANAGER_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("organizations.edit", "academics");
   const dest = back(formData, "/dashboard/academics");
   const kind = String(formData.get("kind") ?? "") as keyof typeof STRUCTURE_TABLES;
   const table = STRUCTURE_TABLES[kind];
@@ -196,7 +197,7 @@ export async function saveClassInline(input: ClassInput): Promise<ClassResult> {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) return { ok: false, error: "No active school workspace." };
-  if (!can(ctx, org.id, CREATOR_ROLES)) return { ok: false, error: "You do not have permission to manage classes." };
+  if (!(await canOperate(ctx, org.id, input.id ? "classes.edit" : "classes.create", "classes"))) return { ok: false, error: "You do not have permission to manage classes." };
   const name = String(input.name ?? "").trim().slice(0, 120);
   if (!name) return { ok: false, error: "Class name is required." };
   const supabase = await createClient();
@@ -258,7 +259,7 @@ export async function classLifecycle(formData: FormData) {
   const op = String(formData.get("op") ?? "");
   const id = str(formData, "id", 60);
   if (!id) redirect(dest);
-  const { ctx, org, supabase } = await schoolCtx(op === "delete" ? MANAGER_ROLES : CREATOR_ROLES);
+  const { ctx, org, supabase } = await schoolCtx(op === "delete" ? "classes.delete" : "classes.edit", "classes");
   if (op === "archive" || op === "restore") {
     await supabase.from("classes")
       .update({ status: op === "archive" ? "archived" : "active", updated_at: new Date().toISOString() })
@@ -282,7 +283,7 @@ export async function classLifecycle(formData: FormData) {
 
 export async function transferStudent(formData: FormData) {
   const dest = back(formData, "/dashboard/students");
-  const { ctx, org, supabase } = await schoolCtx(CREATOR_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("classes.edit", "classes");
   const studentId = str(formData, "student_id", 60);
   const classId = str(formData, "class_id", 60);
   if (!studentId || !classId) redirect(`${dest}${sep(dest)}e=${encodeURIComponent("Choose a student and a destination class.")}`);
@@ -311,7 +312,7 @@ export async function transferStudent(formData: FormData) {
 
 export async function withdrawEnrollment(formData: FormData) {
   const dest = back(formData, "/dashboard/students");
-  const { ctx, org, supabase } = await schoolCtx(CREATOR_ROLES);
+  const { ctx, org, supabase } = await schoolCtx("classes.edit", "classes");
   const enrollmentId = str(formData, "enrollment_id", 60);
   if (!enrollmentId) redirect(dest);
   await supabase.from("student_enrollments").update({ status: "withdrawn" })

@@ -25,7 +25,7 @@ for(const file of files.sort()){
   if(ts.isCallExpression(node)){
    const callee=node.expression.getText(source);
    let kind=null;
-   if(['can','canOperate','requireSuperAdmin','requireUser','getSessionContext','hasPermission','requirePermission','resolvePermission','getCapabilities','requireCapability','requireModule','isFeatureEnabledFor'].includes(callee))kind=callee;
+   if(['can','canOperate','canOperateMany','checkPermissions','requireSuperAdmin','requireUser','getSessionContext','hasPermission','requirePermission','resolvePermission','getCapabilities','requireCapability','requireModule','isFeatureEnabledFor'].includes(callee))kind=callee;
    else if(callee.endsWith('.rpc'))kind='rpc';
    if(kind)rows.push({file,line:source.getLineAndCharacterOfPosition(node.getStart(source)).line+1,operation:owner,guard:kind,arguments:node.arguments.map(a=>a.getText(source))});
   }

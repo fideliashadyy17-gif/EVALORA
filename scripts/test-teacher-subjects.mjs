@@ -15,7 +15,7 @@ assert.ok(!/drop table|truncate|delete from public\.(exams|questions|profiles|su
 
 const actions = readFileSync("src/app/dashboard/teacher" + "s/actions.ts", "utf8");
 assert.ok(actions.includes("export async function setTeacherSubjects"), "server action exists");
-assert.ok(actions.includes("MANAGER_ROLES"), "manager-only guard");
+assert.ok(actions.includes('canOperate(ctx, org.id, "organizations.manage_members", "teachers")'), "RBAC-gated teacher-subject assignment");
 assert.ok(actions.includes("audit("), "assignment changes are audited");
 assert.ok(actions.includes("eq(\"organization_id\", org.id)"), "every query is org-scoped");
 assert.ok(actions.includes("toDelete") && actions.includes("toInsert"), "diff-based update (never wipe-then-insert)");

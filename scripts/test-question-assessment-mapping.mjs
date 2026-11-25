@@ -220,6 +220,7 @@ const quizActions = (() => {
   Module._load = function (req, parent) {
     if (parent?.filename === quizActionsFile) {
       if (req === "@/lib/auth") return authStub;
+      if (req === "@/lib/operationalAccess") return { canOperate: async () => true };
       if (req === "@/lib/entitlements") return entitlementStub;
       if (req === "@/lib/live") return liveStub;
       if (req === "@/lib/platform") return platformStub;

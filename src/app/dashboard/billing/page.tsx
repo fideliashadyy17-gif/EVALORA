@@ -1,5 +1,6 @@
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
@@ -23,7 +24,7 @@ export default async function BillingPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const isManager = await canOperate(ctx, org.id, "billing.manage", "billing");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "billing", "/dashboard?e=module");

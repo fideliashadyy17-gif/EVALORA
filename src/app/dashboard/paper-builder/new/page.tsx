@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -11,7 +12,7 @@ export const metadata: Metadata = { title: "New examination paper" };
 export default async function NewPaperPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) notFound();
+  if (!(await canOperate(ctx, org.id, "paper_builder.create"))) notFound();
   const supabase = await createClient();
   const { capabilities } = await getCapabilities(supabase, ctx, org.id);
   if (!capabilities.question_paper_builder) notFound();

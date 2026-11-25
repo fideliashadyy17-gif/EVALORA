@@ -112,7 +112,7 @@ const chrome = readFileSync("src/components/dashboard/DashboardChrome.tsx", "utf
 check("dashboard nav shows Question Paper Builder", chrome.includes("/dashboard/paper-builder") && chrome.includes("Question Paper Builder"));
 
 const builderPage = readFileSync("src/app/dashboard/paper-builder/page.tsx", "utf8");
-check("builder page guards by capability", builderPage.includes("question_paper_builder") && builderPage.includes("CREATOR_ROLES"));
+check("builder page guards by capability and RBAC", builderPage.includes("question_paper_builder") && builderPage.includes('canOperate(ctx, org.id, "paper_builder.view")'));
 
 const settings = readFileSync("src/app/dashboard/settings/page.tsx", "utf8");
 check("org settings has logo upload", settings.includes("updateOrgLogo") && settings.includes("LogoUpload") && settings.includes("org-logos"));

@@ -3,7 +3,8 @@ import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { Badge, Button, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import {
@@ -90,7 +91,7 @@ export default async function ResultsManagementPage({
   const sp = await searchParams;
   if (!isStaffRole(org.role)) redirect("/student");
 
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const isManager = await canOperate(ctx, org.id, "results.publish");
   const supabase = await createClient();
   // Module activation (Plan & Module Management) gates this feature
   // server-side — disabling it hides the nav entry AND blocks the page,

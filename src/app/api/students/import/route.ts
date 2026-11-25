@@ -1,5 +1,6 @@
 import { audit } from "@/lib/admin";
-import { activeOrg, can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { activeOrg, getSessionContext } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import {
   identityKey, normalizeDateOfBirth, normalizeGender, resolveClass, validateImportRecord,
   type ExistingIdentities, type ImportClassRef, type StudentImportRecord,
@@ -67,7 +68,7 @@ export async function POST(request: Request) {
     orgId = org?.id ?? null;
   }
   if (!orgId) return NextResponse.json({ error: "No active school workspace." }, { status: 400 });
-  if (!can(ctx, orgId, CREATOR_ROLES)) {
+  if (!(await canOperate(ctx, orgId, "students.create", "students"))) {
     return NextResponse.json({ error: "You do not have permission to register students in this school." }, { status: 403 });
   }
 

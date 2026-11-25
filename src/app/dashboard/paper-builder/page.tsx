@@ -1,5 +1,6 @@
 import { Badge, ButtonLink, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { parsePaperSections } from "@/lib/examPaper";
 import { createClient } from "@/lib/supabase/server";
@@ -16,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function PaperBuilderPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) notFound();
+  if (!(await canOperate(ctx, org.id, "paper_builder.view"))) notFound();
   const supabase = await createClient();
   const { capabilities, featureFlags, entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "paper_builder", "/dashboard?e=module");

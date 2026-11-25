@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Textarea } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { describeRetention, getRetentionPolicy, loadRetentionRuns } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -27,7 +28,7 @@ export default async function ProctoringRetentionPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/proctoring");
+  if (!(await canOperate(ctx, org.id, "organizations.edit", "proctoring"))) redirect("/dashboard/proctoring");
 
   const sp = await searchParams;
   const supabase = await createClient();

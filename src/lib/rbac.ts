@@ -1,13 +1,14 @@
 import "server-only";
 
 /**
- * Server-only access-control services for the new permission center and
- * supervision workspace. Existing operational guards remain in force;
- * migrating all legacy actions to configurable permissions is separate work.
- * Resolution is delegated to access_has_permission in PostgreSQL: unknown or
- * disabled permission -> deny; verified active Super Admin -> allow; otherwise
- * active profile/tenant/membership required, explicit override/role deny wins,
- * then union of active, unexpired, in-scope role grants and explicit grants.
+ * Server-only access-control services governing operational routes, server
+ * actions, dashboard views, the RBAC permission center, and the supervision
+ * workspace. Resolution is delegated strictly to access_has_permission in
+ * PostgreSQL: unknown or disabled permission -> deny; verified active Super
+ * Admin -> allow; otherwise active profile/tenant/membership required, Founder
+ * read-only ceiling applied, explicit override/role deny wins, then union of
+ * active, unexpired, in-scope role grants (including bridged organization
+ * memberships) and explicit grants.
  */
 
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -119,12 +120,18 @@ export const SCHOOL_FOUNDER_ROLE_SLUG = "school_founder";
  */
 export async function resolvePermission(
   ctx: Pick<SessionContext, "profile"> | null,
-  organizationId: string,
+  organizationId: string | null,
   permissionKey: PermissionKey,
 ): Promise<ResolvedPermission> {
+  if (!ctx || ctx.profile.status !== "active") {
+    return { key: permissionKey, effective: false, source: "default", reason: "Active authenticated identity required." };
+  }
+  if (!organizationId && ctx.profile.platform_role !== "super_admin") {
+    return { key: permissionKey, effective: false, source: "default", reason: "Organization context required." };
+  }
   const client = await createClient();
   const { data: { user } } = await client.auth.getUser();
-  if (!user || user.id !== ctx?.profile.id) {
+  if (!user || user.id !== ctx.profile.id) {
     return { key: permissionKey, effective: false, source: "default", reason: "Authenticated identity required." };
   }
   const { data, error } = await client.rpc("access_has_permission", {
@@ -140,11 +147,57 @@ export async function resolvePermission(
  */
 export async function hasPermission(
   ctx: Pick<SessionContext, "profile"> | null,
-  organizationId: string,
+  organizationId: string | null,
   permissionKey: PermissionKey,
 ): Promise<boolean> {
   const resolved = await resolvePermission(ctx, organizationId, permissionKey);
   return resolved.effective;
+}
+
+/**
+ * Batch boolean permission check using the single-roundtrip
+ * access_check_permissions RPC (which delegates each key strictly to
+ * access_has_permission). Fails closed (all false) on any error.
+ */
+export async function checkPermissions(
+  ctx: Pick<SessionContext, "profile"> | null,
+  organizationId: string | null,
+  permissionKeys: PermissionKey[],
+): Promise<Record<PermissionKey, boolean>> {
+  const unique = [...new Set(permissionKeys.filter(Boolean))];
+  const denied = Object.fromEntries(unique.map((k) => [k, false])) as Record<PermissionKey, boolean>;
+  if (!unique.length || !ctx || ctx.profile.status !== "active") return denied;
+  if (!organizationId && ctx.profile.platform_role !== "super_admin") return denied;
+  try {
+    const client = await createClient();
+    const { data: { user } } = await client.auth.getUser();
+    if (!user || user.id !== ctx.profile.id) return denied;
+    const { data, error } = await client.rpc("access_check_permissions", {
+      p_user_id: user.id,
+      p_organization_id: organizationId,
+      p_permission_keys: unique,
+    });
+    if (!error && data && typeof data === "object" && !Array.isArray(data)) {
+      const record = data as Record<string, unknown>;
+      for (const k of unique) denied[k] = record[k] === true;
+      return denied;
+    }
+    // Fallback to individual access_has_permission calls if batch RPC is unavailable.
+    const results = await Promise.all(
+      unique.map(async (k) => {
+        const res = await client.rpc("access_has_permission", {
+          p_user_id: user.id,
+          p_organization_id: organizationId,
+          p_permission_key: k,
+        });
+        return [k, !res.error && res.data === true] as const;
+      }),
+    );
+    for (const [k, allowed] of results) denied[k] = allowed;
+    return denied;
+  } catch {
+    return denied;
+  }
 }
 
 /**

@@ -197,7 +197,7 @@ ok("public screen reveals only in answer_reveal", screenRoute.includes('phase ==
 const legacyProjector = readFileSync("src/app/api/live/projector/route.ts", "utf8");
 ok("legacy join-code projector endpoint is retired", legacyProjector.includes("status: 410"));
 const hostPage = readFileSync("src/app/dashboard/sessions/[id]/host/page.tsx", "utf8");
-ok("host page requires creator/host role", hostPage.includes("CREATOR_ROLES") && hostPage.includes("session.host_id"));
+ok("host page requires centralized competition edit permission", hostPage.includes('canOperate(ctx, org.id, "competitions.edit", "competitions")') && !hostPage.includes("session.host_id"));
 const participantState = readFileSync("src/app/api/live/state/route.ts", "utf8");
 ok("participant state is token scoped", participantState.includes('.eq("access_token", token)'));
 ok("participant feedback waits for reveal", participantState.includes('phase === "answer_reveal"'));

@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities } from "@/lib/capabilities";
 import { parsePaperSections } from "@/lib/examPaper";
 import type { RichDoc } from "@/lib/content";
@@ -15,7 +16,7 @@ export default async function EditPaperPage({ params }: { params: Promise<{ id: 
   const { id } = await params;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) notFound();
+  if (!(await canOperate(ctx, org.id, "paper_builder.edit"))) notFound();
   const supabase = await createClient();
   const { capabilities } = await getCapabilities(supabase, ctx, org.id);
   if (!capabilities.question_paper_builder) notFound();

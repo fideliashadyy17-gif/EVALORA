@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
-import { can, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { loadMonitorSnapshot } from "@/lib/examMonitoring";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
@@ -17,7 +18,7 @@ export default async function ExamMonitorPage({ params }: { params: Promise<{ id
   // Visibility is decided by row level security for the caller; the snapshot holds no answer keys.
   const loaded = await loadMonitorSnapshot(supabase, id);
   if (!loaded) notFound();
-  if (!can(ctx, loaded.exam.organization_id, PROCTOR_ROLES)) redirect(`/dashboard/exams/${id}`);
+  if (!(await canOperate(ctx, loaded.exam.organization_id, "proctoring.view"))) redirect(`/dashboard/exams/${id}`);
   // Live monitoring/supervision is an entitled module, enforced server-side.
   const { entitlement: monitorEnt } = await getCapabilities(supabase, ctx, loaded.exam.organization_id);
   requireModule(monitorEnt, "exam_monitoring", `/dashboard/exams/${id}?e=module`);

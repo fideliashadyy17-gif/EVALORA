@@ -163,7 +163,7 @@ assert.ok(actions.includes("myp_rubric_exists"), "duplicate generation refused")
 assert.ok(actions.includes("parseMypExamConfig((exam.settings"), "generation reads the SNAPSHOT, not the live library");
 assert.ok(actions.includes("exam_rubric_links"), "generated rubric is associated with the examination");
 assert.ok(actions.includes("curriculum: \"myp\""), "rubric tagged with the MYP curriculum family");
-assert.ok(actions.includes("CREATOR_ROLES"), "teachers (creators) can configure MYP grading");
+assert.ok(actions.includes('canOperate(ctx, org.id, "exams.edit", "examinations")'), "RBAC exams.edit permission gates MYP grading configuration");
 assert.ok(actions.includes("eq(\"organization_id\", org.id)"), "tenant-scoped everywhere");
 
 // ── Exam workspace: panel + marking queue wiring ─────────────────────────

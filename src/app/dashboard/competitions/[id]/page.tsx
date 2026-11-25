@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { COMPETITION_FORMATS } from "@/lib/brand";
@@ -67,8 +68,10 @@ export default async function OrganizationCompetitionPage({
       .limit(300),
   ]);
 
-  const canManage = can(ctx, org.id, CREATOR_ROLES);
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const { canManage, isManager } = await canOperateMany(ctx, org.id, {
+    canManage: { permission: "competitions.edit", module: "competitions" },
+    isManager: { permission: "competitions.delete", module: "competitions" },
+  });
   const active = (registrations ?? []).filter((r) => r.status !== "removed");
 
   return (

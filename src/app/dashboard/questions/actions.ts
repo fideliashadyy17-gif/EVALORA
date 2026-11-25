@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
 import { questionPublishError } from "@/lib/questionValidation";
 import { questionOptionsUnchanged } from "@/lib/questionOptions";
@@ -49,7 +50,7 @@ export type QuestionInput = z.infer<typeof QuestionSchema>;
 export async function saveQuestion(raw: QuestionInput) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to edit questions." };
+  if (!org || !(await canOperate(ctx, org.id, raw?.id ? "questions.edit" : "questions.create", "question_bank"))) return { error: "You don't have permission to edit questions." };
 
   const parsed = QuestionSchema.safeParse(raw);
   if (!parsed.success) return { error: "Please check the form — some fields are invalid." };
@@ -164,8 +165,8 @@ export async function saveQuestion(raw: QuestionInput) {
 
 export async function deleteQuestion(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/questions");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "questions.delete", "question_bank"))) redirect("/dashboard/questions");
   const id = String(formData.get("id"));
   const supabase = await createClient();
   await supabase.from("questions").delete().eq("id", id).eq("organization_id", org.id);
@@ -174,10 +175,10 @@ export async function deleteQuestion(formData: FormData) {
 
 export async function setQuestionStatus(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/questions");
-  const id = String(formData.get("id"));
+  const org = activeOrg(ctx);
   const status = String(formData.get("status"));
+  if (!org || !(await canOperate(ctx, org.id, status === "published" ? "questions.publish" : "questions.edit", "question_bank"))) redirect("/dashboard/questions");
+  const id = String(formData.get("id"));
   const supabase = await createClient();
   if (status === "published") {
     const { data: question } = await supabase
@@ -199,8 +200,8 @@ export async function setQuestionStatus(formData: FormData) {
 
 export async function createCategory(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/questions");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "questions.create", "question_bank"))) redirect("/dashboard/questions");
   const name = String(formData.get("name") ?? "").trim().slice(0, 80);
   if (!name) redirect("/dashboard/questions");
   const supabase = await createClient();
@@ -211,8 +212,8 @@ export async function createCategory(formData: FormData) {
 /** CSV import → always lands in pending_review with a per-row error report. */
 export async function importQuestionsCsv(csv: string) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES))
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "questions.create", "question_bank")))
     return { error: "You don't have permission to import questions." };
 
   const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
@@ -324,8 +325,8 @@ export async function importQuestionsCsv(csv: string) {
 /** Upload a question image/diagram to the org-scoped question-media bucket. */
 export async function uploadQuestionImage(formData: FormData): Promise<{ url?: string; error?: string }> {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) return { error: "You don't have permission to upload media." };
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "questions.edit", "question_bank"))) return { error: "You don't have permission to upload media." };
   const file = formData.get("file");
   if (!(file instanceof File) || file.size === 0) return { error: "Choose an image file first." };
   const okTypes: Record<string, string> = {

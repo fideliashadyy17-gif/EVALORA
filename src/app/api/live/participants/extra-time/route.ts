@@ -14,7 +14,7 @@ import { canOperate } from "@/lib/operationalAccess";
  * may grant time. A participant can never award it to themselves.
  */
 import { audit } from "@/lib/admin";
-import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { getSessionContext } from "@/lib/auth";
 import {
   MAX_PARTICIPANT_EXTRA_TIME_MS,
   normalizeExtraTimeMs,
@@ -55,8 +55,7 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
 
-  const isHost = session.host_id === ctx.user.id;
-  if ((!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) || !await canOperate(ctx, session.organization_id, "competitions.edit", "competitions"))
+  if (!await canOperate(ctx, session.organization_id, "competitions.edit", "competitions"))
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
 
   // Extra time extends a shared per-question window. A self-paced session has

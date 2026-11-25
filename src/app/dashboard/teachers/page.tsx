@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import { createClient } from "@/lib/supabase/server";
@@ -44,7 +45,7 @@ export default async function TeachersPage({
   const sp = await searchParams;
   if (!isStaffRole(org.role)) redirect("/student");
 
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const isManager = await canOperate(ctx, org.id, "organizations.manage_members", "teachers");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "teachers", "/dashboard?e=module");

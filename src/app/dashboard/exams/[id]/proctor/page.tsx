@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
-import { activeOrg, can, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -12,7 +13,7 @@ export default async function ProctorPage({ params }: { params: Promise<{ id: st
   const { id } = await params;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect(`/dashboard/exams/${id}`);
+  if (!(await canOperate(ctx, org.id, "proctoring.view", "proctoring"))) redirect(`/dashboard/exams/${id}`);
   const supabase = await createClient();
 
   const { data: exam } = await supabase.from("exams").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();

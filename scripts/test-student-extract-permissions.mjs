@@ -12,6 +12,7 @@ const original=Module._load;
 Module._load=function(request,parent){
  if(parent?.filename===file){
   if(request==='@/lib/auth') return auth;
+  if(request==='@/lib/operationalAccess') return {canOperate:async(c,id)=>auth.can(c,id,roles)};
   if(request==='@/lib/extractServer') return {IMPORT_FILE_EXTENSIONS:['.csv','.xlsx'],extractStudentRows:async()=>{parsed++;return {rows:[['Name']],method:'csv',warnings:[],needsOcr:false};}};
   if(request==='next/server') return {NextResponse:{json:(body,opts)=>({status:opts?.status??200,body})}};
  }

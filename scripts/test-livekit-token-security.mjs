@@ -13,6 +13,7 @@ const db={from(table){const q={select(){return q;},eq(){return q;},async maybeSi
 class Token{constructor(_key,_secret,options){if(useRealSdk)return new realSdk.AccessToken(_key,_secret,options);opts=options;}addGrant(g){grant=g;}async toJwt(){return 'mock.jwt';}}
 const original=Module._load;Module._load=function(req,parent){if(parent?.filename===f){
  if(req==='@/lib/auth')return {getSessionContext:async()=>session,activeOrg:c=>c.org,can:c=>c.allowed,PROCTOR_ROLES:[]};
+ if(req==='@/lib/operationalAccess')return {canOperate:async(c)=>Boolean(c?.allowed)};
  if(req==='@/lib/entitlements')return {getEntitlement:async(_db,_org,o)=>{bypasses.push(o.ownerBypass);return {limits:{proctoring:o.ownerBypass||entitlement}};},getEntitlementFor:async()=>({limits:{proctoring:entitlement||session?.profile.platform_role==='super_admin'}})};
  if(req==='@/lib/platform')return {isFeatureEnabled:async(_key,o)=>flag||o.ownerBypass};
  if(req==='@/lib/proctoring')return {ensureProctoringRoom:async(_db,_exam,actor)=>{roomCreated={actor};return {id:'room-1',room_name:'exam-'+_exam.id,organization_id:_exam.organization_id,exam_id:_exam.id};},recordRoomEvents:async(_db,events)=>{roomEvents.push(...events);}};

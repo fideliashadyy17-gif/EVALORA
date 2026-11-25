@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
-import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { loadRubrics } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
@@ -26,7 +27,7 @@ export default async function RubricsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  const canMark = can(ctx, org.id, MARKER_ROLES);
+  const canMark = await canOperate(ctx, org.id, "grading.edit", "rubrics");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "rubrics", "/dashboard?e=module");

@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { validateSheetDraft } from "@/lib/formulaLibrary";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
@@ -17,7 +18,7 @@ import { redirect } from "next/navigation";
 export async function createExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.create", "examinations"))) redirect("/dashboard/exams");
   const supabase = await createClient();
   const { entitlement: ent, capabilities } = await getCapabilities(supabase, ctx, org.id);
   if (!capabilities.examinations) redirect("/dashboard/exams?e=module");
@@ -124,7 +125,7 @@ export async function setExamStatus(formData: FormData) {
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id) || !["open", "closed"].includes(status)) redirect("/dashboard/exams?e=status");
   const supabase = await createClient();
   // A paused examination can never be flipped to open through the plain
@@ -154,7 +155,7 @@ export async function setExamStatus(formData: FormData) {
 export async function pauseExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) redirect("/dashboard/exams");
   const id = String(formData.get("id") ?? "");
   const action = String(formData.get("pause_action") ?? "") === "resume" ? "resume" : "pause";
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=pause");
@@ -194,7 +195,7 @@ export async function updateExamLockdown(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=lockdown");
 
   const enabled = formData.get("lockdown_enabled") === "on";
@@ -235,7 +236,7 @@ export async function updateExamLockdown(formData: FormData) {
 export async function updateExamFormulaSheet(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) {
     redirect("/dashboard/exams?e=forbidden");
   }
   const id = String(formData.get("exam_id") ?? "");
@@ -302,7 +303,7 @@ export async function updateExamCalculator(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect(`/dashboard/exams/${id}?e=calculator`);
 
   const supabase = await createClient();
@@ -341,7 +342,7 @@ export async function deleteExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const id = String(formData.get("id") ?? "");
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.delete", "examinations"))) redirect("/dashboard/exams");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams?e=delete");
 
   // Strictly protect official benchmark examinations
@@ -416,8 +417,8 @@ export async function deleteExam(formData: FormData) {
 
 export async function addCandidate(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "candidate_links.create", "exam_candidates"))) redirect("/dashboard/exams");
   const examId = String(formData.get("exam_id"));
   const supabase = await createClient();
   // Verify exam belongs to org (RLS check via select)
@@ -437,8 +438,8 @@ export async function addCandidate(formData: FormData) {
 /** Bulk candidates: one per line "Full Name, email, ref". Returns a report via redirect params. */
 export async function addCandidatesBulk(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "candidate_links.create", "exam_candidates"))) redirect("/dashboard/exams");
   const examId = String(formData.get("exam_id"));
   const supabase = await createClient();
   const { data: exam } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
@@ -466,7 +467,7 @@ export async function removeCandidate(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES) || !uuid.test(id) || !uuid.test(examId)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !uuid.test(id) || !uuid.test(examId) || !(await canOperate(ctx, org.id, "candidate_links.revoke", "exam_candidates"))) redirect("/dashboard/exams");
   const back = `/dashboard/exams/${examId}`;
   const supabase = await createClient();
   const { data: exam, error: examError } = await supabase.from("exams").select("id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
@@ -482,7 +483,7 @@ export async function removeCandidate(formData: FormData) {
 export async function markAnswer(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  if (!org || !(await canOperate(ctx, org.id, "grading.edit", "exam_results"))) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
   const attemptId = String(formData.get("attempt_id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
@@ -637,7 +638,7 @@ async function loadRubricMarkingContext(
 export async function markWithRubric(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  if (!org || !(await canOperate(ctx, org.id, "grading.edit", "exam_results"))) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
   const attemptId = String(formData.get("attempt_id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
@@ -710,7 +711,7 @@ export async function markWithRubric(formData: FormData) {
 export async function moderateAnswer(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  if (!org || !(await canOperate(ctx, org.id, "grading.edit", "exam_results"))) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
@@ -777,20 +778,16 @@ function resultsBack(formData: FormData, fallback: string): string {
 export async function publishResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  // Publication is an explicit, audited administrator action — teachers and
-  // markers can mark, but only owners/admins release results to candidates.
+  // Publication is an explicit, audited action governed by centralized RBAC.
   if (!org) redirect("/dashboard/exams");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   // Avoid using an untrusted path segment in redirects or database queries.
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
   const back = resultsBack(formData, `/dashboard/exams/${examId}`);
   const value = String(formData.get("publish") ?? "");
   if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
-  // Legacy administrator status is a ceiling, not an escape hatch from OFF.
-  // Resolve again for each request; publish and unpublish are distinct grants.
-  const { canOperate } = await import("@/lib/operationalAccess");
-  if (!await canOperate(ctx, org.id, value === "1" ? "results.publish" : "results.unpublish", "exam_publication")) {
+  // Resolve effective RBAC permission for each request; publish and unpublish are distinct grants.
+  if (!(await canOperate(ctx, org.id, value === "1" ? "results.publish" : "results.unpublish", "exam_publication"))) {
     redirect("/dashboard/results?e=forbidden");
   }
 
@@ -843,9 +840,9 @@ export async function publishResults(formData: FormData) {
 export async function validateResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  // Validation is an explicit administrator sign-off before publication.
+  // Validation is an explicit sign-off governed by centralized RBAC.
   if (!org) redirect("/dashboard/exams");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "results.validate", "exam_validation"))) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
   const back = resultsBack(formData, `/dashboard/exams/${examId}`);
@@ -881,7 +878,7 @@ export async function unvalidateResults(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard/exams");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/results?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "results.validate", "exam_validation"))) redirect("/dashboard/results?e=forbidden");
   const examId = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(examId)) redirect("/dashboard/exams");
   const back = resultsBack(formData, `/dashboard/exams/${examId}`);
@@ -913,7 +910,7 @@ export async function logIncident(formData: FormData): Promise<{ ok: boolean; me
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   const fail = (message: string) => ({ ok: false, message });
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES)) return fail("Your workspace cannot record this observation.");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "proctoring.manage", "proctoring"))) return fail("Your workspace cannot record this observation.");
   const examId = String(formData.get("exam_id") ?? "");
   const candidateId = String(formData.get("candidate_id") ?? "") || null;
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -950,7 +947,7 @@ export async function reviewIncident(formData: FormData) {
   const expected = String(formData.get("expected_status") ?? "");
   const status = String(formData.get("status") ?? "");
   const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, PROCTOR_ROLES) || !uuid.test(examId) || !uuid.test(incidentId)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !uuid.test(examId) || !uuid.test(incidentId) || !(await canOperate(ctx, org.id, "proctoring.manage", "proctoring"))) redirect("/dashboard/exams");
   // The review console and the exam page share this action; only a known,
   // same-application destination is honoured.
   const back = String(formData.get("return_to") ?? "") === "/dashboard/proctoring"
@@ -980,7 +977,7 @@ export async function updateWorkspaceExamAccess(formData: FormData) {
   const id = String(formData.get("exam_id") ?? "");
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) redirect("/dashboard/exams");
   const back = `/dashboard/exams/${id}`;
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/exams");
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "candidate_links.edit", "exam_share_codes"))) redirect("/dashboard/exams");
   const action = String(formData.get("access_action") ?? "");
   const patch: Record<string, unknown> = {};
   if (action === "enable") patch.shared_link_enabled = true;
@@ -1021,7 +1018,7 @@ export async function updateWorkspaceExamAccess(formData: FormData) {
 export async function proposeAiMarks(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  if (!org || !(await canOperate(ctx, org.id, "grading.edit", "exam_results"))) redirect("/dashboard/exams");
   const answerId = String(formData.get("answer_id") ?? "");
   const attemptId = String(formData.get("attempt_id") ?? "");
   const examId = String(formData.get("exam_id") ?? "");
@@ -1096,7 +1093,7 @@ export async function proposeAiMarks(formData: FormData) {
 export async function decideAiProposal(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard/exams");
+  if (!org || !(await canOperate(ctx, org.id, "grading.edit", "exam_results"))) redirect("/dashboard/exams");
   const proposalId = String(formData.get("proposal_id") ?? "");
   const decision = String(formData.get("decision") ?? "");
   const rawMarks = String(formData.get("marks") ?? "").trim();

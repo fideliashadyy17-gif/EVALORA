@@ -182,6 +182,7 @@ const db = { from };
 
 const stub = {
   '@/lib/auth': {},
+  '@/lib/operationalAccess': { canOperate: async (ctx) => ctx.allowed },
   '@/lib/entitlements': { withinLimit: () => true, isPlanLimitError: () => false },
   '@/lib/capabilities': { getCapabilities: async () => ({ entitlement: {}, capabilities: {} }) },
   '@/lib/supabase/server': { createClient: async () => db, createAdminClient: () => db },

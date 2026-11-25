@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -17,7 +18,7 @@ async function guard() {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin")) redirect("/dashboard");
-  if (!can(ctx, org.id, MARKER_ROLES)) redirect("/dashboard");
+  if (!(await canOperate(ctx, org.id, "grading.edit", "rubrics"))) redirect("/dashboard");
   return { ctx, org };
 }
 

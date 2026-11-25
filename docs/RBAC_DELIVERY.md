@@ -156,3 +156,34 @@ Git commit/PR identifiers are supplied in the delivery message. Any PR for this 
 - SQL count provenance: historical 42 → 44 added revoked/expired raw-read checks; 44 → 46 added academic-row preservation and Founder profile-promotion rejection; 46 → 51 adds post-reconciliation Founder privacy/revoke/reassignment checks. Reconciliation's 17 are a separate suite.
 - No production data, Oak membership/subscription, academic paper/question selections, candidates, attempts, grading, results or publication state modified. All executable mutation tests use synthetic isolated data. No remote migration, Founder assignment, production verification, merge or deployment performed.
 - Outstanding release blockers: remaining operational and database enforcement coverage; full live-schema migration safety review; useful Founder detail/report experience; unambiguously identified Founder account; authenticated Oak navigation/API/cache/module and revoke verification. Need the exact Founder email or user UUID and approved authenticated test access; do not guess or reassign an existing owner/admin. Keep PR #95 draft and do not merge/deploy.
+
+## Centralized Enforcement & 17-Domain Founder Supervision Rollout — 2026-11-25 (`arena/76a11326-evalora`)
+
+### Completed in this rollout
+1. **Migration `supabase/migrations/20261125124000_rbac_enforcement_and_founder_supervision.sql`** (additive, idempotent, zero drops/deletes, tested in PGlite across all 5 migrations `20261125120000`–`124000` plus minimal-schema replay):
+   - Seeds canonical `access_legacy_role_map` mappings and adds idempotent operational parity grants (`ON CONFLICT DO NOTHING`) for `teacher`, `organizer`, `corrector`, and `school_founder` (`organizations.view`), preserving `org_owner` (59 org perms) vs. `org_admin` (57 org perms) separation.
+   - Adds batch RPC `public.access_check_permissions(p_subject, p_org, p_permissions text[])` returning `jsonb` so multi-control pages perform one DB round-trip instead of N sequential checks.
+   - Adds restrictive `storage.objects` policies preventing `school_founder` from reading private proctoring/academic buckets (`proctoring-recordings`, `exam-uploads`, `student-imports`, `question-assets`) or mutating storage.
+   - Expands `public.access_supervision_overview(p_org uuid)` to all **17 sanitized institutional domains**: organization metadata, enabled modules & subscription plan/override state, institutional dashboard summary, student participation summary, academic structures & classes, question bank overview, Paper Builder overview, examinations & publication stage, assessment configuration, candidate admission overview, marking/grading progress, full results oversight (published, unpublished, awaiting validation, ongoing correction progress), quizzes & live sessions, competitions, rankings & performance reports, and proctoring overview — zero candidate PII, access codes, tokens, answer keys, raw answers, individual marks, or webcam media.
+2. **Application-wide RBAC cutover (114 → 0 legacy `can()` call sites across `src/`)**:
+   - Upgraded `src/lib/rbac.ts` (`checkPermissions`, nullable org support for active `super_admin`), `src/lib/operationalAccess.ts` (`canOperate` with optional module + batched `canOperateMany`), `src/lib/monitorAccess.ts` (`proctoring.view` / `proctoring.manage` + `exam_monitoring`), and `src/lib/mypAccess.ts` (`results.view` / `reports.export` / `results.validate` + explicit `school_founder` & learner exclusion).
+   - Migrated **100% of operational API routes** (including all mutating `/api/monitor/**` routes with `{ write: true }`, `/api/live/{control,host/state,participants/extra-time}`, `/api/livekit/token`, `/api/proctoring/export`, `/api/students/import{,/extract}`), **all 19 dashboard server-action modules**, and **all 24 dashboard pages** to `canOperate` / `canOperateMany`.
+   - Removed all `session.host_id` authorization bypasses in `/api/live/**` and `/dashboard/sessions/[id]/host/**`.
+   - Added RBAC `competitions.view` + `competition_results` guard to `/dashboard/competitions/rankings/page.tsx`.
+   - Hardened `src/app/dashboard/team/actions.ts` (`updateMemberRole`) with an explicit role allowlist blocking escalation to `owner` or `school_founder` and protecting `school_founder` rows.
+   - Regenerated `docs/security/authorization-inventory.json` (`can`: **0**, `canOperate`: **95**, `canOperateMany`: **7**).
+3. **17-Domain Read-Only School Founder Workspace (`/supervision`) & RBAC Console**:
+   - Rebuilt `src/app/supervision/page.tsx` to align with `access_supervision_overview(p_org)` JSON output (fixing prior field-name mismatches and Founder RLS subscription-read fallback), rendering all 17 supervisory sections cleanly with zero `<form>` or mutation controls and React SSR test coverage.
+   - Updated `/admin/rbac/page.tsx` banner to reflect active centralized enforcement.
+
+### Verification executed
+- `node scripts/test-rbac.mjs` (51 SQL checks) + `node scripts/test-rbac-reconciliation.mjs` (17 SQL checks) + `node scripts/test-rbac-enforcement-migration.mjs` (10 full scenarios + minimal-schema check): **all passed**.
+- `node scripts/test-centralized-rbac-enforcement.mjs`: **9 checks passed** (AST zero-legacy-`can` proof, zero `host_id` bypass proof, `/api/monitor` write gates, `mypAccess`, `team` escalation block, `competitions/rankings` RBAC, `canOperateMany` batch + module intersection, React SSR of `/supervision` across all 17 domains).
+- `npm test`: **176 suites passed, 0 failed, 8 browser suites skipped — 9,511 individual checks passed** (Playwright/Chromium not installed in sandbox).
+- `npx tsc --noEmit`: **0 errors**.
+- `npm run lint`: **0 errors** (18 pre-existing unused-var warnings outside touched files).
+- `npm run build`: **passed**.
+
+### Remaining operational steps before production cutover
+- Live Supabase (`nqxqisjtbfsratgztmch`) remains untouched at migration `20261125043239` (zero mutations to Oak International School or live customer data).
+- Before production rollout: apply migrations `20261125120000`–`20261125124000` in order against a staging/branch database first, run the 8 Playwright browser suites in CI (`.github/workflows/exam-browser.yml`), confirm the exact Founder account email with Oak International School (never reassign `ayofajemirokun@gmail.com` or `starboyboy2017@gmail.com`), and verify live `/dashboard` + `/supervision` rendering post-deploy.
