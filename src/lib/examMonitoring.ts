@@ -8,6 +8,36 @@ import type { SavedAnswerFacts } from "./examMessaging";
 /** Attempts shown on one dashboard. Older attempts are reachable through the results pages. */
 export const MONITOR_ATTEMPT_LIMIT = 1500;
 const IN_CHUNK = 250;
+const PAPER_CACHE_TTL_MS = 30_000;
+const PAPER_CACHE_MAX = 64;
+
+const paperCache = new Map<string, { expiresAt: number; rows: PaperRow[] }>();
+
+function monitorCacheScope(supabase: SupabaseClient, organizationId: string, quizId: string): string | null {
+  const url = (supabase as unknown as { supabaseUrl?: unknown }).supabaseUrl;
+  if (typeof url !== "string" || !url) return null;
+  return `${url}|${organizationId}|${quizId}`;
+}
+
+function getCachedPaper(key: string | null, nowMs: number): PaperRow[] | null {
+  if (!key) return null;
+  const hit = paperCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= nowMs) {
+    paperCache.delete(key);
+    return null;
+  }
+  return hit.rows;
+}
+
+function setCachedPaper(key: string | null, rows: PaperRow[], nowMs: number): void {
+  if (!key) return;
+  if (paperCache.size >= PAPER_CACHE_MAX && !paperCache.has(key)) {
+    const oldest = paperCache.keys().next().value;
+    if (oldest !== undefined) paperCache.delete(oldest);
+  }
+  paperCache.set(key, { expiresAt: nowMs + PAPER_CACHE_TTL_MS, rows });
+}
 
 function chunks<T>(items: T[], size: number): T[][] {
   const out: T[][] = [];
@@ -59,12 +89,17 @@ export async function loadMonitorSnapshot(
   const incidentsByAttempt = new Map<string, number>();
   let usedRpcStats = false;
 
-  // Load paper structure, class labels, live presence, unread candidate messages,
-  // and integrity incident counts concurrently.
-  const [quizRowsResult, classChunks, presenceResult, unreadResult, incidentResult] = await Promise.all([
-    exam.quiz_id
-      ? supabase.from("quiz_questions").select("id, questions(id, config)").eq("quiz_id", exam.quiz_id).order("position")
-      : Promise.resolve({ data: [] as unknown[] }),
+  const paperKey = exam.quiz_id
+    ? monitorCacheScope(supabase, exam.organization_id as string, exam.quiz_id as string)
+    : null;
+  const cachedPaper = getCachedPaper(paperKey, nowMs);
+
+  // Load paper structure (30s cached after RLS-verified exam lookup), class labels,
+  // live presence, unread candidate messages, and aggregated integrity incident counts.
+  const [quizRowsResult, classChunks, presenceResult, unreadResult, incidentCountsResult] = await Promise.all([
+    !exam.quiz_id || cachedPaper
+      ? Promise.resolve({ data: null as unknown[] | null })
+      : supabase.from("quiz_questions").select("id, questions(id, config)").eq("quiz_id", exam.quiz_id).order("position"),
     Promise.all(
       chunks(classIds, IN_CHUNK).map((part) => supabase.from("classes").select("id, name").in("id", part)),
     ),
@@ -80,21 +115,41 @@ export async function loadMonitorSnapshot(
       .eq("sender_kind", "candidate")
       .is("read_at", null)
       .limit(5000),
-    (async () => {
+    (async (): Promise<{ grouped: boolean; rows: { attempt_id?: string | null; incident_count?: number }[] }> => {
+      if (typeof (supabase as { rpc?: unknown }).rpc === "function") {
+        try {
+          const rpcRes = await supabase.rpc("exam_monitor_incident_counts", { p_exam_id: examId });
+          if (!rpcRes.error && Array.isArray(rpcRes.data)) {
+            return {
+              grouped: true,
+              rows: rpcRes.data as { attempt_id?: string | null; incident_count?: number }[],
+            };
+          }
+        } catch {
+          // Fall back to direct RLS query below.
+        }
+      }
       try {
-        return await supabase
+        const raw = await supabase
           .from("proctoring_incidents")
           .select("attempt_id")
           .eq("exam_id", examId)
           .limit(10000);
+        return { grouped: false, rows: (raw.data ?? []) as { attempt_id?: string | null }[] };
       } catch {
-        return { data: [] as { attempt_id: string | null }[] };
+        return { grouped: false, rows: [] };
       }
     })(),
   ]);
 
-  const paper = ((quizRowsResult.data ?? []) as unknown as { id: string; questions: { config?: unknown } | null }[])
-    .map((r) => ({ id: r.id, questions: r.questions ?? {} })) as PaperRow[];
+  let paper: PaperRow[];
+  if (cachedPaper) {
+    paper = cachedPaper;
+  } else {
+    paper = ((quizRowsResult.data ?? []) as unknown as { id: string; questions: { config?: unknown } | null }[])
+      .map((r) => ({ id: r.id, questions: r.questions ?? {} })) as PaperRow[];
+    if (paperKey && paper.length > 0) setCachedPaper(paperKey, paper, nowMs);
+  }
   const paperQuizQuestionIds = paper.map((r) => r.id);
 
   // Prefer the RLS-preserving SQL aggregation RPC (`exam_monitor_answer_stats`)
@@ -165,9 +220,13 @@ export async function loadMonitorSnapshot(
   for (const u of (unreadResult.data ?? []) as { attempt_id: string }[]) {
     unreadByAttempt.set(u.attempt_id, (unreadByAttempt.get(u.attempt_id) ?? 0) + 1);
   }
-  for (const inc of ((incidentResult as { data?: { attempt_id?: string | null }[] | null })?.data ?? [])) {
+  for (const inc of incidentCountsResult.rows) {
     if (inc?.attempt_id) {
-      incidentsByAttempt.set(inc.attempt_id, (incidentsByAttempt.get(inc.attempt_id) ?? 0) + 1);
+      if (incidentCountsResult.grouped) {
+        incidentsByAttempt.set(inc.attempt_id, Number(inc.incident_count ?? 0));
+      } else {
+        incidentsByAttempt.set(inc.attempt_id, (incidentsByAttempt.get(inc.attempt_id) ?? 0) + 1);
+      }
     }
   }
 

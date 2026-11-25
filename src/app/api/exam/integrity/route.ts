@@ -47,6 +47,66 @@ export async function POST(request: Request) {
   const { attempt_id, token, event, detail } = parsed.data;
 
   const admin = createAdminClient();
+  const type = incidentTypeFor(event);
+  const note = detail ? JSON.stringify(detail).slice(0, 400) : null;
+  const violation = isRecordable(event);
+
+  // Fast single-RPC path (7 sequential DB queries -> 1 atomic call).
+  // Falls back cleanly to the multi-query path if the RPC is absent in mocks.
+  if (typeof (admin as { rpc?: unknown }).rpc === "function") {
+    try {
+      const { data: rpcData, error: rpcError } = await admin.rpc("record_exam_integrity_event", {
+        p_attempt_id: attempt_id,
+        p_access_token: token,
+        p_event: event,
+        p_type: type,
+        p_severity: severityForEvent(event),
+        p_note: note,
+        p_is_violation: violation,
+        p_dedupe_ms: DEDUPE_MS,
+        p_max_events: MAX_EVENTS_PER_ATTEMPT,
+        p_now: new Date().toISOString(),
+      });
+      if (!rpcError && rpcData && typeof rpcData === "object") {
+        const res = rpcData as {
+          ok?: boolean;
+          code?: string;
+          recorded?: boolean;
+          count?: number;
+          reason?: string;
+          integrity_settings?: unknown;
+        };
+        if (res.ok) {
+          const policy = parseIntegrityPolicy(res.integrity_settings);
+          const count = Number(res.count ?? 0);
+          if (!res.recorded) {
+            const level = res.reason === "duplicate" ? escalationLevel(count, policy) : "none";
+            return answered({ recorded: false, count, level, reason: res.reason });
+          }
+          return answered({
+            recorded: true,
+            count,
+            level: escalationLevel(count, policy),
+            violation,
+            warnAfter: policy.warnAfter,
+            reviewAfter: policy.reviewAfter,
+          });
+        }
+        if (res.code === "not_found") {
+          return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers });
+        }
+        if (res.code === "unavailable") {
+          return NextResponse.json({ error: "Assessment data is unavailable." }, { status: 500, headers });
+        }
+        if (res.code === "already_submitted") {
+          return NextResponse.json({ error: "This attempt is already submitted." }, { status: 409, headers });
+        }
+      }
+    } catch {
+      // Fall back to standard multi-query path below.
+    }
+  }
+
   const ctx = await loadAttemptContext(admin, attempt_id, token);
   if (!ctx) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers });
   const { attempt, exam, candidate } = ctx;
@@ -60,8 +120,6 @@ export async function POST(request: Request) {
 
   if (attempt.status !== "in_progress")
     return NextResponse.json({ error: "This attempt is already submitted." }, { status: 409, headers });
-
-  const type = incidentTypeFor(event);
 
   // Only real violations escalate: a return to the tab, a regained connection
   // and similar informational events are stored but never counted against the
@@ -102,7 +160,6 @@ export async function POST(request: Request) {
   if (stored >= MAX_EVENTS_PER_ATTEMPT)
     return answered({ recorded: false, count: await countViolations(), level: "none", reason: "capped" });
 
-  const note = detail ? JSON.stringify(detail).slice(0, 400) : null;
   const { error } = await admin.from("proctoring_incidents").insert({
     organization_id: exam.organization_id,
     exam_id: exam.id,

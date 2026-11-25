@@ -738,31 +738,6 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
       if (typeof document !== "undefined") document.removeEventListener("visibilitychange", onVisible);
     };
   }, [attemptActive, attemptId, token]);
-  // Throttled presence update when question position or save/queue count changes,
-  // replacing the duplicate loop previously run inside ExamMessenger.
-  useEffect(() => {
-    if (!token || !attemptActive || !hasLoadedStateRef.current) return;
-    const elapsed = Date.now() - lastPresenceSentAtRef.current;
-    const delay = Math.max(500, 15_000 - elapsed);
-    const timer = setTimeout(() => {
-      if (pageHidden()) return;
-      lastPresenceSentAtRef.current = Date.now();
-      const meta = presenceMeta.current;
-      void fetch("/api/exam/presence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          attempt_id: attemptId,
-          current_question: meta.current_question,
-          total_questions: meta.total_questions,
-          saved_count: meta.saved_count,
-          pending_saves: meta.pending_saves,
-          event: "heartbeat",
-        }),
-      }).catch(() => undefined);
-    }, delay);
-    return () => clearTimeout(timer);
-  }, [attemptActive, attemptId, token, index, savedIds.size, queueState.pending]);
 
   // At the authoritative server deadline, ask the server to check expiry.
   // This uses one deadline timeout (then bounded exponential retry), rather

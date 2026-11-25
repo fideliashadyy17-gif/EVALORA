@@ -88,7 +88,12 @@ export async function POST(request: Request) {
 
   const admin = createAdminClient();
   const rpcScope = serviceRoleScope(admin);
-  if (!recovery && rpcScope && typeof (admin as { rpc?: unknown }).rpc === "function") {
+  // Always attempt the single-RPC fast path first — even when the client marks
+  // a queued entry with `recovery: true`. `save_exam_answer_fast` automatically
+  // returns `code: "fallback_needed"` for paused, expired, or non-in_progress
+  // attempts so genuine post-deadline / outage recovery executes the full path
+  // below without penalising 100% of normal in-progress saves.
+  if (rpcScope && typeof (admin as { rpc?: unknown }).rpc === "function") {
     const cachedType = await resolveCachedQuestionType(admin, rpcScope, question_id);
     if (cachedType !== null) {
       const validatedFast = validateAnswerPayload(cachedType, answer);
@@ -259,10 +264,15 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: "Could not save." }, { status: 500, headers: NO_STORE });
 
   if (flagged && attempt.status === "in_progress") {
-    const { error: flagError } = await admin.from("exam_attempts").update({ flagged }).eq("id", attempt.id);
-    // The answer may already have been stored; do not confirm the combined
-    // request when the flag update failed. A retry can re-send both values.
-    if (flagError) return NextResponse.json({ error: "Could not save review flags. Please retry." }, { status: 500, headers: NO_STORE });
+    const prevFlagged = Array.isArray(attempt.flagged) ? attempt.flagged : [];
+    const flaggedChanged =
+      flagged.length !== prevFlagged.length || flagged.some((id, idx) => id !== prevFlagged[idx]);
+    if (flaggedChanged) {
+      const { error: flagError } = await admin.from("exam_attempts").update({ flagged }).eq("id", attempt.id);
+      // The answer may already have been stored; do not confirm the combined
+      // request when the flag update failed. A retry can re-send both values.
+      if (flagError) return NextResponse.json({ error: "Could not save review flags. Please retry." }, { status: 500, headers: NO_STORE });
+    }
   }
 
   if (isOutageRecovery && serverPendingSaves > 0) {
