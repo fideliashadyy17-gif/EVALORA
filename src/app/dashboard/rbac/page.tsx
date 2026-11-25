@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { formatOrganizationRoleLabel } from "@/lib/accountCreationPolicy";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { checkPermissions } from "@/lib/rbac";
@@ -156,6 +157,13 @@ export default async function OrgRbacPage({
     const granted = permsByRole.get(r.id) ?? [];
     return granted.every((k) => callerEffective[k] === true);
   });
+  const assignableRoleIds = new Set(assignableRoles.map((r) => r.id));
+  const catalogRoles = roles.filter(
+    (r) =>
+      r.slug !== "super_admin" &&
+      r.slug !== "director_demo" &&
+      (!r.organization_id || r.organization_id === org.id),
+  );
 
   const assignments = (orgAssignments ?? []) as unknown as AssignmentRow[];
   const activeAssignments = assignments.filter((a) => a.status === "active");
@@ -341,8 +349,8 @@ export default async function OrgRbacPage({
                     <p className="text-xs text-ink-soft">{p?.email ?? "—"}</p>
                   </td>
                   <td>
-                    <Badge tone={m.role === "school_founder" ? "gold" : m.role === "owner" || m.role === "admin" ? "green" : "gray"}>
-                      {m.role}
+                    <Badge tone={m.role === "school_founder" || m.role === "owner" ? "gold" : m.role === "admin" ? "green" : "gray"}>
+                      {formatOrganizationRoleLabel(m.role)}
                     </Badge>
                   </td>
                   <td>
@@ -409,7 +417,7 @@ export default async function OrgRbacPage({
                 Effective permissions: {inspectedMember.full_name || inspectedMember.email}
               </h2>
               <p className="text-xs text-ink-soft">
-                {inspectedMember.email} · Workspace role: {inspectedMember.role} · Organization: {org.name}
+                {inspectedMember.email} · Workspace role: {formatOrganizationRoleLabel(inspectedMember.role)} · Organization: {org.name}
               </p>
             </div>
             <Link href="/dashboard/rbac" className="text-xs font-medium text-evergreen-700 underline">
@@ -432,26 +440,46 @@ export default async function OrgRbacPage({
         </Card>
       )}
 
-      {/* ── Permitted Roles Reference (Read-Only) ── */}
+      {/* ── Organization Roles Catalog Reference (Read-Only) ── */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="p-6">
           <h2 className="font-display text-lg font-semibold text-evergreen-950">
-            Permitted roles in {org.name}
+            Organization roles catalog in {org.name}
           </h2>
           <p className="mt-1 text-sm text-ink-soft">
-            Centralized role catalog available for assignment within your authority. Global role definitions
-            are read-only here.
+            Centralized RBAC roles available to {org.name}. Provision dedicated staff, School Administrator,
+            or School Founder accounts from{" "}
+            <Link href="/dashboard/accounts" className="font-semibold text-evergreen-700 underline underline-offset-2">
+              Accounts &amp; Permissions
+            </Link>
+            . Global role definitions are read-only here.
           </p>
           <ul className="mt-4 divide-y divide-evergreen-900/10">
-            {assignableRoles.map((r) => (
-              <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
-                <div>
-                  <p className="font-semibold text-evergreen-950">{r.name}</p>
-                  <p className="text-xs text-ink-soft">{r.description || r.slug}</p>
-                </div>
-                <Badge tone="gray">{(permsByRole.get(r.id) ?? []).length} perms</Badge>
-              </li>
-            ))}
+            {catalogRoles.map((r) => {
+              const isAssignableHere = assignableRoleIds.has(r.id);
+              const scopeBadge =
+                r.slug === "org_owner"
+                  ? { label: "Platform-managed", tone: "gray" as const }
+                  : r.slug === "school_founder"
+                    ? { label: "Read-only · Accounts", tone: "gold" as const }
+                    : isAssignableHere
+                      ? { label: "Assignable here", tone: "green" as const }
+                      : r.slug === "org_admin"
+                        ? { label: "Admin · Accounts", tone: "green" as const }
+                        : { label: "Reference", tone: "gray" as const };
+              return (
+                <li key={r.id} className="flex items-center justify-between gap-3 py-2.5 text-sm">
+                  <div>
+                    <p className="font-semibold text-evergreen-950">{formatOrganizationRoleLabel(r.slug, r.name)}</p>
+                    <p className="text-xs text-ink-soft">{r.description || r.slug}</p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5">
+                    <Badge tone={scopeBadge.tone}>{scopeBadge.label}</Badge>
+                    <Badge tone="gray">{(permsByRole.get(r.id) ?? []).length} perms</Badge>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         </Card>
 

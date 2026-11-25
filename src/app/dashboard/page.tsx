@@ -63,9 +63,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       canViewExamCodes: { permission: "candidate_links.edit", module: "exam_share_codes" },
       canViewBilling: { permission: "billing.view", module: "billing" },
       canManageOrg: { permission: "organizations.edit", module: "org_settings" },
+      canManageMembers: { permission: "organizations.manage_members", module: "accounts" },
+      canViewRoles: { permission: "roles.view", module: "accounts" },
+      canManageTeam: { permission: "organizations.manage_members", module: "team" },
+      canManageTeachers: { permission: "organizations.manage_members", module: "teachers" },
     }),
   ]);
   const isFounder = org.role === "school_founder";
+  const isSchoolAdmin = !isFounder && (org.role === "admin" || org.role === "owner");
 
   let overview: Overview | null = overviewResult.error
     ? null
@@ -146,7 +151,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       )}
       <section className="workspace-dashboard-hero mb-6 flex flex-wrap items-center justify-between gap-5 rounded-[1.6rem] p-6 sm:p-8">
         <div className="max-w-2xl">
-          <p className="workspace-dashboard-kicker">{isFounder ? "Institutional supervision workspace" : "Assessment workspace"}</p>
+          <p className="workspace-dashboard-kicker">
+            {isFounder
+              ? "Institutional supervision workspace"
+              : isSchoolAdmin
+                ? "School administration & assessment workspace"
+                : "Assessment workspace"}
+          </p>
           <h1 className="mt-2 font-display text-3xl font-semibold leading-tight tracking-tight text-evergreen-950 sm:text-4xl">
             Welcome, {ctx.profile.full_name?.split(" ")[0] || "there"}
           </h1>
@@ -314,6 +325,75 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           )}
         </Card>
       </div>
+
+      {isSchoolAdmin && (perms.canManageMembers || perms.canViewRoles || perms.canManageOrg) && (
+        <Card className="mt-6 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">School administration</h2>
+              <p className="mt-1 text-sm text-ink-soft">
+                Direct access to authorized institutional management modules for {org.name}.
+              </p>
+            </div>
+            <Badge tone="green">School Administrator</Badge>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[
+              perms.canManageMembers
+                ? [
+                    "Accounts & permissions",
+                    "Provision teachers, School Administrators, and School Founder accounts from the centralized RBAC catalog.",
+                    "/dashboard/accounts",
+                  ]
+                : null,
+              perms.canViewRoles
+                ? [
+                    "Role & access management",
+                    "Review organization roles, manage permitted RBAC assignments, and inspect effective permissions.",
+                    "/dashboard/rbac",
+                  ]
+                : null,
+              perms.canManageTeachers
+                ? [
+                    "Teachers & faculty",
+                    "Manage teaching accounts, class assignments, and subject specializations.",
+                    "/dashboard/teachers",
+                  ]
+                : null,
+              perms.canManageTeam
+                ? [
+                    "Staff & invitations",
+                    "Review workspace members, create invitation links, and manage active roles.",
+                    "/dashboard/team",
+                  ]
+                : null,
+              perms.canManageOrg
+                ? [
+                    "Organization settings",
+                    "Configure school branding, examination templates, proctoring retention, and portal access.",
+                    "/dashboard/settings",
+                  ]
+                : null,
+              [
+                "Institutional supervision",
+                "Open the read-only executive oversight summary across all institutional domains.",
+                "/supervision",
+              ],
+            ]
+              .filter((entry): entry is [string, string, string] => Boolean(entry))
+              .map(([title, description, href]) => (
+                <Link
+                  key={href}
+                  href={href}
+                  className="rounded-xl border border-evergreen-900/10 bg-cream p-4 transition hover:border-evergreen-600/40 hover:shadow-[var(--shadow-card)]"
+                >
+                  <p className="font-semibold text-evergreen-950">{title}</p>
+                  <p className="mt-1 text-sm text-ink-soft">{description}</p>
+                </Link>
+              ))}
+          </div>
+        </Card>
+      )}
 
       {isFounder ? (
         <Card className="mt-6 p-6">

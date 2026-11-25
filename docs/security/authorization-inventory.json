@@ -2,9 +2,9 @@
   "version": 2,
   "notice": "Static call-site inventory, not proof of enforcement. Inspect ownership/token checks, raw platform_role branches, SQL policies and service-role queries independently.",
   "counts": {
-    "canOperate": 103,
-    "canOperateMany": 16,
-    "checkPermissions": 2,
+    "canOperate": 101,
+    "canOperateMany": 18,
+    "checkPermissions": 3,
     "getCapabilities": 41,
     "getSessionContext": 19,
     "hasPermission": 1,
@@ -2292,14 +2292,14 @@
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 44,
+      "line": 69,
       "operation": "resetMemberPassword",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 47,
+      "line": 72,
       "operation": "resetMemberPassword",
       "guard": "canOperate",
       "arguments": [
@@ -2311,14 +2311,14 @@
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 90,
+      "line": 115,
       "operation": "setMemberStatus",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 93,
+      "line": 118,
       "operation": "setMemberStatus",
       "guard": "canOperate",
       "arguments": [
@@ -2330,14 +2330,14 @@
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 134,
+      "line": 170,
       "operation": "createStaffAccount",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 137,
+      "line": 173,
       "operation": "createStaffAccount",
       "guard": "canOperate",
       "arguments": [
@@ -2358,17 +2358,16 @@
       "file": "src/app/dashboard/accounts/page.tsx",
       "line": 37,
       "operation": "AccountsPage",
-      "guard": "canOperate",
+      "guard": "canOperateMany",
       "arguments": [
         "ctx",
         "org.id",
-        "\"organizations.manage_members\"",
-        "\"accounts\""
+        "{\n    canManageMembers: { permission: \"organizations.manage_members\", module: \"accounts\" },\n    canViewRoles: { permission: \"roles.view\", module: \"accounts\" },\n  }"
       ]
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 42,
+      "line": 46,
       "operation": "AccountsPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -2379,7 +2378,7 @@
     },
     {
       "file": "src/app/dashboard/accounts/page.tsx",
-      "line": 43,
+      "line": 47,
       "operation": "AccountsPage",
       "guard": "requireModule",
       "arguments": [
@@ -3722,7 +3721,7 @@
       "arguments": [
         "ctx",
         "org.id",
-        "{\n      canCreateQuestion: { permission: \"questions.create\", module: \"question_bank\" },\n      canCreateQuiz: { permission: \"quizzes.create\", module: \"quizzes\" },\n      canCreateExam: { permission: \"exams.create\", module: \"examinations\" },\n      canHostSession: { permission: \"competitions.edit\", module: \"competitions\" },\n      canViewExamCodes: { permission: \"candidate_links.edit\", module: \"exam_share_codes\" },\n      canViewBilling: { permission: \"billing.view\", module: \"billing\" },\n      canManageOrg: { permission: \"organizations.edit\", module: \"org_settings\" },\n    }"
+        "{\n      canCreateQuestion: { permission: \"questions.create\", module: \"question_bank\" },\n      canCreateQuiz: { permission: \"quizzes.create\", module: \"quizzes\" },\n      canCreateExam: { permission: \"exams.create\", module: \"examinations\" },\n      canHostSession: { permission: \"competitions.edit\", module: \"competitions\" },\n      canViewExamCodes: { permission: \"candidate_links.edit\", module: \"exam_share_codes\" },\n      canViewBilling: { permission: \"billing.view\", module: \"billing\" },\n      canManageOrg: { permission: \"organizations.edit\", module: \"org_settings\" },\n      canManageMembers: { permission: \"organizations.manage_members\", module: \"accounts\" },\n      canViewRoles: { permission: \"roles.view\", module: \"accounts\" },\n      canManageTeam: { permission: \"organizations.manage_members\", module: \"team\" },\n      canManageTeachers: { permission: \"organizations.manage_members\", module: \"teachers\" },\n    }"
       ]
     },
     {
@@ -4357,14 +4356,14 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 60,
+      "line": 61,
       "operation": "OrgRbacPage",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 65,
+      "line": 66,
       "operation": "OrgRbacPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -4375,7 +4374,7 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 66,
+      "line": 67,
       "operation": "OrgRbacPage",
       "guard": "requireModule",
       "arguments": [
@@ -4386,7 +4385,7 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 68,
+      "line": 69,
       "operation": "OrgRbacPage",
       "guard": "canOperateMany",
       "arguments": [
@@ -4397,7 +4396,7 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 111,
+      "line": 112,
       "operation": "OrgRbacPage",
       "guard": "rpc",
       "arguments": [
@@ -4407,7 +4406,7 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 146,
+      "line": 147,
       "operation": "OrgRbacPage",
       "guard": "checkPermissions",
       "arguments": [
@@ -4418,7 +4417,7 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 185,
+      "line": 193,
       "operation": "OrgRbacPage",
       "guard": "rpc",
       "arguments": [
@@ -5067,15 +5066,15 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 12,
-      "operation": "inviteMember",
-      "guard": "requireUser",
-      "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/team/actions.ts",
       "line": 14,
       "operation": "inviteMember",
+      "guard": "requireUser",
+      "arguments": []
+    },
+    {
+      "file": "src/app/dashboard/team/actions.ts",
+      "line": 16,
+      "operation": "inviteMember",
       "guard": "canOperate",
       "arguments": [
         "ctx",
@@ -5086,14 +5085,14 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 40,
+      "line": 83,
       "operation": "revokeInvitation",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 42,
+      "line": 85,
       "operation": "revokeInvitation",
       "guard": "canOperate",
       "arguments": [
@@ -5105,14 +5104,14 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 49,
+      "line": 92,
       "operation": "updateMemberRole",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 51,
+      "line": 94,
       "operation": "updateMemberRole",
       "guard": "canOperate",
       "arguments": [
@@ -5124,14 +5123,14 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 63,
+      "line": 106,
       "operation": "removeMember",
       "guard": "requireUser",
       "arguments": []
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 65,
+      "line": 108,
       "operation": "removeMember",
       "guard": "canOperate",
       "arguments": [
@@ -5143,26 +5142,25 @@
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 23,
+      "line": 25,
       "operation": "TeamPage",
       "guard": "requireUser",
       "arguments": []
-    },
-    {
-      "file": "src/app/dashboard/team/page.tsx",
-      "line": 27,
-      "operation": "TeamPage",
-      "guard": "canOperate",
-      "arguments": [
-        "ctx",
-        "org.id",
-        "\"organizations.manage_members\"",
-        "\"team\""
-      ]
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
       "line": 29,
+      "operation": "TeamPage",
+      "guard": "canOperateMany",
+      "arguments": [
+        "ctx",
+        "org.id",
+        "{\n    isManager: { permission: \"organizations.manage_members\", module: \"team\" },\n    canViewRoles: { permission: \"roles.view\", module: \"accounts\" },\n  }"
+      ]
+    },
+    {
+      "file": "src/app/dashboard/team/page.tsx",
+      "line": 34,
       "operation": "TeamPage",
       "guard": "getCapabilities",
       "arguments": [
@@ -5173,7 +5171,7 @@
     },
     {
       "file": "src/app/dashboard/team/page.tsx",
-      "line": 30,
+      "line": 35,
       "operation": "TeamPage",
       "guard": "requireModule",
       "arguments": [
@@ -5303,6 +5301,17 @@
       "operation": "WorkspacesPage",
       "guard": "requireUser",
       "arguments": []
+    },
+    {
+      "file": "src/lib/accountCreationRoles.ts",
+      "line": 63,
+      "operation": "loadAccountCreationRoles",
+      "guard": "checkPermissions",
+      "arguments": [
+        "ctx",
+        "organizationId",
+        "[...allPermissionKeys]"
+      ]
     },
     {
       "file": "src/lib/auth.ts",
@@ -6621,17 +6630,17 @@
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 43,
+      "line": 68,
       "operation": "resetMemberPassword"
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 89,
+      "line": 114,
       "operation": "setMemberStatus"
     },
     {
       "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 133,
+      "line": 169,
       "operation": "createStaffAccount"
     },
     {
@@ -7106,22 +7115,22 @@
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 11,
+      "line": 13,
       "operation": "inviteMember"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 39,
+      "line": 82,
       "operation": "revokeInvitation"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 48,
+      "line": 91,
       "operation": "updateMemberRole"
     },
     {
       "file": "src/app/dashboard/team/actions.ts",
-      "line": 62,
+      "line": 105,
       "operation": "removeMember"
     },
     {
@@ -7307,12 +7316,6 @@
       "condition": "!profile || profile.platform_role !== \"super_admin\""
     },
     {
-      "file": "src/app/dashboard/accounts/actions.ts",
-      "line": 171,
-      "operation": "createStaffAccount",
-      "condition": "existingProfile!.platform_role === \"super_admin\""
-    },
-    {
       "file": "src/app/dashboard/competitions/actions.ts",
       "line": 55,
       "operation": "createOrgCompetition",
@@ -7494,13 +7497,13 @@
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 154,
+      "line": 155,
       "operation": "OrgRbacPage",
       "condition": "r.organization_id && r.organization_id !== org.id"
     },
     {
       "file": "src/app/dashboard/rbac/page.tsx",
-      "line": 173,
+      "line": 181,
       "operation": "OrgRbacPage",
       "condition": "p?.platform_role === \"super_admin\""
     },
@@ -7535,6 +7538,12 @@
       "condition": "!exam.created_by"
     },
     {
+      "file": "src/app/dashboard/team/actions.ts",
+      "line": 41,
+      "operation": "inviteMember",
+      "condition": "existingProfile.platform_role === \"super_admin\""
+    },
+    {
       "file": "src/app/portal/[slug]/admin-setup/actions.ts",
       "line": 64,
       "operation": "provisionOrganizationAdmin",
@@ -7563,6 +7572,12 @@
       "line": 30,
       "operation": "WorkspacesPage",
       "condition": "ctx.profile.platform_role === \"super_admin\""
+    },
+    {
+      "file": "src/lib/accountCreationPolicy.ts",
+      "line": 160,
+      "operation": "filterAccountCreationRoles",
+      "condition": "role.organization_id && role.organization_id !== input.organizationId"
     },
     {
       "file": "src/lib/auth.ts",

@@ -1,11 +1,12 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { canOperate } from "@/lib/operationalAccess";
-import { ASSIGNABLE_STAFF_ROLES, MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
-import { ORG_ROLES } from "@/lib/brand";
-import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { formatOrganizationRoleLabel } from "@/lib/accountCreationPolicy";
+import { loadAccountCreationRoles } from "@/lib/accountCreationRoles";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { canOperateMany } from "@/lib/operationalAccess";
+import { MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -16,15 +17,14 @@ import { createStudentLogin } from "../students/actions";
 export const metadata: Metadata = { title: "Accounts & permissions" };
 export const dynamic = "force-dynamic";
 
-const ROLE_LABEL = Object.fromEntries(ORG_ROLES.map((r) => [r.value, r.label]));
-
 /**
  * Accounts & permissions for one organization.
  *
- * Managers create staff accounts, set initial passwords (stored only by
- * Supabase Auth — never in an application table), reset forgotten passwords and
- * suspend access. Every query and every action is scoped to the active
- * organization, and the platform Super Admin's account is out of reach.
+ * Managers create staff, administrator, teacher, and School Founder accounts
+ * using the centralized RBAC role catalog (`access_roles`), request password
+ * setup/reset links (stored only by Supabase Auth — never in an application
+ * table), and suspend access. Every query and every action is scoped to the
+ * active organization, and the platform Super Admin's account is out of reach.
  */
 export default async function AccountsPage({
   searchParams,
@@ -34,7 +34,11 @@ export default async function AccountsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  if (!(await canOperate(ctx, org.id, "organizations.manage_members", "accounts"))) redirect("/dashboard?e=forbidden");
+  const { canManageMembers, canViewRoles } = await canOperateMany(ctx, org.id, {
+    canManageMembers: { permission: "organizations.manage_members", module: "accounts" },
+    canViewRoles: { permission: "roles.view", module: "accounts" },
+  });
+  if (!canManageMembers) redirect("/dashboard?e=forbidden");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
 
@@ -43,7 +47,7 @@ export default async function AccountsPage({
   requireModule(entitlement, "accounts", "/dashboard?e=module");
   const admin = createAdminClient();
 
-  const [{ data: members }, { data: students }] = await Promise.all([
+  const [{ data: members }, { data: students }, { data: rbacAssignments }, assignableRoles] = await Promise.all([
     supabase
       .from("organization_members")
       .select("id, user_id, role, status, created_at")
@@ -55,7 +59,22 @@ export default async function AccountsPage({
       .eq("organization_id", org.id)
       .order("full_name")
       .limit(500),
+    supabase
+      .from("access_user_roles")
+      .select("user_id, status, access_roles(slug, name)")
+      .eq("organization_id", org.id)
+      .eq("status", "active"),
+    loadAccountCreationRoles(ctx, org.id),
   ]);
+
+  const rbacRoleByUser = new Map<string, { slug: string; name: string }>();
+  for (const row of (rbacAssignments ?? []) as unknown as {
+    user_id: string;
+    access_roles: { slug: string; name: string } | { slug: string; name: string }[] | null;
+  }[]) {
+    const roleObj = Array.isArray(row.access_roles) ? row.access_roles[0] : row.access_roles;
+    if (roleObj?.slug) rbacRoleByUser.set(row.user_id, roleObj);
+  }
 
   const userIds = (members ?? []).map((m) => m.user_id);
   const { data: profiles } = userIds.length
@@ -66,65 +85,83 @@ export default async function AccountsPage({
   const roster = students ?? [];
   const withLogin = roster.filter((s) => s.user_id).length;
   const staffCount = (members ?? []).filter((m) => !["student", "participant", "candidate", "parent"].includes(m.role)).length;
+  const defaultRoleValue = assignableRoles.find((r) => r.slug === "teacher")?.slug ?? assignableRoles[0]?.slug ?? "";
 
   return (
     <>
       <PageTitle
         eyebrow="Workspace Administration · Account Credentials & Access"
         title="Accounts & permissions"
-        subtitle={`Create and control the accounts that belong to ${org.name}. Passwords are stored only by Supabase Auth — administrators set an initial password once and can reset it later.`}
+        subtitle={`Create and control the accounts that belong to ${org.name}. Roles are loaded from the centralized RBAC catalog, and passwords are stored only by Supabase Auth.`}
         action={
-          <Link href="/dashboard/team" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
-            Roles & invitations →
-          </Link>
+          <div className="flex flex-wrap items-center gap-4">
+            {canViewRoles && (
+              <Link href="/dashboard/rbac" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
+                Role &amp; Access Management →
+              </Link>
+            )}
+            <Link href="/dashboard/team" className="text-sm font-medium text-evergreen-700 underline-offset-2 hover:underline">
+              Roles &amp; invitations →
+            </Link>
+          </div>
         }
       />
 
       {sp.ok && (
-        <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
+        <p role="status" className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
           {sp.ok === "account_created"
-            ? "Account created. Give the person their email address and the initial password you chose — ask them to change it after signing in."
-            : sp.ok === "invitation_sent"
-              ? "Invitation created. The person receives an email to set their password when mail delivery is configured."
-              : sp.ok === "reset_sent"
-                ? "Password reset email requested for that account."
-                : sp.ok === "reset_link"
-                  ? "A reset email could not be queued (mail delivery is not configured in this deployment). The account exists — use Supabase → Authentication → Users to generate a recovery link."
-                  : sp.ok === "active"
-                    ? "Account reactivated."
-                    : sp.ok === "suspended"
-                      ? "Account suspended — the person can no longer enter this organization."
-                      : "Saved."}
+            ? "Account created with its centralized RBAC role. Share the account email and temporary initial password securely out-of-band, and ask the user to change it after signing in."
+            : sp.ok === "account_created_reconciled"
+              ? "Account created with its centralized RBAC role, and the existing pending invitation for that email was reconciled automatically (no duplicate invitation remains)."
+              : sp.ok === "invitation_sent"
+                ? "Account provisioned and activation / password-setup email requested. The user sets their own password privately via email."
+                : sp.ok === "invitation_sent_reconciled"
+                  ? "Account provisioned, activation / password-setup email requested, and the existing pending invitation for that email was reconciled cleanly."
+                  : sp.ok === "account_created_recovery"
+                    ? "Account created with its centralized RBAC role in secure password-setup state. Automated mail delivery could not be queued in this deployment — the account holder can set their password using Forgot Password or a Supabase Auth recovery link."
+                    : sp.ok === "account_created_recovery_reconciled"
+                      ? "Account created with its centralized RBAC role and the existing pending invitation was reconciled cleanly. Automated mail delivery could not be queued — the account holder can set their password via Forgot Password or a Supabase Auth recovery link."
+                      : sp.ok === "reset_sent"
+                        ? "Password reset email requested for that account."
+                        : sp.ok === "reset_link"
+                          ? "A reset email could not be queued (mail delivery is not configured in this deployment). The account exists — use Supabase → Authentication → Users to generate a recovery link."
+                          : sp.ok === "active"
+                            ? "Account reactivated."
+                            : sp.ok === "suspended"
+                              ? "Account suspended — the person can no longer enter this organization."
+                              : "Saved."}
         </p>
       )}
       {sp.e && (
-        <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p role="alert" className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-900">
           {sp.e === "forbidden"
-            ? "Only owners and administrators can manage accounts."
+            ? "Only organization owners and administrators can manage accounts."
             : sp.e === "owner"
               ? "The organization owner's account is managed from the platform level and cannot be changed here."
               : sp.e === "protected"
-                ? "That email belongs to the EVALORA platform administrator and cannot be added to an organization."
+                ? "That email belongs to the EVALORA platform administrator and cannot be modified or added from an organization."
                 : sp.e === "exists"
-                  ? "That person is already a member of this organization."
-                  : sp.e === "email"
-                    ? "Enter a valid email address."
-                    : sp.e === "name"
-                      ? "Enter the person's full name."
-                      : sp.e === "role"
-                        ? "Choose a valid staff role."
-                        : sp.e === "password"
-                          ? `The initial password is not strong enough. ${sp.detail ?? ""}`
-                          : sp.e === "limit"
-                            ? "Your plan's member limit has been reached."
-                            : sp.e === "no_email"
-                              ? "That account has no email address, so a reset cannot be sent."
-                              : "That action could not be completed."}
+                  ? "That person is already a member of this organization. Existing accounts and memberships were left untouched."
+                  : sp.e === "founder_conflict"
+                    ? "School Founder / Institutional Supervisor requires a dedicated read-only account and cannot be combined with an existing administrator, owner, or operational staff membership."
+                    : sp.e === "email"
+                      ? "Enter a valid email address."
+                      : sp.e === "name"
+                        ? "Enter the person's full name."
+                        : sp.e === "role"
+                          ? "Choose a valid, authorized organization role from the centralized RBAC catalog."
+                          : sp.e === "password"
+                            ? `The initial password is not strong enough. ${sp.detail ?? ""}`
+                            : sp.e === "limit"
+                              ? "Your plan's member limit has been reached."
+                              : sp.e === "no_email"
+                                ? "That account has no email address, so a reset cannot be sent."
+                                : "That action could not be completed."}
         </p>
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Staff & teachers" value={staffCount} />
+        <StatCard label="Staff, admins & supervision" value={staffCount} />
         <StatCard label="Student accounts" value={withLogin} hint={`${roster.length} students on the roster`} />
         <StatCard label="Students without a login" value={roster.length - withLogin} />
         <StatCard label="Suspended members" value={(members ?? []).filter((m) => m.status !== "active").length} />
@@ -140,8 +177,19 @@ export default async function AccountsPage({
           <DataTable head={["Member", "Role", "Access", "Since", "Account"]} label="Staff, teachers and members">
             {(members ?? []).map((m) => {
               const profile = profileById.get(m.user_id);
+              const rbacRole = rbacRoleByUser.get(m.user_id);
               const isSuperAdmin = profile?.platform_role === "super_admin";
               const protectedRow = m.role === "owner" || isSuperAdmin || m.user_id === ctx.user.id;
+              const roleBadgeTone =
+                m.role === "owner" || m.role === "school_founder"
+                  ? "gold"
+                  : m.role === "admin"
+                    ? "green"
+                    : "gray";
+              const displayRoleLabel = formatOrganizationRoleLabel(
+                rbacRole?.slug ?? m.role,
+                rbacRole?.name,
+              );
               return (
                 <tr key={m.id}>
                   <td>
@@ -149,10 +197,11 @@ export default async function AccountsPage({
                     <span className="block text-xs text-ink-soft">{profile?.email}</span>
                   </td>
                   <td>
-                    <Badge tone={m.role === "owner" ? "gold" : m.role === "admin" ? "green" : "gray"}>
-                      {ROLE_LABEL[m.role] ?? m.role}
-                    </Badge>
+                    <Badge tone={roleBadgeTone}>{displayRoleLabel}</Badge>
                     {isSuperAdmin && <span className="mt-1 block text-[11px] font-semibold text-gold-800">EVALORA platform admin</span>}
+                    {m.role === "school_founder" && (
+                      <span className="mt-1 block text-[11px] font-medium text-evergreen-800">Read-only institutional supervision</span>
+                    )}
                   </td>
                   <td>
                     <Badge tone={m.status === "active" ? "green" : "red"}>{m.status}</Badge>
@@ -180,12 +229,22 @@ export default async function AccountsPage({
                             {m.status === "active" ? "Suspend" : "Reactivate"}
                           </button>
                         </form>
-                        <Link
-                          href="/dashboard/team"
-                          className="font-medium text-evergreen-700 underline-offset-2 hover:underline"
-                        >
-                          Change role
-                        </Link>
+                        {canViewRoles && (
+                          <Link
+                            href={`/dashboard/rbac?inspect=${m.user_id}`}
+                            className="font-medium text-evergreen-700 underline-offset-2 hover:underline"
+                          >
+                            Inspect permissions
+                          </Link>
+                        )}
+                        {m.role !== "school_founder" && (
+                          <Link
+                            href="/dashboard/team"
+                            className="font-medium text-evergreen-700 underline-offset-2 hover:underline"
+                          >
+                            Change role
+                          </Link>
+                        )}
                       </div>
                     )}
                   </td>
@@ -199,8 +258,9 @@ export default async function AccountsPage({
       <Card className="mt-6 p-5 sm:p-6">
         <h2 className="font-display text-lg font-semibold text-evergreen-950">Create a staff or teacher account</h2>
         <p className="mt-1 text-sm text-ink-soft">
-          The account is created in Supabase Auth. Choose an initial password and hand it over in person, or send an
-          activation email when mail delivery is configured. Passwords are never stored in EVALORA tables.
+          The account is provisioned in Supabase Auth and assigned its role from EVALORA&apos;s centralized RBAC catalog
+          for {org.name}. Prefer sending an activation email so the user sets their own password securely; passwords are
+          never stored in EVALORA tables or exposed in logs.
         </p>
         <form action={createStaffAccount} className="mt-4 grid gap-4 sm:grid-cols-2">
           <Field label="Full name">
@@ -209,30 +269,33 @@ export default async function AccountsPage({
           <Field label="Email address">
             <Input name="email" type="email" required placeholder="ada@oakinternational.edu" autoComplete="off" />
           </Field>
-          <Field label="Role">
-            <Select name="role" defaultValue="teacher">
-              {ASSIGNABLE_STAFF_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {ROLE_LABEL[role] ?? role}
+          <Field
+            label="Role"
+            hint="Loaded from the centralized RBAC catalog for your organization. School Founder / Institutional Supervisor grants read-only dashboard supervision and reconciles any pending invitation for that email."
+          >
+            <Select name="role" defaultValue={defaultRoleValue} required>
+              {assignableRoles.map((role) => (
+                <option key={role.id} value={role.slug}>
+                  {role.label}
                 </option>
               ))}
             </Select>
           </Field>
           <Field label="How to set the password">
-            <Select name="mode" defaultValue="password">
-              <option value="password">I set an initial password now</option>
-              <option value="invite">Send an activation email</option>
+            <Select name="mode" defaultValue="invite">
+              <option value="invite">Send an activation / password-setup email (recommended)</option>
+              <option value="password">Set a temporary initial password now</option>
             </Select>
           </Field>
           <Field
-            label="Initial password (when setting one)"
-            hint={`At least ${MIN_INITIAL_PASSWORD_LENGTH} characters, with letters and numbers.`}
+            label="Temporary initial password (only when setting a password manually)"
+            hint={`At least ${MIN_INITIAL_PASSWORD_LENGTH} characters, with letters and numbers. Leave blank when using the recommended activation email flow.`}
             className="sm:col-span-2"
           >
-            <Input name="password" type="text" autoComplete="new-password" placeholder="Temporary password for hand-over" />
+            <Input name="password" type="password" autoComplete="new-password" placeholder="Optional — leave blank for activation email" />
           </Field>
           <div className="sm:col-span-2">
-            <Button type="submit">Create account</Button>
+            <Button type="submit" disabled={assignableRoles.length === 0}>Create account</Button>
           </div>
         </form>
       </Card>
