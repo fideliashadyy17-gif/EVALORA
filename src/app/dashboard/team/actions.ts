@@ -1,10 +1,12 @@
 "use server";
 
 import { activeOrg, requireUser } from "@/lib/auth";
+import { OPERATIONAL_STAFF_MEMBER_ROLES } from "@/lib/accountCreationPolicy";
+import { resolveAuthorizedAccountCreationRole } from "@/lib/accountCreationRoles";
 import { canOperate } from "@/lib/operationalAccess";
-import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
-import { createClient } from "@/lib/supabase/server";
+import { normalizeAccountEmail } from "@/lib/organizationAccounts";
+import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
@@ -13,10 +15,12 @@ export async function inviteMember(formData: FormData) {
   const org = activeOrg(ctx);
   if (!org || !(await canOperate(ctx, org.id, "organizations.manage_members", "team"))) redirect("/dashboard/team");
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const role = String(formData.get("role") ?? "teacher");
-  if (!email.includes("@") || !ORG_ROLES.some((r) => r.value === role) || role === "owner")
-    redirect("/dashboard/team?e=invalid");
+  const email = normalizeAccountEmail(String(formData.get("email") ?? ""));
+  const requestedRole = String(formData.get("role") ?? "teacher");
+  if (!email) redirect("/dashboard/team?e=invalid");
+
+  const selectedRole = await resolveAuthorizedAccountCreationRole(ctx, org.id, requestedRole);
+  if (!selectedRole) redirect("/dashboard/team?e=invalid");
 
   const supabase = await createClient();
   const ent = await getEntitlementFor(supabase, ctx, org.id);
@@ -26,10 +30,49 @@ export async function inviteMember(formData: FormData) {
     .eq("organization_id", org.id);
   if (!withinLimit(ent.limits.max_members, count ?? 0)) redirect("/dashboard/team?e=limit");
 
+  const admin = createAdminClient();
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("id, platform_role")
+    .ilike("email", email)
+    .maybeSingle();
+
+  if (existingProfile) {
+    if (existingProfile.platform_role === "super_admin") redirect("/dashboard/team?e=owner");
+    const { data: existingMember } = await admin
+      .from("organization_members")
+      .select("id")
+      .eq("organization_id", org.id)
+      .eq("user_id", existingProfile.id)
+      .maybeSingle();
+    if (existingMember) redirect("/dashboard/team?e=exists");
+
+    if (selectedRole.slug === "school_founder") {
+      const { data: activeStaff } = await admin
+        .from("organization_members")
+        .select("role")
+        .eq("user_id", existingProfile.id)
+        .eq("status", "active");
+      if ((activeStaff ?? []).some((m) => OPERATIONAL_STAFF_MEMBER_ROLES.has(m.role))) {
+        redirect("/dashboard/team?e=founder_conflict");
+      }
+    }
+  }
+
+  // Avoid duplicate pending invitations for the same email in this organization.
+  const { data: existingPending } = await admin
+    .from("invitations")
+    .select("id")
+    .eq("organization_id", org.id)
+    .ilike("email", email)
+    .eq("status", "pending")
+    .maybeSingle();
+  if (existingPending) redirect("/dashboard/team?e=exists");
+
   await supabase.from("invitations").insert({
     organization_id: org.id,
     email,
-    role,
+    role: selectedRole.memberRole,
     invited_by: ctx.user.id,
   });
   revalidatePath("/dashboard/team");

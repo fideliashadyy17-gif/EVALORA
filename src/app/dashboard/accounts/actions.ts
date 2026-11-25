@@ -1,12 +1,17 @@
 "use server";
 
+import crypto from "node:crypto";
 import { audit } from "@/lib/admin";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { canOperate } from "@/lib/operationalAccess";
+import {
+  OPERATIONAL_STAFF_MEMBER_ROLES,
+  planPendingInvitationReconciliation,
+} from "@/lib/accountCreationPolicy";
+import { resolveAuthorizedAccountCreationRole } from "@/lib/accountCreationRoles";
 import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
+import { canOperate } from "@/lib/operationalAccess";
 import {
   canManageAccount,
-  isAssignableStaffRole,
   normalizeAccountEmail,
   validateInitialPassword,
 } from "@/lib/organizationAccounts";
@@ -37,6 +42,26 @@ async function targetMembership(admin: ReturnType<typeof createAdminClient>, org
     .eq("id", membership.user_id)
     .maybeSingle();
   return { membership, profile };
+}
+
+/** Find an existing Supabase Auth user by exact case-insensitive email when not yet indexed in profiles. */
+async function findAuthUserIdByEmail(
+  admin: ReturnType<typeof createAdminClient>,
+  email: string,
+): Promise<string | null> {
+  try {
+    const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+    if (error || !data?.users) return null;
+    const match = data.users.find((u) => (u.email ?? "").trim().toLowerCase() === email);
+    return match?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Generate a high-entropy unshared secret for recovery-only Auth provisioning (never logged or displayed). */
+function generateUnsharedAuthSecret(): string {
+  return `${crypto.randomBytes(24).toString("base64url")}Aa9!`;
 }
 
 /** Send a password-reset / password-setup email for one member of this org. */
@@ -121,14 +146,25 @@ export async function setMemberStatus(formData: FormData) {
   });
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/team");
+  revalidatePath("/dashboard/rbac");
   redirect(`/dashboard/accounts?ok=${status}`);
 }
 
 /**
- * Create a staff account for this organization: either with an initial
- * password set by the administrator, or by sending an activation email.
- * The account is created in Supabase Auth — a password is never stored in an
- * application table, and it is never returned to the browser.
+ * Create a staff, teacher, administrator, or School Founder account for this
+ * organization using the centralized RBAC role catalog (`access_roles`).
+ *
+ * Security & provisioning guarantees:
+ *  - Role options and authorization come exclusively from `access_roles` +
+ *    `access_role_permissions` verified against the caller's effective
+ *    permissions; `super_admin` and `org_owner` are never permitted here.
+ *  - Passwords are never persisted in application tables or logged; activation
+ *    email / password-setup flow is supported cleanly even if SMTP is absent.
+ *  - `school_founder` requires a dedicated non-operational identity and writes
+ *    both `organization_members` (`role = 'school_founder'`) and
+ *    `access_user_roles` (`school_founder`), enforced by database triggers.
+ *  - Existing pending invitations for the same email in this organization are
+ *    reconciled cleanly to prevent duplicates or conflicting memberships.
  */
 export async function createStaffAccount(formData: FormData) {
   const ctx = await requireUser();
@@ -141,13 +177,16 @@ export async function createStaffAccount(formData: FormData) {
   // Only two screens may host this form; the return path is never taken from
   // arbitrary input, so an open redirect is impossible.
   const back = String(formData.get("back") ?? "") === "/dashboard/teachers" ? "/dashboard/teachers" : "/dashboard/accounts";
-  const role = String(formData.get("role") ?? "teacher");
-  const mode = String(formData.get("mode") ?? "password") === "invite" ? "invite" : "password";
+  const requestedRole = String(formData.get("role") ?? "teacher");
+  const mode = String(formData.get("mode") ?? "invite") === "password" ? "password" : "invite";
   const password = String(formData.get("password") ?? "");
 
   if (!email) redirect(`${back}?e=email`);
   if (!fullName) redirect(`${back}?e=name`);
-  if (!isAssignableStaffRole(role)) redirect(`${back}?e=role`);
+
+  const selectedRole = await resolveAuthorizedAccountCreationRole(ctx, org.id, requestedRole);
+  if (!selectedRole) redirect(`${back}?e=role`);
+
   if (mode === "password") {
     const pw = validateInitialPassword(password, { email, name: fullName });
     if (!pw.ok) redirect(`${back}?e=password&detail=${encodeURIComponent(pw.error ?? "")}`);
@@ -162,48 +201,184 @@ export async function createStaffAccount(formData: FormData) {
   if (!withinLimit(entitlement.limits.max_members, count ?? 0)) redirect(`${back}?e=limit`);
 
   const admin = createAdminClient();
-  const { data: existingProfile } = await admin.from("profiles").select("id, platform_role").eq("email", email).maybeSingle();
+  const isFounderRole = selectedRole.slug === "school_founder";
 
-  let userId = existingProfile?.id ?? null;
+  // Case-insensitive lookup so e.g. `Infos@oisbenin.bj` and `infos@oisbenin.bj`
+  // always resolve to the exact same identity.
+  const { data: existingProfile } = await admin
+    .from("profiles")
+    .select("id, platform_role, status")
+    .ilike("email", email)
+    .maybeSingle();
+
+  let userId: string | null = existingProfile?.id ?? null;
+  let existingPlatformRole = existingProfile?.platform_role ?? null;
+  let createdNewAuthUser = false;
+  let mailFallback = false;
+
+  if (!userId) {
+    // Also check if an Auth user exists without a matched profile row (e.g., an
+    // earlier pending invite), so we never create a duplicate Auth identity.
+    const authUserId = await findAuthUserIdByEmail(admin, email);
+    if (authUserId) {
+      userId = authUserId;
+      const { data: matchedProfile } = await admin
+        .from("profiles")
+        .select("platform_role")
+        .eq("id", authUserId)
+        .maybeSingle();
+      existingPlatformRole = matchedProfile?.platform_role ?? null;
+    }
+  }
+
   if (userId) {
-    // The person already has an EVALORA account: never overwrite its password.
-    // Grant membership and send a password-setup email instead.
-    if (existingProfile!.platform_role === "super_admin") redirect(`${back}?e=protected`);
+    // Never touch platform administrators or overwrite an existing member.
+    if (existingPlatformRole === "super_admin") redirect(`${back}?e=protected`);
+
     const { data: existingMember } = await admin
       .from("organization_members")
-      .select("id, status")
+      .select("id, role, status")
       .eq("organization_id", org.id)
       .eq("user_id", userId)
       .maybeSingle();
     if (existingMember) redirect(`${back}?e=exists`);
+
+    // Enforce Founder exclusivity before writing anything:
+    // - A School Founder cannot be assigned to any existing admin/staff account.
+    // - An existing School Founder cannot be assigned an operational staff role.
+    const { data: allMemberships } = await admin
+      .from("organization_members")
+      .select("role, status")
+      .eq("user_id", userId)
+      .eq("status", "active");
+
+    if (isFounderRole) {
+      const hasOperationalRole = (allMemberships ?? []).some((m) =>
+        OPERATIONAL_STAFF_MEMBER_ROLES.has(m.role),
+      );
+      if (hasOperationalRole) redirect(`${back}?e=founder_conflict`);
+    } else if (OPERATIONAL_STAFF_MEMBER_ROLES.has(selectedRole.memberRole)) {
+      const hasFounderMembership = (allMemberships ?? []).some((m) => m.role === "school_founder");
+      if (hasFounderMembership) redirect(`${back}?e=founder_conflict`);
+    }
   } else {
-    const { data, error } =
-      mode === "password"
-        ? await admin.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true,
-            user_metadata: { full_name: fullName },
-          })
-        : await admin.auth.admin.inviteUserByEmail(email, { data: { full_name: fullName } });
-    if (error || !data?.user) redirect(`${back}?e=failed`);
-    userId = data!.user.id;
+    if (mode === "password") {
+      const { data, error } = await admin.auth.admin.createUser({
+        email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+      if (error || !data?.user) redirect(`${back}?e=failed`);
+      userId = data.user.id;
+      createdNewAuthUser = true;
+    } else {
+      const { data, error } = await admin.auth.admin.inviteUserByEmail(email, {
+        data: { full_name: fullName },
+      });
+      if (!error && data?.user) {
+        userId = data.user.id;
+        createdNewAuthUser = true;
+      } else {
+        // Mail delivery (SMTP) may be unavailable in this deployment: create the
+        // Auth user with an unshared random secret and trigger password recovery
+        // so the password is never exposed in UI or logs.
+        const { data: created, error: createErr } = await admin.auth.admin.createUser({
+          email,
+          password: generateUnsharedAuthSecret(),
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+        });
+        if (createErr || !created?.user) redirect(`${back}?e=failed`);
+        userId = created.user.id;
+        createdNewAuthUser = true;
+        const { error: resetErr } = await admin.auth.resetPasswordForEmail(email);
+        if (resetErr) {
+          mailFallback = true;
+        }
+      }
+    }
   }
 
-  const { error: memberError } = await admin.from("organization_members").upsert(
-    { organization_id: org.id, user_id: userId!, role, status: "active" },
-    { onConflict: "organization_id,user_id" },
-  );
-  if (memberError) redirect(`${back}?e=failed`);
+  // Insert organization membership first (required by `access_validate_assignment`
+  // and `access_founder_assignment_guard` triggers on `access_user_roles`).
+  const { error: memberError } = await admin
+    .from("organization_members")
+    .insert({
+      organization_id: org.id,
+      user_id: userId!,
+      role: selectedRole.memberRole,
+      status: "active",
+    });
+  if (memberError) {
+    redirect(`${back}?e=${memberError.message?.toLowerCase().includes("founder") ? "founder_conflict" : "failed"}`);
+  }
 
-  // Keep the profile name in step with what the administrator typed.
+  // Sync the centralized RBAC role assignment (`access_user_roles`). This is
+  // mandatory for `school_founder` (excluded from the legacy membership bridge)
+  // and keeps all organization staff assignments aligned with centralized RBAC.
+  const { error: rbacError } = await admin.from("access_user_roles").upsert(
+    {
+      user_id: userId!,
+      role_id: selectedRole.id,
+      organization_id: org.id,
+      assigned_by: ctx.user.id,
+      status: "active",
+      assigned_at: new Date().toISOString(),
+      expires_at: null,
+    },
+    { onConflict: "user_id,role_id,organization_id" },
+  );
+  if (rbacError) {
+    if (isFounderRole) {
+      // Never leave a half-provisioned Founder membership without its RBAC grant.
+      await admin
+        .from("organization_members")
+        .delete()
+        .eq("organization_id", org.id)
+        .eq("user_id", userId!);
+      redirect(`${back}?e=${rbacError.message?.toLowerCase().includes("founder") ? "founder_conflict" : "failed"}`);
+    }
+  }
+
+  // Keep the profile display name aligned with what the administrator entered.
   await admin.from("profiles").update({ full_name: fullName }).eq("id", userId!);
+
+  // Reconcile any existing pending invitations for this email in this organization
+  // (e.g. a pending School Founder invitation for `infos@oisbenin.bj`) so zero
+  // duplicate or stale invitations remain.
+  const { data: pendingInvites } = await admin
+    .from("invitations")
+    .select("id, role, status")
+    .eq("organization_id", org.id)
+    .ilike("email", email)
+    .eq("status", "pending");
+
+  const { acceptIds, revokeIds } = planPendingInvitationReconciliation(
+    pendingInvites ?? [],
+    selectedRole.slug,
+  );
+  if (acceptIds.length) {
+    await admin
+      .from("invitations")
+      .update({ status: "accepted" })
+      .eq("organization_id", org.id)
+      .in("id", acceptIds);
+  }
+  if (revokeIds.length) {
+    await admin
+      .from("invitations")
+      .update({ status: "revoked" })
+      .eq("organization_id", org.id)
+      .in("id", revokeIds);
+  }
+  const reconciledCount = acceptIds.length + revokeIds.length;
 
   // Teacher subject assignments chosen on the creation form (multiple
   // subject_ids). Only teaching roles can carry subjects — the database
   // guard rejects any other role — and every subject must belong to THIS
   // organization (tenant isolation).
-  if (role === "teacher" || role === "organizer") {
+  if (selectedRole.memberRole === "teacher" || selectedRole.memberRole === "organizer") {
     const subjectIds = [...new Set(formData.getAll("subject_ids").map(String))]
       .filter((value) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value))
       .slice(0, 30);
@@ -226,10 +401,38 @@ export async function createStaffAccount(formData: FormData) {
     }
   }
 
-  if (mode === "invite") await admin.auth.resetPasswordForEmail(email);
-  await audit(ctx, "member.account_created", "organization_members", userId!, org.id, { email, role, mode });
+  // If the account already existed and the manager chose invite mode, request a
+  // password-setup/reset email cleanly without ever overwriting their password.
+  if (mode === "invite" && !createdNewAuthUser) {
+    const { error: resetErr } = await admin.auth.resetPasswordForEmail(email);
+    if (resetErr) mailFallback = true;
+  }
+
+  await audit(ctx, "member.account_created", "organization_members", userId!, org.id, {
+    email,
+    role: selectedRole.memberRole,
+    rbac_role_slug: selectedRole.slug,
+    mode,
+    reconciled_invitations: reconciledCount,
+  });
+
   revalidatePath("/dashboard/accounts");
   revalidatePath("/dashboard/team");
   revalidatePath("/dashboard/teachers");
-  redirect(`${back}?ok=${mode === "password" ? "account_created" : "invitation_sent"}`);
+  revalidatePath("/dashboard/rbac");
+
+  const okCode =
+    mode === "password"
+      ? reconciledCount > 0
+        ? "account_created_reconciled"
+        : "account_created"
+      : mailFallback
+        ? reconciledCount > 0
+          ? "account_created_recovery_reconciled"
+          : "account_created_recovery"
+        : reconciledCount > 0
+          ? "invitation_sent_reconciled"
+          : "invitation_sent";
+
+  redirect(`${back}?ok=${okCode}`);
 }

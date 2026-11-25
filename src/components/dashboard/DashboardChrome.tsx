@@ -267,7 +267,7 @@ export function DashboardChrome({
           </div>
         </header>
         <div id="workspace-mobile-navigation" className={cn("dashboard-mobile-navigation border-b border-evergreen-900/15 bg-paper p-4 lg:hidden", !open && "hidden")}>
-          <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · <span className="capitalize">{orgRole}</span></p>
+          <p className="mb-2 px-3 text-xs text-ink-soft">{orgName} · {workspaceLabel(orgRole)}</p>
           {nav}
           <button onClick={signOut} className={cn(navLink, "mt-3 w-full", navIdle)}>
             <LogOut className="h-5 w-5" /> {t("nav.signOut")}

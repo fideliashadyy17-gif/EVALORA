@@ -1,6 +1,8 @@
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
-import { canOperate } from "@/lib/operationalAccess";
+import { formatOrganizationRoleLabel } from "@/lib/accountCreationPolicy";
+import { loadAccountCreationRoles } from "@/lib/accountCreationRoles";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -24,16 +26,17 @@ export default async function TeamPage({
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
   if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
-  const isManager = await canOperate(ctx, org.id, "organizations.manage_members", "team");
+  const { isManager, canViewRoles } = await canOperateMany(ctx, org.id, {
+    isManager: { permission: "organizations.manage_members", module: "team" },
+    canViewRoles: { permission: "roles.view", module: "accounts" },
+  });
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "team", "/dashboard?e=module");
   const admin = createAdminClient();
 
-  // Members, invitations and the plan entitlement are independent; the previous
-  // implementation awaited them one after another. Profile names still need the
-  // member ids, so that single follow-up stays where it is (one round-trip).
-  const [{ data: members }, { data: invitations }, ent] = await Promise.all([
+  // Members, invitations, RBAC role catalog and plan entitlement are independent.
+  const [{ data: members }, { data: invitations }, ent, inviteRoles] = await Promise.all([
     supabase
       .from("organization_members")
       .select("*")
@@ -45,6 +48,7 @@ export default async function TeamPage({
       .eq("organization_id", org.id)
       .order("created_at", { ascending: false }),
     getEntitlementFor(supabase, ctx, org.id),
+    isManager ? loadAccountCreationRoles(ctx, org.id) : Promise.resolve([]),
   ]);
   const memberIds = (members ?? []).map((m) => m.user_id);
   const { data: profiles } = memberIds.length
@@ -55,6 +59,7 @@ export default async function TeamPage({
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "";
 
   const pendingInvitations = (invitations ?? []).filter((i) => i.status === "pending");
+  const defaultInviteRole = inviteRoles.find((r) => r.slug === "teacher")?.slug ?? inviteRoles[0]?.slug ?? "";
 
   return (
     <>
@@ -62,11 +67,27 @@ export default async function TeamPage({
         eyebrow="Workspace Administration · Roles & Invitations"
         title="Team & Roles"
         subtitle={`Permissions are enforced on the server for every action — hiding a button is never the security model. Plan allows ${ent.limits.max_members === -1 ? "unlimited" : ent.limits.max_members} members.`}
-        action={isManager ? <Link href="/dashboard/accounts" className="text-sm font-semibold text-evergreen-700 underline-offset-2 hover:underline">Account credentials →</Link> : undefined}
+        action={
+          isManager ? (
+            <div className="flex flex-wrap items-center gap-4">
+              {canViewRoles && (
+                <Link href="/dashboard/rbac" className="text-sm font-semibold text-evergreen-700 underline-offset-2 hover:underline">
+                  Role &amp; Access Management →
+                </Link>
+              )}
+              <Link href="/dashboard/accounts" className="text-sm font-semibold text-evergreen-700 underline-offset-2 hover:underline">
+                Account credentials →
+              </Link>
+            </div>
+          ) : undefined
+        }
       />
       {sp.invited && <p className="mb-4 rounded-lg bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">Invitation created — copy its link below and share it with the invitee (valid 7 days).</p>}
       {sp.e === "limit" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">Your plan&apos;s member limit has been reached.</p>}
-      {sp.e === "owner" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The organization owner cannot be modified or removed here.</p>}
+      {sp.e === "owner" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">The organization owner or School Founder role cannot be modified here.</p>}
+      {sp.e === "exists" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">That person already belongs to this organization or already has a pending invitation.</p>}
+      {sp.e === "founder_conflict" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">School Founder / Institutional Supervisor requires a dedicated read-only email and cannot be invited for an existing administrator or staff account.</p>}
+      {sp.e === "invalid" && <p className="mb-4 rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">Enter a valid email address and authorized organization role.</p>}
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Workspace members" value={(members ?? []).length} icon={<Users className="h-5 w-5" />} />
@@ -87,18 +108,20 @@ export default async function TeamPage({
                     {p?.full_name && <span className="block text-xs text-ink-soft">{p.email}</span>}
                   </td>
                   <td>
-                    {isManager && m.role !== "owner" ? (
+                    {isManager && m.role !== "owner" && m.role !== "school_founder" ? (
                       <form action={updateMemberRole} className="flex items-center gap-1.5">
                         <input type="hidden" name="id" value={m.id} />
-                        <Select name="role" defaultValue={m.role} aria-label="Member role" className="max-w-44 py-1.5 text-xs">
-                          {ORG_ROLES.filter((r) => r.value !== "owner").map((r) => (
-                            <option key={r.value} value={r.value}>{r.label}</option>
+                        <Select name="role" defaultValue={m.role} aria-label="Member role" className="max-w-48 py-1.5 text-xs">
+                          {ORG_ROLES.filter((r) => ["admin", "teacher", "organizer", "supervisor", "corrector", "student", "candidate"].includes(r.value)).map((r) => (
+                            <option key={r.value} value={r.value}>{formatOrganizationRoleLabel(r.value, r.label)}</option>
                           ))}
                         </Select>
                         <button className="text-xs font-medium text-evergreen-700 underline-offset-2 hover:underline">Save</button>
                       </form>
                     ) : (
-                      <Badge tone={m.role === "owner" ? "gold" : "green"}>{ORG_ROLES.find((r) => r.value === m.role)?.label ?? m.role}</Badge>
+                      <Badge tone={m.role === "owner" || m.role === "school_founder" ? "gold" : "green"}>
+                        {formatOrganizationRoleLabel(m.role)}
+                      </Badge>
                     )}
                   </td>
                   <td className="text-ink-soft">{fmtDate(m.created_at)}</td>
@@ -124,7 +147,7 @@ export default async function TeamPage({
                 {pendingInvitations.map((i) => (
                   <li key={i.id} className="flex flex-wrap items-center gap-2 rounded-xl bg-cream px-3 py-2.5 text-sm">
                     <span className="font-medium">{i.email}</span>
-                    <Badge tone="gold">{ORG_ROLES.find((r) => r.value === i.role)?.label ?? i.role}</Badge>
+                    <Badge tone="gold">{formatOrganizationRoleLabel(i.role)}</Badge>
                     <code className="max-w-full truncate text-xs text-ink-soft">{appUrl}/invite/{i.token}</code>
                     {isManager && (
                       <form action={revokeInvitation} className="ml-auto">
@@ -147,19 +170,19 @@ export default async function TeamPage({
                 <Input name="email" type="email" required placeholder="colleague@school.edu" />
               </Field>
               <Field label="Role">
-                <Select name="role" defaultValue="teacher">
-                  {ORG_ROLES.filter((r) => r.value !== "owner").map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
+                <Select name="role" defaultValue={defaultInviteRole} required>
+                  {inviteRoles.map((r) => (
+                    <option key={r.id} value={r.slug}>{r.label}</option>
                   ))}
                 </Select>
               </Field>
-              <Button type="submit" className="w-full">Create invitation link</Button>
+              <Button type="submit" className="w-full" disabled={inviteRoles.length === 0}>Create invitation link</Button>
             </form>
             <div className="mt-5 space-y-2 text-xs leading-relaxed text-ink-soft">
-              <p><strong className="text-ink">Owner/Admin:</strong> settings, team, billing.</p>
-              <p><strong className="text-ink">Teacher/Organizer:</strong> questions, quizzes, exams, live sessions.</p>
-              <p><strong className="text-ink">Supervisor:</strong> proctoring room & incidents. <strong className="text-ink">Corrector:</strong> marking written answers.</p>
-              <p><strong className="text-ink">Participant/Candidate/Parent:</strong> limited, read-focused access.</p>
+              <p><strong className="text-ink">Owner / School Administrator:</strong> settings, accounts, RBAC, team, billing.</p>
+              <p><strong className="text-ink">School Founder / Institutional Supervisor:</strong> read-only operational oversight across examinations, results, classes, and supervision summary.</p>
+              <p><strong className="text-ink">Teacher / Organizer:</strong> questions, quizzes, exams, live sessions.</p>
+              <p><strong className="text-ink">Supervisor:</strong> proctoring room &amp; incidents. <strong className="text-ink">Corrector:</strong> marking written answers.</p>
             </div>
           </Card>
         ) : (
