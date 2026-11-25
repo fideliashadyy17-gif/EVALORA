@@ -33,6 +33,7 @@ export const ORG_ROLES = [
   { value: "corrector", label: "Corrector / Examiner" },
   { value: "participant", label: "Participant" },
   { value: "candidate", label: "Examination Candidate" },
+  { value: "school_founder", label: "School Founder / Institutional Supervisor" },
   { value: "parent", label: "Parent / Guardian" },
   { value: "student", label: "Student" },
 ] as const;

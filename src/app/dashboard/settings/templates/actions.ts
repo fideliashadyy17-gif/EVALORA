@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -12,8 +13,8 @@ function str(formData: FormData, key: string, max: number): string | null {
 
 export async function saveTemplate(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings/templates");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "organizations.edit", "exam_templates"))) redirect("/dashboard/settings/templates");
   const name = str(formData, "name", 160);
   if (!name) redirect("/dashboard/settings/templates?e=name");
   const supabase = await createClient();
@@ -51,8 +52,8 @@ export async function saveTemplate(formData: FormData) {
 
 export async function deleteTemplate(formData: FormData) {
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings/templates");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "organizations.edit", "exam_templates"))) redirect("/dashboard/settings/templates");
   const supabase = await createClient();
   const id = String(formData.get("id") ?? "");
   await supabase.from("exam_paper_templates").delete().eq("id", id).eq("organization_id", org.id);

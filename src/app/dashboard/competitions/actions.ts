@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { COMPETITION_FORMATS, COMPETITION_STATUSES } from "@/lib/brand";
 import { audit } from "@/lib/admin";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
@@ -34,7 +35,7 @@ export async function createOrgCompetition(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "competitions.create", "competitions"))) redirect("/dashboard/competitions?e=forbidden");
 
   const admin = createAdminClient();
   // Resolve the entitlement BEFORE any write: creating a competition is the
@@ -100,7 +101,7 @@ export async function setOrgCompetitionStatus(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, CREATOR_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "competitions.edit", "competitions"))) redirect("/dashboard/competitions?e=forbidden");
 
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
@@ -144,7 +145,7 @@ export async function deleteDraftCompetition(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/competitions?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "competitions.delete", "competitions"))) redirect("/dashboard/competitions?e=forbidden");
 
   const id = String(formData.get("id") ?? "");
   const admin = createAdminClient();

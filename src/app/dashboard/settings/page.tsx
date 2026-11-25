@@ -1,6 +1,7 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { LogoUpload } from "@/components/LogoUpload";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { ssoProviderStatus } from "@/lib/sso";
@@ -16,8 +17,8 @@ const LOGO_MAX_BYTES = 2 * 1024 * 1024;
 async function updateOrgLogo(formData: FormData) {
   "use server";
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "organizations.edit", "org_settings"))) redirect("/dashboard/settings");
   const admin = createAdminClient();
   // Org-settings module gates org writes server-side, not just the page.
   const { entitlement: logoEnt } = await getCapabilities(admin, ctx, org.id);
@@ -71,8 +72,8 @@ async function updateProfile(formData: FormData) {
 async function updateOrg(formData: FormData) {
   "use server";
   const ctx = await requireUser();
-  const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/settings");
+  const org = activeOrg(ctx);
+  if (!org || !(await canOperate(ctx, org.id, "organizations.edit", "org_settings"))) redirect("/dashboard/settings");
   const name = String(formData.get("name") ?? "").trim().slice(0, 120);
   const type = String(formData.get("type") ?? "school");
   if (!name) redirect("/dashboard/settings");
@@ -103,7 +104,7 @@ export default async function SettingsPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const isManager = await canOperate(ctx, org.id, "organizations.edit", "org_settings");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "org_settings", "/dashboard?e=module");

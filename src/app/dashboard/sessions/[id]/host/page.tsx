@@ -1,5 +1,6 @@
 import { ButtonLink, PageTitle } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -25,8 +26,8 @@ export default async function HostPage({ params }: { params: Promise<{ id: strin
   if (!session) notFound();
 
   // The host screen contains private answers, moderation and controls.
-  // Organization membership alone is not organizer authorization.
-  if (!can(ctx, org.id, CREATOR_ROLES) && session.host_id !== ctx.user.id) notFound();
+  // Centralized RBAC + module entitlement governs host console access.
+  if (!(await canOperate(ctx, org.id, "competitions.edit", "competitions"))) notFound();
 
   const [{ data: quiz }, { data: qq }, { data: competition }] = await Promise.all([
     supabase.from("quizzes").select("title, settings").eq("id", session.quiz_id).single(),

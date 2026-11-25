@@ -386,7 +386,7 @@ try {
     await page.getByRole("button", { name: "Save answer" }).click();
     await page.getByText("1 of 2 answers confirmed by the server.").waitFor();
 
-    await page.getByRole("button", { name: "Next →" }).click();
+    await page.getByRole("button", { name: /^Next(?: →)?$/ }).click();
     assert.equal(await page.getByPlaceholder("Type your answer…").inputValue(), "");
     await page.getByPlaceholder("Type your answer…").fill(stu.answer2);
     await page.getByRole("button", { name: "Save answer" }).click();

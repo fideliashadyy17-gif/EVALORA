@@ -99,8 +99,7 @@ check("the settings page is gated on manage rights", () => {
 check("configuration writes re-check the role on the server", () => {
   const actions = source("src/app/dashboard/myp-results/actions.ts");
   assert.match(actions, /requireUser\(\)/);
-  assert.match(actions, /can\(ctx, org\.id/);
-  assert.match(actions, /\["owner", "admin"\]/);
+  assert.match(actions, /canOperate\(ctx, org\.id, "grading\.validate", "exam_results"\)/);
   assert.match(actions, /revalidatePath/);
 });
 

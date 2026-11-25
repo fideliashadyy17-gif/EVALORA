@@ -1,6 +1,7 @@
 "use server";
 
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { parseRetentionDays, runRetention, saveRetentionPolicy } from "@/lib/proctoring";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -13,7 +14,7 @@ async function guard() {
   const org = activeOrg(ctx);
   if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin"))
     redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/proctoring");
+  if (!(await canOperate(ctx, org.id, "organizations.edit", "proctoring"))) redirect("/dashboard/proctoring");
   return { ctx, org };
 }
 

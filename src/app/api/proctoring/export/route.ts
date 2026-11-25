@@ -1,4 +1,5 @@
-import { activeOrg, can, getSessionContext, PROCTOR_ROLES } from "@/lib/auth";
+import { activeOrg, getSessionContext } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { isUuid, loadReviewHistory, reviewHistoryCsv } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const org = activeOrg(ctx);
   if (!org) return NextResponse.json({ error: "No active workspace." }, { status: 403 });
-  if (!can(ctx, org.id, PROCTOR_ROLES))
+  if (!(await canOperate(ctx, org.id, "proctoring.view", "proctoring")))
     return NextResponse.json({ error: "Not authorized." }, { status: 403 });
 
   const url = new URL(request.url);

@@ -1,4 +1,5 @@
-import { activeOrg, can, PROCTOR_ROLES, getSessionContext } from "@/lib/auth";
+import { activeOrg, getSessionContext } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
 import { isFeatureEnabled } from "@/lib/platform";
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
     const ctx = sessionCtx;
     if (!ctx) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
     const org = activeOrg(ctx);
-    if (!org || org.id !== exam.organization_id || !can(ctx, exam.organization_id, PROCTOR_ROLES))
+    if (!org || org.id !== exam.organization_id || !(await canOperate(ctx, exam.organization_id, "proctoring.view", "proctoring")))
       return NextResponse.json({ error: "Not authorized to supervise this examination." }, { status: 403 });
     identity = `supervisor-${ctx.user.id}`;
     name = ctx.profile.full_name || ctx.profile.email;

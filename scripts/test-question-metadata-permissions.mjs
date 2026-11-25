@@ -23,6 +23,7 @@ const helperFile=path.resolve('scripts/__question_options.cjs'),helper=new Modul
 const original=Module._load;
 Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/auth')return {requireUser:async()=>({user:{id:'user'}}),activeOrg:()=>org,can:()=>canEdit,CREATOR_ROLES:['owner','admin','teacher','organizer']};
+ if(request==='@/lib/operationalAccess')return {canOperate:async()=>canEdit};
  if(request==='@/lib/entitlements')return {};
  if(request==='@/lib/questionOptions')return helper.exports;
  if(request==='@/lib/questionValidation')return {questionPublishError:()=>null};

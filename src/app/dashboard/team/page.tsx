@@ -1,5 +1,6 @@
 import { Badge, Button, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -21,7 +22,7 @@ export default async function TeamPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   const sp = await searchParams;
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const isManager = await canOperate(ctx, org.id, "organizations.manage_members", "team");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "team", "/dashboard?e=module");

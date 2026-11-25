@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { COMPETITION_FORMATS } from "@/lib/brand";
@@ -60,8 +61,10 @@ export default async function OrganizationCompetitionsPage({
   const pageSize = 20;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  const canCreate = can(ctx, org.id, CREATOR_ROLES);
-  const isManager = can(ctx, org.id, ["owner", "admin"]);
+  const { canCreate, isManager } = await canOperateMany(ctx, org.id, {
+    canCreate: { permission: "competitions.create", module: "competitions" },
+    isManager: { permission: "competitions.delete", module: "competitions" },
+  });
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "competitions", "/dashboard?e=module");

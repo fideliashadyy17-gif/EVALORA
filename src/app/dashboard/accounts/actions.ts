@@ -1,7 +1,8 @@
 "use server";
 
 import { audit } from "@/lib/admin";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlementFor, withinLimit } from "@/lib/entitlements";
 import {
   canManageAccount,
@@ -43,7 +44,7 @@ export async function resetMemberPassword(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/accounts?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "organizations.manage_members", "accounts"))) redirect("/dashboard/accounts?e=forbidden");
 
   const admin = createAdminClient();
   const memberId = String(formData.get("member_id") ?? "");
@@ -89,7 +90,7 @@ export async function setMemberStatus(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/accounts?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "organizations.manage_members", "accounts"))) redirect("/dashboard/accounts?e=forbidden");
 
   const admin = createAdminClient();
   const memberId = String(formData.get("member_id") ?? "");
@@ -133,7 +134,7 @@ export async function createStaffAccount(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, MANAGER_ROLES)) redirect("/dashboard/accounts?e=forbidden");
+  if (!(await canOperate(ctx, org.id, "organizations.manage_members", "accounts"))) redirect("/dashboard/accounts?e=forbidden");
 
   const email = normalizeAccountEmail(String(formData.get("email") ?? ""));
   const fullName = String(formData.get("full_name") ?? "").trim().slice(0, 160);

@@ -1,7 +1,7 @@
 "use server";
 
-import { activeOrg, can, requireUser } from "@/lib/auth";
-import { MYP_STAFF_ROLES } from "@/lib/mypAccess";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { MYP_CRITERION_PRESETS, normalizeCriterion } from "@/lib/myp";
 import { loadMypResult } from "@/lib/mypResults";
 import { createClient } from "@/lib/supabase/server";
@@ -26,8 +26,8 @@ async function staffGuard(options: { manage?: boolean } = {}) {
   const isSuperAdmin = ctx.profile.platform_role === "super_admin";
   if (!org || (org.status !== "active" && !isSuperAdmin)) redirect("/dashboard");
   const allowed = options.manage
-    ? can(ctx, org.id, ["owner", "admin"])
-    : can(ctx, org.id, [...MYP_STAFF_ROLES]);
+    ? await canOperate(ctx, org.id, "grading.validate", "exam_results")
+    : await canOperate(ctx, org.id, "grading.edit", "exam_results");
   if (!allowed) redirect("/dashboard");
   return { ctx, org, isSuperAdmin };
 }

@@ -8,7 +8,8 @@
  * remain behind the validate → publish workflow.
  */
 
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { audit } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { GRADING_CURRICULA, type GradingCurriculum, type GradingSystemConfig } from "@/lib/gradingSystems";
@@ -103,7 +104,7 @@ function parseConfig(curriculum: GradingCurriculum, formData: FormData): Grading
 export async function saveGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, MANAGER_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "grading.validate", "exam_results"))) {
     redirect("/dashboard/grading?e=forbidden");
   }
 
@@ -196,7 +197,7 @@ export async function saveGradingSystem(formData: FormData) {
 export async function archiveGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, MANAGER_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "grading.validate", "exam_results"))) {
     redirect("/dashboard/grading?e=forbidden");
   }
   const id = String(formData.get("id") ?? "");
@@ -227,7 +228,7 @@ export async function archiveGradingSystem(formData: FormData) {
 export async function setExamGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) {
     redirect("/dashboard/exams?e=forbidden");
   }
   const examId = String(formData.get("exam_id") ?? "");
@@ -277,7 +278,7 @@ export async function setExamGradingSystem(formData: FormData) {
 export async function setQuizGradingSystem(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "quizzes.edit", "quizzes"))) {
     redirect("/dashboard/quizzes?e=forbidden");
   }
   const quizId = String(formData.get("quiz_id") ?? "");
@@ -334,7 +335,7 @@ export async function setQuizGradingSystem(formData: FormData) {
 export async function saveMypExamGrading(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) {
     redirect("/dashboard/exams?e=forbidden");
   }
   const examId = String(formData.get("exam_id") ?? "");
@@ -380,7 +381,7 @@ export async function saveMypExamGrading(formData: FormData) {
 export async function generateMypRubricFromConfig(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.edit", "examinations"))) {
     redirect("/dashboard/exams?e=forbidden");
   }
   const examId = String(formData.get("exam_id") ?? "");

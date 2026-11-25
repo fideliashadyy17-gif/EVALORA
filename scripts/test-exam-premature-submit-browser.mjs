@@ -181,7 +181,7 @@ try {
   await context.setOffline(true);
   await page.evaluate(() => window.dispatchEvent(new Event("offline")));
   await page.waitForTimeout(400);
-  await page.getByRole("button", { name: "Next →" }).click();
+  await page.getByRole("button", { name: /^Next(?: →)?$/ }).click();
   await page.getByPlaceholder("Type your answer…").fill("composed while offline");
   await page.getByRole("button", { name: "Save answer" }).click();
   await page.waitForTimeout(600);

@@ -1,5 +1,6 @@
+import { canOperate } from "@/lib/operationalAccess";
 import { audit } from "@/lib/admin";
-import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
+import { getSessionContext } from "@/lib/auth";
 import {
   applyLiveCommand,
   isResultsStage,
@@ -140,9 +141,8 @@ async function authorize(sessionId: string): Promise<
   const admin = createAdminClient();
   const session = await loadControlSession(admin, sessionId);
   if (!session) return { ok: false, status: 404, error: "Session not found." };
-  // Organizer authorization is decided here, on the server, for every call.
-  const isHost = session.host_id === ctx.user.id;
-  if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
+  // Organizer authorization is decided here, on the server, for every call via centralized RBAC.
+  if (!await canOperate(ctx, session.organization_id, "competitions.edit", "competitions")) {
     return { ok: false, status: 403, error: "Organizer access required." };
   }
   return { ok: true, loaded: { session: session as LoadedSession["session"], admin }, ctx };
@@ -195,8 +195,7 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ authorized: false, signed_in: true, reason: "unknown_session" }, { status: 200 });
   }
-  const isHost = session.host_id === ctx.user.id;
-  if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) {
+  if (!await canOperate(ctx, session.organization_id, "competitions.edit", "competitions")) {
     return NextResponse.json({ authorized: false, signed_in: true, reason: "not_organizer" }, { status: 200 });
   }
 

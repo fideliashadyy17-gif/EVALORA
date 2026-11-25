@@ -139,7 +139,7 @@ assert.ok(client.includes("ap_score_thresholds") || client.includes("ap_threshol
 assert.ok(client.includes("never invented") || client.includes("never"), "AP scale honesty stated in UI");
 
 const actions = readFileSync("src/app/dashboard/grading/actions.ts", "utf8");
-assert.ok(actions.includes("MANAGER_ROLES"), "manager-only configuration");
+assert.ok(actions.includes('canOperate(ctx, org.id, "grading.validate"'), "RBAC-gated grading configuration");
 assert.ok(actions.includes("audit("), "configuration changes audited");
 assert.ok(actions.includes("setExamGradingSystem"), "per-examination attachment action");
 assert.ok(actions.includes("setQuizGradingSystem"), "per-quiz attachment action");
@@ -377,6 +377,7 @@ const gradingActionsExec = (() => {
   Module._load = function (req, parent) {
     if (parent?.filename === actionsFile) {
       if (req === "@/lib/auth") return authStub;
+      if (req === "@/lib/operationalAccess") return { canOperate: async () => true };
       if (req === "@/lib/admin") return adminStub;
       if (req === "@/lib/supabase/server") return serverStub;
       if (req === "@/lib/gradingSystems") return realGrading;

@@ -1,7 +1,8 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { describeIncidentType } from "@/lib/integrity";
-import { activeOrg, can, MANAGER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import {
   DECISION_LABEL,
   ROOM_EVENT_LABEL,
@@ -51,7 +52,11 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
   const ctx = await requireUser();
   const org = activeOrg(ctx);
   if (!org) redirect("/dashboard");
-  if (!can(ctx, org.id, PROCTOR_ROLES)) redirect("/dashboard");
+  const { canProctor, isManager } = await canOperateMany(ctx, org.id, {
+    canProctor: { permission: "proctoring.view" },
+    isManager: { permission: "organizations.edit" },
+  });
+  if (!canProctor) redirect("/dashboard");
 
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
@@ -330,7 +335,7 @@ export default async function ProctoringReviewPage({ searchParams }: { searchPar
           applying a policy never removes a decision, a reviewer identity or a timestamp — only free-text notes and media
           telemetry age out.
         </p>
-        {can(ctx, org.id, MANAGER_ROLES) && (
+        {isManager && (
           <div className="mt-3">
             <ButtonLink href="/dashboard/settings/proctoring" variant="outline">Configure retention</ButtonLink>
           </div>

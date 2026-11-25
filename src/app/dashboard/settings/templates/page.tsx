@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
-import { activeOrg, can, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
@@ -16,7 +17,7 @@ export default async function TemplatesPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  if (!can(ctx, org.id, MANAGER_ROLES)) notFound();
+  if (!(await canOperate(ctx, org.id, "organizations.edit"))) notFound();
   const sp = await searchParams;
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

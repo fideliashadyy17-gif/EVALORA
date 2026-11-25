@@ -1,0 +1,51 @@
+// Real PostgreSQL statements against synthetic local fixtures, not Supabase.
+import {PGlite} from '@electric-sql/pglite';
+import {readFileSync} from 'node:fs';
+import assert from 'node:assert/strict';
+const db=new PGlite(); let checks=0;
+try {
+ await db.exec(`create role anon; create role authenticated; create schema auth;
+ create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('test.uid',true),'')::uuid$$;
+ create table profiles(id uuid primary key,status text,platform_role text);
+ create table organizations(id uuid primary key,status text);
+ create table organization_members(user_id uuid,organization_id uuid,role text,status text);
+ create function is_super_admin() returns boolean language sql stable as $$select false$$;
+ create function is_org_member(uuid) returns boolean language sql stable as $$select false$$;`);
+ await db.exec(readFileSync('supabase/migrations/20261125120000_rbac_system.sql','utf8'));
+ await db.exec(`create table rbac_roles(key text primary key,name text,description text,type text,scope text,status text,created_by uuid,created_at timestamptz default now(),updated_at timestamptz default now());
+ create table rbac_role_permissions(role_key text references rbac_roles(key),permission_key text,enabled boolean,updated_by uuid,updated_at timestamptz default now(),primary key(role_key,permission_key));
+ create table rbac_user_overrides(organization_id uuid,user_id uuid,permission_key text,enabled boolean,created_by uuid,created_at timestamptz default now(),primary key(organization_id,user_id,permission_key));
+ insert into profiles values('10000000-0000-4000-8000-000000000001','active','user');
+ insert into organizations values('20000000-0000-4000-8000-000000000001','active');
+ insert into organization_members values('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001','owner','active');
+ insert into rbac_roles(key,name,description,type,scope,status) values('owner','Owner legacy','Original description','system','organization','active'),('custom_review','Custom Review','Custom preserved','custom','organization','inactive');
+ insert into rbac_role_permissions(role_key,permission_key,enabled) values('owner','exams.edit',false),('custom_review','questions.view',true);
+ insert into rbac_user_overrides(organization_id,user_id,permission_key,enabled) values('20000000-0000-4000-8000-000000000001','10000000-0000-4000-8000-000000000001','results.publish',false);
+ `);
+ const before={};
+ for(const t of ['rbac_roles','rbac_role_permissions','rbac_user_overrides','profiles','organization_members'])before[t]=(await db.query(`select * from ${t}`)).rows;
+ const sql=readFileSync('supabase/migrations/20261125122000_reconcile_legacy_rbac.sql','utf8');
+ await db.exec(`insert into rbac_role_permissions(role_key,permission_key,enabled) values('owner','unreviewed.legacy',false); begin;`);
+ await assert.rejects(()=>db.exec(sql),/Unknown legacy role permission/);checks++;
+ await db.exec('rollback;');
+ assert.equal((await db.query("select to_regclass('public.access_legacy_role_map') as t")).rows[0].t,null);checks++;
+ await db.exec("delete from rbac_role_permissions where permission_key='unreviewed.legacy'; begin;");
+ await db.exec(sql); await db.exec('commit;');
+ for(const [table,rows] of Object.entries(before)){assert.deepEqual((await db.query(`select * from ${table}`)).rows,rows,`${table} preserved`);checks++;}
+ const owner=(await db.query("select p.granted from access_role_permissions p join access_roles r on r.id=p.role_id join access_permissions k on k.id=p.permission_id where r.slug='org_owner' and k.key='exams.edit'")).rows;
+ assert.equal(owner[0].granted,false);checks++;
+ assert.equal((await db.query("select is_active from access_roles where slug='custom_review'")).rows[0].is_active,false);checks++;
+ assert.equal((await db.query('select granted from access_permission_overrides')).rows[0].granted,false);checks++;
+ assert.equal((await db.query('select count(*)::int n from access_legacy_role_map')).rows[0].n,2);checks++;
+ await assert.rejects(()=>db.exec("update rbac_role_permissions set enabled=true"),/Legacy RBAC is archived/);checks++;
+ await assert.rejects(()=>db.exec("delete from rbac_user_overrides"),/Legacy RBAC is archived/);checks++;
+ await db.exec(readFileSync('supabase/migrations/20261125123000_legacy_membership_permission_bridge.sql','utf8'));
+ await db.exec("set test.uid='10000000-0000-4000-8000-000000000001';");
+ const allowed=async key=>(await db.query("select access_has_permission('10000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001',$1) a",[key])).rows[0].a;
+ assert.equal(await allowed('questions.view'),true);checks++;
+ assert.equal(await allowed('exams.edit'),false);checks++;
+ assert.equal(await allowed('results.publish'),false);checks++;
+ await db.exec("update access_permissions set enabled=false where key='questions.view'");
+ assert.equal(await allowed('questions.view'),false);checks++;
+ console.log(`${checks} checks passed (isolated RBAC forward reconciliation; no remote writes).`);
+} finally {await db.close();}

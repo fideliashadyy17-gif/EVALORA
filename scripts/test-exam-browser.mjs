@@ -31,11 +31,11 @@ try {
  await page.getByText('Mock Examination').waitFor({timeout:120000});
  const text=page.getByPlaceholder('Type your answer…');await text.fill('draft value');
  await page.getByRole('button',{name:'Submit examination'}).click();await page.getByText('Save this answer or discard the changes before submitting.').waitFor();assert.equal(server.submits,0);
- page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name:'Next →'}).click();assert.equal(await text.inputValue(),'draft value');
+ page.once('dialog',dialog=>dialog.dismiss());await page.getByRole('button',{name: /^Next(?: →)?$/}).click();assert.equal(await text.inputValue(),'draft value');
  await page.getByRole('button',{name:'Save answer'}).click();await page.getByText(/1 answer\(s\) awaiting confirmation/).waitFor();await page.getByText(/answer could not be confirmed/).waitFor();
  await page.reload({waitUntil:'domcontentloaded'});await page.getByText('Mock Examination').waitFor();await page.getByText(/1 answer\(s\) awaiting confirmation/).waitFor();assert.equal(await page.getByPlaceholder('Type your answer…').inputValue(),'draft value');
  server.online=true;await page.getByRole('button',{name:'Retry saving'}).click();await page.getByText('1 of 2 answers confirmed by the server.').waitFor();assert.equal(server.answers[qids[0]].text,'draft value');
- await page.getByRole('button',{name:'Next →'}).click();await page.getByPlaceholder('Type your answer…').fill('temporary');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Discard unsaved changes'}).click();assert.equal(await page.getByPlaceholder('Type your answer…').inputValue(),'');
+ await page.getByRole('button',{name: /^Next(?: →)?$/}).click();await page.getByPlaceholder('Type your answer…').fill('temporary');page.once('dialog',dialog=>dialog.accept());await page.getByRole('button',{name:'Discard unsaved changes'}).click();assert.equal(await page.getByPlaceholder('Type your answer…').inputValue(),'');
  await page.getByRole('button',{name:'Submit examination'}).click();await page.getByRole('button',{name:'Yes, submit now'}).click();
  // Submitting tears the candidate session down and replaces the document with
  // the examination entry, so a shared browser is never left holding a paper.

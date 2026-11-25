@@ -1,6 +1,7 @@
 import { PrintButton } from "@/components/ExportTools";
 import { RichContent } from "@/components/RichContent";
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import type { ExamRubricLink } from "@/lib/grading";
 import { loadQuizQuestions } from "@/lib/live";
 import { PrintablePaperError, preparePrintableQuestions } from "@/lib/printablePaper";
@@ -33,7 +34,7 @@ export default async function PrintableExam({
   const mode: Mode = MODES.includes(sp.mode as Mode) ? (sp.mode as Mode) : "paper";
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !can(ctx, org.id, CREATOR_ROLES)) notFound();
+  if (!org || !(await canOperate(ctx, org.id, "exams.edit"))) notFound();
   const db = await createClient();
   // Printable papers are a separately entitled module (Plan & Module
   // Management) — enforced on the server, independent of any menu entry.

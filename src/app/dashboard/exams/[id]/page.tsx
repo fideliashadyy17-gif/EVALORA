@@ -4,7 +4,8 @@ import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, MARKER_ROLES, PROCTOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -239,9 +240,21 @@ export default async function ExamDetailPage({
       criteria,
     };
   };
-  const canMark = can(ctx, org.id, MARKER_ROLES);
-  // Validation & publication are administrator sign-offs (owners/admins only).
-  const isResultsManager = can(ctx, org.id, MANAGER_ROLES);
+  const {
+    canMark,
+    isResultsManager,
+    canEditExam,
+    canManageLinks,
+    canRevokeCandidates,
+    canManageProctoring,
+  } = await canOperateMany(ctx, org.id, {
+    canMark: { permission: "grading.edit", module: "exam_results" },
+    isResultsManager: { permission: "results.publish" },
+    canEditExam: { permission: "exams.edit", module: "examinations" },
+    canManageLinks: { permission: "candidate_links.edit", module: "exam_share_codes" },
+    canRevokeCandidates: { permission: "candidate_links.revoke", module: "exam_candidates" },
+    canManageProctoring: { permission: "proctoring.manage", module: "proctoring" },
+  });
 
   const markErrors: Record<string, string> = {
     invalid: "The answer, examination or paper could not be verified. No mark was saved.",
@@ -394,7 +407,7 @@ export default async function ExamDetailPage({
               Legacy two-code entry: <strong>/exam-access</strong> with exam code{" "}
               <span className="font-mono text-base font-bold text-evergreen-800">{exam.access_code}</span> plus a personal candidate code.
             </p>
-            {can(ctx, org.id, CREATOR_ROLES) && <div className="mt-4 flex flex-wrap gap-2">
+            {canManageLinks && <div className="mt-4 flex flex-wrap gap-2">
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value={exam.shared_link_enabled ? "disable" : "enable"} /><Button type="submit" variant="outline">{exam.shared_link_enabled ? "Disable shared link" : "Enable shared link"}</Button></form>
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_link" /><Button type="submit" variant="outline">Regenerate link</Button></form>
               <form action={updateWorkspaceExamAccess}><input type="hidden" name="exam_id" value={id} /><input type="hidden" name="access_action" value="new_code" /><Button type="submit" variant="outline">Regenerate code</Button></form>
@@ -482,7 +495,7 @@ export default async function ExamDetailPage({
           </div>
         </div>
 
-        {can(ctx, org.id, CREATOR_ROLES) && (
+        {canEditExam && (
           <form action={updateExamLockdown} className="mt-4 space-y-4">
             <input type="hidden" name="id" value={id} />
             <div className="rounded-xl border border-evergreen-900/10 bg-cream/50 p-4">
@@ -538,7 +551,7 @@ export default async function ExamDetailPage({
           <h2 className="font-display text-lg font-semibold text-evergreen-950">Scientific Calculator &amp; Official Paper Header</h2>
           <Badge tone={settings.calculator ? "green" : "gray"}>{settings.calculator ? "Calculator on" : "Calculator off"}</Badge>
         </div>
-        {can(ctx, org.id, CREATOR_ROLES) && (
+        {canEditExam && (
           <form action={updateExamCalculator} className="mt-4 space-y-4">
             <input type="hidden" name="id" value={id} />
             <label className="flex items-center gap-2 text-sm font-medium text-evergreen-900">
@@ -593,7 +606,7 @@ export default async function ExamDetailPage({
           examId={id}
           library={(formulaLibrary ?? []) as { id: string; topic: string; chapter: string | null; title: string; latex: string; note: string | null }[]}
           sheet={sheetForCard}
-          canEdit={can(ctx, org.id, CREATOR_ROLES)}
+          canEdit={canEditExam}
         />
       </Card>
 
@@ -605,7 +618,7 @@ export default async function ExamDetailPage({
             {selectedGradingSystemId ? "System attached" : "Organization default"}
           </Badge>
         </div>
-        {can(ctx, org.id, CREATOR_ROLES) ? (
+        {canEditExam ? (
           <form action={setExamGradingSystem} className="mt-4 flex flex-wrap items-end gap-3">
             <input type="hidden" name="exam_id" value={id} />
             <Field label="Grading system for this examination">
@@ -634,7 +647,7 @@ export default async function ExamDetailPage({
             examId={id}
             groupKey={mypGroupKey}
             savedConfig={mypSavedConfig}
-            canEdit={can(ctx, org.id, CREATOR_ROLES)}
+            canEdit={canEditExam}
           />
         )}
       </Card>
@@ -822,7 +835,7 @@ export default async function ExamDetailPage({
                     <td className="font-mono font-semibold text-evergreen-800">{c.access_code}</td>
                     <td><Badge tone={c.status === "submitted" ? "green" : c.status === "in_progress" ? "amber" : "gray"}>{c.status.replace(/_/g, " ")}</Badge></td>
                     <td>
-                      {can(ctx, org.id, CREATOR_ROLES) && c.status === "registered" && <form action={removeCandidate}>
+                      {canRevokeCandidates && c.status === "registered" && <form action={removeCandidate}>
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="exam_id" value={id} />
                         <button className="text-xs text-red-700 underline-offset-2 hover:underline">Remove</button>
@@ -1120,7 +1133,7 @@ export default async function ExamDetailPage({
                     <span className="text-ink-soft">{describeIncidentType(i.type)}{i.note && !String(i.type).startsWith("integrity_") ? ` — ${i.note}` : ""}</span>
                     <span className="ml-auto flex items-center gap-2">
                       <Badge tone={i.status === "open" ? "amber" : "green"}>{i.status}</Badge>
-                      {can(ctx, org.id, PROCTOR_ROLES) && ["open", "investigating"].includes(i.status) && (
+                      {canManageProctoring && ["open", "investigating"].includes(i.status) && (
                         <>
                           {(["valid", "invalid", "investigating"] as const).filter((s) => s !== i.status).map((s) => (
                             <form key={s} action={reviewIncident}>

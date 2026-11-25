@@ -17,7 +17,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ att
   const supabase = await createClient();
   const { data: attempt } = await supabase.from("exam_attempts").select("exam_id").eq("id", attemptId).maybeSingle();
   if (!attempt) return NextResponse.json({ error: "Attempt not found." }, { status: 404, headers: NO_STORE });
-  const access = await staffExamAccess(attempt.exam_id as string);
+  const access = await staffExamAccess(attempt.exam_id as string, { write: true });
   if (!access.ok) return access.response;
 
   const { data, error } = await access.supabase

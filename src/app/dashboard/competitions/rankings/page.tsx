@@ -1,8 +1,10 @@
 import { Badge, Card, DataTable, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Award, Trophy } from "lucide-react";
 
 export const metadata: Metadata = { title: "Competition rankings & results" };
@@ -39,6 +41,7 @@ export default async function CompetitionRankingsPage() {
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "competitions", "/dashboard?e=module");
   requireModule(entitlement, "competition_results", "/dashboard?e=module");
+  if (!(await canOperate(ctx, org.id, "competitions.view", "competition_results"))) redirect("/dashboard?e=forbidden");
 
   const { data: comps } = await supabase
     .from("competitions")

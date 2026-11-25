@@ -145,10 +145,10 @@ const hostStateRoute = readFileSync("src/app/api/live/host/state/route.ts", "utf
 const hostConsole = readFileSync("src/app/dashboard/sessions/[id]/host/HostConsole.tsx", "utf8");
 const migration = readFileSync("supabase/migrations/0121_live_participant_extra_time.sql", "utf8");
 
-check("granting is host-or-organizer only, decided on the server",
+check("granting is governed by centralized RBAC competitions.edit without host_id bypass",
   /getSessionContext\(\)/.test(grantRoute)
-  && /isHost = session\.host_id === ctx\.user\.id/.test(grantRoute)
-  && /!isHost && !can\(ctx, session\.organization_id, CREATOR_ROLES\)/.test(grantRoute));
+  && !/session\.host_id/.test(grantRoute)
+  && /canOperate\(ctx, session\.organization_id, "competitions\.edit", "competitions"\)/.test(grantRoute));
 check("a participant from another session cannot be granted time",
   /\.eq\("id", participantId\)\s*\.eq\("session_id", sessionId\)/.test(grantRoute));
 check("a removed participant is refused rather than silently restored",

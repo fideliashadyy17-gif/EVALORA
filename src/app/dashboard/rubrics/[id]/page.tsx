@@ -1,5 +1,6 @@
 import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, Textarea } from "@/components/ui";
-import { activeOrg, can, MARKER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import type { RubricCriterion, RubricPerformanceLevel } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
@@ -112,7 +113,7 @@ export default async function RubricDetailPage({
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  const canMark = can(ctx, org.id, MARKER_ROLES);
+  const canMark = await canOperate(ctx, org.id, "grading.edit", "rubrics");
   const supabase = await createClient();
 
   const { data: rubric } = await supabase

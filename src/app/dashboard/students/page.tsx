@@ -1,7 +1,8 @@
 import { StudentImportWizard } from "@/components/StudentImportWizard";
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { identityKey } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
@@ -32,8 +33,10 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  const canEdit = can(ctx, org.id, CREATOR_ROLES);
-  const canManageClasses = can(ctx, org.id, MANAGER_ROLES) || canEdit;
+  const { canEdit, canManageClasses } = await canOperateMany(ctx, org.id, {
+    canEdit: { permission: "students.edit", module: "students" },
+    canManageClasses: { permission: "classes.edit", module: "classes" },
+  });
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "students", "/dashboard?e=module");

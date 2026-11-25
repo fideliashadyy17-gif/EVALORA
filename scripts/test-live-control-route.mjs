@@ -11,6 +11,7 @@ import path from "node:path";
 import ts from "typescript";
 
 let checks = 0;
+let rbacAllowed = true;
 const checkAsync = async (name, fn) => {
   await fn();
   checks += 1;
@@ -149,6 +150,7 @@ const liveLibStub = {
 };
 
 const route = compile("src/app/api/live/control/route.ts", "scripts/__live_control_route.cjs", {
+  "@/lib/operationalAccess": { canOperate: async () => rbacAllowed },
   "@/lib/live": liveLibStub,
   "@/lib/liveControl": engine,
   "@/lib/liveRanking": ranking,
@@ -164,6 +166,7 @@ const get = (sessionId = SESSION_ID) =>
   route.GET({ url: `https://evalora.test/api/live/control?session_id=${sessionId}` });
 
 function reset(overrides = {}) {
+  rbacAllowed = true;
   authContext = { user: { id: HOST_ID }, profile: { status: "active", platform_role: "user" }, memberships: [] };
   canResult = false;
   updateApplies = true;
@@ -215,7 +218,7 @@ await checkAsync("a signed-out visitor cannot command a live competition", async
 
 await checkAsync("a signed-in user without organizer rights is refused by the backend", async () => {
   reset({ host_id: "99999999-9999-4999-8999-999999999999" });
-  canResult = false;
+  rbacAllowed = false;
   const state = await get();
   assert.equal(state.body.authorized, false);
   assert.equal(state.body.signed_in, true);
@@ -227,14 +230,25 @@ await checkAsync("a signed-in user without organizer rights is refused by the ba
 
 await checkAsync("a participant token cannot impersonate the organizer", async () => {
   reset({ host_id: "99999999-9999-4999-8999-999999999999" });
+  rbacAllowed = false;
   authContext = { user: { id: "participant" }, profile: { status: "active", platform_role: "user" }, memberships: [] };
   const res = await post({ session_id: SESSION_ID, command: "reveal_results" });
   assert.equal(res.status, 403);
 });
 
-await checkAsync("the session host is authorized even without an org role", async () => {
+await checkAsync("a revoked host without RBAC competitions.edit is denied (no host_id bypass)", async () => {
   reset();
-  canResult = false;
+  rbacAllowed = false;
+  const state = await get();
+  assert.equal(state.body.authorized, false);
+  assert.equal(state.body.reason, "not_organizer");
+  const res = await post({ session_id: SESSION_ID, command: "next" });
+  assert.equal(res.status, 403);
+});
+
+await checkAsync("an authorized organizer with RBAC competitions.edit is permitted", async () => {
+  reset();
+  rbacAllowed = true;
   const state = await get();
   assert.equal(state.body.authorized, true);
   assert.equal(state.body.state.question_count, 3);
@@ -249,6 +263,23 @@ await checkAsync("a Super Admin is authorized on any tenant's session", async ()
   const res = await post({ session_id: SESSION_ID, command: "pause" });
   assert.equal(res.status, 200);
   assert.equal(res.body.ok, true);
+});
+
+await checkAsync("RBAC OFF blocks a current session host on GET and POST without writes", async () => {
+  reset();
+  rbacAllowed=false;
+  assert.equal((await get()).body.authorized,false);
+  assert.equal((await post({session_id:SESSION_ID,command:"pause"})).status,403);
+  assert.equal(snapshots.length,0);
+  assert.equal(audits.length,0);
+});
+await checkAsync("RBAC OFF also blocks an otherwise authorized platform administrator", async () => {
+  reset();
+  authContext.profile.platform_role="super_admin";
+  canResult=true;
+  rbacAllowed=false;
+  assert.equal((await post({session_id:SESSION_ID,command:"pause"})).status,403);
+  assert.equal(snapshots.length,0);
 });
 
 /* ── Command handling ─────────────────────────────────────────────────── */
@@ -392,7 +423,7 @@ await checkAsync("a competition without a live session cannot be commanded", asy
 await checkAsync("a student holding the competition screen link still cannot command it", async () => {
   reset({ host_id: "99999999-9999-4999-8999-999999999999" });
   competitionRow = { id: COMPETITION_ID, session_id: SESSION_ID };
-  canResult = false;
+  rbacAllowed = false;
   const state = await get(COMPETITION_ID);
   assert.equal(state.body.authorized, false);
   for (const command of ["start", "next", "prev", "pause", "resume", "close_join", "open_join", "reveal_answer", "hide_answer", "end"]) {
@@ -447,7 +478,7 @@ await checkAsync("a signed-in non-organizer is told apart from a signed-out view
   assert.equal(anonymous.body.reason, "signed_out");
 
   reset({ host_id: "99999999-9999-4999-8999-999999999999" });
-  canResult = false;
+  rbacAllowed = false;
   const outsider = await get();
   assert.equal(outsider.body.reason, "not_organizer");
   assert.equal(outsider.body.signed_in, true);

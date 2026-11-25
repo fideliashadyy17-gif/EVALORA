@@ -1,6 +1,7 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
-import { activeOrg, can, CREATOR_ROLES, MANAGER_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { BookOpen, GraduationCap, Users } from "lucide-react";
@@ -18,8 +19,10 @@ export default async function ClassesPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
-  const canEdit = can(ctx, org.id, CREATOR_ROLES);
-  const isManager = can(ctx, org.id, MANAGER_ROLES);
+  const { canEdit, isManager } = await canOperateMany(ctx, org.id, {
+    canEdit: { permission: "classes.edit", module: "classes" },
+    isManager: { permission: "classes.delete", module: "classes" },
+  });
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "classes", "/dashboard?e=module");

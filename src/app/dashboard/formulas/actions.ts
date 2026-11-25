@@ -12,7 +12,8 @@
  * write audited. No answer, hint or solution field exists — by design.
  */
 
-import { activeOrg, can, CREATOR_ROLES, requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
+import { canOperate } from "@/lib/operationalAccess";
 import { audit } from "@/lib/admin";
 import { createClient } from "@/lib/supabase/server";
 import { validateFormulaInput, type FormulaLibraryEntry } from "@/lib/formulaLibrary";
@@ -28,7 +29,7 @@ function backWith(error: string): never {
 export async function saveFormula(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "questions.edit", "question_bank"))) {
     redirect("/dashboard/formulas?e=forbidden");
   }
 
@@ -83,7 +84,7 @@ export async function saveFormula(formData: FormData) {
 export async function deleteFormula(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !can(ctx, org.id, CREATOR_ROLES)) {
+  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "questions.delete", "question_bank"))) {
     redirect("/dashboard/formulas?e=forbidden");
   }
   const id = String(formData.get("id") ?? "");

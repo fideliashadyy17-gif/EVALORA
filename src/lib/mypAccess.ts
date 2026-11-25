@@ -1,4 +1,5 @@
 import { activeOrg, requireUser, type SessionContext } from "./auth";
+import { canOperateMany } from "./operationalAccess";
 import { createClient } from "./supabase/server";
 import type { MypFilters, MypStatusFilter } from "./mypResults";
 
@@ -52,14 +53,28 @@ export async function mypAccess(options: { global?: boolean } = {}): Promise<Myp
   }
 
   const role = org?.role ?? "";
-  const isStaff = (MYP_STAFF_ROLES as readonly string[]).includes(role);
+  if (!org || isMypLearner(role) || role === "school_founder") {
+    return {
+      ctx,
+      isSuperAdmin,
+      organizationIds: [],
+      org,
+      canExport: false,
+      canManage: false,
+    };
+  }
+  const perms = await canOperateMany(ctx, org.id, {
+    view: { permission: "results.view", module: "exam_results" },
+    export: { permission: "reports.export", module: "exam_reports" },
+    manage: { permission: "results.validate", module: "exam_results" },
+  });
   return {
     ctx,
     isSuperAdmin,
-    organizationIds: org && isStaff ? [org.id] : [],
+    organizationIds: perms.view ? [org.id] : [],
     org,
-    canExport: isStaff,
-    canManage: role === "owner" || role === "admin",
+    canExport: perms.export,
+    canManage: perms.manage,
   };
 }
 
