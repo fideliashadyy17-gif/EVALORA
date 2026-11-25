@@ -109,5 +109,18 @@ await check('dashboard.view',false,org,founder2);
 assert.equal((await db.query('select * from exams')).rows.length,0);checks++;
 await db.exec('reset role;');
 assert.equal((await db.query('select title from exams')).rows[0].title,'Synthetic exam');checks++;
+// Final resolver after reconciliation must retain the Founder privacy ceiling.
+await db.exec(readFileSync('supabase/migrations/20261125122000_reconcile_legacy_rbac.sql','utf8'));
+await db.exec(readFileSync('supabase/migrations/20261125123000_legacy_membership_permission_bridge.sql','utf8'));
+await db.exec(`set test.uid='${founder2}'; set role authenticated;`);
+await check('dashboard.view',false,org,founder2);
+await check('exams.edit',false,org,founder2);
+assert.equal((await db.query('select * from exams')).rows.length,0);checks++;
+await db.exec(`reset role; set test.uid='${sa}'; set role authenticated;`);
+await db.query('select access_assign_founder($1,$2,null)', ['founder@example.invalid',org]);
+await db.exec(`reset role; set test.uid='${founder2}'; set role authenticated;`);
+await check('dashboard.view',true,org,founder2);
+await check('exams.edit',false,org,founder2);
+await db.exec('reset role;');
 console.log(`${checks} RBAC checks passed (isolated PGlite SQL, no production writes).`);
 await db.close();

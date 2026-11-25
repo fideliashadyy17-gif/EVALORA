@@ -787,6 +787,13 @@ export async function publishResults(formData: FormData) {
   const back = resultsBack(formData, `/dashboard/exams/${examId}`);
   const value = String(formData.get("publish") ?? "");
   if (value !== "0" && value !== "1") redirect(`${back}?publish_error=1`);
+  // Legacy administrator status is a ceiling, not an escape hatch from OFF.
+  // Resolve again for each request; publish and unpublish are distinct grants.
+  const { canOperate } = await import("@/lib/operationalAccess");
+  if (!await canOperate(ctx, org.id, value === "1" ? "results.publish" : "results.unpublish", "exam_publication")) {
+    redirect("/dashboard/results?e=forbidden");
+  }
+
   const supabase = await createClient();
   // Plan & Module Management: publication is an entitlement, enforced here
   // server-side (menus are cosmetic). Roles already applied above.

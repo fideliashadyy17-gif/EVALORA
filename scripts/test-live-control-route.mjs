@@ -11,6 +11,7 @@ import path from "node:path";
 import ts from "typescript";
 
 let checks = 0;
+let rbacAllowed = true;
 const checkAsync = async (name, fn) => {
   await fn();
   checks += 1;
@@ -149,6 +150,7 @@ const liveLibStub = {
 };
 
 const route = compile("src/app/api/live/control/route.ts", "scripts/__live_control_route.cjs", {
+  "@/lib/operationalAccess": { canOperate: async () => rbacAllowed },
   "@/lib/live": liveLibStub,
   "@/lib/liveControl": engine,
   "@/lib/liveRanking": ranking,
@@ -164,6 +166,7 @@ const get = (sessionId = SESSION_ID) =>
   route.GET({ url: `https://evalora.test/api/live/control?session_id=${sessionId}` });
 
 function reset(overrides = {}) {
+  rbacAllowed = true;
   authContext = { user: { id: HOST_ID }, profile: { status: "active", platform_role: "user" }, memberships: [] };
   canResult = false;
   updateApplies = true;
@@ -249,6 +252,23 @@ await checkAsync("a Super Admin is authorized on any tenant's session", async ()
   const res = await post({ session_id: SESSION_ID, command: "pause" });
   assert.equal(res.status, 200);
   assert.equal(res.body.ok, true);
+});
+
+await checkAsync("RBAC OFF blocks a current session host on GET and POST without writes", async () => {
+  reset();
+  rbacAllowed=false;
+  assert.equal((await get()).body.authorized,false);
+  assert.equal((await post({session_id:SESSION_ID,command:"pause"})).status,403);
+  assert.equal(snapshots.length,0);
+  assert.equal(audits.length,0);
+});
+await checkAsync("RBAC OFF also blocks an otherwise authorized platform administrator", async () => {
+  reset();
+  authContext.profile.platform_role="super_admin";
+  canResult=true;
+  rbacAllowed=false;
+  assert.equal((await post({session_id:SESSION_ID,command:"pause"})).status,403);
+  assert.equal(snapshots.length,0);
 });
 
 /* ── Command handling ─────────────────────────────────────────────────── */

@@ -1,3 +1,4 @@
+import { canOperate } from "@/lib/operationalAccess";
 import { can, CREATOR_ROLES, getSessionContext } from "@/lib/auth";
 import {
   answerReveal,
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
   const admin = createAdminClient();
   const { data: session } = await admin.from("quiz_sessions").select("*").eq("id", sessionId).maybeSingle();
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
-  if (!can(ctx, session.organization_id, CREATOR_ROLES)) {
+  if (!can(ctx, session.organization_id, CREATOR_ROLES) || !await canOperate(ctx, session.organization_id, "competitions.view", "competitions")) {
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
   }
 

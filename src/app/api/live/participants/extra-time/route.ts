@@ -1,3 +1,4 @@
+import { canOperate } from "@/lib/operationalAccess";
 /**
  * Host granting of a participant's personal extra time (migration 0107).
  *
@@ -55,7 +56,7 @@ export async function POST(request: Request) {
   if (!session) return NextResponse.json({ error: "Session not found." }, { status: 404 });
 
   const isHost = session.host_id === ctx.user.id;
-  if (!isHost && !can(ctx, session.organization_id, CREATOR_ROLES))
+  if ((!isHost && !can(ctx, session.organization_id, CREATOR_ROLES)) || !await canOperate(ctx, session.organization_id, "competitions.edit", "competitions"))
     return NextResponse.json({ error: "Organizer access required." }, { status: 403 });
 
   // Extra time extends a shared per-question window. A self-paced session has
