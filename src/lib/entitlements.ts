@@ -94,6 +94,11 @@ export interface Entitlement {
    * module explicitly — see src/lib/modules.ts.
    */
   modules: Record<string, boolean>;
+  /**
+   * Explicit per-organization overrides stored on the active subscription
+   * (`subscriptions.modules_override`). Empty when inheriting purely from plan.
+   */
+  moduleOverrides?: Record<string, boolean>;
   currentPeriodEnd: string | null;
   trialEndsAt: string | null;
 }
@@ -152,6 +157,7 @@ export async function getEntitlement(
       limits: UNLIMITED_LIMITS,
       // Empty map = every module inherits its default (all-on) — see moduleEnabled.
       modules: {},
+      moduleOverrides: {},
       currentPeriodEnd: null,
       trialEndsAt: null,
     };
@@ -177,6 +183,8 @@ export async function getEntitlement(
       sub.status === "trialing" ? sub.trial_ends_at : sub.current_period_end;
     const stillValid = !end || end > now;
     if (stillValid && sub.plans) {
+      const planModules = coerceStoredModules((sub.plans as { modules?: unknown } | null)?.modules);
+      const overrideModules = coerceStoredModules((sub as { modules_override?: unknown }).modules_override);
       return {
         planName: sub.plans.name,
         planSlug: sub.plans.slug,
@@ -188,9 +196,10 @@ export async function getEntitlement(
           ...(((sub as { limits_override?: Partial<PlanLimits> | null }).limits_override ?? {}) as Partial<PlanLimits>),
         },
         modules: {
-          ...coerceStoredModules((sub.plans as { modules?: unknown } | null)?.modules),
-          ...coerceStoredModules((sub as { modules_override?: unknown }).modules_override),
+          ...planModules,
+          ...overrideModules,
         },
+        moduleOverrides: overrideModules,
         currentPeriodEnd: sub.current_period_end,
         trialEndsAt: sub.trial_ends_at,
       };
@@ -204,6 +213,7 @@ export async function getEntitlement(
     source: "free",
     limits: free ? { ...FREE_LIMITS, ...(free.limits as Partial<PlanLimits>) } : FREE_LIMITS,
     modules: coerceStoredModules((free as { modules?: unknown } | null)?.modules),
+    moduleOverrides: {},
     currentPeriodEnd: null,
     trialEndsAt: null,
   };

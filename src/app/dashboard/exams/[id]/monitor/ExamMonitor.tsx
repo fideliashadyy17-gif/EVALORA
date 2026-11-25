@@ -58,6 +58,7 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
   const [snapshot, setSnapshot] = useState<MonitorSnapshot>(initial);
   const [pauseBusy, setPauseBusy] = useState<string | null>(null);
   const [pauseError, setPauseError] = useState<string | null>(null);
+  const [interventionNotice, setInterventionNotice] = useState<string | null>(null);
   const [offsetMs, setOffsetMs] = useState(() => Date.parse(initial.server_now) - Date.now());
   const [now, setNow] = useState(Date.now());
   const [live, setLive] = useState<"connecting" | "live" | "reconnecting">("connecting");
@@ -121,6 +122,50 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
       if (!response.ok) throw new Error(data?.error ?? `Request failed (${response.status}).`);
     } catch (error) {
       setPauseError(error instanceof Error ? error.message : "The pause state could not be changed.");
+    } finally {
+      setPauseBusy(null);
+      void refresh();
+    }
+  }, [examId, refresh]);
+
+  const extendAttempt = useCallback(async (attemptId: string, minutes: number) => {
+    setPauseBusy(`ext-${attemptId}`);
+    setPauseError(null);
+    setInterventionNotice(null);
+    try {
+      const response = await fetch(`/api/monitor/exams/${examId}/extend`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attempt_id: attemptId, minutes, mode: "add", reason: `Live monitor +${minutes} min` }),
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as { error?: string; extension_minutes?: number } | null;
+      if (!response.ok) throw new Error(data?.error ?? `Request failed (${response.status}).`);
+      setInterventionNotice(`Extra time granted (+${minutes} min; total extension +${data?.extension_minutes ?? minutes} min).`);
+    } catch (error) {
+      setPauseError(error instanceof Error ? error.message : "Could not grant extra time.");
+    } finally {
+      setPauseBusy(null);
+      void refresh();
+    }
+  }, [examId, refresh]);
+
+  const authorizeRestart = useCallback(async (attemptId: string, candidateName: string) => {
+    setPauseBusy(`rst-${attemptId}`);
+    setPauseError(null);
+    setInterventionNotice(null);
+    try {
+      const response = await fetch(`/api/monitor/exams/${examId}/restart`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ attempt_id: attemptId, access_preset: "24h", reason: "Authorized restart from Live Monitor" }),
+        cache: "no-store",
+      });
+      const data = (await response.json().catch(() => null)) as { error?: string; retake_code?: string } | null;
+      if (!response.ok) throw new Error(data?.error ?? `Request failed (${response.status}).`);
+      setInterventionNotice(`Restart / retake authorized for ${candidateName}. Single-use retake code: ${data?.retake_code ?? "issued"}`);
+    } catch (error) {
+      setPauseError(error instanceof Error ? error.message : "Could not authorize session restart.");
     } finally {
       setPauseBusy(null);
       void refresh();
@@ -314,6 +359,7 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
         )}
       </div>
       {pauseError && <p role="alert" className="rounded-xl bg-red-50 px-4 py-2 text-sm font-medium text-red-800">{pauseError}</p>}
+      {interventionNotice && <p role="status" className="rounded-xl bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-900">{interventionNotice}</p>}
       {examPaused && (
         <p role="status" className="rounded-xl bg-amber-100 px-4 py-3 text-sm font-semibold text-amber-900">
           ASSESSMENT PAUSED — every active participant&apos;s countdown is frozen and composition is blocked. Answers already saved are preserved. Resume when ready; individually paused students stay paused until you resume them too.
@@ -390,6 +436,11 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
                       <td className="px-3 py-3 tabular-nums">
                         {formatRemaining(remaining, r.status !== "in_progress")}
                         <p className="text-[11px] text-ink-soft">ends {clock(r.deadline)}</p>
+                        {Number(r.extension_minutes ?? 0) > 0 && (
+                          <span className="mt-0.5 inline-block rounded-full bg-gold-100 px-2 py-0.5 text-[10px] font-semibold text-evergreen-950">
+                            +{r.extension_minutes} min ext
+                          </span>
+                        )}
                       </td>
                       <td className="px-3 py-3 text-xs">
                         <p className="font-semibold text-evergreen-950">{r.status === "in_progress" ? "In progress" : r.status.replace(/_/g, " ")}</p>
@@ -434,6 +485,33 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
                                 {pauseBusy === r.attempt_id ? "Pausing…" : "⏸ Pause student"}
                               </button>
                             )
+                          )}
+                          {canManage && r.status === "in_progress" && (
+                            <div className="flex gap-1">
+                              {[5, 10, 15].map((mins) => (
+                                <button
+                                  key={mins}
+                                  type="button"
+                                  disabled={pauseBusy !== null}
+                                  onClick={() => void extendAttempt(r.attempt_id, mins)}
+                                  className="rounded-lg border border-evergreen-900/20 px-2 py-1 text-[11px] font-semibold text-evergreen-900 hover:bg-evergreen-50 disabled:opacity-50"
+                                  title={`Grant +${mins} minutes extra time`}
+                                >
+                                  +{mins}m
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                          {canManage && (
+                            <button
+                              type="button"
+                              disabled={pauseBusy !== null}
+                              onClick={() => void authorizeRestart(r.attempt_id, r.candidate_name)}
+                              className="rounded-lg border border-evergreen-900/15 px-3 py-1 text-[11px] font-medium text-evergreen-800 hover:bg-evergreen-50 disabled:opacity-50"
+                              title="Issue an audited single-use retake/restart code without erasing the current attempt."
+                            >
+                              {pauseBusy === `rst-${r.attempt_id}` ? "Authorizing…" : "Authorize restart"}
+                            </button>
                           )}
                         </div>
                       </td>

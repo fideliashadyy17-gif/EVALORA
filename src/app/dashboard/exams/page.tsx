@@ -6,6 +6,7 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
 import { fmtDateTime } from "@/lib/utils";
 import { Archive, CheckCircle2, Clock3, FileCheck2, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
@@ -34,6 +35,9 @@ export default async function ExamsPage({
     }),
   ]);
   requireModule(entitlement, "examinations", "/dashboard?e=module");
+  const examLinksEnabled = moduleEnabled(entitlement.modules, "exam_links");
+  const examMonitoringEnabled = moduleEnabled(entitlement.modules, "exam_monitoring");
+  const rubricsEnabled = moduleEnabled(entitlement.modules, "rubrics");
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 12;
 
@@ -72,7 +76,9 @@ export default async function ExamsPage({
         subtitle="Formal, server-timed examinations with candidate admission, autosave and optional video proctoring."
         action={
           <div className="flex flex-wrap gap-2">
-            <ButtonLink href="/dashboard/rubrics" variant="outline">Grading rubrics</ButtonLink>
+            {examLinksEnabled && <ButtonLink href="/dashboard/exams/links" variant="outline">Exam Links &amp; Codes</ButtonLink>}
+            {examMonitoringEnabled && <ButtonLink href="/dashboard/monitoring" variant="outline">Live Monitoring</ButtonLink>}
+            {rubricsEnabled && <ButtonLink href="/dashboard/rubrics" variant="outline">Grading rubrics</ButtonLink>}
             {perms.canCreate && <ButtonLink href="/dashboard/exams/new">+ New examination</ButtonLink>}
           </div>
         }

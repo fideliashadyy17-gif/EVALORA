@@ -5,6 +5,8 @@ import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { moduleEnabled } from "@/lib/modules";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
@@ -259,6 +261,13 @@ export default async function ExamDetailPage({
     canRevokeCandidates: { permission: "candidate_links.revoke", module: "exam_candidates" },
     canManageProctoring: { permission: "proctoring.manage", module: "proctoring" },
   });
+  const { entitlement } = await getCapabilities(supabase, ctx, org.id);
+  requireModule(entitlement, "examinations", "/dashboard?e=module");
+  const examMonitoringEnabled = moduleEnabled(entitlement.modules, "exam_monitoring");
+  const examLinksEnabled = moduleEnabled(entitlement.modules, "exam_links");
+  const examHintsEnabled = moduleEnabled(entitlement.modules, "exam_hints");
+  const examCandidateLinksEnabled = moduleEnabled(entitlement.modules, "exam_candidate_links");
+  const examPrintableEnabled = moduleEnabled(entitlement.modules, "exam_printable");
 
   const markErrors: Record<string, string> = {
     invalid: "The answer, examination or paper could not be verified. No mark was saved.",
@@ -289,10 +298,22 @@ export default async function ExamDetailPage({
             {Boolean(settings.proctoring) && canManageProctoring && (
               <ButtonLink href={`/dashboard/exams/${id}/proctor`} variant="gold">🎥 Proctoring room</ButtonLink>
             )}
-            <ButtonLink href={`/dashboard/exams/${id}/monitor`} variant="outline">Live monitor</ButtonLink>
+            {examMonitoringEnabled && (
+              <ButtonLink href={`/dashboard/exams/${id}/monitor`} variant="outline">Live monitor</ButtonLink>
+            )}
+            {examLinksEnabled && (
+              <ButtonLink href={`/dashboard/exams/links?q=${encodeURIComponent(exam.access_code)}`} variant="outline">
+                Link &amp; expiry
+              </ButtonLink>
+            )}
+            {examHintsEnabled && (
+              <ButtonLink href={`/dashboard/exams/${id}/hints`} variant="outline">Exam hints</ButtonLink>
+            )}
             <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline">Grade history</ButtonLink>
             <ButtonLink href={`/dashboard/reports/exam/${id}`} variant="outline">Report</ButtonLink>
-            {canEditExam && <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>}
+            {canEditExam && examPrintableEnabled && (
+              <ButtonLink href={`/dashboard/exams/${id}/paper`} variant="outline">Print paper</ButtonLink>
+            )}
           </div>
         }
       />
@@ -789,7 +810,7 @@ export default async function ExamDetailPage({
                 const pct = a.score !== null && a.max_score !== null && Number(a.max_score) > 0
                   ? ((Number(a.score) / Number(a.max_score)) * 100).toFixed(1)
                   : null;
-                const resultUrl = canManageLinks ? `${origin}/exam/result/${a.access_token}` : null;
+                const resultUrl = canManageLinks && examCandidateLinksEnabled ? `${origin}/exam/result/${a.access_token}` : null;
 
                 return (
                   <tr key={a.id}>

@@ -3,6 +3,7 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getEntitlementFor } from "@/lib/entitlements";
+import { MODULE_CATALOG, moduleEnabled, resolveEffectiveModule } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDate, fmtDateTime, money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
@@ -104,14 +105,26 @@ export default async function BillingPage({
         <p className="mt-1 text-xs text-ink-soft">
           Institutional / Enterprise: {ent.limits.institutional ? "included" : "not included"} · Multi-class operations: {ent.limits.multi_class_operations ? "included" : "restricted"} · Centralized resources: {ent.limits.central_asset_management ? "included" : "restricted"} · Configurable limits: {ent.limits.configurable_limits ? "included" : "restricted"} · Classes: {ent.limits.max_classes === -1 ? "unlimited" : ent.limits.max_classes} · Students: {ent.limits.max_students === -1 ? "unlimited" : ent.limits.max_students}
         </p>
+        <p className="mt-1 text-xs font-medium text-evergreen-900">
+          Enabled workspace modules:{" "}
+          {MODULE_CATALOG.filter((m) => moduleEnabled(ent.modules, m.key)).length} / {MODULE_CATALOG.length}
+        </p>
       </Card>
 
       <div className="grid gap-5 md:grid-cols-3">
-        {(plans ?? []).map((p) => (
+        {(plans ?? []).map((p) => {
+          const planMods = (p.modules as Record<string, boolean> | null) ?? null;
+          const includedCount = MODULE_CATALOG.filter(
+            (m) => resolveEffectiveModule(planMods, null, m.key).effective,
+          ).length;
+          return (
           <Card key={p.id} className={p.slug === ent.planSlug ? "border-2 border-evergreen-700 p-6" : "p-6"}>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <h2 className="font-display text-lg font-semibold text-evergreen-950">{p.name}</h2>
-              {p.slug === ent.planSlug && <Badge tone="green">Current</Badge>}
+              <div className="flex items-center gap-1.5">
+                <Badge tone="gold">{includedCount} / {MODULE_CATALOG.length} modules</Badge>
+                {p.slug === ent.planSlug && <Badge tone="green">Current</Badge>}
+              </div>
             </div>
             <p className="mt-1 text-sm text-ink-soft">{p.description}</p>
             <p className="mt-3 font-display text-3xl font-bold text-evergreen-900">
@@ -124,7 +137,8 @@ export default async function BillingPage({
               ))}
             </ul>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {isManager ? (

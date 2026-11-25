@@ -1,6 +1,7 @@
 import { activeOrg, getSessionContext } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { getEntitlement, getEntitlementFor } from "@/lib/entitlements";
+import { moduleEnabled } from "@/lib/modules";
 import { isFeatureEnabled } from "@/lib/platform";
 import { attemptDeadline, loadAttemptContext } from "@/lib/exam";
 import { manualPauseMs } from "@/lib/examPause";
@@ -86,7 +87,11 @@ export async function POST(request: Request) {
     const platformOwned = !settingError && trustedValue?.organization_id === exam.organization_id;
     const ownerBypass = platformOwned || sessionCtx?.profile.platform_role === "super_admin";
     const ent = await getEntitlement(admin, exam.organization_id, { ownerBypass });
-    if (!ent.limits.proctoring)
+    const proctoringEntitled =
+      ownerBypass ||
+      (moduleEnabled(ent.modules, "proctoring") &&
+        (Boolean(ent.limits.proctoring) || ent.moduleOverrides?.proctoring === true));
+    if (!proctoringEntitled)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   } else {
     const ctx = sessionCtx;
@@ -100,7 +105,12 @@ export async function POST(request: Request) {
 
     const supabase = await createClient();
     const ent = await getEntitlementFor(supabase, ctx, exam.organization_id);
-    if (!ent.limits.proctoring)
+    const isOwner = ctx.profile.status === "active" && ctx.profile.platform_role === "super_admin";
+    const proctoringEntitled =
+      isOwner ||
+      (moduleEnabled(ent.modules, "proctoring") &&
+        (Boolean(ent.limits.proctoring) || ent.moduleOverrides?.proctoring === true));
+    if (!proctoringEntitled)
       return NextResponse.json({ error: "The organization's plan does not include proctoring." }, { status: 403 });
   }
 

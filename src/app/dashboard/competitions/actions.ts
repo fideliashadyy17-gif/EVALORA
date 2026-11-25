@@ -163,3 +163,96 @@ export async function deleteDraftCompetition(formData: FormData) {
   revalidatePath("/dashboard/competitions");
   redirect("/dashboard/competitions?ok=deleted");
 }
+
+/**
+ * Add an event phase to an organization competition (`competition_phases`).
+ * Automatically attaches an org-scoped `competition_events` record if the
+ * competition does not yet belong to one.
+ */
+export async function createOrgCompetitionPhase(formData: FormData) {
+  const competitionId = String(formData.get("competition_id") ?? "");
+  const ctx = await requireUser();
+  const org = activeOrg(ctx);
+  if (!org) redirect("/dashboard");
+
+  const admin = createAdminClient();
+  const { entitlement } = await getCapabilities(admin, ctx, org.id);
+  requireModule(entitlement, "competitions", "/dashboard?e=module");
+  requireModule(entitlement, "competition_phases", `/dashboard/competitions/${competitionId}?e=module`);
+  if (!(await canOperate(ctx, org.id, "competitions.edit", "competition_phases"))) {
+    redirect(`/dashboard/competitions/${competitionId}?e=forbidden`);
+  }
+
+  const { data: comp } = await admin
+    .from("competitions")
+    .select("id, organization_id, title, event_id")
+    .eq("id", competitionId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
+  if (!comp) redirect("/dashboard/competitions?e=missing");
+
+  const title = text(formData, "title", 140);
+  if (!title) redirect(`/dashboard/competitions/${competitionId}?e=phase_title`);
+  const phaseTypeRaw = String(formData.get("phase_type") ?? "round");
+  const phaseType = ["qualifier", "round", "semifinal", "final", "tiebreaker"].includes(phaseTypeRaw)
+    ? phaseTypeRaw
+    : "round";
+  const maxQ = Number.parseInt(String(formData.get("max_questions") ?? ""), 10);
+  const qualificationRule = text(formData, "qualification_rule", 300);
+
+  let eventId = comp.event_id as string | null;
+  if (!eventId) {
+    const { data: createdEvent, error: evErr } = await admin
+      .from("competition_events")
+      .insert({
+        organization_id: org.id,
+        name: comp.title as string,
+        status: "active",
+        created_by: ctx.user.id,
+        updated_at: new Date().toISOString(),
+      })
+      .select("id")
+      .single();
+    if (evErr || !createdEvent) redirect(`/dashboard/competitions/${competitionId}?e=phase_failed`);
+    eventId = createdEvent.id as string;
+    await admin
+      .from("competitions")
+      .update({ event_id: eventId, updated_at: new Date().toISOString() })
+      .eq("id", competitionId)
+      .eq("organization_id", org.id);
+  }
+
+  const { count } = await admin
+    .from("competition_event_phases")
+    .select("id", { count: "exact", head: true })
+    .eq("event_id", eventId);
+  const sort = (count ?? 0) + 1;
+  const phaseKey = `phase_${sort}_${crypto.randomUUID().slice(0, 6)}`;
+
+  const { data: phase, error } = await admin
+    .from("competition_event_phases")
+    .insert({
+      event_id: eventId,
+      phase_key: phaseKey,
+      phase_type: phaseType,
+      title,
+      status: "draft",
+      max_questions: Number.isFinite(maxQ) && maxQ > 0 ? Math.min(maxQ, 500) : null,
+      qualification_rule: qualificationRule ? { summary: qualificationRule } : null,
+      sort,
+    })
+    .select("id")
+    .single();
+  if (error || !phase) redirect(`/dashboard/competitions/${competitionId}?e=phase_failed`);
+
+  await audit(ctx, "competition.phase_created", "competition_event_phases", phase.id as string, org.id, {
+    competition_id: competitionId,
+    event_id: eventId,
+    title,
+    phase_type: phaseType,
+    source: "organization_dashboard",
+  });
+  revalidatePath(`/dashboard/competitions/${competitionId}`);
+  redirect(`/dashboard/competitions/${competitionId}?ok=phase_created`);
+}
+

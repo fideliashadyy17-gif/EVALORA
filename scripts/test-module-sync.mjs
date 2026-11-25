@@ -387,7 +387,10 @@ async function entitlementFor(override, planModules) {
       ok(n === 0, `H: ${m.key} marked unavailable has NO organization consumer (${n} found)`);
     }
   }
-  ok(kinds.size >= 3, `H: catalog classifies modules across surface kinds (${[...kinds].join(", ")})`);
+  ok(
+    kinds.has("nav") && kinds.has("page") && !kinds.has("none") && !kinds.has("admin"),
+    `H: every catalog module is wired to a real organization nav or page surface (kinds: ${[...kinds].join(", ")})`,
+  );
 
   // Sidebar hrefs (except Overview) are all derived from the catalog.
   const navHrefs = [...chromeSrc.matchAll(/href: "(\/dashboard[^"]*)"/g)].map((x) => x[1]);

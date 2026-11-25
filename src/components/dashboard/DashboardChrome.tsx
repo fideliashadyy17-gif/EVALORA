@@ -11,6 +11,7 @@ import { isNavVisible } from "@/lib/navModules";
 import { tenantPortalLabel } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 import {
+  Activity,
   Award,
   BarChart3,
   BookOpenCheck,
@@ -74,6 +75,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/paper-builder", label: "Question Paper Builder", labelKey: "nav.paperBuilder", icon: FileText, audience: "operational" },
       { href: "/dashboard/quizzes", label: "Quizzes", labelKey: "nav.quizzes", icon: PenSquare, audience: "operational" },
       { href: "/dashboard/exams", label: "Examinations", labelKey: "nav.examinations", icon: FileCheck2, audience: "operational" },
+      { href: "/dashboard/monitoring", label: "Live Monitoring", labelKey: "nav.liveMonitoring", icon: Activity, audience: "operational" },
       { href: "/dashboard/formulas", label: "Formula Library", labelKey: "nav.formulas", icon: Sigma, audience: "operational" },
       { href: "/dashboard/questions", label: "Question Bank", labelKey: "nav.questionBank", icon: Library, audience: "operational" },
       { href: "/dashboard/competitions", label: "Live Competitions", labelKey: "nav.competitions", icon: Trophy, audience: "operational" },

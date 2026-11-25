@@ -1,7 +1,9 @@
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
+import { MODULE_CATALOG, resolveEffectiveModule } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { savePlan } from "../actions";
 import { Table } from "../ui";
 
@@ -47,14 +49,23 @@ export default async function AdminPlans() {
         eyebrow="Commerce & Entitlements · Plan Catalog"
         title="Plans & Limits"
         subtitle="Limits are JSON — use -1 for unlimited. Changes apply immediately to every organization's entitlement checks (all server-side)."
-        action={<ButtonLink href="/admin/subscriptions" variant="outline">Manage subscriptions</ButtonLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            <ButtonLink href="/admin/plans/modules" variant="gold">Plan &amp; Module Matrix</ButtonLink>
+            <ButtonLink href="/admin/subscriptions" variant="outline">Manage subscriptions</ButtonLink>
+          </div>
+        }
       />
 
       {(plans ?? []).length > 0 && (
         <div className="mb-6">
-          <Table head={["Plan", "Slug", "Monthly / Yearly", "Trial", "Active tenants", "Proctoring", "Reports", "Premium exam", "Visibility"]}>
+          <Table head={["Plan", "Slug", "Monthly / Yearly", "Trial", "Active tenants", "Modules", "Proctoring", "Reports", "Premium exam", "Visibility"]}>
             {(plans ?? []).map((p) => {
               const lim = (p.limits as Record<string, unknown> | null) ?? {};
+              const planMods = (p.modules as Record<string, boolean> | null) ?? null;
+              const enabledMods = MODULE_CATALOG.filter(
+                (m) => resolveEffectiveModule(planMods, null, m.key).effective,
+              ).length;
               return (
                 <tr key={p.id}>
                   <td className="font-semibold text-evergreen-950">{p.name}</td>
@@ -64,6 +75,14 @@ export default async function AdminPlans() {
                   </td>
                   <td className="text-xs text-ink-soft">{p.trial_days} days</td>
                   <td className="font-semibold tabular-nums">{subCounts.get(p.id) ?? 0}</td>
+                  <td>
+                    <Link
+                      href={`/admin/plans/modules?plan=${p.id}`}
+                      className="font-semibold text-evergreen-800 underline-offset-2 hover:underline"
+                    >
+                      {enabledMods} / {MODULE_CATALOG.length}
+                    </Link>
+                  </td>
                   <td><Badge tone={lim.proctoring ? "green" : "gray"}>{lim.proctoring ? "Included" : "Off"}</Badge></td>
                   <td><Badge tone={lim.advanced_reports ? "green" : "gray"}>{lim.advanced_reports ? "Included" : "Basic"}</Badge></td>
                   <td><Badge tone={lim.premium_exam_experience ? "green" : "gray"}>{lim.premium_exam_experience ? "Included" : "Off"}</Badge></td>

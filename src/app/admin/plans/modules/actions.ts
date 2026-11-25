@@ -9,7 +9,7 @@
  * entitlement changes take effect on the next server-side resolution.
  */
 import { audit, requireSuperAdmin } from "@/lib/admin";
-import { MODULE_KEYS, MODULE_CATALOG } from "@/lib/modules";
+import { MODULE_KEYS, MODULE_CATALOG, recommendedModulesForPlan } from "@/lib/modules";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -42,12 +42,50 @@ export async function savePlanModules(formData: FormData) {
     total: MODULE_KEYS.length,
   });
   revalidatePath("/admin/plans/modules");
+  revalidatePath("/admin/plans");
   // Refresh organization dashboards too: nav + pages resolve entitlements
   // per request, and this guarantees no cached RSC misrepresents the new state.
   revalidatePath("/dashboard");
   revalidatePath("/dashboard", "layout");
   revalidatePath("/supervision", "page");
   redirect("/admin/plans/modules?ok=plan");
+}
+
+/**
+ * Apply the canonical differentiated EVALORA preset for Free / Premium /
+ * Institution to a selected plan row. Audited and owner-gated.
+ */
+export async function applyRecommendedPlanModules(formData: FormData) {
+  const ctx = await requireSuperAdmin();
+  const planId = String(formData.get("plan_id") ?? "");
+  if (!UUID.test(planId)) redirect("/admin/plans/modules?e=invalid");
+
+  const admin = createAdminClient();
+  const { data: plan } = await admin
+    .from("plans")
+    .select("id, slug, name")
+    .eq("id", planId)
+    .maybeSingle();
+  if (!plan) redirect("/admin/plans/modules?e=invalid");
+
+  const modules = recommendedModulesForPlan(plan.slug as string);
+  const { error } = await admin
+    .from("plans")
+    .update({ modules })
+    .eq("id", planId);
+  if (error) redirect("/admin/plans/modules?e=save");
+
+  await audit(ctx, "plan.modules_preset_applied", "plans", plan.id as string, null, {
+    plan: plan.slug,
+    enabled: MODULE_KEYS.filter((k) => modules[k]).length,
+    total: MODULE_KEYS.length,
+  });
+  revalidatePath("/admin/plans/modules");
+  revalidatePath("/admin/plans");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard", "layout");
+  revalidatePath("/supervision", "page");
+  redirect(`/admin/plans/modules?plan=${planId}&ok=plan`);
 }
 
 /**
