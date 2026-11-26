@@ -142,6 +142,67 @@ const FIXTURE_META = {
   },
 };
 
+/**
+ * The school's configured MYP criterion-level boundaries for Mathematics, read
+ * from `myp_level_boundaries` (organization 0a400000-…-0001, subject …0030).
+ *
+ * These are the EVALORA default conversion, which is what the organization has
+ * configured: percentage of a criterion's marks to an achievement level. They
+ * are declared here so the verifier can prove the PDF's levels come from the
+ * configured table rather than from a hard-coded curve of its own.
+ */
+const LEVEL_BOUNDARIES = [
+  { level: 0, minPercent: 0 },
+  { level: 1, minPercent: 1 },
+  { level: 2, minPercent: 20 },
+  { level: 3, minPercent: 35 },
+  { level: 4, minPercent: 50 },
+  { level: 5, minPercent: 65 },
+  { level: 6, minPercent: 75 },
+  { level: 7, minPercent: 85 },
+  { level: 8, minPercent: 95 },
+];
+
+/** The configured overall bands: total of criterion levels → MYP grade 1–7. */
+const GRADE_BOUNDARIES = [
+  { minTotal: 0, maxTotal: 5, grade: 1 },
+  { minTotal: 6, maxTotal: 9, grade: 2 },
+  { minTotal: 10, maxTotal: 14, grade: 3 },
+  { minTotal: 15, maxTotal: 18, grade: 4 },
+  { minTotal: 19, maxTotal: 23, grade: 5 },
+  { minTotal: 24, maxTotal: 27, grade: 6 },
+  { minTotal: 28, maxTotal: 32, grade: 7 },
+];
+
+function levelFromPercent(percent) {
+  const rows = [...LEVEL_BOUNDARIES].sort((a, b) => b.level - a.level);
+  for (const row of rows) if (percent >= row.minPercent) return row.level;
+  return 0;
+}
+
+function gradeFromTotal(total) {
+  for (const row of GRADE_BOUNDARIES) {
+    if (total >= row.minTotal && total <= row.maxTotal) return row.grade;
+  }
+  return null;
+}
+
+/** The overall summary for a fixture, computed from its criterion marks. */
+function overallFor(criteria) {
+  const levels = criteria.map((c) => levelFromPercent(Math.round((c.marksAwarded / c.marksMax) * 1000) / 10));
+  const totalLevels = levels.reduce((sum, l) => sum + l, 0);
+  const totalLevelsMax = criteria.length * 8;
+  return {
+    totalLevels,
+    totalLevelsMax,
+    grade: gradeFromTotal(totalLevels),
+    status: "final",
+    statusLabel: "Final",
+    note: "Overall grade from the configured boundaries for Mathematics.",
+    levelSource: "EVALORA default criterion-level conversion — percentage of criterion marks to MYP achievement level",
+  };
+}
+
 function buildPaper(fixture, { published, preview }) {
   const settings = published ? { results_published: true } : {};
   const meta = FIXTURE_META[fixture.exam];
@@ -174,7 +235,20 @@ function buildPaper(fixture, { published, preview }) {
     orderedRows: toSessionRows(fixture),
     savedAnswers: toSavedAnswers(fixture),
     // Only handed to the builder when the caller is allowed to see marks.
-    result: { published, criteria: fixture.criteria.map((c) => ({ ...c, percent: null })) },
+    //
+    // The levels and the overall grade are produced the same way `buildMypResult`
+    // produces them: each criterion's percentage is read against the school's
+    // configured level boundaries, and the overall grade is the SUM OF LEVELS read
+    // against the configured total bands — never a conversion of the exam
+    // percentage. Asserting on them therefore checks the rendering, not the maths.
+    result: {
+      published,
+      criteria: fixture.criteria.map((c) => {
+        const percent = Math.round((c.marksAwarded / c.marksMax) * 1000) / 10;
+        return { ...c, percent, level: levelFromPercent(percent) };
+      }),
+      overall: overallFor(fixture.criteria),
+    },
     markingPreview: preview,
   });
 }
@@ -293,6 +367,49 @@ async function verifyFixture(fixture, expect) {
     }
   });
 
+  await check("each criterion prints its MYP achievement level from the configured boundaries", async () => {
+    assert.ok(published.fullText.includes("MYP level"), "the criterion table has no MYP level column");
+    for (const c of fixture.criteria) {
+      const percent = Math.round((c.marksAwarded / c.marksMax) * 1000) / 10;
+      const expectedLevel = levelFromPercent(percent);
+      // The row prints "<awarded> / <max> <level> <percent>%"; assert the level
+      // actually sits between this criterion's own marks and its percentage, so a
+      // level belonging to a neighbouring row cannot satisfy the check.
+      const row = new RegExp(
+        `Criterion ${c.code}[\\s\\S]{0,200}?${c.marksAwarded}\\s*\\/\\s*${c.marksMax}\\s+${expectedLevel}\\s+${percent}%`,
+      );
+      assert.ok(
+        row.test(published.fullText),
+        `criterion ${c.code} should read "${c.marksAwarded} / ${c.marksMax}  ${expectedLevel}  ${percent}%" (level from ${percent}%)`,
+      );
+    }
+  });
+
+  await check("the overall MYP grade comes from the sum of levels, not from the percentage", async () => {
+    const expected = overallFor(fixture.criteria);
+    // The percentage the paper prints is deliberately NOT what the grade is for;
+    // the two are asserted separately below so neither can stand in for the other.
+    assert.ok(
+      published.fullText.includes(`Total MYP levels`),
+      "the paper does not print the total of criterion levels",
+    );
+    assert.ok(
+      new RegExp(`${expected.totalLevels}\\s*\\/\\s*${expected.totalLevelsMax}`).test(published.fullText),
+      `total levels ${expected.totalLevels} / ${expected.totalLevelsMax} missing`,
+    );
+    assert.ok(
+      published.fullText.includes(`Level ${expected.grade}`),
+      `overall MYP level ${expected.grade} missing`,
+    );
+    // Prove the grade is not the percentage: on both of these papers the stored
+    // percentage differs from the total-levels band, so a percentage-derived
+    // grade would print a different number.
+    assert.ok(
+      Number(expected.grade) !== Math.round(Number(fixture.score) / Number(fixture.maxScore) * 7),
+      "fixture would not distinguish a percentage-derived grade from the configured one",
+    );
+  });
+
   await check("the paper's marks total the exam's maximum, not more", async () => {
     const paperMarks = fixture.rows.reduce((sum, r) => sum + r.points, 0);
     assert.equal(
@@ -377,6 +494,11 @@ async function verifyFixture(fixture, expect) {
     assert.ok(!withheld.fullText.includes("Validated Results by Criterion"), "withheld paper leaked the criteria panel");
     assert.ok(!/Criterion [A-D][^a-z]{0,3}\s*\d+\s*\/\s*\d+/.test(withheld.fullText), "withheld paper leaked criterion marks");
     assert.ok(!/Awarded:/.test(withheld.fullText), "withheld paper leaked per-question marks");
+    // With a withheld result the engine's levels and grade must be absent too:
+    // they are part of the award, not of the answer evidence.
+    assert.ok(!withheld.fullText.includes("MYP level"), "withheld paper leaked the MYP level column");
+    assert.ok(!withheld.fullText.includes("Total MYP levels"), "withheld paper leaked the level total");
+    assert.ok(!withheld.fullText.includes("Overall MYP achievement"), "withheld paper leaked the overall grade");
     // The candidate's own answers must still be there — that is the evidence.
     for (const fragment of expect.preservedAnswers) {
       assert.ok(withheld.fullText.includes(fragment), `withheld paper must still preserve "${fragment}"`);

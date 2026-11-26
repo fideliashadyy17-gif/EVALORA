@@ -36,6 +36,7 @@ import { type StemLeafSpec } from "./stemLeafSpec.ts";
 import { type VennSpec } from "./vennSpec.ts";
 import type {
   CandidatePaperData,
+  CandidatePaperHeader,
   CandidatePaperQuestion,
 } from "./candidatePaper.ts";
 
@@ -981,10 +982,28 @@ class PaperLayout {
 
     const title = "Validated Results by Criterion";
     const cols = h.criteria;
+    const overall = h.overallLevel;
     const rowH = 17;
     const headerH = 22;
     const tableH = headerH + cols.length * rowH;
-    const totalH = tableH + 34;
+    // Below the table come the marks total, then (when present) the overall
+    // achievement band and its source note. Each is measured rather than guessed
+    // so the panel can never clip its own last line.
+    //
+    // Two footnotes disclose the provenance of the numbers: the level boundaries
+    // behind each criterion's level, and the engine's explanation of the overall
+    // grade (which also states when a grade is provisional or withheld). Both are
+    // wrapped to the panel width and measured, so neither can be clipped.
+    const noteLines = overall
+      ? [
+          ...(overall.levelSource
+            ? this.wrap(`Criterion levels: ${overall.levelSource}`, CONTENT_W - 26, this.fontItalic, 7.2)
+            : []),
+          ...(overall.note ? this.wrap(overall.note, CONTENT_W - 26, this.fontItalic, 7.2) : []),
+        ].slice(0, 4)
+      : [];
+    const overallH = overall ? 26 + 16 + (noteLines.length ? noteLines.length * 8.6 + 4 : 0) : 0;
+    const totalH = tableH + 30 + overallH;
     this.ensure(totalH + 28);
 
     const topY = this.y;
@@ -1008,17 +1027,22 @@ class PaperLayout {
       color: C_EVERGREEN_DARK,
     });
 
-    // Column geometry: criterion | title | awarded / maximum | %
+    // Column geometry: criterion | title | awarded / maximum | level | %
+    //
+    // The level column is right-aligned into its own slot so a two-digit total
+    // (e.g. "28 / 32") and a single level both stay on their column edge.
     const x0 = MARGIN_X + 12;
     const xCriterion = x0;
     const xTitle = x0 + 74;
-    const xMarks = MARGIN_X + CONTENT_W - 132;
+    const xMarks = MARGIN_X + CONTENT_W - 190;
+    const xLevel = MARGIN_X + CONTENT_W - 108;
     const xPercent = MARGIN_X + CONTENT_W - 58;
     const headerBaseline = topY - headerH - 6;
 
     this.page.drawText("Criterion", { x: xCriterion, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
     this.page.drawText("Description", { x: xTitle, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
     this.page.drawText("Marks", { x: xMarks, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
+    this.page.drawText("MYP level", { x: xLevel, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
     this.page.drawText("%", { x: xPercent, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
 
     this.page.drawLine({
@@ -1046,6 +1070,15 @@ class PaperLayout {
         font: this.fontBold,
         color: C_INK,
       });
+      // The achievement level, or an em dash when the criterion is not fully
+      // marked — never a 0, which would read as "achieved nothing".
+      this.page.drawText(sanitizeForPdfFont(criterion.level === null ? "—" : String(criterion.level)), {
+        x: xLevel + 8,
+        y: baseline,
+        size: 9,
+        font: this.fontBold,
+        color: criterion.level === null ? C_MUTED : C_EVERGREEN_DARK,
+      });
       this.page.drawText(sanitizeForPdfFont(criterion.percent === null ? "—" : `${fmtNum(criterion.percent)}%`), {
         x: xPercent,
         y: baseline,
@@ -1055,9 +1088,9 @@ class PaperLayout {
       });
     });
 
-    // Overall total line, deliberately kept subordinate to the breakdown.
-    const totalBaseline = topY - totalH + 13;
-    const overall = `${h.score !== null ? fmtNum(h.score) : "—"} / ${h.maxScore !== null ? fmtNum(h.maxScore) : "—"}${
+    // Marks total, immediately under the table and subordinate to it.
+    const totalBaseline = topY - headerH - 10 - cols.length * rowH - 14;
+    const overallMarks = `${h.score !== null ? fmtNum(h.score) : "—"} / ${h.maxScore !== null ? fmtNum(h.maxScore) : "—"}${
       h.percentage !== null ? `  (${fmtNum(h.percentage)}%)` : ""
     }`;
     this.page.drawText(sanitizeForPdfFont("Overall total"), {
@@ -1067,7 +1100,7 @@ class PaperLayout {
       font: this.fontBold,
       color: C_EVERGREEN_DARK,
     });
-    this.page.drawText(sanitizeForPdfFont(overall), {
+    this.page.drawText(sanitizeForPdfFont(overallMarks), {
       x: xMarks,
       y: totalBaseline,
       size: 8.8,
@@ -1075,7 +1108,98 @@ class PaperLayout {
       color: C_EVERGREEN_DARK,
     });
 
+    if (overall) this.drawOverallAchievement(overall, totalBaseline, noteLines, x0, xMarks);
+
     this.y = topY - totalH - 12;
+  }
+
+  /**
+   * The overall MYP achievement summary, printed under the marks total.
+   *
+   * The grade is the school's grade for the *sum of criterion levels* through
+   * its configured total bands — not a conversion of the percentage above it.
+   * The two are therefore separate, clearly labelled figures, and the source note
+   * states which boundaries produced them so a reader can audit the number. When
+   * the criteria are not all marked there is no grade to print, so the band says
+   * why instead of showing a placeholder grade.
+   */
+  private drawOverallAchievement(
+    overall: NonNullable<CandidatePaperHeader["overallLevel"]>,
+    marksBaseline: number,
+    noteLines: string[],
+    x0: number,
+    xMarks: number,
+  ): void {
+    // A hairline separates the marks arithmetic from the achievement summary, so
+    // the two are never read as one figure.
+    const ruleY = marksBaseline - 9;
+    this.page.drawLine({
+      start: { x: x0, y: ruleY },
+      end: { x: MARGIN_X + CONTENT_W - 12, y: ruleY },
+      thickness: 0.5,
+      color: C_RULE,
+    });
+
+    const levelsBaseline = ruleY - 13;
+    this.page.drawText(sanitizeForPdfFont("Total MYP levels"), {
+      x: x0,
+      y: levelsBaseline,
+      size: 8.4,
+      font: this.fontBold,
+      color: C_MUTED,
+    });
+    const levelsText =
+      overall.totalLevels === null
+        ? `— / ${fmtNum(overall.totalLevelsMax)}`
+        : `${fmtNum(overall.totalLevels)} / ${fmtNum(overall.totalLevelsMax)}`;
+    this.page.drawText(sanitizeForPdfFont(levelsText), {
+      x: xMarks,
+      y: levelsBaseline,
+      size: 8.6,
+      font: this.fontBold,
+      color: C_INK,
+    });
+
+    // The grade is the headline figure of this band, so it gets the larger type.
+    const gradeBaseline = levelsBaseline - 16;
+    this.page.drawText(sanitizeForPdfFont("Overall MYP achievement (1–7)"), {
+      x: x0,
+      y: gradeBaseline,
+      size: 8.4,
+      font: this.fontBold,
+      color: C_MUTED,
+    });
+
+    const gradeText = overall.grade !== null ? `Level ${overall.grade}` : overall.statusLabel;
+    this.page.drawText(sanitizeForPdfFont(gradeText), {
+      x: xMarks,
+      y: gradeBaseline,
+      size: 10.5,
+      font: this.fontBold,
+      color: overall.grade !== null ? C_EVERGREEN_DARK : C_MUTED,
+    });
+    // The status word sits beside the grade so "Provisional" is never mistaken
+    // for a final award, and a paper with no grade says why in the same place.
+    const statusSuffix =
+      overall.grade !== null && overall.status !== "final" ? `  ·  ${overall.statusLabel}` : "";
+    let suffixX = xMarks + this.fontBold.widthOfTextAtSize(sanitizeForPdfFont(gradeText), 10.5);
+    if (statusSuffix) {
+      this.page.drawText(sanitizeForPdfFont(statusSuffix), {
+        x: suffixX,
+        y: gradeBaseline,
+        size: 7.6,
+        font: this.fontBold,
+        color: C_MUTED,
+      });
+    }
+
+    if (noteLines.length) {
+      let noteY = gradeBaseline - 11;
+      for (const line of noteLines) {
+        this.page.drawText(line, { x: x0, y: noteY, size: 7.2, font: this.fontItalic, color: C_MUTED });
+        noteY -= 8.6;
+      }
+    }
   }
 
   /* ─── Section Banner ───────────────────────────────────────────────── */

@@ -81,10 +81,31 @@ export interface CandidatePaperHeader {
    * verified criterion-level mark corrections — the PDF never recomputes marks
    * of its own.
    *
-   * Candidates are never shown an MYP achievement level here: levels are
-   * school-internal and the award is expressed in marks in the paper record.
+   * Each criterion also carries its MYP achievement level (0–8), taken from the
+   * same engine result and printed beside the marks.
+   *
+   * This reverses the paper's earlier rule, which withheld levels on the grounds
+   * that they were school-internal. The rule was wrong for this record: a
+   * candidate holding an MYP examination paper is entitled to see how each
+   * criterion was awarded, and marks alone are not comparable across criteria
+   * because the criteria are out of different totals (17/30 and 5/20 are not the
+   * same achievement). The level is what makes the marks legible. It is still
+   * sourced from the results engine and never re-derived here, so the paper, the
+   * results screens and any exported record cannot disagree.
+   *
+   * A criterion that has not been fully marked carries `level: null` and prints
+   * as an em dash. It is never coerced to level 0, which would state that the
+   * candidate achieved nothing.
    */
   criteria: CandidatePaperCriterion[];
+  /**
+   * Overall MYP achievement summary (total criterion levels and 1–7 grade).
+   *
+   * Populated under exactly the same rule as `criteria` — only for a released
+   * result. A withheld paper and a pre-publication staff preview both carry no
+   * achievement summary, because neither may state an award.
+   */
+  overallLevel: CandidatePaperOverallLevel | null;
 }
 
 /** One criterion line in the candidate's validated results summary. */
@@ -99,6 +120,42 @@ export interface CandidatePaperCriterion {
   marksMax: number;
   /** Percentage of the criterion's marks, or null when none were available. */
   percent: number | null;
+  /**
+   * MYP achievement level (0–8) for this criterion's marks, from the school's
+   * configured level boundaries, or null when the criterion is not fully marked.
+   *
+   * This is the results engine's own level — never re-derived from the printed
+   * percentage in the PDF. A criterion that is not fully marked has no level at
+   * all rather than a level 0, which would read as "achieved nothing".
+   */
+  level: number | null;
+}
+
+/**
+ * The overall MYP grade summary printed under the criterion table.
+ *
+ * The grade is a sum of criterion levels mapped through the configured total
+ * bands — it is deliberately NOT a conversion of the exam percentage. The two
+ * figures answer different questions, so a paper may show 61% and an overall
+ * grade 3 without either being wrong.
+ */
+export interface CandidatePaperOverallLevel {
+  /** Sum of the criteria's achievement levels, or null when none are marked. */
+  totalLevels: number | null;
+  /** Maximum sum the paper's criteria can reach (e.g. 4 × 8 = 32). */
+  totalLevelsMax: number;
+  /** Overall MYP grade 1–7, or null when the criteria are not all marked. */
+  grade: number | null;
+  /** `final` / `provisional` / `incomplete` / `not_applicable`. */
+  status: string;
+  statusLabel: string;
+  /** Why the grade is final, provisional or absent — shown as a source note. */
+  note: string;
+  /**
+   * Where the criterion-level boundaries come from. Printed as a footnote so a
+   * reader can tell the school's own conversion from an IB-published one.
+   */
+  levelSource: string;
 }
 
 export interface CandidatePaperOption {
@@ -790,7 +847,27 @@ export function buildCandidatePaperData(input: {
    */
   result?: {
     published: boolean;
-    criteria: { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[];
+    criteria: {
+      code: string;
+      title: string;
+      marksAwarded: number;
+      marksMax: number;
+      percent: number | null;
+      level?: number | null;
+    }[];
+    /**
+     * The engine's overall achievement summary. Also read only through the
+     * released-result gate below, so a withheld paper can never print a grade.
+     */
+    overall?: {
+      totalLevels: number | null;
+      totalLevelsMax: number;
+      grade: number | null;
+      status: string;
+      statusLabel: string;
+      note: string;
+      levelSource: string;
+    } | null;
   } | null;
   /**
    * Staff-only preview of a validated result that has not been released yet.
@@ -1077,6 +1154,10 @@ export function buildCandidatePaperData(input: {
     // not `marksVisible`: a paper that is merely being previewed must carry no
     // award at all, and a withheld paper must never leak a criterion line.
     criteria: buildCandidatePaperCriteria(resultsPublished ? input.result?.criteria : null),
+    // The overall grade rides the same gate as the criterion table: a withheld
+    // paper carries neither, and a preview copy carries both but stays labelled
+    // as a preview.
+    overallLevel: buildCandidatePaperOverallLevel(resultsPublished ? input.result?.overall : null),
   };
 
   const filename = buildCandidatePaperFilename({
@@ -1100,7 +1181,14 @@ export function buildCandidatePaperData(input: {
  */
 export function buildCandidatePaperCriteria(
   criteria:
-    | { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[]
+    | {
+        code: string;
+        title: string;
+        marksAwarded: number;
+        marksMax: number;
+        percent: number | null;
+        level?: number | null;
+      }[]
     | null
     | undefined,
 ): CandidatePaperCriterion[] {
@@ -1116,15 +1204,69 @@ export function buildCandidatePaperCriteria(
       criterion.percent !== null && criterion.percent !== undefined && Number.isFinite(Number(criterion.percent))
         ? Math.round(Number(criterion.percent) * 10) / 10
         : Math.round((marksAwarded / marksMax) * 1000) / 10;
+    // A level is shown only when the engine produced one for a fully marked
+    // criterion. Anything else stays null so the paper can print "—" instead of
+    // implying the candidate achieved level 0.
+    //
+    // The upper bound is deliberately not clamped: a criterion's maximum level is
+    // a school setting, so a level above 8 is the engine's to decide, not this
+    // mapper's to silently truncate. Only nonsense (negative, non-finite) is
+    // discarded, becoming "no level" rather than a misleading level 0.
+    const rawLevel = criterion.level === null || criterion.level === undefined ? null : Number(criterion.level);
+    const level = rawLevel !== null && Number.isFinite(rawLevel) && rawLevel >= 0 ? Math.round(rawLevel) : null;
     out.push({
       code: code.toUpperCase(),
       title: cleanStr(criterion.title, 120) ?? `Criterion ${code.toUpperCase()}`,
       marksAwarded: Math.round(marksAwarded * 100) / 100,
       marksMax: Math.round(marksMax * 100) / 100,
       percent,
+      level,
     });
   }
   return out.sort((a, b) => a.code.localeCompare(b.code));
+}
+
+/**
+ * Map the results engine's overall achievement summary to the printable form.
+ *
+ * Levels and the grade are the engine's, never recomputed here: the overall
+ * grade comes from the sum of criterion levels through the configured total
+ * bands, so it cannot be derived from the exam percentage on this page.
+ */
+export function buildCandidatePaperOverallLevel(
+  overall:
+    | {
+        totalLevels: number | null;
+        totalLevelsMax: number;
+        grade: number | null;
+        status: string;
+        statusLabel: string;
+        note: string;
+        levelSource: string;
+      }
+    | null
+    | undefined,
+): CandidatePaperOverallLevel | null {
+  if (!overall) return null;
+  const totalLevels =
+    overall.totalLevels === null || overall.totalLevels === undefined ? null : Math.round(Number(overall.totalLevels));
+  const totalLevelsMax = finiteNum(overall.totalLevelsMax);
+  const gradeRaw = overall.grade === null || overall.grade === undefined ? null : Number(overall.grade);
+  const grade = gradeRaw !== null && Number.isFinite(gradeRaw) ? Math.round(gradeRaw) : null;
+  // A summary with no levels at all carries no information worth printing.
+  if (totalLevels === null && grade === null) return null;
+  return {
+    totalLevels,
+    // The engine always supplies the maximum (required criteria × each criterion's
+    // maximum level), so this is defensive only. 32 — four criteria of 8 — is the
+    // MYP default the engine itself falls back to.
+    totalLevelsMax: totalLevelsMax !== null && totalLevelsMax > 0 ? Math.round(totalLevelsMax) : 32,
+    grade,
+    status: cleanStr(overall.status, 32) ?? "incomplete",
+    statusLabel: cleanStr(overall.statusLabel, 48) ?? "Incomplete",
+    note: cleanStr(overall.note, 300) ?? "",
+    levelSource: cleanStr(overall.levelSource, 300) ?? "",
+  };
 }
 
 export type CandidatePaperLoadError =
@@ -1291,7 +1433,19 @@ export async function loadCandidatePaperForAttempt(
             marksAwarded: criterion.marksAwarded,
             marksMax: criterion.marksMax,
             percent: criterion.percent,
+            // The engine's own achievement level. Printed as-is: this layer never
+            // converts marks to a level a second time.
+            level: criterion.level,
           })),
+          overall: {
+            totalLevels: result.totalLevels,
+            totalLevelsMax: result.totalLevelsMax,
+            grade: result.overallGrade,
+            status: result.gradeStatus,
+            statusLabel: result.gradeStatusLabel,
+            note: result.gradeNote,
+            levelSource: result.levelSource,
+          },
         }
       : null,
     savedAnswers: (answersRes.data ?? []) as {
