@@ -1473,6 +1473,24 @@ await check("the administering school's own logo is embedded, including a WebP a
   assert.equal(noLogoOps.fnArray.filter((fn) => fn === 85 || fn === 82).length, 0, "no logo must be drawn when the organization has none");
 });
 
+await check("a WebP school logo still embeds when the native transcoder is unavailable", async () => {
+  // Serverless hosts can prune native modules from the bundle. If `sharp` were the
+  // only WebP route, the school logo would silently vanish from official student
+  // records -- the exact regression this work fixes. The committed PNG companion
+  // (scripts/build-logo-pngs.mjs) must carry it instead.
+  const { join } = await import("node:path");
+  const pngPath = join(process.cwd(), "public/brand/oak-international-school-logo.png");
+  const png = readFileSync(pngPath);
+  assert.equal(png.subarray(1, 4).toString("ascii"), "PNG", "a committed PNG companion must exist for the Oak logo");
+
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: "/brand/oak-international-school-logo.webp" });
+  // Resolve the companion directly: this is the path taken when transcoding fails.
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const doc = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false }).promise;
+  const ops = await (await doc.getPage(1)).getOperatorList();
+  assert(ops.fnArray.filter((fn) => fn === 85 || fn === 82).length >= 1, "logo must embed from the WebP/Png pair");
+});
+
 await check("logo asset resolution rejects path traversal and non-app URLs", async () => {
   for (const hostile of ["/../.env", "/brand/../../package.json", "//evil.example/logo.png", "brand/logo.png"]) {
     const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: hostile });

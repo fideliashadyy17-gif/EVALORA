@@ -563,6 +563,19 @@ function sniffRaster(bytes: Uint8Array): "png" | "jpeg" | "webp" | "other" {
  * read from disk. Only a strictly-relative path is accepted and traversal is
  * rejected, so a crafted logo_url can never read outside `public/`.
  */
+/**
+ * The committed PNG companion for a WebP logo, when one exists.
+ *
+ * `scripts/build-logo-pngs.mjs` writes `<name>.png` beside every `<name>.webp`
+ * in `public/brand`. Embedding that directly keeps the school logo deterministic
+ * on hosts where the native `sharp` module is unavailable, instead of quietly
+ * dropping it from an official student record.
+ */
+function pngCompanionPath(src: string): string | null {
+  if (!/\.webp$/i.test(src)) return null;
+  return src.replace(/\.webp$/i, ".png");
+}
+
 async function readPublicAsset(relativePath: string): Promise<Uint8Array | null> {
   let path: string;
   try {
@@ -687,13 +700,21 @@ async function tryEmbedImage(
     let kind = sniffRaster(bytes);
     let raster: Uint8Array = bytes;
     if (kind === "webp" || kind === "other") {
-      const png = await transcodeToPng(bytes);
+      // Prefer a committed PNG sibling: no native module, no per-request cost,
+      // and a guaranteed result on serverless hosts.
+      const companion = pngCompanionPath(src);
+      const fromCompanion = companion ? await readPublicAsset(companion) : null;
+      const png = fromCompanion ?? (await transcodeToPng(bytes));
       if (!png) {
         cache.set(src, null);
         return null;
       }
       raster = png;
-      kind = "png";
+      kind = sniffRaster(png) === "png" ? "png" : "other";
+      if (kind !== "png") {
+        cache.set(src, null);
+        return null;
+      }
     }
 
     const embedded =
