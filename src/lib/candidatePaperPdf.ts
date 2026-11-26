@@ -1182,7 +1182,7 @@ class PaperLayout {
     // for a final award, and a paper with no grade says why in the same place.
     const statusSuffix =
       overall.grade !== null && overall.status !== "final" ? `  ·  ${overall.statusLabel}` : "";
-    let suffixX = xMarks + this.fontBold.widthOfTextAtSize(sanitizeForPdfFont(gradeText), 10.5);
+    const suffixX = xMarks + this.fontBold.widthOfTextAtSize(sanitizeForPdfFont(gradeText), 10.5);
     if (statusSuffix) {
       this.page.drawText(sanitizeForPdfFont(statusSuffix), {
         x: suffixX,

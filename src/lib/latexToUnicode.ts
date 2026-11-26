@@ -239,7 +239,7 @@ const MATRIX_LIKE = new Set(["matrix", "pmatrix", "bmatrix", "vmatrix", "Vmatrix
  */
 export function latexToUnicode(input: string): string {
   if (!input) return "";
-  let s = stripDelimiters(input);
+  const s = stripDelimiters(input);
 
   const out: string[] = [];
   let i = 0;
@@ -508,7 +508,7 @@ function toBlackboard(text: string): string {
 
 /** Remove `$...$`, `$$...$$`, `\(...\)`, `\[...\]` wrappers. */
 function stripDelimiters(s: string): string {
-  let t = s.trim();
+  const t = s.trim();
   if (t.startsWith("$$") && t.endsWith("$$") && t.length > 4) return t.slice(2, -2).trim();
   if (t.startsWith("$") && t.endsWith("$") && t.length > 2) return t.slice(1, -1).trim();
   if (t.startsWith("\\(") && t.endsWith("\\)")) return t.slice(2, -2).trim();
@@ -559,7 +559,7 @@ function superscriptSubscripts(text: string): string {
  * guarantee no command name is preceded by a stray backslash.
  */
 function tidy(s: string): string {
-  let t = s
+  const t = s
     .replace(/[\u200b\u200c\u200d\ufeff]/g, "")
     .replace(/\u00a0/g, " ")
     .replace(/[ \t]{2,}/g, " ")
