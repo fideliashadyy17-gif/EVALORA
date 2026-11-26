@@ -256,3 +256,104 @@ The 213-vs-215 question is closed by the row-level detail: 216 moderation rows
 map 1:1 onto 216 distinct answers with zero duplicates, and the 213 headline was
 the count of responses *this audit* approved, not the count of decisions in the
 table. No approvals were duplicated to close the gap.
+
+## 9. MYP4 Q7 answer key — fixed at source (2026-11-25)
+
+Section 6 item 1 recorded the stored key as C with "fix at source before re-use"
+still outstanding. That is now done.
+
+### 9.1 What was actually wrong
+
+Nobody had mis-keyed the paper. `scripts/exam-import/version_c_g9.py:154` has
+`answer="B"`, the prompt's own explanation derives B, and the official Grade 9
+Version C scheme says B. A correction migration had **already been written** —
+`20261119100000_version_c_audit_corrections_and_randomization.sql`, step 5:
+
+```sql
+update question_options set is_correct = (label = 'B')
+ where question_id = 'cd000000-0000-4000-8000-000000001007';
+```
+
+It never ran. Its version number `20261119100000` is **also** used by
+`20261119100000_myp4_grade9_first_term_summative_version_d.sql`. Supabase keeps
+one history row per version, so the Version D paper insert won the slot and the
+correction was silently dropped. Confirmed against
+`supabase_migrations.schema_migrations`: only
+`20261119100000 myp4_grade9_first_term_summative_version_d` is recorded — the
+audit-corrections file appears nowhere.
+
+The other four changes in that file reached production by different routes, which
+is why the loss went unnoticed:
+
+| Step | Change | Landed via |
+|---|---|---|
+| 1 | Q15 = 4 points | `20261118120000_myp4_q15_18_matching_exercise` |
+| 2 | Q15 config, marks, rows | same migration |
+| 3 | Q1 prompt cleanup (74 chars) | `20261118054730_myp4_grade9_statistics_version_c` |
+| 4 | Randomisation on both exams | `20261118062311_version_c_formula_sheets_and_activation` |
+| 5 | **Q7 key C → B** | **never applied** |
+
+### 9.2 The fix
+
+`supabase/migrations/20261126210000_myp4_version_c_q7_answer_key_correction.sql`,
+applied live as `20261126155557 myp4_version_c_q7_answer_key_correction`.
+
+`question_options_assessment_source_guard` freezes question content once any
+attempt or live session references the paper (55000
+`ASSESSMENT_SOURCE_IMMUTABLE`), so the one targeted update must run with that
+trigger lifted. The guard is **disarmed for its own transaction and re-enabled
+before commit** — the freeze itself is unchanged and no other statement escapes it.
+
+Narrow justifications, all verified rather than assumed:
+
+- `is_correct` is marking metadata. It is not part of any attempt snapshot, and
+  no recorded `exam_answers.is_correct` / `points_awarded` reads it retroactively.
+- The question belongs to exactly one quiz
+  (`cd000000-0000-4000-8000-000000000001`) and one exam
+  (`cd000000-0000-4000-8000-000000000002`).
+- The correction is C → B only. It removes a wrong key; it cannot invalidate a
+  correct one.
+
+The migration re-verifies its own preconditions (`stored key must be C, else
+refuse to guess`; exactly 4 options; exactly one option labelled B) and its own
+postconditions (a unique correct key at B) inside the transaction, and writes an
+`audit_logs` row `assessment.answer_key_corrected` with `previous_key`,
+`new_key`, `correct_option_id` and the full rationale.
+
+### 9.3 Verification after the fix
+
+| Check | Result |
+|---|---|
+| Stored correct option for Q7 | **B** (was C) |
+| Number of correct options | 1 (uniqueness preserved) |
+| `question_options_assessment_source_guard` | still `O` = enabled |
+| Fresh update attempt through the guard | refused, `55000 assessment content is immutable` |
+| Q7 answer rows agreeing with key B | **42 of 42, 0 inconsistent** |
+| Q7 marks awarded | 21.00 across 42 answers |
+| `audit_logs` correction row | `C->B` recorded |
+| MYP4 attempts / total | 52 / 1,317.00 — unchanged |
+| MYP5 attempts / total | 55 / 1,047.00 — unchanged |
+| `grading_moderation` rows | 216 — unchanged |
+| Publication | both still `paused`, `grades_published_at` NULL |
+
+The 42 responses were already reconciled by this audit (21 who chose B credited;
+14 who chose C not), so **no marks were adjusted by this migration** — and the
+check that no answer contradicts key B returns 0, which proves the reconciliation
+and the corrected key now agree.
+
+### 9.4 Why it can't silently vanish again
+
+- The duplicate version is resolved: the audit-corrections file is renamed to
+  `20261126120000_...`, which sorts after the migrations it depends on and before
+  the Q7 correction. Its step 5 is replaced by a pointer to the dedicated
+  migration, because an unconditional update there would hit the guard and abort
+  on any database that already has attempts — the same class of failure again.
+- `scripts/test-grade9-q7-boxplot.mjs` now fails if (a) the generator stops
+  declaring B, (b) the correction migration stops shipping the C → B update or
+  stops scoping the trigger lift, or (c) **any two versioned migrations in
+  `supabase/migrations/` share a version number**.
+
+Residual note: production records the correction under its executed timestamp
+(`20261126155557`), not the repo's `20261126210000`. Existing databases are
+therefore correct and idempotent (re-running matches on B and returns early);
+only a brand-new database replays it from the repo file.
