@@ -18,6 +18,7 @@ import {
   type MypPaperQuestion,
   type MypResult,
   type MypRules,
+  type MypScoreAdjustment,
   type MypYear,
 } from "./myp";
 
@@ -531,6 +532,36 @@ export async function loadMypResults(
     answersByAttempt.set(answer.attempt_id, list);
   }
 
+  // Silently load verified score adjustment items (gracefully [] if none/unmigrated)
+  interface AdjustmentItemRow {
+    attempt_id: string;
+    category_type: string;
+    category_key: string;
+    points_applied: number | string;
+  }
+  const adjustmentRows: AdjustmentItemRow[] = [];
+  for (const group of chunks(attemptIds, 150)) {
+    adjustmentRows.push(
+      ...(await safeRows<AdjustmentItemRow>(
+        supabase
+          .from("exam_score_adjustment_items")
+          .select("attempt_id, category_type, category_key, points_applied")
+          .in("attempt_id", group)
+          .limit(8000),
+      )),
+    );
+  }
+  const adjustmentsByAttempt = new Map<string, MypScoreAdjustment[]>();
+  for (const row of adjustmentRows) {
+    const list = adjustmentsByAttempt.get(row.attempt_id) ?? [];
+    list.push({
+      categoryType: String(row.category_type ?? ""),
+      categoryKey: String(row.category_key ?? ""),
+      pointsApplied: Number(row.points_applied ?? 0),
+    });
+    adjustmentsByAttempt.set(row.attempt_id, list);
+  }
+
   // ── 4. Student identities (never inferred from a typed name) ──────────
   const studentIds = [
     ...new Set(
@@ -640,6 +671,7 @@ export async function loadMypResults(
         moderationStatus: answer.moderation_status,
       })),
       rules,
+      scoreAdjustments: adjustmentsByAttempt.get(attempt.id) ?? [],
     });
     results.push(result);
   }

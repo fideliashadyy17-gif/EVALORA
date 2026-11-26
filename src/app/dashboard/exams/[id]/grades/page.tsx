@@ -1,7 +1,9 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, ButtonLink, Card, DataTable, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { getEntitlement } from "@/lib/entitlements";
 import { CHANGE_TYPE_LABEL, MODERATION_LABEL, loadGradeHistory, loadModerationHistory } from "@/lib/grading";
+import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
@@ -42,10 +44,20 @@ export default async function ExamGradesPage({
     .maybeSingle();
   if (!exam) notFound();
 
-  const [history, moderation] = await Promise.all([
+  const [history, moderation, orgRealEntitlement, scoreAdjRes] = await Promise.all([
     loadGradeHistory(supabase, org.id, { examId: id, limit: 300 }),
     loadModerationHistory(supabase, org.id, { examId: id, limit: 300 }),
+    getEntitlement(supabase, org.id),
+    supabase
+      .from("exam_score_adjustments")
+      .select("id, category_label, points_requested, scope, reason, actor_email, actor_role, actor_console, students_affected_count, capped_students_count, total_points_added, created_at")
+      .eq("exam_id", id)
+      .eq("organization_id", org.id)
+      .order("created_at", { ascending: false })
+      .limit(100),
   ]);
+  const scoreAdjustmentEligible = isScoreAdjustmentPlanEligible(orgRealEntitlement);
+  const scoreAdjustmentBatches = scoreAdjRes.error ? [] : (scoreAdjRes.data ?? []);
 
   const published = Boolean((exam.settings as Record<string, unknown> | null)?.results_published);
   const adjustments = moderation.filter((m) => m.decision === "adjusted").length;
@@ -57,7 +69,16 @@ export default async function ExamGradesPage({
         eyebrow="Examinations · Immutable Grade Ledger"
         title="Grade history"
         subtitle={`${exam.title} · every change to a mark is appended, attributed and never rewritten.`}
-        action={<ButtonLink href={`/dashboard/exams/${id}`} variant="outline">Back to examination</ButtonLink>}
+        action={
+          <div className="flex flex-wrap gap-2">
+            {scoreAdjustmentEligible && (
+              <ButtonLink href={`/dashboard/exams/${id}/adjustments`} variant="outline">
+                Score adjustment
+              </ButtonLink>
+            )}
+            <ButtonLink href={`/dashboard/exams/${id}`} variant="outline">Back to examination</ButtonLink>
+          </div>
+        }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -154,6 +175,54 @@ export default async function ExamGradesPage({
           </div>
         )}
       </Card>
+
+      {(scoreAdjustmentEligible || scoreAdjustmentBatches.length > 0) && (
+        <Card className="mt-6 p-6">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                Controlled score adjustments
+              </h2>
+              <p className="mt-1 text-xs text-ink-soft">
+                Staff-only immutable audit log of Institution-plan score adjustments applied before final result validation.
+              </p>
+            </div>
+            {scoreAdjustmentEligible && (
+              <ButtonLink href={`/dashboard/exams/${id}/adjustments`} variant="outline">
+                Open score adjustment studio
+              </ButtonLink>
+            )}
+          </div>
+          {scoreAdjustmentBatches.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-soft">No score adjustments recorded on this examination.</p>
+          ) : (
+            <div className="mt-4">
+              <DataTable
+                head={["When", "Category", "Points", "Affected", "Actor", "Reason"]}
+                label="Controlled score adjustments"
+              >
+                {scoreAdjustmentBatches.map((row) => (
+                  <tr key={row.id} className="align-top">
+                    <td className="whitespace-nowrap text-ink-soft">{fmtDateTime(row.created_at)}</td>
+                    <td className="font-medium text-evergreen-950">{row.category_label}</td>
+                    <td className="whitespace-nowrap tabular-nums">
+                      +{Number(row.points_requested)} ({Number(row.total_points_added)} total)
+                    </td>
+                    <td className="whitespace-nowrap text-xs">
+                      {row.students_affected_count} student{row.students_affected_count === 1 ? "" : "s"}
+                      {Number(row.capped_students_count) > 0 ? ` (${row.capped_students_count} capped)` : ""}
+                    </td>
+                    <td className="text-xs text-ink-soft">
+                      {row.actor_email ?? "Staff"} ({row.actor_role})
+                    </td>
+                    <td className="max-w-[280px] text-xs text-ink-soft">{row.reason}</td>
+                  </tr>
+                ))}
+              </DataTable>
+            </div>
+          )}
+        </Card>
+      )}
     </>
   );
 }

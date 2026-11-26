@@ -1,5 +1,5 @@
 // Platform-wide route, table-accessibility, navigation, and bug-regression suite
-// covering all 150 Next.js App Router page.tsx routes across Super Admin (/admin),
+// covering all 176 Next.js App Router page.tsx routes across Super Admin (/admin),
 // Organization Workspace (/dashboard), Student & Candidate Assessment flows,
 // Multi-tenant Portals, Live Screens, and Public/Auth surfaces.
 
@@ -30,12 +30,15 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 173 page.tsx routes (88 admin, 49 dashboard, 36 public/auth/student/portal)", () => {
-  assert.equal(adminPages.length, 88, `expected 88 admin pages, found ${adminPages.length}`);
-  // 49 = 46 + /dashboard/monitoring + /dashboard/exams/links + /dashboard/exams/[id]/hints.
-  assert.equal(dashboardPages.length, 49, `expected 49 dashboard pages, found ${dashboardPages.length}`);
+check("route inventory accounts for all 176 page.tsx routes (89 admin, 51 dashboard, 36 public/auth/student/portal)", () => {
+  assert.equal(adminPages.length, 89, `expected 89 admin pages, found ${adminPages.length}`);
+  // 51 = 46 + /dashboard/monitoring + /dashboard/exams/links + /dashboard/exams/[id]/hints
+  //      + /dashboard/exams/[id]/adjustments (controlled score adjustments)
+  //      + /dashboard/score-adjustments (the single workspace Score Adjustment studio;
+  //        the per-exam route above delegates to it).
+  assert.equal(dashboardPages.length, 51, `expected 51 dashboard pages, found ${dashboardPages.length}`);
   assert.equal(otherPages.length, 36, `expected 36 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 173);
+  assert.equal(allPages.length, 176);
 });
 
 for (const pagePath of adminPages) {
@@ -125,4 +128,4 @@ check("Student & candidate entry surfaces expose <main> landmarks and cross-link
   assert.ok(!pricingSrc.includes("<table"), "pricing/page.tsx should use <DataTable>");
 });
 
-console.log(`✓ platform redesign & 150-route audit — ${passed} checks passed`);
+console.log(`✓ platform redesign & 176-route audit — ${passed} checks passed`);

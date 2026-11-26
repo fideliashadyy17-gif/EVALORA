@@ -8,6 +8,8 @@ import { Badge, Button, Card, DataTable, EmptyState, Field, Input, PageTitle, Se
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { getEntitlement } from "@/lib/entitlements";
+import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import { isOperationalRole } from "@/lib/navAccess";
 import {
   collectFilterOptions,
@@ -93,10 +95,11 @@ export default async function ResultsManagementPage({
   const sp = await searchParams;
   if (!isOperationalRole(org.role)) redirect("/student");
 
-  const { canView, isManager, canManageLinks } = await canOperateMany(ctx, org.id, {
+  const { canView, isManager, canManageLinks, canGrade } = await canOperateMany(ctx, org.id, {
     canView: { permission: "results.view", module: "exam_results" },
     isManager: { permission: "results.publish" },
     canManageLinks: { permission: "candidate_links.edit", module: "exam_share_codes" },
+    canGrade: { permission: "grading.edit", module: "exam_results" },
   });
   if (!canView) redirect("/dashboard?e=forbidden");
   const supabase = await createClient();
@@ -105,6 +108,8 @@ export default async function ResultsManagementPage({
   // without touching any results, links or examination data.
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "exam_results", "/dashboard/results?e=module");
+  const orgRealEntitlement = await getEntitlement(supabase, org.id);
+  const scoreAdjustmentEligible = isScoreAdjustmentPlanEligible(orgRealEntitlement);
 
   const { data: rawExams, error: examsError } = await supabase
     .from("exams")
@@ -587,6 +592,11 @@ export default async function ResultsManagementPage({
                     <Link href={`/dashboard/exams/${exam.id}`} className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
                       Marking queue
                     </Link>
+                    {scoreAdjustmentEligible && canGrade && (
+                      <Link href={`/dashboard/exams/${exam.id}/adjustments`} className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
+                        Score adjustment
+                      </Link>
+                    )}
                     <Link href={`/dashboard/reports/exam/${exam.id}`} className="rounded-lg border border-evergreen-900/20 px-3 py-1.5 text-xs font-semibold text-evergreen-800 hover:bg-cream">
                       Candidate results
                     </Link>

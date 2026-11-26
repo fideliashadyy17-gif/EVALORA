@@ -1,6 +1,7 @@
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities } from "@/lib/capabilities";
+import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import Link from "next/link";
 import { isLearnerRole } from "@/lib/roleRouting";
 import { redirect } from "next/navigation";
@@ -17,6 +18,10 @@ export default async function DashboardLayout({
   const isFounder = org?.role === "school_founder";
   let orgLogoUrl: string | null = null;
   let modules: Record<string, boolean> | undefined;
+  // Score Adjustment is a plan capability, not a module key: resolve the
+  // organization's REAL entitlement (no ownerBypass) so the sidebar entry
+  // appears exactly where the page and the RPC would allow it.
+  let scoreAdjustmentEligible = false;
   if (org) {
     try {
       const { createClient } = await import("@/lib/supabase/server");
@@ -27,6 +32,7 @@ export default async function DashboardLayout({
       ]);
       orgLogoUrl = (data?.logo_url as string | null) ?? null;
       modules = caps.entitlement.modules;
+      scoreAdjustmentEligible = isScoreAdjustmentPlanEligible(caps.entitlement);
     } catch {
       orgLogoUrl = orgLogoUrl ?? null;
       // Entitlement read failed: leave `modules` undefined (nav renders the
@@ -128,6 +134,7 @@ export default async function DashboardLayout({
         canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
         userName={ctx.profile.full_name || ctx.profile.email}
         modules={modules}
+        scoreAdjustmentEligible={scoreAdjustmentEligible}
       >
         {children}
       </DashboardChrome>

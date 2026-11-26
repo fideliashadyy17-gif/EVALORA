@@ -21,6 +21,8 @@ const eslintConfig = [
       "next-env.d.ts",
       "scripts/*.generated.js",
       ".tmp-test-sync/**",
+      ".tmp-test-pmw/**",
+      "/tmp/**",
     ],
   },
 ];

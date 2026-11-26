@@ -115,6 +115,20 @@ async function exec(name, st, single) {
  */
 async function fakeRpc(fn, args) {
   db.rpcCalls.push({fn, args});
+  if (fn === 'apply_graded_exam_answers') {
+    // Migration 20261125200000: one round trip persists the whole grading run
+    // and only fills answers that are still unmarked. Returns the row count.
+    if (db.failOn.exam_answers) return {data: null, error: {message: 'write failed'}};
+    let updated = 0;
+    for (const patch of args.p_updates ?? []) {
+      const row = db.answers.find((a) => a.id === patch.id);
+      if (!row || row.marked_by !== null) continue;
+      Object.assign(row, patch);
+      updated += 1;
+    }
+    db.writes.push({table: 'exam_answers', ids: (args.p_updates ?? []).map((u) => u.id), patch: {rpc: true}});
+    return {data: updated, error: null};
+  }
   if (fn !== 'exam_attempt_set_pause') return {data: null, error: {message: 'unknown rpc'}};
   const attempt = db.attempts.find((a) => a.id === args.p_attempt_id);
   if (!attempt || attempt.status !== 'in_progress') return {data: null, error: null};

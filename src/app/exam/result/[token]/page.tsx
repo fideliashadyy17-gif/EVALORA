@@ -245,6 +245,24 @@ export default async function ExamResultTokenPage({
           feedback: fb,
         };
       });
+
+      // Silently fold any verified pre-validation criterion adjustments into
+      // the criterion totals (strictly capped at each criterion's max).
+      // Zero adjustment/bonus metadata is ever shown to the candidate.
+      const { data: adjRows } = await admin
+        .from("exam_score_adjustment_items")
+        .select("category_type, category_key, points_applied")
+        .eq("attempt_id", attempt.id);
+      for (const adj of adjRows ?? []) {
+        if (adj.category_type === "myp_criterion") {
+          const code = String(adj.category_key ?? "").trim().toUpperCase();
+          const pts = Number(adj.points_applied ?? 0);
+          if (criteriaTotals[code] && Number.isFinite(pts) && pts > 0) {
+            criteriaTotals[code].awarded =
+              Math.round(Math.min(criteriaTotals[code].max, criteriaTotals[code].awarded + pts) * 100) / 100;
+          }
+        }
+      }
     } catch {
       questionsBreakdown = [];
     }

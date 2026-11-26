@@ -502,20 +502,33 @@ function cleanText(value: unknown): string | null {
   return trimmed.length ? trimmed : null;
 }
 
+export interface MypScoreAdjustment {
+  categoryType: string;
+  categoryKey: string;
+  pointsApplied: number;
+}
+
 /**
  * Build the criterion and overall result for one attempt.
  *
  * The caller supplies the paper (every question in the examination's quiz), the
  * answers that exist, and the configured rules. Answers for questions that are
  * not on the paper are ignored rather than trusted.
+ *
+ * Optional `scoreAdjustments` (Institution-plan pre-validation adjustments) are
+ * silently folded into criterion marks (clamped to `marksMax`) and overall exam
+ * marks (clamped to paper `marksMax`), automatically updating achievement levels
+ * and overall MYP grades without surfacing any bonus or adjustment label.
  */
 export function buildMypResult(args: {
   attempt: MypAttemptInput;
   paper: MypPaperQuestion[];
   answers: MypAnswer[];
   rules: MypRules;
+  scoreAdjustments?: MypScoreAdjustment[];
 }): MypResult {
   const { attempt, rules } = args;
+  const scoreAdjustments = args.scoreAdjustments ?? [];
   const final = attemptIsFinal(attempt.attemptStatus, attempt.submittedAt);
 
   const answerByQuestion = new Map<string, MypAnswer>();
@@ -544,6 +557,7 @@ export function buildMypResult(args: {
     .filter((code): code is string => Boolean(code));
 
   const criteriaConfig = criteriaForPaper(rules.criteria ?? [], paperCodes);
+  let criterionAdjustmentsApplied = 0;
 
   const criteria: CriterionResult[] = criteriaConfig.map((config) => {
     const questions = paper.filter((question) => criterionMarks(question, config.code) > 0);
@@ -622,6 +636,25 @@ export function buildMypResult(args: {
     else if (final && pendingCount === 0) status = "assessed";
     else if (markedCount > 0 || zeroFilledCount > 0) status = "partially_marked";
     else status = "pending_marking";
+
+    // Silently fold any verified pre-validation criterion score adjustment into
+    // assessed criteria, strictly capped at the criterion's configured maximum.
+    if (status === "assessed" && scoreAdjustments.length > 0) {
+      const requestedDelta = scoreAdjustments
+        .filter(
+          (adj) =>
+            adj.categoryType === "myp_criterion" &&
+            normalizeCriterion(adj.categoryKey) === config.code &&
+            Number.isFinite(Number(adj.pointsApplied)) &&
+            Number(adj.pointsApplied) > 0,
+        )
+        .reduce((sum, adj) => sum + Number(adj.pointsApplied), 0);
+      if (requestedDelta > 0) {
+        const appliedDelta = round(Math.max(0, Math.min(marksMax - marksAwarded, requestedDelta)));
+        marksAwarded = round(marksAwarded + appliedDelta);
+        criterionAdjustmentsApplied = round(criterionAdjustmentsApplied + appliedDelta);
+      }
+    }
 
     const percent = status === "not_assessed" ? null : pct(marksAwarded, marksMax);
     const level = status === "assessed" && percent !== null ? levelFromPercent(percent, rules.levelBoundaries) : null;
@@ -715,7 +748,19 @@ export function buildMypResult(args: {
     }
   }
   const marksMax = round(marksMaxRaw);
-  const marksAwarded = round(marksAwardedRaw);
+  const nonCriterionAdjustments = final && scoreAdjustments.length > 0
+    ? scoreAdjustments
+        .filter(
+          (adj) =>
+            adj.categoryType !== "myp_criterion" &&
+            Number.isFinite(Number(adj.pointsApplied)) &&
+            Number(adj.pointsApplied) > 0,
+        )
+        .reduce((sum, adj) => sum + Number(adj.pointsApplied), 0)
+    : 0;
+  const marksAwarded = round(
+    Math.max(0, Math.min(marksMax, marksAwardedRaw + criterionAdjustmentsApplied + nonCriterionAdjustments)),
+  );
   const percent = pct(marksAwarded, marksMax);
 
   const complete =

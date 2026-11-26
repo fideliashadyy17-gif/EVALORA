@@ -572,6 +572,7 @@ export const es = {
     durationLimits: "Duración y límites de tiempo",
     supervision: "Monitoreo y supervisión en vivo",
     markingGrading: "Corrección y calificación",
+    scoreAdjustments: "Ajuste de puntuaciones (Institución)",
     resultsManagement: "Gestión de resultados y enlaces de candidatos",
     mypResults: "Resultados e informes MYP",
     reportsExports: "Informes y exportaciones",

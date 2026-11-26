@@ -9,6 +9,7 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { audit } from "@/lib/admin";
 import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
+import { computeAttemptScoreWithAdjustments } from "@/lib/scoreAdjustmentsServer";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "node:crypto";
@@ -533,7 +534,7 @@ export async function markAnswer(formData: FormData) {
   redirect(`${back}?mark_ok=1`);
 }
 
-/** Recompute an attempt's score from its answers; null means the write failed. */
+/** Recompute an attempt's score from its answers (preserving applied score adjustments); null means the write failed. */
 async function recomputeAttempt(
   supabase: Awaited<ReturnType<typeof createClient>>,
   attemptId: string,
@@ -544,7 +545,19 @@ async function recomputeAttempt(
     .select("points_awarded, is_correct")
     .eq("attempt_id", attemptId);
   if (error || !answers) return null;
-  const total = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const { data: attMeta } = await supabase
+    .from("exam_attempts")
+    .select("max_score")
+    .eq("id", attemptId)
+    .eq("exam_id", examId)
+    .maybeSingle();
+  const rawTotal = Math.round(answers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const total = await computeAttemptScoreWithAdjustments(
+    supabase,
+    attemptId,
+    rawTotal,
+    attMeta?.max_score !== null && attMeta?.max_score !== undefined ? Number(attMeta.max_score) : null,
+  );
   const allMarked = answers.length > 0 && answers.every((a) => a.is_correct !== null);
   const { data: updated, error: totalError } = await supabase
     .from("exam_attempts")
