@@ -1086,6 +1086,41 @@ check("Student-facing surfaces expose zero bonus/adjustment labels or UI", () =>
   }
 });
 
+check("apply RPC resolves permission for the actor, not the caller session", () => {
+  // Regression: applyScoreAdjustmentServer() calls the RPC with the service-role
+  // client, where auth.uid() is NULL. public.access_has_permission() opens with
+  // `if auth.uid() is distinct from p_user_id and not is_super_admin() then return
+  // false`, so every non-super staff member -- including an org admin holding
+  // grading.edit -- was refused with "unauthorized: grading.edit permission in
+  // target organization required", surfaced to the user as "You are not authorized
+  // to apply score adjustments to this examination."
+  const rpcMigration = readFileSync(
+    resolve(ROOT, "supabase/migrations/20261126200000_score_adjustment_actor_permission_resolution.sql"),
+    "utf8",
+  );
+  assert.ok(
+    rpcMigration.includes("create or replace function public.access_actor_has_permission"),
+    "an actor-scoped permission resolver must exist",
+  );
+  // The resolver must not be reachable by end users: it accepts any actor id.
+  assert.ok(
+    /revoke all on function public\.access_actor_has_permission[^;]*from public, anon, authenticated/i.test(rpcMigration),
+    "the actor-scoped resolver must not be executable by authenticated/anon",
+  );
+  assert.ok(
+    /grant execute on function public\.access_actor_has_permission[^;]*to service_role/i.test(rpcMigration),
+    "only service_role may execute the actor-scoped resolver",
+  );
+  // The RPC definition in the repository must target the actor-scoped resolver.
+  const baseMigration = readFileSync(
+    resolve(ROOT, "supabase/migrations/20261125230000_score_adjustments.sql"),
+    "utf8",
+  );
+  const repointed = rpcMigration.includes("access_actor_has_permission(p_actor_id, v_exam.organization_id") ||
+    !baseMigration.includes("access_has_permission(p_actor_id, v_exam.organization_id");
+  assert.ok(repointed, "apply_exam_score_adjustment must not use the caller-session resolver");
+});
+
 check("Centralized RBAC & tenant/plan enforcement wired across all Score Adjustment entry points", () => {
   const serverSvc = readFileSync(resolve(ROOT, "src/lib/scoreAdjustmentsServer.ts"), "utf8");
   assert.ok(serverSvc.includes("getEntitlement(admin, orgId)"), "Must resolve target org real entitlement without ownerBypass");
