@@ -70,6 +70,12 @@ export interface CandidatePaperOption {
   selectedByCandidate: boolean;
 }
 
+export interface CandidatePaperPartWorking {
+  text: string | null;
+  richDoc: RichDoc | null;
+  structuredWork: CandidatePaperStructuredWork;
+}
+
 export interface CandidatePaperAssessPart {
   label: string;
   prompt: string;
@@ -78,6 +84,7 @@ export interface CandidatePaperAssessPart {
   unit: string | null;
   strand: string | null;
   candidateResponse: string | null;
+  working?: CandidatePaperPartWorking | null;
 }
 
 export interface CandidatePaperMatchingItem {
@@ -290,6 +297,119 @@ export function buildCandidatePaperFilename(meta: {
   return `${stem || "EVALORA_Candidate_Exam"}.pdf`;
 }
 
+function stemLeafMatchesStarter(spec: StemLeafSpec, starter: StemLeafSpec | null): boolean {
+  if (!starter) return false;
+  const hasAnyLeaf = spec.rows.some(
+    (r) => r.leaves.trim() || (r.leftLeaves ?? "").trim() || (r.rightLeaves ?? "").trim(),
+  );
+  if (hasAnyLeaf) return false;
+  if (spec.rows.length !== starter.rows.length) return false;
+  return spec.rows.every(
+    (row, i) =>
+      row.stem.trim() === (starter.rows[i]?.stem ?? "").trim() &&
+      row.leaves.trim() === (starter.rows[i]?.leaves ?? "").trim() &&
+      (row.leftLeaves ?? "").trim() === (starter.rows[i]?.leftLeaves ?? "").trim() &&
+      (row.rightLeaves ?? "").trim() === (starter.rows[i]?.rightLeaves ?? "").trim(),
+  );
+}
+
+function extractStructuredWorkFromPayload(
+  payload: Record<string, unknown>,
+  starterStemLeaf: StemLeafSpec | null = null,
+): CandidatePaperStructuredWork {
+  const work: CandidatePaperStructuredWork = {};
+  if (payload.graph) {
+    const spec = normaliseGraphSpec(payload.graph);
+    if (graphSpecHasWork(spec)) work.graph = spec;
+  }
+  if (payload.geometry) {
+    const spec = normaliseGeometrySpec(payload.geometry);
+    if (geometrySpecHasWork(spec)) work.geometry = spec;
+  }
+  if (payload.statistics) {
+    const spec = normaliseStatsSpec(payload.statistics);
+    if (statsSpecHasWork(spec)) work.statistics = spec;
+  }
+  if (payload.data_table) {
+    const spec = normaliseDataTableSpec(payload.data_table);
+    if (dataTableHasWork(spec)) work.dataTable = spec;
+  }
+  if (payload.stem_leaf) {
+    const spec = normaliseStemLeafSpec(payload.stem_leaf);
+    if (stemLeafHasWork(spec) && !stemLeafMatchesStarter(spec, starterStemLeaf)) {
+      work.stemLeaf = spec;
+    }
+  }
+  if (payload.venn) {
+    const spec = normaliseVennSpec(payload.venn);
+    if (vennSpecHasWork(spec)) work.venn = spec;
+  }
+  if (payload.probability_tree) {
+    const spec = normaliseProbabilityTreeSpec(payload.probability_tree);
+    if (probabilityTreeHasWork(spec)) work.probabilityTree = spec;
+  }
+  return work;
+}
+
+function hasAnyStructuredWork(work: CandidatePaperStructuredWork): boolean {
+  return Boolean(
+    work.graph ||
+    work.geometry ||
+    work.statistics ||
+    work.dataTable ||
+    work.stemLeaf ||
+    work.venn ||
+    work.probabilityTree,
+  );
+}
+
+/**
+ * Extract per-part working payload (which in EVALORA can be a plain string, a
+ * bare TipTap RichDoc, or a full nested response workspace object carrying
+ * `{ text, doc, data_table, graph, statistics, stem_leaf, venn, probability_tree, geometry }`).
+ * Returns `null` when only empty starter scaffolding is present.
+ */
+function extractPartWorking(
+  payload: unknown,
+  starterStemLeaf: StemLeafSpec | null = null,
+): CandidatePaperPartWorking | null {
+  if (typeof payload === "string") {
+    const trimmed = payload.trim();
+    return trimmed ? { text: trimmed, richDoc: null, structuredWork: {} } : null;
+  }
+  if (!isRecord(payload)) return null;
+
+  // Bare TipTap RichDoc
+  if (payload.type === "doc") {
+    const doc = payload as unknown as RichDoc;
+    if (docIsEmpty(doc)) return null;
+    const plain = docToPlainText(doc).trim();
+    return { text: plain || null, richDoc: doc, structuredWork: {} };
+  }
+
+  // Full nested workspace payload (`AnswerResponseView` shape)
+  let text: string | null = null;
+  if (payload.value !== undefined && payload.value !== null && String(payload.value).trim() !== "") {
+    text = String(payload.value).trim();
+  }
+  if (typeof payload.text === "string" && payload.text.trim()) {
+    text = text ? `${text}\n${payload.text.trim()}` : payload.text.trim();
+  }
+  let richDoc: RichDoc | null = null;
+  if (isRecord(payload.doc) && payload.doc.type === "doc" && !docIsEmpty(payload.doc as unknown as RichDoc)) {
+    richDoc = payload.doc as unknown as RichDoc;
+    if (!text) {
+      const plain = docToPlainText(richDoc).trim();
+      if (plain) text = plain;
+    }
+  }
+  const structuredWork = extractStructuredWorkFromPayload(payload, starterStemLeaf);
+  if (!text && !richDoc && !hasAnyStructuredWork(structuredWork)) {
+    return null;
+  }
+  return { text, richDoc, structuredWork };
+}
+
 /**
  * Extract readable text from an arbitrary saved answer payload while preserving
  * structured workspaces so nothing submitted by the candidate is lost.
@@ -301,7 +421,6 @@ function buildCandidateAnswer(args: {
   rawAnswer: Record<string, unknown> | null;
 }): CandidatePaperAnswer {
   const { questionType, config, publicOptions, rawAnswer } = args;
-  const answered = answerIsPresent(rawAnswer);
 
   const selectedOptions: { letter: string; label: string }[] = [];
   let textResponse: string | null = null;
@@ -309,21 +428,29 @@ function buildCandidateAnswer(args: {
   let workingText: string | null = null;
   const matchingPairs: CandidatePaperMatchingItem[] = [];
   const orderedItems: string[] = [];
-  const structuredWork: CandidatePaperStructuredWork = {};
+  let structuredWork: CandidatePaperStructuredWork = {};
   const fallbackNotes: string[] = [];
 
   // Multi-part questions: ALWAYS expose the question's public parts (labels,
   // prompts, marks, units — NEVER answer keys or hints) aligned with the
-  // candidate's typed responses.
+  // candidate's typed responses and optional per-part working workspaces.
   const pubParts = questionType === "assess_parts"
     ? publicAssessParts(assessPartsFromConfig(config))
     : [];
   const rawPartsMap = rawAnswer && isRecord(rawAnswer.parts) ? rawAnswer.parts : {};
+  const rawWorkingMap = rawAnswer && isRecord(rawAnswer.working) ? rawAnswer.working : {};
+
+  const starterStemLeaf =
+    isRecord(config.response_stem_leaf) && isRecord(config.response_stem_leaf.starter)
+      ? normaliseStemLeafSpec(config.response_stem_leaf.starter)
+      : null;
+
   const parts: CandidatePaperAssessPart[] = pubParts.map((part) => {
     const val = rawPartsMap[part.id];
     let resp: string | null = null;
     if (typeof val === "string" && val.trim()) resp = val.trim();
     else if (typeof val === "number" && Number.isFinite(val)) resp = String(val);
+    const partWorking = extractPartWorking(rawWorkingMap[part.id], starterStemLeaf);
     return {
       label: part.label,
       prompt: part.prompt,
@@ -332,16 +459,22 @@ function buildCandidateAnswer(args: {
       unit: part.unit ?? null,
       strand: part.strand ?? null,
       candidateResponse: resp,
+      ...(partWorking ? { working: partWorking } : {}),
     };
   });
 
-  // Also preserve any unexpected extra part keys submitted by the candidate that
-  // are not in `pubParts` (defensive against older question revisions).
+  // Also preserve any unexpected extra part or working keys submitted by the
+  // candidate that are not in `pubParts` (defensive against older question revisions).
   const knownPartIds = new Set(pubParts.map((p) => p.id));
-  for (const [k, v] of Object.entries(rawPartsMap)) {
-    if (knownPartIds.has(k)) continue;
+  const extraPartIds = [
+    ...Object.keys(rawPartsMap),
+    ...(questionType === "assess_parts" ? Object.keys(rawWorkingMap) : []),
+  ].filter((id, idx, arr) => !knownPartIds.has(id) && arr.indexOf(id) === idx);
+  for (const k of extraPartIds) {
+    const v = rawPartsMap[k];
     const strVal = typeof v === "string" ? v.trim() : typeof v === "number" && Number.isFinite(v) ? String(v) : "";
-    if (strVal) {
+    const partWorking = questionType === "assess_parts" ? extractPartWorking(rawWorkingMap[k], starterStemLeaf) : null;
+    if (strVal || partWorking) {
       parts.push({
         label: `(${k})`,
         prompt: "",
@@ -349,10 +482,14 @@ function buildCandidateAnswer(args: {
         points: 0,
         unit: null,
         strand: null,
-        candidateResponse: strVal,
+        candidateResponse: strVal || null,
+        ...(partWorking ? { working: partWorking } : {}),
       });
     }
   }
+
+  const hasPartEvidence = parts.some((p) => Boolean(p.candidateResponse || p.working));
+  const answered = answerIsPresent(rawAnswer) || hasPartEvidence;
 
   if (!answered || !rawAnswer) {
     return {
@@ -411,22 +548,15 @@ function buildCandidateAnswer(args: {
     }
   }
 
-  // Working / showing steps (can be a string OR a per-part map `{ a: "...", b: "..." }`)
+  // Top-level working / showing steps (flat string, or non-assess_parts map)
   if (typeof rawAnswer.working === "string" && rawAnswer.working.trim()) {
     workingText = rawAnswer.working.trim();
-  } else if (isRecord(rawAnswer.working)) {
-    const partLabelById = new Map(pubParts.map((p) => [p.id, p.label]));
+  } else if (questionType !== "assess_parts" && isRecord(rawAnswer.working)) {
     const workingEntries: string[] = [];
     for (const [k, v] of Object.entries(rawAnswer.working)) {
-      let textVal = "";
-      if (typeof v === "string" && v.trim()) {
-        textVal = v.trim();
-      } else if (isRecord(v) && v.type === "doc" && !docIsEmpty(v as unknown as RichDoc)) {
-        textVal = docToPlainText(v as unknown as RichDoc).trim();
-      }
-      if (textVal) {
-        const lbl = partLabelById.get(k) ?? `(${k})`;
-        workingEntries.push(`${lbl} ${textVal}`);
+      const extracted = extractPartWorking(v);
+      if (extracted?.text) {
+        workingEntries.push(`(${k}) ${extracted.text}`);
       }
     }
     if (workingEntries.length) {
@@ -453,49 +583,14 @@ function buildCandidateAnswer(args: {
     }
   }
 
-  // Structured mathematical constructions submitted by the candidate
-  if (rawAnswer.graph) {
-    const spec = normaliseGraphSpec(rawAnswer.graph);
-    if (graphSpecHasWork(spec)) structuredWork.graph = spec;
-  }
-  if (rawAnswer.geometry) {
-    const spec = normaliseGeometrySpec(rawAnswer.geometry);
-    if (geometrySpecHasWork(spec)) structuredWork.geometry = spec;
-  }
-  if (rawAnswer.statistics) {
-    const spec = normaliseStatsSpec(rawAnswer.statistics);
-    if (statsSpecHasWork(spec)) structuredWork.statistics = spec;
-  }
-  if (rawAnswer.data_table) {
-    const spec = normaliseDataTableSpec(rawAnswer.data_table);
-    if (dataTableHasWork(spec)) structuredWork.dataTable = spec;
-  }
-  if (rawAnswer.stem_leaf) {
-    const spec = normaliseStemLeafSpec(rawAnswer.stem_leaf);
-    if (stemLeafHasWork(spec)) structuredWork.stemLeaf = spec;
-  }
-  if (rawAnswer.venn) {
-    const spec = normaliseVennSpec(rawAnswer.venn);
-    if (vennSpecHasWork(spec)) structuredWork.venn = spec;
-  }
-  if (rawAnswer.probability_tree) {
-    const spec = normaliseProbabilityTreeSpec(rawAnswer.probability_tree);
-    if (probabilityTreeHasWork(spec)) structuredWork.probabilityTree = spec;
-  }
+  // Structured mathematical constructions submitted at the top level
+  structuredWork = extractStructuredWorkFromPayload(rawAnswer, starterStemLeaf);
 
   // Defensive check: if `answered` is true but none of the structured fields above
   // captured content, serialize any remaining non-metadata keys so we NEVER
   // silently drop a candidate's submitted work.
-  const hasStructured = Boolean(
-    structuredWork.graph ||
-    structuredWork.geometry ||
-    structuredWork.statistics ||
-    structuredWork.dataTable ||
-    structuredWork.stemLeaf ||
-    structuredWork.venn ||
-    structuredWork.probabilityTree,
-  );
-  const hasPartWork = parts.some((p) => Boolean(p.candidateResponse));
+  const hasStructured = hasAnyStructuredWork(structuredWork);
+  const hasPartWork = hasPartEvidence;
   if (
     !selectedOptions.length &&
     !textResponse &&

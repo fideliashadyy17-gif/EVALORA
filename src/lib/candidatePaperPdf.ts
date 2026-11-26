@@ -2903,18 +2903,45 @@ class PaperLayout {
             size: 9.0,
             lineHeight: 12.8,
             color: C_EVERGREEN_DARK,
-            gapAfter: 5,
+            gapAfter: part.working ? 3 : 5,
           });
         } else {
-          this.drawWrapped("No answer submitted.", {
+          this.drawWrapped(part.working ? "No typed answer (working shown below)." : "No answer submitted.", {
             x: innerX + 10,
             maxWidth: innerW - 10,
             font: this.fontItalic,
             size: 8.6,
             lineHeight: 12.2,
             color: C_SUBTLE,
-            gapAfter: 5,
+            gapAfter: part.working ? 3 : 5,
           });
+        }
+
+        if (part.working) {
+          this.drawWrapped(`Working shown for ${part.label}:`, {
+            x: innerX + 10,
+            maxWidth: innerW - 10,
+            font: this.fontBold,
+            size: 8.1,
+            lineHeight: 11.5,
+            color: C_MUTED,
+            gapAfter: 2,
+          });
+          if (part.working.richDoc) {
+            await this.drawRichDoc(part.working.richDoc, innerX + 14 - MARGIN_X, 8.8);
+          } else if (part.working.text) {
+            this.drawWrapped(formatProseWithMath(part.working.text), {
+              x: innerX + 14,
+              maxWidth: innerW - 14,
+              font: this.fontRegular,
+              size: 8.8,
+              lineHeight: 12.5,
+              color: C_INK,
+              gapAfter: 4,
+            });
+          }
+          await this.drawCandidateStructuredWork(part.working.structuredWork, innerX + 12, innerW - 12);
+          this.y -= 2;
         }
       }
 

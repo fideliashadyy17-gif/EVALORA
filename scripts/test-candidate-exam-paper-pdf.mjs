@@ -835,6 +835,23 @@ await check("Oak MYP4/5 real option content_doc, part-map working, **bold** clea
           paper_section: idx < 20 ? "A" : "B",
           myp_criterion: "C",
           question_number: idx + 1,
+          ...(idx === 1
+            ? {
+                response_stem_leaf: {
+                  starter: {
+                    version: 1,
+                    layout: "back_to_back",
+                    title: "UNTOUCHED_STARTER_SHOULD_NOT_PRINT",
+                    stemLabel: "Stem",
+                    leafLabel: "Leaf",
+                    leftLeafLabel: "Before",
+                    rightLeafLabel: "After",
+                    key: "",
+                    rows: [{ id: "r11", stem: "11", leaves: "", leftLeaves: "", rightLeaves: "" }],
+                  },
+                },
+              }
+            : {}),
           parts: [
             { id: "a", label: "(a)", prompt: "Frequency density", kind: "numeric", points: 1, answer: "1.5" },
             { id: "b", label: "(b)", prompt: "Class width", kind: "numeric", points: 2, answer: "15" },
@@ -845,13 +862,88 @@ await check("Oak MYP4/5 real option content_doc, part-map working, **bold** clea
     };
   });
 
-  const oakAnswers = oakStyleRows.map((row, idx) =>
-    idx % 3 === 0
-      ? { question_id: row.questions.id, answer: { option_id: `${row.questions.id}-c` }, points_awarded: 2 }
-      : idx % 6 === 1
-        ? { question_id: row.questions.id, answer: { parts: { a: "1.5", b: "15" }, working: { a: "15 / 10 = 1.5" } }, points_awarded: 3 }
-        : { question_id: row.questions.id, answer: { parts: { a: "1.5" }, working: {} }, points_awarded: 1 },
-  );
+  const oakAnswers = oakStyleRows.map((row, idx) => {
+    if (idx % 3 === 0) {
+      return { question_id: row.questions.id, answer: { option_id: `${row.questions.id}-c` }, points_awarded: 2 };
+    }
+    if (idx === 1) {
+      // Real Oak MYP4 C nested workspace inside `working[partId]`:
+      // - `a` has filled back-to-back stem-and-leaf plot + typed math working
+      // - `b` has ONLY an untouched blank starter stem-and-leaf (must NOT clutter PDF)
+      return {
+        question_id: row.questions.id,
+        answer: {
+          parts: { a: "1.5", b: "15" },
+          working: {
+            a: {
+              version: 1,
+              text: "15 / 10 = 1.5",
+              doc: { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "FD = 15 / 10 = 1.5" }] }] },
+              stem_leaf: {
+                version: 1,
+                layout: "back_to_back",
+                title: "Before and after broad-jump distances (cm)",
+                stemLabel: "Stem",
+                leafLabel: "Leaf",
+                leftLeafLabel: "Before",
+                rightLeafLabel: "After",
+                key: "Dual key: 5 | 11 | 8 means 115 cm before and 118 cm after",
+                rows: [
+                  { id: "r11", stem: "11", leaves: "", leftLeaves: "5,9,8", rightLeaves: "" },
+                  { id: "r12", stem: "12", leaves: "", leftLeaves: "8,2,5,4", rightLeaves: "9,8" },
+                  { id: "r13", stem: "13", leaves: "", leftLeaves: "1,5", rightLeaves: "6,3,9" },
+                ],
+              },
+            },
+            b: {
+              version: 1,
+              text: "",
+              doc: { type: "doc", content: [{ type: "paragraph" }] },
+              stem_leaf: {
+                version: 1,
+                layout: "back_to_back",
+                title: "UNTOUCHED_STARTER_SHOULD_NOT_PRINT",
+                stemLabel: "Stem",
+                leafLabel: "Leaf",
+                leftLeafLabel: "Before",
+                rightLeafLabel: "After",
+                key: "",
+                rows: [{ id: "r11", stem: "11", leaves: "", leftLeaves: "", rightLeaves: "" }],
+              },
+            },
+          },
+        },
+        points_awarded: 3,
+      };
+    }
+    if (idx === 2) {
+      // Real Oak MYP4 C case: empty `parts: {}`, student filled ONLY a data_table inside `working.b`
+      return {
+        question_id: row.questions.id,
+        answer: {
+          parts: {},
+          working: {
+            b: {
+              version: 1,
+              text: "",
+              doc: { type: "doc", content: [{ type: "paragraph" }] },
+              data_table: {
+                version: 1,
+                title: "Frequency Table Work",
+                columns: ["Interval", "Density"],
+                rows: [["0 <= t < 10", "1.5"], ["10 <= t < 25", "2.4"]],
+                rowHeaders: false,
+              },
+            },
+          },
+        },
+        points_awarded: 0,
+      };
+    }
+    return idx % 6 === 1
+      ? { question_id: row.questions.id, answer: { parts: { a: "1.5", b: "15" }, working: { a: "15 / 10 = 1.5" } }, points_awarded: 3 }
+      : { question_id: row.questions.id, answer: { parts: { a: "1.5" }, working: {} }, points_awarded: 1 };
+  });
 
   const t0 = performance.now();
   const data = candidatePaper.buildCandidatePaperData({
@@ -894,7 +986,12 @@ await check("Oak MYP4/5 real option content_doc, part-map working, **bold** clea
   // Option text must show "Body mass (in kg)" (NEVER raw "Selected: B. C" or "**quantitative")
   assert.ok(info.fullText.includes("Body mass (in kg)"));
   assert.equal(info.fullText.includes("**quantitative"), false, "Markdown ** must be cleaned");
-  assert.ok(info.fullText.includes("(a) 15 / 10 = 1.5"), "Part-map working must render cleanly");
+  assert.ok(info.fullText.includes("Working shown for (a):"), "Per-part working heading must render cleanly");
+  assert.ok(info.fullText.includes("FD = 15 / 10 = 1.5"), "Per-part rich-text working must render cleanly");
+  assert.ok(info.fullText.includes("Before and after broad-jump distances (cm)"), "Per-part back-to-back stem-and-leaf must render cleanly");
+  assert.equal(info.fullText.includes("UNTOUCHED_STARTER_SHOULD_NOT_PRINT"), false, "Empty starter stem-and-leaf must not clutter PDF");
+  assert.ok(info.fullText.includes("Frequency Table Work"), "Working-only data_table must render even when typed parts are empty");
+  assert.equal(data.questions[2].answer.answered, true, "Question with per-part working workspace only must count as answered");
   assert.equal(info.fullText.includes("CANARY_OAK_EXPL_"), false, "No explanation leaks");
 
   // Geometric clipping check across ALL pages
