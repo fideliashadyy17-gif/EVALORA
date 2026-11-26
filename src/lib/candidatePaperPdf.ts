@@ -7,6 +7,8 @@ import {
   rgb,
   type Color,
 } from "pdf-lib";
+import { readFile } from "node:fs/promises";
+import { join, resolve, sep } from "node:path";
 import { normaliseAssessDiagram, type AssessDiagramSpec } from "./assessDiagram";
 import { type RichDoc, type RichNode } from "./content";
 import { normaliseDataTableSpec, type DataTableSpec } from "./dataTableSpec";
@@ -510,6 +512,12 @@ function niceTicks(min: number, max: number, target = 6): number[] {
 
 const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2 MB
 const IMAGE_FETCH_TIMEOUT_MS = 2_500;
+/**
+ * Logos are printed at most ~34pt high, so ~4x that in pixels is already beyond
+ * print resolution. Downscaling keeps the PDF small and avoids embedding a
+ * multi-megapixel original.
+ */
+const MAX_LOGO_WIDTH_PX = 600;
 
 function isAllowedImageHost(hostname: string): boolean {
   const h = hostname.toLowerCase();
@@ -527,6 +535,99 @@ function isAllowedImageHost(hostname: string): boolean {
   return false;
 }
 
+/**
+ * Which raster the bytes actually are, decided from the magic number rather
+ * than from a Content-Type header or a file extension. An organization logo URL
+ * is user-supplied data, so trusting its extension is how a WebP gets handed to
+ * `embedPng` and silently disappears from the document.
+ */
+function sniffRaster(bytes: Uint8Array): "png" | "jpeg" | "webp" | "other" {
+  if (bytes.length >= 8 && bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return "png";
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpeg";
+  if (
+    bytes.length >= 12 &&
+    bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+    bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50
+  ) {
+    return "webp";
+  }
+  return "other";
+}
+
+/**
+ * Read a logo that lives in this application's own `public/` directory.
+ *
+ * Organization logos are commonly stored as a site-relative path
+ * (e.g. `/brand/oak-international-school-logo.webp`). The PDF engine runs on the
+ * server, where a relative path has no origin to resolve against, so it must be
+ * read from disk. Only a strictly-relative path is accepted and traversal is
+ * rejected, so a crafted logo_url can never read outside `public/`.
+ */
+/**
+ * The committed PNG companion for a WebP logo, when one exists.
+ *
+ * `scripts/build-logo-pngs.mjs` writes `<name>.png` beside every `<name>.webp`
+ * in `public/brand`. Embedding that directly keeps the school logo deterministic
+ * on hosts where the native `sharp` module is unavailable, instead of quietly
+ * dropping it from an official student record.
+ */
+function pngCompanionPath(src: string): string | null {
+  if (!/\.webp$/i.test(src)) return null;
+  return src.replace(/\.webp$/i, ".png");
+}
+
+async function readPublicAsset(relativePath: string): Promise<Uint8Array | null> {
+  let path: string;
+  try {
+    path = decodeURIComponent(relativePath);
+  } catch {
+    return null;
+  }
+  if (!path.startsWith("/") || path.startsWith("//")) return null;
+  if (path.includes("\0") || path.split("/").includes("..")) return null;
+  if (!/\.(png|jpe?g|webp)$/i.test(path)) return null;
+  const absolute = join(process.cwd(), "public", path.replace(/^\/+/, ""));
+  try {
+    const resolved = resolve(absolute);
+    const publicRoot = resolve(process.cwd(), "public");
+    if (resolved !== publicRoot && !resolved.startsWith(publicRoot + sep)) return null;
+    const bytes = await readFile(resolved);
+    if (!bytes.byteLength || bytes.byteLength > MAX_IMAGE_BYTES) return null;
+    return new Uint8Array(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decode any browser-supported raster (WebP in particular) into a raster
+ * `pdf-lib` can embed.
+ *
+ * `pdf-lib` only embeds PNG and JPEG. Organization logos are routinely uploaded
+ * or generated as WebP, which is why the school logo was missing from candidate
+ * papers entirely. `sharp` is already a project dependency (it backs the Next.js
+ * image optimizer), so it is used to transcode to PNG and to size the logo down
+ * to a print-appropriate resolution rather than embedding a 2560px original.
+ */
+async function transcodeToPng(
+  bytes: Uint8Array,
+  targetWidthPx = MAX_LOGO_WIDTH_PX,
+): Promise<Uint8Array | null> {
+  try {
+    const sharpModule = await import("sharp");
+    const sharp = sharpModule.default ?? (sharpModule as unknown as typeof sharpModule.default);
+    if (typeof sharp !== "function") return null;
+    const out = await sharp(Buffer.from(bytes))
+      .resize({ width: targetWidthPx, withoutEnlargement: true })
+      .png({ compressionLevel: 9 })
+      .toBuffer();
+    if (!out.byteLength || out.byteLength > MAX_IMAGE_BYTES) return null;
+    return new Uint8Array(out);
+  } catch {
+    return null;
+  }
+}
+
 async function tryEmbedImage(
   pdf: PDFDocument,
   src: string,
@@ -537,24 +638,21 @@ async function tryEmbedImage(
 
   try {
     let bytes: Uint8Array | null = null;
-    let isPng = false;
-    let isJpeg = false;
 
     if (src.startsWith("data:image/")) {
-      const m = src.match(/^data:image\/(png|jpe?g);base64,([A-Za-z0-9+/=\s]+)$/i);
+      // Base64 data URL — any supported image type is accepted and sniffed below.
+      const m = src.match(/^data:image\/[a-z0-9.+-]+;base64,([A-Za-z0-9+/=\s]+)$/i);
       if (!m) {
         cache.set(src, null);
         return null;
       }
-      isPng = m[1].toLowerCase() === "png";
-      isJpeg = !isPng;
-      const buf = Buffer.from(m[2].replace(/\s+/g, ""), "base64");
+      const buf = Buffer.from(m[1].replace(/\s+/g, ""), "base64");
       if (buf.byteLength === 0 || buf.byteLength > MAX_IMAGE_BYTES) {
         cache.set(src, null);
         return null;
       }
       bytes = new Uint8Array(buf);
-    } else if (src.startsWith("https://")) {
+    } else if (/^https:\/\//i.test(src)) {
       let parsed: URL;
       try {
         parsed = new URL(src);
@@ -574,13 +672,6 @@ async function tryEmbedImage(
           cache.set(src, null);
           return null;
         }
-        const ct = (res.headers.get("content-type") ?? "").toLowerCase();
-        if (ct.includes("png")) isPng = true;
-        else if (ct.includes("jpeg") || ct.includes("jpg")) isJpeg = true;
-        else {
-          cache.set(src, null);
-          return null;
-        }
         const ab = await res.arrayBuffer();
         if (ab.byteLength === 0 || ab.byteLength > MAX_IMAGE_BYTES) {
           cache.set(src, null);
@@ -590,6 +681,10 @@ async function tryEmbedImage(
       } finally {
         clearTimeout(timer);
       }
+    } else if (src.startsWith("/")) {
+      // Site-relative asset shipped with the application (the usual case for an
+      // organization logo: "/brand/oak-international-school-logo.webp").
+      bytes = await readPublicAsset(src);
     } else {
       cache.set(src, null);
       return null;
@@ -600,7 +695,30 @@ async function tryEmbedImage(
       return null;
     }
 
-    const embedded = isPng ? await pdf.embedPng(bytes) : isJpeg ? await pdf.embedJpg(bytes) : null;
+    // Decide the real format from the bytes, then transcode anything that is not
+    // already a PNG/JPEG into PNG.
+    let kind = sniffRaster(bytes);
+    let raster: Uint8Array = bytes;
+    if (kind === "webp" || kind === "other") {
+      // Prefer a committed PNG sibling: no native module, no per-request cost,
+      // and a guaranteed result on serverless hosts.
+      const companion = pngCompanionPath(src);
+      const fromCompanion = companion ? await readPublicAsset(companion) : null;
+      const png = fromCompanion ?? (await transcodeToPng(bytes));
+      if (!png) {
+        cache.set(src, null);
+        return null;
+      }
+      raster = png;
+      kind = sniffRaster(png) === "png" ? "png" : "other";
+      if (kind !== "png") {
+        cache.set(src, null);
+        return null;
+      }
+    }
+
+    const embedded =
+      kind === "png" ? await pdf.embedPng(raster) : kind === "jpeg" ? await pdf.embedJpg(raster) : null;
     cache.set(src, embedded);
     return embedded;
   } catch {
@@ -784,13 +902,15 @@ class PaperLayout {
 
     this.y = A4_H - 26;
 
-    // Try embedding organization logo cleanly on the right
+    // The school's own logo, top-right. This is the administering institution's
+    // mark from its organization record — never the EVALORA brand, which appears
+    // only as the small platform attribution below.
     let logoWidthReserved = 0;
     if (h.organizationLogoUrl) {
       const logo = await tryEmbedImage(this.pdf, h.organizationLogoUrl, this.imageCache);
       if (logo) {
-        const maxH = 34;
-        const maxW = 90;
+        const maxH = 40;
+        const maxW = 104;
         const scale = Math.min(maxW / logo.width, maxH / logo.height, 1);
         const w = logo.width * scale;
         const height = logo.height * scale;
@@ -804,17 +924,17 @@ class PaperLayout {
       }
     }
 
-    // EVALORA brand mark + Document Classification
-    this.page.drawText("EVALORA", {
+    // Document classification leads; the platform is attribution, not the subject.
+    this.page.drawText("CANDIDATE EXAMINATION PAPER", {
       x: MARGIN_X,
       y: this.y - 10,
-      size: 11,
+      size: 9.5,
       font: this.fontBold,
       color: C_EVERGREEN,
     });
-    const evaloraW = this.fontBold.widthOfTextAtSize("EVALORA", 11);
-    this.page.drawText("  |  CANDIDATE EXAMINATION PAPER", {
-      x: MARGIN_X + evaloraW,
+    const classificationW = this.fontBold.widthOfTextAtSize("CANDIDATE EXAMINATION PAPER", 9.5);
+    this.page.drawText("  |  OFFICIAL STUDENT RECORD", {
+      x: MARGIN_X + classificationW,
       y: this.y - 9.5,
       size: 7.5,
       font: this.fontBold,
@@ -959,6 +1079,119 @@ class PaperLayout {
       color: C_MUTED,
       gapAfter: 10,
     });
+  }
+
+  /* ─── Criterion-Level Results Summary ─────────────────────────────── */
+
+  /**
+   * The candidate's validated result, broken down by MYP criterion.
+   *
+   * Printed only when results are published AND the examination's marking
+   * records actually cover a criterion, so an unpublished or non-MYP paper can
+   * never show a fabricated breakdown. Marks come straight from the results
+   * engine — this method performs no scoring of its own.
+   */
+  drawCriterionResults(): void {
+    const h = this.header;
+    if (!h.resultsPublished || h.criteria.length === 0) return;
+
+    const title = "Validated Results by Criterion";
+    const cols = h.criteria;
+    const rowH = 17;
+    const headerH = 22;
+    const tableH = headerH + cols.length * rowH;
+    const totalH = tableH + 34;
+    this.ensure(totalH + 28);
+
+    const topY = this.y;
+    this.page.drawRectangle({
+      x: MARGIN_X,
+      y: topY - totalH,
+      width: CONTENT_W,
+      height: totalH,
+      color: C_CREAM,
+      borderColor: C_RULE,
+      borderWidth: 0.8,
+    });
+    this.page.drawRectangle({ x: MARGIN_X, y: topY - totalH, width: 3, height: totalH, color: C_GOLD });
+
+    // Title
+    this.page.drawText(sanitizeWinAnsi(title), {
+      x: MARGIN_X + 12,
+      y: topY - 15,
+      size: 10,
+      font: this.fontBold,
+      color: C_EVERGREEN_DARK,
+    });
+
+    // Column geometry: criterion | title | awarded / maximum | %
+    const x0 = MARGIN_X + 12;
+    const xCriterion = x0;
+    const xTitle = x0 + 74;
+    const xMarks = MARGIN_X + CONTENT_W - 132;
+    const xPercent = MARGIN_X + CONTENT_W - 58;
+    const headerBaseline = topY - headerH - 6;
+
+    this.page.drawText("Criterion", { x: xCriterion, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
+    this.page.drawText("Description", { x: xTitle, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
+    this.page.drawText("Marks", { x: xMarks, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
+    this.page.drawText("%", { x: xPercent, y: headerBaseline, size: 7.4, font: this.fontBold, color: C_MUTED });
+
+    this.page.drawLine({
+      start: { x: x0, y: topY - headerH - 10 },
+      end: { x: MARGIN_X + CONTENT_W - 12, y: topY - headerH - 10 },
+      thickness: 0.6,
+      color: C_RULE,
+    });
+
+    cols.forEach((criterion, index) => {
+      const baseline = topY - headerH - 10 - (index + 1) * rowH + 6;
+      this.page.drawText(sanitizeWinAnsi(`Criterion ${criterion.code}`), {
+        x: xCriterion,
+        y: baseline,
+        size: 8.6,
+        font: this.fontBold,
+        color: C_EVERGREEN_DARK,
+      });
+      const titleText = this.truncate(criterion.title, xMarks - xTitle - 10, this.fontRegular, 8.4);
+      this.page.drawText(titleText, { x: xTitle, y: baseline, size: 8.4, font: this.fontRegular, color: C_INK });
+      this.page.drawText(sanitizeWinAnsi(`${fmtNum(criterion.marksAwarded)} / ${fmtNum(criterion.marksMax)}`), {
+        x: xMarks,
+        y: baseline,
+        size: 8.6,
+        font: this.fontBold,
+        color: C_INK,
+      });
+      this.page.drawText(sanitizeWinAnsi(criterion.percent === null ? "—" : `${fmtNum(criterion.percent)}%`), {
+        x: xPercent,
+        y: baseline,
+        size: 8.6,
+        font: this.fontRegular,
+        color: C_MUTED,
+      });
+    });
+
+    // Overall total line, deliberately kept subordinate to the breakdown.
+    const totalBaseline = topY - totalH + 13;
+    const overall = `${h.score !== null ? fmtNum(h.score) : "—"} / ${h.maxScore !== null ? fmtNum(h.maxScore) : "—"}${
+      h.percentage !== null ? `  (${fmtNum(h.percentage)}%)` : ""
+    }`;
+    this.page.drawText(sanitizeWinAnsi("Overall total"), {
+      x: x0,
+      y: totalBaseline,
+      size: 8.6,
+      font: this.fontBold,
+      color: C_EVERGREEN_DARK,
+    });
+    this.page.drawText(sanitizeWinAnsi(overall), {
+      x: xMarks,
+      y: totalBaseline,
+      size: 8.8,
+      font: this.fontBold,
+      color: C_EVERGREEN_DARK,
+    });
+
+    this.y = topY - totalH - 12;
   }
 
   /* ─── Section Banner ───────────────────────────────────────────────── */
@@ -3189,6 +3422,7 @@ export async function renderCandidateExamPaperPdf(data: CandidatePaperData): Pro
 
   const layout = new PaperLayout(pdf, { regular, bold, italic, mono }, data.header);
   await layout.drawFirstPageHeader();
+  layout.drawCriterionResults();
 
   if (data.questions.length === 0) {
     layout.drawWrapped("No questions were recorded on this examination paper.", {

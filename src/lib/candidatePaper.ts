@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { loadMypResult } from "./mypResults";
 import { answerIsPresent } from "./answerPresence";
 import { assessDiagramSummary, type AssessDiagramSpec } from "./assessDiagram";
 import { assessPartsFromConfig, publicAssessParts } from "./assessParts";
@@ -61,6 +62,34 @@ export interface CandidatePaperHeader {
   /** Populated ONLY when `resultsPublished === true`. */
   percentage: number | null;
   passMarkPercent: number | null;
+  /**
+   * Criterion-level breakdown of the validated result.
+   *
+   * Populated ONLY when `resultsPublished === true`, and only for criteria the
+   * examination's marking records actually cover (an MYP paper reports the
+   * criteria its questions are mapped to). Values come from the single
+   * authoritative results engine (`buildMypResult`), which folds in any applied
+   * verified criterion-level mark corrections — the PDF never recomputes marks
+   * of its own.
+   *
+   * Candidates are never shown an MYP achievement level here: levels are
+   * school-internal and the award is expressed in marks in the paper record.
+   */
+  criteria: CandidatePaperCriterion[];
+}
+
+/** One criterion line in the candidate's validated results summary. */
+export interface CandidatePaperCriterion {
+  /** Criterion letter, e.g. "A". */
+  code: string;
+  /** Official criterion title, e.g. "Knowing and understanding". */
+  title: string;
+  /** Marks the candidate earned on this criterion's questions. */
+  marksAwarded: number;
+  /** Marks available for this criterion on this paper. */
+  marksMax: number;
+  /** Percentage of the criterion's marks, or null when none were available. */
+  percent: number | null;
 }
 
 export interface CandidatePaperOption {
@@ -669,11 +698,28 @@ export function buildCandidatePaperData(input: {
     marker_note?: string | null;
     grading_note?: string | null;
   }[];
+  /**
+   * The attempt's result as computed by the single authoritative MYP results
+   * engine (`buildMypResult`), when the caller has loaded it.
+   *
+   * Criterion marks are NEVER recomputed here. Passing the engine's own output
+   * means the PDF can never disagree with the Results screens, and applied
+   * verified criterion mark corrections are inherited, never re-implemented.
+   */
+  result?: {
+    published: boolean;
+    criteria: { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[];
+  } | null;
 }): CandidatePaperData {
   const { attempt, exam, candidate, organization, orderedRows, savedAnswers } = input;
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const quizSettings = (input.quizSettings ?? {}) as Record<string, unknown>;
-  const resultsPublished = examSettings.results_published === true;
+  // A result is published when EITHER the explicit setting is on OR the results
+  // engine reports it published. The Results screens treat `grades_published_at`
+  // (and a published attempt) as publication too, so reading only the setting
+  // could print "Pending publication (withheld)" on a paper whose marks the
+  // school had already released. The engine is the single source of truth.
+  const resultsPublished = examSettings.results_published === true || input.result?.published === true;
   const randomizeOptions = Boolean(examSettings.randomize_options);
 
   const firstName = cleanStr(attempt.first_name, 80) ?? cleanStr(candidate.first_name, 80);
@@ -909,6 +955,7 @@ export function buildCandidatePaperData(input: {
     maxScore,
     percentage,
     passMarkPercent: resultsPublished ? (finiteNum(examSettings.pass_mark_percent) ?? 50) : null,
+    criteria: buildCandidatePaperCriteria(resultsPublished ? input.result?.criteria : null),
   };
 
   const filename = buildCandidatePaperFilename({
@@ -920,6 +967,43 @@ export function buildCandidatePaperData(input: {
   });
 
   return { header, sections, questions, filename };
+}
+
+/**
+ * Map the results engine's criteria to the printable summary.
+ *
+ * Only criteria that carry marks on this paper are rendered: an MYP paper is
+ * reported against the criteria its questions are mapped to, and printing an
+ * "—/0" line for an unused criterion would misrepresent the examination. Values
+ * are rounded to 2dp and the percentage to 1dp, matching the marks screens.
+ */
+export function buildCandidatePaperCriteria(
+  criteria:
+    | { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[]
+    | null
+    | undefined,
+): CandidatePaperCriterion[] {
+  if (!Array.isArray(criteria)) return [];
+  const out: CandidatePaperCriterion[] = [];
+  for (const criterion of criteria) {
+    const code = cleanStr(criterion?.code, 4);
+    if (!code) continue;
+    const marksMax = finiteNum(criterion.marksMax);
+    const marksAwarded = finiteNum(criterion.marksAwarded);
+    if (marksMax === null || marksAwarded === null || marksMax <= 0) continue;
+    const percent =
+      criterion.percent !== null && criterion.percent !== undefined && Number.isFinite(Number(criterion.percent))
+        ? Math.round(Number(criterion.percent) * 10) / 10
+        : Math.round((marksAwarded / marksMax) * 1000) / 10;
+    out.push({
+      code: code.toUpperCase(),
+      title: cleanStr(criterion.title, 120) ?? `Criterion ${code.toUpperCase()}`,
+      marksAwarded: Math.round(marksAwarded * 100) / 100,
+      marksMax: Math.round(marksMax * 100) / 100,
+      percent,
+    });
+  }
+  return out.sort((a, b) => a.code.localeCompare(b.code));
 }
 
 export type CandidatePaperLoadError =
@@ -1018,6 +1102,22 @@ export async function loadCandidatePaperForAttempt(
     return { ok: false, reason: "paper_unavailable" };
   }
 
+  // Criterion-level results come from the SAME engine that powers the Results
+  // screens, so the PDF cannot disagree with them and inherits applied criterion
+  // mark corrections instead of re-deriving marks. It is strictly a read.
+  // A failure here must never block the paper: the paper is the evidence, the
+  // breakdown is an addition, so fall back to no summary rather than 500.
+  let result: Awaited<ReturnType<typeof loadMypResult>> = null;
+  try {
+    result = await loadMypResult(admin, {
+      attemptId,
+      organizationIds: [String(exam.organization_id)],
+      includeUnpublished: true,
+    });
+  } catch {
+    result = null;
+  }
+
   const data = buildCandidatePaperData({
     attempt: {
       id: attemptId,
@@ -1046,6 +1146,18 @@ export async function loadCandidatePaperForAttempt(
     templateRow: tplRes.data ?? null,
     className: (classRes.data as { name?: string | null } | null)?.name ?? null,
     orderedRows,
+    result: result
+      ? {
+          published: result.published,
+          criteria: result.criteria.map((criterion) => ({
+            code: criterion.code,
+            title: criterion.title,
+            marksAwarded: criterion.marksAwarded,
+            marksMax: criterion.marksMax,
+            percent: criterion.percent,
+          })),
+        }
+      : null,
     savedAnswers: (answersRes.data ?? []) as {
       question_id: string;
       answer?: unknown;

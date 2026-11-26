@@ -59,7 +59,11 @@ Module._resolveFilename = function (request, parent, isMain, options) {
     let tsCandidate = null;
     if (request.startsWith("./") || request.startsWith("../")) {
       const parentOrigRel = path.relative(outDir, parent.filename).replace(/\.cjs$/, ".ts");
-      tsCandidate = path.resolve(path.dirname(parentOrigRel), request + ".ts");
+      // Some src/lib modules import siblings with an explicit `.ts` extension
+      // (e.g. `./criterionShares.ts`), so appending unconditionally would look
+      // for "criterionShares.ts.ts" and fall through to an unresolved require.
+      const withTs = request.endsWith(".ts") ? request : request + ".ts";
+      tsCandidate = path.resolve(path.dirname(parentOrigRel), withTs);
     } else if (request.startsWith("@/lib/")) {
       tsCandidate = path.resolve("src/lib", request.slice("@/lib/".length) + ".ts");
     }
@@ -1346,6 +1350,168 @@ await check("staff route enforces 401/403/404, tenant isolation, RBAC canOperate
   assert.equal(res.status, 200);
 
   assert.equal(mockDb.getWriteCount(), 0, "Staff paper route must execute ZERO DB writes");
+});
+
+
+/* ─── 7. Criterion-Level Results & Institution Logo ─────────────────── */
+
+function criterionLayoutRows() {
+  // Mirrors the real Version C papers: four criteria, 100 marks.
+  const rows = [];
+  let n = 1;
+  const push = (count, points, criterion) => {
+    for (let i = 0; i < count; i += 1) {
+      const id = `cq-${n}`;
+      rows.push({
+        position: n,
+        points,
+        questions: {
+          id,
+          type: "single_choice",
+          points,
+          prompt: `Question ${n}`,
+          config: { question_number: n, myp_criterion: criterion },
+          question_options: [
+            { id: `${id}-a`, label: "A", content_doc: null, is_correct: false, position: 0 },
+            { id: `${id}-b`, label: "B", content_doc: null, is_correct: true, position: 1 },
+          ],
+        },
+      });
+      n += 1;
+    }
+  };
+  push(11, 1, "A"); // keep it simple; maxima are asserted from the result, not here
+  push(5, 4, "B");
+  push(4, 5, "C");
+  push(2, 5, "D");
+  return rows;
+}
+
+const CRITERIA = [
+  { code: "A", title: "Knowing and understanding", marksAwarded: 8, marksMax: 11, percent: 72.7 },
+  { code: "B", title: "Investigating patterns", marksAwarded: 14, marksMax: 20, percent: 70 },
+  { code: "C", title: "Communicating", marksAwarded: 12, marksMax: 20, percent: 60 },
+  { code: "D", title: "Applying mathematics in real-life contexts", marksAwarded: 7, marksMax: 10, percent: 70 },
+];
+
+function criterionPaper({ published, criteria, logoUrl }) {
+  const rows = criterionLayoutRows();
+  return candidatePaper.buildCandidatePaperData({
+    attempt: {
+      id: "a1",
+      status: "marked",
+      started_at: "2026-11-19T05:00:00Z",
+      submitted_at: "2026-11-19T06:20:00Z",
+      score: 41,
+      max_score: 61,
+      attempt_number: 1,
+      first_name: "Amina",
+      last_name: "Okonkwo",
+    },
+    exam: { title: "MYP 4 (Grade 9) Mathematics — Version C", instructions: null, duration_minutes: 90, settings: { results_published: false, myp_level: 4 } },
+    candidate: { full_name: "Amina Okonkwo", first_name: "Amina", last_name: "Okonkwo" },
+    organization: { name: "Oak International School", logo_url: logoUrl },
+    quizSettings: null,
+    templateRow: null,
+    className: "Grade 9 Oak",
+    orderedRows: rows,
+    savedAnswers: rows.map((row) => ({ question_id: row.questions.id, answer: { option_id: `${row.questions.id}-b` }, points_awarded: 1 })),
+    result: { published, criteria },
+  });
+}
+
+await check("criterion summary prints A–D with awarded/maximum and keeps the overall total subordinate", async () => {
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: "/brand/oak-international-school-logo.webp" });
+  assert.equal(data.header.criteria.length, 4, "all four criteria must reach the header");
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const info = await extractPdfInfo(bytes);
+  assert(info.fullText.includes("Validated Results by Criterion"), "panel title must render");
+  for (const criterion of CRITERIA) {
+    assert(info.fullText.includes(`Criterion ${criterion.code}`), `Criterion ${criterion.code} must render`);
+    assert(
+      info.fullText.includes(`${criterion.marksAwarded} / ${criterion.marksMax}`),
+      `Criterion ${criterion.code} marks must render as awarded / maximum`,
+    );
+  }
+  // The percentage must never replace the breakdown: both must be present.
+  assert(info.fullText.includes("41 / 61"), "overall total must still print");
+  assert(info.fullText.includes("Overall total"), "overall total must be labelled");
+});
+
+await check("criterion panel is withheld until results are published", async () => {
+  const withheld = criterionPaper({ published: false, criteria: [], logoUrl: null });
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(withheld);
+  const info = await extractPdfInfo(bytes);
+  assert(!info.fullText.includes("Validated Results by Criterion"), "unpublished paper must not show a breakdown");
+  assert(!info.fullText.includes("Overall total"), "unpublished paper must not show an overall total");
+  assert(info.fullText.includes("Pending publication (withheld)"), "unpublished paper must say results are withheld");
+});
+
+await check("publication state is inherited from the results engine, not only the exam setting", async () => {
+  // examSettings.results_published is false in this fixture; the engine says published.
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: null });
+  assert.equal(data.header.resultsPublished, true, "engine publication must win");
+  assert.equal(data.header.score, 41, "published score must be populated");
+  assert.equal(data.header.percentage, 67.2, "percentage must be computed from the stored mark");
+});
+
+await check("the administering school's own logo is embedded, including a WebP asset", async () => {
+  const withLogo = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: "/brand/oak-international-school-logo.webp" });
+  assert.equal(withLogo.header.organizationLogoUrl, "/brand/oak-international-school-logo.webp");
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(withLogo);
+  const doc = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false }).promise;
+  const page = await doc.getPage(1);
+  const ops = await page.getOperatorList();
+  const imageOps = ops.fnArray.filter((fn) => fn === 85 || fn === 82).length;
+  assert(imageOps >= 1, "the school logo must actually be painted onto page 1");
+
+  // No logo URL and no fabrication.
+  const noLogo = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: null });
+  const noLogoBytes = await candidatePaperPdf.renderCandidateExamPaperPdf(noLogo);
+  const noLogoDoc = await getDocument({ data: new Uint8Array(noLogoBytes), useSystemFonts: true, isEvalSupported: false }).promise;
+  const noLogoOps = await (await noLogoDoc.getPage(1)).getOperatorList();
+  assert.equal(noLogoOps.fnArray.filter((fn) => fn === 85 || fn === 82).length, 0, "no logo must be drawn when the organization has none");
+});
+
+await check("a WebP school logo still embeds when the native transcoder is unavailable", async () => {
+  // Serverless hosts can prune native modules from the bundle. If `sharp` were the
+  // only WebP route, the school logo would silently vanish from official student
+  // records -- the exact regression this work fixes. The committed PNG companion
+  // (scripts/build-logo-pngs.mjs) must carry it instead.
+  const { join } = await import("node:path");
+  const pngPath = join(process.cwd(), "public/brand/oak-international-school-logo.png");
+  const png = readFileSync(pngPath);
+  assert.equal(png.subarray(1, 4).toString("ascii"), "PNG", "a committed PNG companion must exist for the Oak logo");
+
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: "/brand/oak-international-school-logo.webp" });
+  // Resolve the companion directly: this is the path taken when transcoding fails.
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const doc = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false }).promise;
+  const ops = await (await doc.getPage(1)).getOperatorList();
+  assert(ops.fnArray.filter((fn) => fn === 85 || fn === 82).length >= 1, "logo must embed from the WebP/Png pair");
+});
+
+await check("logo asset resolution rejects path traversal and non-app URLs", async () => {
+  for (const hostile of ["/../.env", "/brand/../../package.json", "//evil.example/logo.png", "brand/logo.png"]) {
+    const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: hostile });
+    const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+    const doc = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false }).promise;
+    const ops = await (await doc.getPage(1)).getOperatorList();
+    assert.equal(
+      ops.fnArray.filter((fn) => fn === 85 || fn === 82).length,
+      0,
+      `hostile logo path must not be read: ${hostile}`,
+    );
+  }
+});
+
+await check("criterion summary never exposes levels, keys, or internal ids", async () => {
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: null });
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const info = await extractPdfInfo(bytes);
+  assert(!/\bLevel\s+\d/.test(info.fullText), "no achievement level may be printed");
+  assert(!/myp_criterion/i.test(info.fullText), "internal config key must not leak");
+  assert(!/cq-\d/.test(info.fullText), "internal question ids must not leak");
 });
 
 console.log(`\n${passed} passed, 0 failed.\n`);
