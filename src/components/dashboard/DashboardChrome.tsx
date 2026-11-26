@@ -34,6 +34,7 @@ import {
   Sigma,
   Settings,
   ShieldCheck,
+  SlidersHorizontal,
   Trophy,
   Users,
   X,
@@ -51,6 +52,12 @@ interface NavItem {
   exact?: boolean;
   /** Defaults to "all"; administration entries are managers-only. */
   audience?: NavAudience;
+  /**
+   * Extra entitlement flag resolved server-side from the organization's REAL
+   * plan (never an owner bypass). Used for features whose gate is a plan
+   * capability rather than a module key, e.g. Score Adjustment (Institution).
+   */
+  requiresFlag?: "scoreAdjustment";
 }
 
 const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = [
@@ -83,6 +90,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/rubrics", label: "Rubrics", labelKey: "nav.rubrics", icon: ListChecks, audience: "operational" },
       { href: "/dashboard/proctoring", label: "Proctoring", labelKey: "nav.proctoring", icon: ShieldCheck, audience: "operational" },
       { href: "/dashboard/results", label: "Results Management & Candidate Links", labelKey: "nav.resultsManagement", icon: Award, audience: "operational" },
+      { href: "/dashboard/score-adjustments", label: "Score Adjustment", icon: SlidersHorizontal, audience: "operational", requiresFlag: "scoreAdjustment" },
       { href: "/dashboard/reports", label: "Results & Reports", labelKey: "nav.resultsReports", icon: BarChart3, audience: "operational" },
       { href: "/dashboard/myp-results", label: "MYP Results", labelKey: "nav.mypResults", icon: GraduationCap, audience: "operational" },
       { href: "/supervision", label: "Institutional Supervision", labelKey: "nav.supervision", icon: Eye, audience: "operational" },
@@ -135,6 +143,7 @@ export function DashboardChrome({
   canSwitchWorkspace,
   userName,
   modules,
+  scoreAdjustmentEligible = false,
   children,
 }: {
   orgName: string;
@@ -146,6 +155,8 @@ export function DashboardChrome({
   userName: string;
   /** Effective plan modules; missing = all-true (pre-module fallback). */
   modules?: Record<string, boolean>;
+  /** Institution-plan score adjustment eligibility (real entitlement). */
+  scoreAdjustmentEligible?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -179,7 +190,12 @@ export function DashboardChrome({
     ...section,
     // One shared rule (role audience + module entitlement + parent modules) —
     // the same rule src/lib/navModules.ts tests execute.
-    items: section.items.filter((item) => isNavVisible(item, modules, orgRole)),
+    items: section.items.filter(
+      (item) =>
+        isNavVisible(item, modules, orgRole) &&
+        (!item.requiresFlag ||
+          (item.requiresFlag === "scoreAdjustment" && scoreAdjustmentEligible)),
+    ),
   })).filter((section) => section.items.length > 0);
 
   const nav = (

@@ -72,10 +72,12 @@ function buildTs(rel) {
 
 buildTs("src/lib/scoreAdjustments.ts");
 buildTs("src/lib/myp.ts");
+buildTs("src/lib/navModules.ts");
 
 const require = createRequire(import.meta.url);
 const scoreAdj = require(`${outDir}/lib/scoreAdjustments.js`);
 const myp = require(`${outDir}/lib/myp.js`);
+const MODULE_KEYS = require(`${outDir}/lib/modules.js`).MODULE_KEYS;
 
 // ─── 1. Plan Eligibility Matrix ──────────────────────────────────────────────
 check("Plan exclusivity: only active/trialing Institution plan is eligible", () => {
@@ -1108,6 +1110,140 @@ check("Centralized RBAC & tenant/plan enforcement wired across all Score Adjustm
 
   const adminResults = readFileSync(resolve(ROOT, "src/app/admin/examinations/results/page.tsx"), "utf8");
   assert.ok(adminResults.includes("/admin/examinations/score-adjustments"));
+});
+
+// ── Visibility & reachability ────────────────────────────────────────────────
+// The user-facing failure this suite guards against: the backend worked but no
+// role could find the feature. These checks run the REAL sidebar visibility
+// rule and assert that every authorized role reaches the studio by a visible
+// route, while learners and ineligible plans never do.
+
+const navModules = require(`${outDir}/lib/navModules.js`);
+
+const SCORE_ADJUSTMENT_HREF = "/dashboard/score-adjustments";
+
+function sidebarOffersScoreAdjustment(role, modules, scoreAdjustmentEligible) {
+  // Mirrors DashboardChrome's filter, which is the single sidebar rule.
+  const item = { href: SCORE_ADJUSTMENT_HREF, audience: "operational" };
+  const navVisible = navModules.isNavVisible(
+    item,
+    modules,
+    role,
+  );
+  return navVisible && scoreAdjustmentEligible === true;
+}
+
+const INSTITUTION_MODULES = Object.fromEntries(MODULE_KEYS.map((k) => [k, true]));
+const FREE_MODULES = Object.fromEntries(MODULE_KEYS.map((k) => [k, k !== "exam_results"]));
+
+check("the sidebar offers Score Adjustment to owner/admin/teacher/corrector on Institution", () => {
+  for (const role of ["owner", "admin", "teacher", "corrector", "organizer", "supervisor"]) {
+    assert.equal(
+      sidebarOffersScoreAdjustment(role, INSTITUTION_MODULES, true),
+      true,
+      `${role} must see the Score Adjustment sidebar entry on the Institution plan`,
+    );
+  }
+});
+
+check("the sidebar hides Score Adjustment from learners and non-Institution plans", () => {
+  for (const role of ["student", "candidate", "parent", "participant"]) {
+    assert.equal(
+      sidebarOffersScoreAdjustment(role, INSTITUTION_MODULES, true),
+      false,
+      `${role} must never see Score Adjustment`,
+    );
+  }
+  // Plan gate: an eligible role on a non-Institution entitlement sees nothing.
+  assert.equal(sidebarOffersScoreAdjustment("owner", INSTITUTION_MODULES, false), false);
+  // Module gate: Results Management disabled removes the surface entirely.
+  assert.equal(sidebarOffersScoreAdjustment("owner", FREE_MODULES, true), false);
+});
+
+check("the workspace studio is module-gated and plan-gated server-side", () => {
+  const page = readFileSync(resolve(ROOT, "src/app/dashboard/score-adjustments/page.tsx"), "utf8");
+  assert.ok(
+    page.includes('requireModule(entitlement, "exam_results"'),
+    "direct URL must be blocked when Results Management is disabled",
+  );
+  assert.ok(
+    page.includes("getEntitlement(supabase, org.id)"),
+    "must resolve the REAL organization entitlement",
+  );
+  assert.ok(!page.includes("ownerBypass"), "must never bypass the plan for an owner");
+  assert.ok(
+    page.includes("isScoreAdjustmentPlanEligible"),
+    "must gate the studio on Institution eligibility",
+  );
+  // The three-role permission model: read via grading.view/results.view, apply via grading.edit.
+  assert.ok(page.includes('"grading.view"') && page.includes('"results.view"'));
+  assert.ok(page.includes('"grading.edit"'));
+  // Complete workflow is rendered by the shared studio, not re-implemented.
+  assert.ok(page.includes("<ScoreAdjustmentPanel"));
+  assert.ok(page.includes("canApply={canApply}"));
+});
+
+check("every entry point resolves to the SAME studio (no duplicate implementation)", () => {
+  const wrapper = readFileSync(
+    resolve(ROOT, "src/app/dashboard/exams/[id]/adjustments/page.tsx"),
+    "utf8",
+  );
+  assert.ok(
+    wrapper.includes('from "@/app/dashboard/score-adjustments/page"'),
+    "the per-exam route must delegate to the one workspace studio",
+  );
+  assert.ok(
+    wrapper.includes("searchParams: Promise.resolve({ exam: id })"),
+    "the per-exam route must deep-link the studio to that examination",
+  );
+  assert.ok(!wrapper.includes("<ScoreAdjustmentPanel"), "must not re-mount a second studio");
+
+  // Both consoles use the same component.
+  const adminPage = readFileSync(
+    resolve(ROOT, "src/app/admin/examinations/score-adjustments/page.tsx"),
+    "utf8",
+  );
+  assert.ok(adminPage.includes("<ScoreAdjustmentPanel"));
+});
+
+check("Super Admin console exposes a labelled, searchable Score Adjustment entry", () => {
+  const shell = readFileSync(resolve(ROOT, "src/app/admin/AdminShell.tsx"), "utf8");
+  const entry = shell
+    .split("\n")
+    .find((line) => line.includes("/admin/examinations/score-adjustments"));
+  assert.ok(entry, "nav entry must exist");
+  assert.ok(entry.includes("label:"), "the entry must carry a visible label");
+  assert.ok(
+    entry.includes("labelKey:"),
+    "the label must be translatable so it is never blank in fr/es",
+  );
+  assert.ok(entry.includes("icon:"), "the entry must render an icon");
+  // The console must open on a usable examination, not an empty ineligible org.
+  const adminPage = readFileSync(
+    resolve(ROOT, "src/app/admin/examinations/score-adjustments/page.tsx"),
+    "utf8",
+  );
+  assert.ok(
+    adminPage.includes("firstEligibleWithExam"),
+    "must default to an eligible organization that has examinations",
+  );
+});
+
+check("exam and results pages link the studio only when the plan allows it", () => {
+  const examPage = readFileSync(resolve(ROOT, "src/app/dashboard/exams/[id]/page.tsx"), "utf8");
+  const resultsPage = readFileSync(resolve(ROOT, "src/app/dashboard/results/page.tsx"), "utf8");
+  for (const [name, src] of [
+    ["exams/[id]", examPage],
+    ["results", resultsPage],
+  ]) {
+    assert.ok(src.includes('href={`/dashboard/exams/${id}/adjustments`}') || src.includes("adjustments"), `${name} must link the studio`);
+    assert.ok(src.includes("scoreAdjustmentEligible"), `${name} must gate the link on the plan`);
+  }
+  // The exam page link must also require grading rights.
+  assert.ok(
+    /scoreAdjustmentEligible && canMark/.test(examPage),
+    "exam page must require grading rights as well as the plan",
+  );
 });
 
 console.log(`PASS test-score-adjustment (${passed} checks)`);

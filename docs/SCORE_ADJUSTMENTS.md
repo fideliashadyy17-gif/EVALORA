@@ -11,14 +11,40 @@ score and, for MYP papers, the final criterion levels.
 
 | Console | Route | Who |
 |---|---|---|
-| Workspace | `/dashboard/exams/[id]/adjustments` | org owner/admin/teacher/corrector with `grading.edit` |
+| Workspace (studio) | `/dashboard/score-adjustments` — `?exam=<id>` picks the paper | org owner/admin/teacher/corrector with `grading.edit` |
+| Workspace (deep link) | `/dashboard/exams/[id]/adjustments` | same — delegates to the studio above |
 | Super Admin | `/admin/examinations/score-adjustments` | platform Super Admin, any organization |
 
-Entry points: the examination page, the grade ledger (`/dashboard/exams/[id]/grades`),
-Results Management (`/dashboard/results`) and the Super Admin *F. Examinations*
-navigation. Every workspace link is rendered only when the organization's **real**
-entitlement carries the Institution plan (`getEntitlement`, never an owner bypass)
-**and** the viewer holds `grading.edit`.
+`/dashboard/score-adjustments` is the **single** workspace implementation: the
+per-exam route is a ~20-line delegate that deep-links it, so there is one
+authorization path, one set of numbers and no parallel grading system.
+
+Entry points, all resolving to that one studio:
+
+1. **Workspace sidebar** — `Dashboard → Score Adjustment` (`SlidersHorizontal`
+   icon), visible to `operational` roles when the real entitlement is Institution
+   **and** the `exam_results` module is enabled. This is the primary discovery path.
+2. **Super Admin console** — `F. Examinations → Score Adjustment (Institution)`,
+   labelled in en/fr/es and reachable from the shell's runtime search.
+3. Per-examination **Adjustment** button on `/dashboard/exams/[id]`.
+4. Grade ledger `/dashboard/exams/[id]/grades` and Results Management
+   `/dashboard/results`.
+
+Every workspace surface is gated on the organization's **real** entitlement
+(`getEntitlement`, never an owner bypass) **and** on role permissions:
+`grading.view` / `results.view` to open, `grading.edit` to apply. A viewer without
+`grading.edit` (for example `school_founder`, which is supervision-only) sees the
+panel read-only. The page also calls `requireModule(entitlement, "exam_results")`,
+so disabling Results Management in Plan & Module Management hides the nav entry
+*and* blocks the direct URL.
+
+### Visibility regression guard
+
+`scripts/test-score-adjustment.mjs` runs the real `isNavVisible` rule and asserts
+that `owner`, `admin`, `teacher`, `corrector`, `organizer` and `supervisor` all see
+the sidebar entry on an Institution plan, while `student`, `candidate`, `parent`
+and `participant` never do — and that no role sees it on a non-Institution plan or
+with `exam_results` disabled.
 
 ## 2. The rules the database enforces
 

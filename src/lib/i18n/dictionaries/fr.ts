@@ -573,6 +573,7 @@ export const fr = {
     durationLimits: "Durée & limites de temps",
     supervision: "Suivi & surveillance en direct",
     markingGrading: "Correction & notation",
+    scoreAdjustments: "Ajustement des notes (Institution)",
     resultsManagement: "Gestion des résultats & liens candidats",
     mypResults: "Résultats & rapports MYP",
     reportsExports: "Rapports & exports",

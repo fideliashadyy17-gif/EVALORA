@@ -581,6 +581,7 @@ export const en = {
     durationLimits: "Duration & Time Limits",
     supervision: "Monitoring & live supervision",
     markingGrading: "Marking & Grading",
+    scoreAdjustments: "Score Adjustment (Institution)",
     resultsManagement: "Results Management & Candidate Links",
     mypResults: "MYP Results & Reports",
     reportsExports: "Reports & Exports",

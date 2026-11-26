@@ -156,7 +156,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/examinations/time-limits", label: "Duration & Time Limits", labelKey: "admin.durationLimits", icon: Clock3 },
       { href: "/admin/examinations/monitoring", label: "Monitoring & live supervision", labelKey: "admin.supervision", icon: Activity },
       { href: "/admin/examinations/marking", label: "Marking & Grading", labelKey: "admin.markingGrading", icon: ClipboardList },
-      { href: "/admin/examinations/score-adjustments", label: "Score Adjustment", icon: SlidersHorizontal },
+      { href: "/admin/examinations/score-adjustments", label: "Score Adjustment (Institution)", labelKey: "admin.scoreAdjustments", icon: SlidersHorizontal },
       { href: "/admin/examinations/results", label: "Results Management & Candidate Links", labelKey: "admin.resultsManagement", icon: Link2 },
       { href: "/admin/myp-results", label: "MYP Results & Reports", labelKey: "admin.mypResults", icon: GraduationCap },
       { href: "/admin/examinations/reports", label: "Reports & Exports", labelKey: "admin.reportsExports", icon: ScrollText },

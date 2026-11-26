@@ -52,9 +52,20 @@ export default async function AdminScoreAdjustmentsPage({
   const selectedExamRow =
     (sp.exam && isUuid(sp.exam) ? allExams.find((e) => e.id === sp.exam) : null) ?? null;
 
+  // Default to an organization that can actually use the feature (eligible plan
+  // AND at least one live examination), so the studio opens on a usable exam
+  // instead of an empty Premium organization.
+  const firstEligibleWithExam =
+    orgs.find(
+      (o) =>
+        orgPlanMap.get(o.id)?.eligible &&
+        allExams.some((e) => e.organization_id === o.id),
+    )?.id ?? null;
+
   const selectedOrgId =
     (sp.org && isUuid(sp.org) ? sp.org : null) ??
     selectedExamRow?.organization_id ??
+    firstEligibleWithExam ??
     orgs.find((o) => orgPlanMap.get(o.id)?.eligible)?.id ??
     orgs[0]?.id ??
     null;
@@ -173,6 +184,21 @@ export default async function AdminScoreAdjustmentsPage({
           </div>
         </div>
       </Card>
+
+      {/* Plan gate: explain, never silently render nothing */}
+      {selectedOrgId && orgPlanMap.get(selectedOrgId) && !orgPlanMap.get(selectedOrgId)!.eligible && (
+        <Card className="border-amber-300 bg-amber-50 p-5">
+          <p className="text-sm font-bold text-amber-900">
+            Score Adjustment is an Institution plan feature
+          </p>
+          <p className="mt-1 text-sm text-amber-900/80">
+            {orgs.find((o) => o.id === selectedOrgId)?.name} is on the{" "}
+            <strong>{orgPlanMap.get(selectedOrgId)!.name}</strong> plan (
+            {orgPlanMap.get(selectedOrgId)!.status}). Applying adjustments requires an active
+            Institution plan; the database refuses the write otherwise.
+          </p>
+        </Card>
+      )}
 
       {/* Main Panel */}
       {examContext ? (
