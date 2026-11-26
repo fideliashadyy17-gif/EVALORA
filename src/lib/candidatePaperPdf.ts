@@ -71,6 +71,7 @@ const C_WHITE = rgb(1, 1, 1);
 const C_CARD_BG = rgb(0.976, 0.984, 0.978); // #f9fbfa
 const C_BLUE = rgb(0.118, 0.365, 0.690); // #1e5db0
 const C_CORAL = rgb(0.761, 0.239, 0.239); // #c23d3d
+const C_AMBER = rgb(0.706, 0.475, 0.047); // #b4790c
 const C_PURPLE = rgb(0.451, 0.267, 0.678); // #7344ad
 
 /* ─── Safe WinAnsi + Math / LaTeX typography ─────────────────────────── */
@@ -468,6 +469,25 @@ function fmtNum(v: number): string {
   if (!Number.isFinite(v)) return "0";
   if (Math.abs(v - Math.round(v)) < 1e-9) return String(Math.round(v));
   return String(Math.round(v * 100) / 100);
+}
+
+/**
+ * How a candidate's question-level mark is presented on the paper.
+ *
+ * `null` marks mean the question has not been marked, so no verdict is shown.
+ * A full award is CORRECT (green), a zero is WRONG (red), and anything in
+ * between is labelled PARTIAL CREDIT (amber) rather than being coloured like a
+ * full mark. Pure presentation: it reads the engine's awarded mark and never
+ * re-derives or adjusts it.
+ */
+type QuestionVerdict = { label: string; color: ReturnType<typeof rgb> };
+
+function questionVerdict(awarded: number | null, marks: number): QuestionVerdict | null {
+  if (awarded === null || !Number.isFinite(awarded)) return null;
+  const max = Number.isFinite(marks) ? marks : 0;
+  if (max > 0 && awarded >= max - 1e-9) return { label: "CORRECT", color: C_EVERGREEN };
+  if (awarded <= 1e-9) return { label: "WRONG", color: C_CORAL };
+  return { label: "PARTIAL CREDIT", color: C_AMBER };
 }
 
 function fmtDateUtc(iso: string | null): string {
@@ -2888,6 +2908,13 @@ class PaperLayout {
       q.printedLabel && q.printedLabel !== String(q.number)
         ? `Question ${q.number}  (${q.printedLabel})`
         : `Question ${q.number}`;
+
+    // Marking verdict for this question, shown only once results are released.
+    // CORRECT is green, WRONG is red, and a part-mark answer is labelled
+    // PARTIAL CREDIT so a candidate can see at a glance how the mark was built.
+    const verdict = this.header.resultsPublished ? questionVerdict(q.awardedMarks, q.marks) : null;
+    const verdictColor = verdict ? verdict.color : C_MUTED;
+
     this.page.drawText(sanitizeWinAnsi(qHeading), {
       x: MARGIN_X + 8,
       y: barBottom + 6.2,
@@ -2896,6 +2923,17 @@ class PaperLayout {
       color: C_EVERGREEN_DARK,
     });
 
+    // A coloured spine marks the whole question block green / red / amber.
+    if (verdict) {
+      this.page.drawRectangle({
+        x: MARGIN_X,
+        y: barBottom,
+        width: 3.2,
+        height: barH,
+        color: verdictColor,
+      });
+    }
+
     // Right-aligned marks / criterion / published awarded mark
     const rightBits: string[] = [];
     if (q.criterionLabel) rightBits.push(q.criterionLabel);
@@ -2903,6 +2941,7 @@ class PaperLayout {
     if (this.header.resultsPublished && q.awardedMarks !== null) {
       rightBits.push(`Awarded: ${fmtNum(q.awardedMarks)} / ${fmtNum(q.marks)}`);
     }
+    if (verdict) rightBits.push(verdict.label);
     const rightStr = sanitizeWinAnsi(rightBits.join("   ·   "));
     const rw = this.fontBold.widthOfTextAtSize(rightStr, 8.2);
     this.page.drawText(rightStr, {
@@ -2910,7 +2949,7 @@ class PaperLayout {
       y: barBottom + 6.5,
       size: 8.2,
       font: this.fontBold,
-      color: this.header.resultsPublished && q.awardedMarks !== null ? C_EVERGREEN : C_MUTED,
+      color: verdictColor,
     });
 
     this.y = barBottom - 8;

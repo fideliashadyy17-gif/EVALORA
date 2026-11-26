@@ -682,6 +682,14 @@ await check("published candidate PDF includes score & genuine teacher feedback w
   assert.ok(info.fullText.includes("Check the numerator addition carefully."));
   assert.ok(info.fullText.includes("Clear gradient calculation; remember to complete part (b)."));
 
+  // Every marked question carries an explicit verdict: a full award is CORRECT,
+  // a zero is WRONG, and a part-mark answer is labelled PARTIAL CREDIT.
+  assert.ok(info.fullText.includes("CORRECT"), "full-mark questions must be labelled CORRECT");
+  assert.ok(info.fullText.includes("WRONG"), "zero-mark questions must be labelled WRONG");
+  assert.ok(info.fullText.includes("PARTIAL CREDIT"), "part-mark questions must be labelled PARTIAL CREDIT");
+  // The paper must never describe a mark as "adjusted" or show adjustment detail.
+  assert.ok(!/adjusted/i.test(info.fullText), "the paper must not show Adjusted labels or adjustment details");
+
   // STILL strictly excludes answer keys, explanations, marking schemes, hints, admin overrides, and UUIDs!
   const stillForbidden = [
     "CANARY_ANSWER_KEY_9911",
