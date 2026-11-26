@@ -1,5 +1,6 @@
 import { RichContent } from "@/components/RichContent";
 import { AnswerResponseView } from "@/components/AnswerResponseView";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { assessPartsFromConfig, publicAssessParts } from "@/lib/assessParts";
 import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
@@ -866,20 +867,31 @@ export default async function ExamDetailPage({
                       )}
                     </td>
                     <td>
-                      {resultUrl ? (
-                        <div className="flex items-center gap-1.5">
-                          <CopyResultLinkButton url={resultUrl} candidateName={candName} />
-                          <ButtonLink
-                            href={`/exam/result/${a.access_token}`}
-                            variant="ghost"
-                            className="text-xs px-2 py-1"
-                          >
-                            View
-                          </ButtonLink>
-                        </div>
-                      ) : (
-                        <span className="text-xs text-ink-soft">Read-only</span>
-                      )}
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {isSubmitted && (
+                          <CandidatePaperDownloadButton
+                            mode="staff"
+                            examId={id}
+                            attemptId={a.id}
+                            label="Download Candidate Paper (PDF)"
+                            compact
+                          />
+                        )}
+                        {resultUrl ? (
+                          <>
+                            <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                            <ButtonLink
+                              href={`/exam/result/${a.access_token}`}
+                              variant="ghost"
+                              className="text-xs px-2 py-1"
+                            >
+                              View
+                            </ButtonLink>
+                          </>
+                        ) : !isSubmitted ? (
+                          <span className="text-xs text-ink-soft">Read-only</span>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );

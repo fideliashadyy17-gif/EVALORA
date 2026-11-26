@@ -1,4 +1,6 @@
 import { RetakeDecisionWatcher } from "@/components/RetakeDecisionWatcher";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
+import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 import { Logo } from "@/components/Logo";
 import { SignOutButton } from "@/components/SignOutButton";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
@@ -249,6 +251,14 @@ export default async function StudentWorkspace() {
                     >
                       View criterion results & MYP grade →
                     </Link>
+                  )}
+                  {isAttemptEligibleForPaperPdf(attempt.status) && attempt.exams?.settings?.archived !== true && (
+                    <CandidatePaperDownloadButton
+                      mode="student"
+                      attemptId={attempt.id}
+                      label="Download My Exam (PDF)"
+                      variant="outline"
+                    />
                   )}
                 </div>
               </Card>

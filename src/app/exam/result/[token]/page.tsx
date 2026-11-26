@@ -2,6 +2,8 @@ import { Badge, ButtonLink, Card } from "@/components/ui";
 import { Logo } from "@/components/Logo";
 import { RichContent } from "@/components/RichContent";
 import { MathText } from "@/components/MathText";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
+import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 import { createAdminClient } from "@/lib/supabase/server";
 import { attemptRows } from "@/lib/exam";
 import { answerReveal, releasedFeedback } from "@/lib/live";
@@ -113,6 +115,8 @@ export default async function ExamResultTokenPage({
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
   const resultsPublished = Boolean(settings.results_published);
+  const canDownloadPaper =
+    isAttemptEligibleForPaperPdf(attempt.status) && !exam.deleted_at && settings.archived !== true;
   const confirmationCode = String(attempt.access_token).slice(0, 8).toUpperCase();
   const candidateName = candidate.full_name || `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() || "Candidate";
   const candidateIdentifier = candidate.candidate_ref || candidate.email || (candidate.access_code ? `Code: ${candidate.access_code}` : null);
@@ -287,8 +291,32 @@ export default async function ExamResultTokenPage({
             </div>
           </div>
 
+          {/* Candidate Examination Paper PDF Download (ManageBac Evidence) */}
+          {canDownloadPaper && (
+            <div className="mt-5 rounded-xl border border-evergreen-800/20 bg-evergreen-50/60 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-bold uppercase tracking-wider text-evergreen-900">
+                    Examination Paper Copy (PDF)
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-soft">
+                    Download a printable A4 PDF of your examination questions and submitted answers for your records or ManageBac upload.
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <CandidatePaperDownloadButton
+                    mode="candidate"
+                    token={token}
+                    label="Download My Exam (PDF)"
+                    variant="primary"
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Secure Bookmark Link */}
-          <div className="mt-6 rounded-xl border border-evergreen-900/15 bg-white p-4">
+          <div className="mt-4 rounded-xl border border-evergreen-900/15 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase tracking-wider text-evergreen-900">Your Personal Secure Result Link</p>
