@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { MypExportButton } from "@/components/myp/MypExportButton";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 
 export const metadata: Metadata = { title: "My result" };
 export const dynamic = "force-dynamic";
@@ -77,6 +78,12 @@ export default async function StudentResultPage({ params }: { params: Promise<{ 
               action={
                 <div className="flex flex-wrap gap-2">
                   <ButtonLink href="/student" variant="outline">← My workspace</ButtonLink>
+                  <CandidatePaperDownloadButton
+                    mode="student"
+                    attemptId={result.attemptId}
+                    label="Download My Exam (PDF)"
+                    variant="outline"
+                  />
                   <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ Download PDF" variant="primary" />
                 </div>
               }

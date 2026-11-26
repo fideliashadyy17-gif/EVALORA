@@ -1,4 +1,5 @@
 import { AnswerResponseView } from "@/components/AnswerResponseView";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { MathText } from "@/components/MathText";
 import { RichContent } from "@/components/RichContent";
 import { Badge, Button, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
@@ -68,6 +69,14 @@ export default async function ExaminationScriptPage({
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href={`/admin/myp-results/${script.attempt.id}`} variant="outline">MYP result</ButtonLink>
+            {(script.attempt.status === "submitted" || script.attempt.status === "auto_submitted" || script.attempt.status === "marked") && (
+              <CandidatePaperDownloadButton
+                mode="staff"
+                examId={script.exam.id}
+                attemptId={script.attempt.id}
+                label="Download Candidate Paper (PDF)"
+              />
+            )}
             <ButtonLink href="/admin/examinations/marking" variant="outline">Marking queue</ButtonLink>
             <ButtonLink href="/admin/examinations/results" variant="outline">All results</ButtonLink>
             {script.attempt.status !== "in_progress" && (

@@ -1,6 +1,8 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { ConfirmSubmit } from "@/components/ConfirmSubmit";
 import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
+import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { Badge, Button, Card, DataTable, EmptyState, Field, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
@@ -435,16 +437,27 @@ export default async function ResultsManagementPage({
                         )}
                       </td>
                       <td>
-                        {resultUrl ? (
-                          <div className="flex items-center gap-1.5">
-                            <CopyResultLinkButton url={resultUrl} candidateName={candName} />
-                            <Link href={`/exam/result/${a.access_token}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2">
-                              View
-                            </Link>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-ink-soft">Read-only</span>
-                        )}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          {isAttemptEligibleForPaperPdf(a.status) && (
+                            <CandidatePaperDownloadButton
+                              mode="staff"
+                              examId={candidateSection.exam.id}
+                              attemptId={a.id}
+                              label="Download Candidate Paper (PDF)"
+                              compact
+                            />
+                          )}
+                          {resultUrl ? (
+                            <>
+                              <CopyResultLinkButton url={resultUrl} candidateName={candName} />
+                              <Link href={`/exam/result/${a.access_token}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap text-xs font-semibold text-evergreen-800 underline underline-offset-2">
+                                View
+                              </Link>
+                            </>
+                          ) : !isAttemptEligibleForPaperPdf(a.status) ? (
+                            <span className="text-xs text-ink-soft">Read-only</span>
+                          ) : null}
+                        </div>
                       </td>
                     </tr>
                   );

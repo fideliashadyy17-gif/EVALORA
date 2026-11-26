@@ -7,6 +7,8 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { recordMypSnapshot } from "../actions";
 import { MypExportButton } from "@/components/myp/MypExportButton";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
+import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 
 export const metadata: Metadata = { title: "MYP student result" };
 export const dynamic = "force-dynamic";
@@ -50,6 +52,15 @@ export default async function MypResultPage({
         action={
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/dashboard/myp-results" variant="outline">← All MYP results</ButtonLink>
+            {isAttemptEligibleForPaperPdf(result.attemptStatus) && (
+              <CandidatePaperDownloadButton
+                mode="staff"
+                examId={result.examId}
+                attemptId={result.attemptId}
+                label="Download Candidate Paper (PDF)"
+                variant="outline"
+              />
+            )}
             {access.canExport && (
               <>
                 <MypExportButton format="pdf" scope="individual" attemptId={result.attemptId} label="⬇ PDF report" variant="primary" />

@@ -8,6 +8,8 @@ import { fmtDateTime, toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MypExportButton } from "@/components/myp/MypExportButton";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
+import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 
 export const metadata: Metadata = { title: "Examination report" };
 export const dynamic = "force-dynamic";
@@ -127,7 +129,7 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
               <p className="py-3 text-sm text-ink-soft">No attempts yet.</p>
             ) : (
               <DataTable
-                head={hasCriteria ? ["Candidate", "Score", "%", "Hints", "Result", "MYP"] : ["Candidate", "Score", "%", "Hints", "Result"]}
+                head={hasCriteria ? ["Candidate", "Score", "%", "Hints", "Result", "Paper", "MYP"] : ["Candidate", "Score", "%", "Hints", "Result", "Paper"]}
                 label="Candidate examination results"
               >
                 {list.map((a) => {
@@ -142,6 +144,19 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
                       <td className="tabular-nums">{pct !== null ? `${pct.toFixed(0)}%` : "—"}</td>
                       <td className="tabular-nums" title="Hint openings recorded for this candidate">{hintsByAttempt.get(a.id) ?? 0}</td>
                       <td>{pct !== null ? <Badge tone={pct >= passMark ? "green" : "red"}>{pct >= passMark ? "PASS" : "FAIL"}</Badge> : <Badge tone="gray">Pending</Badge>}</td>
+                      <td className="whitespace-nowrap">
+                        {isAttemptEligibleForPaperPdf(a.status) ? (
+                          <CandidatePaperDownloadButton
+                            mode="staff"
+                            examId={id}
+                            attemptId={a.id}
+                            label="Download Candidate Paper (PDF)"
+                            compact
+                          />
+                        ) : (
+                          <span className="text-xs text-ink-soft">—</span>
+                        )}
+                      </td>
                       {hasCriteria && (
                         <td className="whitespace-nowrap">
                           <a

@@ -2,6 +2,7 @@
 
 import { Logo } from "@/components/Logo";
 import { PlatformCredit } from "@/components/PlatformCredit";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
@@ -1536,6 +1537,31 @@ export function TakeExamClient({ attemptId }: { attemptId: string }) {
                   </code>
                 </div>
               </div>
+
+              {/* Candidate Examination Paper PDF Download */}
+              {token && queueState.pending === 0 && (
+                <div className="mx-auto mt-5 rounded-xl border border-evergreen-800/20 bg-evergreen-50/60 p-4 text-left print:hidden">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-xs font-bold uppercase tracking-wider text-evergreen-900">
+                        Download Examination Paper Copy
+                      </p>
+                      <p className="mt-0.5 text-xs text-ink-soft">
+                        Save a printable PDF of your questions and submitted responses for your personal records or ManageBac.
+                      </p>
+                    </div>
+                    <div className="shrink-0">
+                      <CandidatePaperDownloadButton
+                        mode="candidate"
+                        token={token}
+                        attemptId={attempt.id}
+                        label="Download My Exam (PDF)"
+                        variant="primary"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Clean session switch for shared lab / classroom computers */}
               <div className="mx-auto mt-6 flex flex-col items-center gap-2 rounded-xl border border-evergreen-900/10 bg-white p-4 print:hidden">

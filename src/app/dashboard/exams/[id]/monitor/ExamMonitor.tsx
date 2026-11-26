@@ -7,6 +7,7 @@
  * database does not hold. A reconciliation reload runs even if a realtime event was missed.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { createClient } from "@/lib/supabase/client";
 import {
   MESSAGE_MAX_LENGTH,
@@ -472,6 +473,15 @@ export function ExamMonitor({ examId, initial, canManage = true }: { examId: str
                           >
                             Message
                           </button>
+                          {(r.status === "submitted" || r.status === "auto_submitted" || r.status === "marked") && (
+                            <CandidatePaperDownloadButton
+                              mode="staff"
+                              examId={examId}
+                              attemptId={r.attempt_id}
+                              label="Download Candidate Paper (PDF)"
+                              compact
+                            />
+                          )}
                           {canManage && r.status === "in_progress" && (
                             r.pause_reasons.includes("student") ? (
                               <button
