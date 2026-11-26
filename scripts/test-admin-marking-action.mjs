@@ -15,6 +15,7 @@ const original=Module._load;Module._load=function(request,parent){if(parent?.fil
  if(request==='@/lib/examLanguage')return {normalizeExamLanguage:(v)=>v==='fr'?'fr':v==='en'?'en':null};
  if(request==='@/lib/scoring')return {scoreAnswer:(...a)=>0,scoreAnswerDetailed:(...a)=>({awarded:0,correct:null,detail:null}),normaliseStructuredRules:()=>({}),scoreStructuredMarks:(...a)=>({awarded:0,detail:null}),structuredExpectedSummary:()=>''};
  if(request==='@/lib/supabase/server')return {createAdminClient:()=>db};
+ if(request==='@/lib/scoreAdjustmentsServer')return {computeAttemptScoreWithAdjustments:async(_c,_id,raw,max)=>{const n=Number(raw)||0;return typeof max==='number'&&Number.isFinite(max)?Math.min(n,max):n}};
  if(request==='next/cache')return {revalidatePath:()=>{}};
  if(request==='next/headers')return {};
  if(request==='next/navigation')return {redirect:(url)=>{const e=Error(url);e.url=url;throw e}};

@@ -242,6 +242,7 @@ const stubs = {
   "@/lib/admin": { audit: async (...args) => { auditCalls.push(args); } },
   "@/lib/ai-marking": { AiMarkingError: class extends Error {}, describeAiMarking: () => ({ configured: false }), suggestCriterionMarks: async () => [] },
   "@/lib/supabase/server": { createClient: async () => db, createAdminClient: () => db },
+  "@/lib/scoreAdjustmentsServer": { computeAttemptScoreWithAdjustments: async (_c, _id, raw, max) => { const n = Number(raw) || 0; return typeof max === "number" && Number.isFinite(max) ? Math.min(n, max) : n; } },
   "@/lib/utils": { genCode: () => "CODE" },
   "next/cache": { revalidatePath: () => {} },
   "next/navigation": { redirect: (url) => { const e = new Error(url); e.url = url; throw e; } },

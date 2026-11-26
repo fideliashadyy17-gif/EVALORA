@@ -431,7 +431,8 @@ const serverLib = read("src/lib/examHintsServer.ts");
 check("the paper payload attaches hints without touching answers, timers or attempts", () => {
   assert.match(stateRoute, /loadPublishedHints/);
   assert.match(stateRoute, /hints: hintsByQuestion\.get\(row\.questions\.id\) \?\? \[\]/);
-  assert.match(stateRoute, /catch \{\n    hintsByQuestion = new Map\(\);/);
+  // Hints must never break the paper: a failed hint load degrades to no hints.
+  assert.match(stateRoute, /loadPublishedHints\(admin[\s\S]{0,300}?\.catch\(/);
   assert.doesNotMatch(stateRoute, /exam_hints_policy.*update/i);
 });
 

@@ -30,12 +30,13 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 173 page.tsx routes (88 admin, 49 dashboard, 36 public/auth/student/portal)", () => {
-  assert.equal(adminPages.length, 88, `expected 88 admin pages, found ${adminPages.length}`);
-  // 49 = 46 + /dashboard/monitoring + /dashboard/exams/links + /dashboard/exams/[id]/hints.
-  assert.equal(dashboardPages.length, 49, `expected 49 dashboard pages, found ${dashboardPages.length}`);
+check("route inventory accounts for all 175 page.tsx routes (89 admin, 50 dashboard, 36 public/auth/student/portal)", () => {
+  assert.equal(adminPages.length, 89, `expected 89 admin pages, found ${adminPages.length}`);
+  // 50 = 46 + /dashboard/monitoring + /dashboard/exams/links + /dashboard/exams/[id]/hints
+  //      + /dashboard/exams/[id]/adjustments (controlled score adjustments).
+  assert.equal(dashboardPages.length, 50, `expected 50 dashboard pages, found ${dashboardPages.length}`);
   assert.equal(otherPages.length, 36, `expected 36 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 173);
+  assert.equal(allPages.length, 175);
 });
 
 for (const pagePath of adminPages) {

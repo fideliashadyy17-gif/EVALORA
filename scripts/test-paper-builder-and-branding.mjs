@@ -86,7 +86,7 @@ check("grouping keeps A before B", groups.length === 2 && groups[0].section?.id 
 const liveSrc = readFileSync("src/lib/live.ts", "utf8");
 const shuffleStart = liveSrc.indexOf("export function seededShuffle");
 const shuffleEnd = liveSrc.indexOf("export interface SessionQuestionRow");
-const shuffleCode = ts.transpileModule(liveSrc.slice(shuffleStart, shuffleEnd).replace(/export function/g, "function"), {
+const shuffleCode = ts.transpileModule(liveSrc.slice(shuffleStart, shuffleEnd).replace(/export (function|interface)/g, "$1"), {
   compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
 }).outputText;
 const randFn = new Function(`${shuffleCode}\nreturn { seededShuffle, randomizeQuestionRows };`)();

@@ -6,6 +6,7 @@ import { attemptDeadline, attemptRows, gradeAttemptDetailed } from "@/lib/exam";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { scoreAnswerDetailed } from "@/lib/scoring";
+import { computeAttemptScoreWithAdjustments } from "@/lib/scoreAdjustmentsServer";
 import { createAdminClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
@@ -545,7 +546,7 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
 
   const { data: answer, error: answerError } = await admin
     .from("exam_answers")
-    .select("*, questions(organization_id, points, type), exam_attempts!inner(id, exam_id, status, exams(organization_id, quiz_id))")
+    .select("*, questions(organization_id, points, type), exam_attempts!inner(id, exam_id, status, max_score, exams(organization_id, quiz_id))")
     .eq("id", answerId)
     .maybeSingle();
   if (answerError || !answer) go(back, "e=answer");
@@ -554,6 +555,7 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
     id: string;
     exam_id: string;
     status: string;
+    max_score: number | null;
     exams: { organization_id: string; quiz_id: string | null } | null;
   };
   const question = answer!.questions as unknown as { organization_id: string; points: number; type: string } | null;
@@ -601,7 +603,8 @@ export async function markExamAnswerAsAdmin(formData: FormData) {
     .select("points_awarded, is_correct, grading_status")
     .eq("attempt_id", attempt.id);
   if (answersError || !allAnswers) return reportPartial();
-  const total = Math.round(allAnswers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const rawTotal = Math.round(allAnswers.reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0) * 100) / 100;
+  const total = await computeAttemptScoreWithAdjustments(admin, attempt.id, rawTotal, attempt.max_score);
   // An unanswered question is resolved evidence (a confirmed zero), not work
   // waiting for a marker. It must not keep the attempt unmarked forever.
   const unresolved = allAnswers.filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
@@ -877,12 +880,13 @@ export async function regradeAttemptAsAdmin(formData: FormData) {
 
   const previousScore = attempt.score !== null ? Number(attempt.score) : null;
   const summary = await gradeAttemptDetailed(admin, attempt.id, rows);
+  const adjustedScore = await computeAttemptScoreWithAdjustments(admin, attempt.id, summary.score, summary.max);
 
   const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
   const { data: updatedAttempt, error: updateError } = await admin
     .from("exam_attempts")
     .update({
-      score: summary.score,
+      score: adjustedScore,
       max_score: summary.max,
       status: "marked",
       grading_status: allMarked ? "graded" : "pending_manual",
@@ -898,10 +902,10 @@ export async function regradeAttemptAsAdmin(formData: FormData) {
     exam_id: exam.id,
     attempt_id: attempt.id,
     previous_score: previousScore,
-    new_score: summary.score,
+    new_score: adjustedScore,
     max_score: summary.max,
     auto_score: summary.autoScore,
-    score_changed: previousScore !== summary.score,
+    score_changed: previousScore !== adjustedScore,
     note: note || "Super Admin regrade with latest mathematical equivalence rules",
   });
 
@@ -958,12 +962,13 @@ export async function regradeExamAsAdmin(formData: FormData) {
 
       const prevScore = att.score !== null ? Number(att.score) : null;
       const summary = await gradeAttemptDetailed(admin, att.id, rows);
+      const adjustedScore = await computeAttemptScoreWithAdjustments(admin, att.id, summary.score, summary.max);
       const allMarked = summary.ungradedCount === 0 && summary.failedCount === 0;
 
       await admin
         .from("exam_attempts")
         .update({
-          score: summary.score,
+          score: adjustedScore,
           max_score: summary.max,
           status: "marked",
           grading_status: allMarked ? "graded" : "pending_manual",
@@ -972,7 +977,7 @@ export async function regradeExamAsAdmin(formData: FormData) {
         .eq("id", att.id);
 
       regradedCount++;
-      if (prevScore !== summary.score) {
+      if (prevScore !== adjustedScore) {
         changedScoreCount++;
       }
     } catch {
@@ -1109,7 +1114,8 @@ export async function overrideAnswerMarkAsAdmin(formData: FormData) {
     .select("points_awarded, is_correct, grading_status")
     .eq("attempt_id", attemptId);
 
-  const totalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const rawTotalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const totalScore = await computeAttemptScoreWithAdjustments(admin, attemptId, rawTotalScore, attempt.max_score);
   const unresolved = (allAnswers ?? []).filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
 
   await admin
@@ -1157,7 +1163,7 @@ export async function regradeSingleQuestionAsAdmin(formData: FormData) {
 
   const { data: attempt, error: attemptError } = await admin
     .from("exam_attempts")
-    .select("id, exam_id, status, score, question_order, exams!inner(id, organization_id, quiz_id, settings)")
+    .select("id, exam_id, status, score, max_score, question_order, exams!inner(id, organization_id, quiz_id, settings)")
     .eq("id", attemptId)
     .maybeSingle();
 
@@ -1216,7 +1222,8 @@ export async function regradeSingleQuestionAsAdmin(formData: FormData) {
     .select("points_awarded, is_correct, grading_status")
     .eq("attempt_id", attemptId);
 
-  const totalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const rawTotalScore = Math.round(((allAnswers ?? []).reduce((sum, a) => sum + Number(a.points_awarded ?? 0), 0)) * 100) / 100;
+  const totalScore = await computeAttemptScoreWithAdjustments(admin, attemptId, rawTotalScore, attempt.max_score);
   const unresolved = (allAnswers ?? []).filter((a) => a.is_correct === null && a.grading_status !== "unanswered").length;
 
   await admin

@@ -212,6 +212,7 @@ export default async function ExaminationResultsPage({
               )}
             </form>
             <Link href={`/admin/examinations/marking?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Marking queue</Link>
+            <Link href={`/admin/examinations/score-adjustments?org=${selected.organization_id}&exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">Score adjustment</Link>
             <Link href={`/admin/myp-results?exam=${selected.id}`} className="font-medium text-evergreen-700 underline-offset-2 hover:underline">MYP criterion results</Link>
             <form action={regradeExamAsAdmin}>
               <input type="hidden" name="exam_id" value={selected.id} />

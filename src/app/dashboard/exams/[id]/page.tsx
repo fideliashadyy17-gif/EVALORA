@@ -7,6 +7,8 @@ import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { getEntitlement } from "@/lib/entitlements";
+import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import { moduleEnabled } from "@/lib/modules";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
@@ -265,6 +267,8 @@ export default async function ExamDetailPage({
   });
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "examinations", "/dashboard?e=module");
+  const orgRealEntitlement = await getEntitlement(supabase, org.id);
+  const scoreAdjustmentEligible = isScoreAdjustmentPlanEligible(orgRealEntitlement);
   const examMonitoringEnabled = moduleEnabled(entitlement.modules, "exam_monitoring");
   const examLinksEnabled = moduleEnabled(entitlement.modules, "exam_links");
   const examHintsEnabled = moduleEnabled(entitlement.modules, "exam_hints");
@@ -310,6 +314,9 @@ export default async function ExamDetailPage({
             )}
             {examHintsEnabled && (
               <ButtonLink href={`/dashboard/exams/${id}/hints`} variant="outline">Exam hints</ButtonLink>
+            )}
+            {scoreAdjustmentEligible && canMark && (
+              <ButtonLink href={`/dashboard/exams/${id}/adjustments`} variant="outline">Score adjustment</ButtonLink>
             )}
             <ButtonLink href={`/dashboard/exams/${id}/grades`} variant="outline">Grade history</ButtonLink>
             <ButtonLink href={`/dashboard/reports/exam/${id}`} variant="outline">Report</ButtonLink>
