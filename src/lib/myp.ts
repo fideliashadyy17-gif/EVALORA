@@ -1,4 +1,10 @@
 import { criterionSharePoints, type CriterionShare } from "./criterionShares.ts";
+import {
+  buildQuestionMarkPlans,
+  type MarkStatus,
+  type QuestionMarkPlan,
+} from "./questionMarkPlan.ts";
+import type { SessionQuestionRow } from "./live.ts";
 
 /**
  * MYP criterion results and the overall 1–7 grade — one authoritative engine.
@@ -432,6 +438,39 @@ export interface CriterionResult {
   topics: { topic: string; awarded: number; max: number; percent: number }[];
 }
 
+/**
+ * One question on the paper, as the candidate is entitled to see it back.
+ *
+ * The stored mark is authoritative, and the parts are derived from it, so the
+ * per-part marks always add up to the question mark that produced the criterion
+ * totals. `teacherFeedback` is already filtered of internal marking mechanics.
+ */
+export interface MypResultQuestion {
+  questionId: string;
+  number: number | string;
+  criterion: string | null;
+  prompt: string;
+  earned: number;
+  max: number;
+  status: MypMarkStatus;
+  /** Present for the objective questions: every option with its verdict. */
+  options: { label: string; text: string; selected: boolean; correct: boolean; expected: boolean }[];
+  /** Free-text or numeric response when the question is not multiple-choice. */
+  candidateResponse: string | null;
+  parts: {
+    label: string;
+    prompt: string;
+    candidateResponse: string | null;
+    earned: number | null;
+    max: number;
+    status: MypMarkStatus;
+    expected: string | null;
+  }[];
+  teacherFeedback: string | null;
+}
+
+export type MypMarkStatus = "correct" | "partial" | "wrong" | "unanswered" | "allocated";
+
 export interface MypResult {
   attemptId: string;
   examId: string;
@@ -478,6 +517,12 @@ export interface MypResult {
   /** Questions left unanswered at the end of the final attempt, scored zero. */
   zeroFilledQuestions: number;
   teacherFeedback: string[];
+  /**
+   * Question-by-question marking for the validated results view, or an empty
+   * array when this result is not yet released to the candidate. Adjustments
+   * are folded into the totals above and are never itemised here.
+   */
+  questions: MypResultQuestion[];
   strengths: string[];
   improvements: string[];
   /** Config used for this subject, surfaced on the grading-configuration sheet. */
@@ -526,6 +571,16 @@ export function buildMypResult(args: {
   answers: MypAnswer[];
   rules: MypRules;
   scoreAdjustments?: MypScoreAdjustment[];
+  /**
+   * The questions as printed, with their option keys and part schemes, plus the
+   * candidate's raw answer payloads. Supplying these lets the result carry
+   * question-level marking. They are only used when the result is released (or
+   * a teacher is previewing it): an unreleased result keeps `questions` empty so
+   * no caller can render markings early by accident.
+   */
+  questionMarking?: { rows: SessionQuestionRow[]; answeredRows: QuestionMarkingAnswer[] } | null;
+  /** Forces question-level marking on for a teacher preview before release. */
+  markingPreview?: boolean;
 }): MypResult {
   const { attempt, rules } = args;
   const scoreAdjustments = args.scoreAdjustments ?? [];
@@ -591,8 +646,11 @@ export function buildMypResult(args: {
     for (const question of questions) {
       const answer = answerByQuestion.get(question.questionId);
       const raw = answer?.pointsAwarded;
+      // A marker note can carry internal mechanics (an adjustment, a moderation
+      // decision, an auto-grader correction). Those are dropped whole rather
+      // than paraphrased, so criterion feedback never hints at a mark change.
       const note = cleanText(answer?.markerNote);
-      if (note) notes.add(note);
+      if (note && !isInternalMarkingNote(note)) notes.add(note);
       // A split question is visited once per criterion. The "questions counted
       // as zero" narrative is about the paper's questions, so it is credited to
       // the first criterion only; the award itself is split above.
@@ -847,12 +905,163 @@ export function buildMypResult(args: {
     errorCriteria,
     zeroFilledQuestions,
     teacherFeedback,
+    questions:
+      attempt.published || args.markingPreview === true
+        ? buildResultQuestions(args.questionMarking, answerByQuestion, args.paper ?? [])
+        : [],
     strengths,
     improvements: submissionPending
       ? [...improvements, "The attempt is still open, so every criterion mark is provisional."]
       : improvements,
     rules,
   };
+}
+
+/** Raw answer payload for question-level marking, as stored on `exam_answers`. */
+export interface QuestionMarkingAnswer {
+  question_id: string;
+  answer?: unknown;
+  points_awarded: number | string | null;
+  marker_note?: string | null;
+  grading_note?: string | null;
+}
+
+/**
+ * Internal marking mechanics — an adjustment, a moderation decision, an
+ * auto-grader correction — are audit facts. A candidate sees the mark those
+ * decisions produced, never the decisions. This mirrors the PDF's filter so the
+ * results view and the paper can never disagree about what is disclosable.
+ */
+const INTERNAL_NOTE_PATTERNS: RegExp[] = [
+  /\badjust(?:ed|ment|ments)?\b/i,
+  /\bbonus\b/i,
+  /\bregrad(?:e|ed|ing)\b/i,
+  /\bauto-?grad(?:er|ing|ed)?\b/i,
+  /\bmoderat(?:ed|ion|ing)\b/i,
+  /\boverride\b/i,
+  /\bfalse positive/i,
+  /\bkeyword\b/i,
+  /\bscaled?\b.*\bmark/i,
+];
+
+function isInternalMarkingNote(note: string): boolean {
+  return INTERNAL_NOTE_PATTERNS.some((pattern) => pattern.test(note));
+}
+
+function candidateSafeNote(row: QuestionMarkingAnswer | undefined): string | null {
+  if (!row) return null;
+  const note = typeof row.marker_note === "string" ? row.marker_note.trim() : "";
+  if (!note) return null;
+  const internal = typeof row.grading_note === "string" ? row.grading_note.trim() : "";
+  if (internal && note === internal) return null;
+  if (isInternalMarkingNote(note)) return null;
+  return note;
+}
+
+const RESULT_STATUS: Record<MarkStatus, MypMarkStatus> = {
+  correct: "correct",
+  partial: "partial",
+  wrong: "wrong",
+  unanswered: "unanswered",
+  // The question's mark is recorded, but the school never recorded which part
+  // earned it. That is not a mistake by the candidate, so it must not be shown
+  // as WRONG: the credit sits in the question total and the view says so.
+  not_marked: "allocated",
+};
+
+/**
+ * The candidate's own words for a question that is not split into parts.
+ *
+ * Reads only what the candidate typed — never a rubric, key or expectation —
+ * and returns it verbatim so the results view shows the same text the marker
+ * saw. Structured answers (matching, ordering, workspaces) are summarised in
+ * their printed order rather than dumped as JSON.
+ */
+function readSingleResponse(answer: unknown): string | null {
+  if (typeof answer === "string") return answer.trim() || null;
+  if (typeof answer === "number") return Number.isFinite(answer) ? String(answer) : null;
+  if (!answer || typeof answer !== "object") return null;
+  const payload = answer as Record<string, unknown>;
+  const pieces: string[] = [];
+  if (typeof payload.text === "string" && payload.text.trim()) pieces.push(payload.text.trim());
+  if (typeof payload.value === "string" && payload.value.trim()) pieces.push(payload.value.trim());
+  else if (typeof payload.value === "number" && Number.isFinite(payload.value)) pieces.push(String(payload.value));
+  if (Array.isArray(payload.items)) {
+    const items = payload.items.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
+    if (items.length) pieces.push(items.map((item) => item.trim()).join(" → "));
+  }
+  return pieces.length ? pieces.join(" · ") : null;
+}
+
+/**
+ * Turns the shared marking evidence into the shape the results view renders.
+ *
+ * Prompt and number come from the printed paper when the full question rows are
+ * available, and fall back to the plan so a caller that holds only the plans
+ * still gets a complete, correctly ordered list.
+ */
+function buildResultQuestions(
+  marking: { rows: SessionQuestionRow[]; answeredRows: QuestionMarkingAnswer[] } | null | undefined,
+  answerByQuestion: Map<string, MypAnswer>,
+  paper: MypPaperQuestion[],
+): MypResultQuestion[] {
+  if (!marking || marking.rows.length === 0) return [];
+  const promptByQuestion = new Map(paper.map((question) => [question.questionId, question]));
+  const plans = buildQuestionMarkPlans(marking.rows, marking.answeredRows);
+
+  return plans.map((plan: QuestionMarkPlan) => {
+    const earned = plan.earned ?? 0;
+    const status = RESULT_STATUS[plan.status];
+    const chosen = new Set(plan.chosenLetters);
+    const prompt =
+      promptByQuestion.get(plan.questionId)?.prompt ??
+      plan.printedLabel ??
+      "";
+
+    const parts = plan.parts.map((part) => ({
+      label: part.label,
+      prompt: part.prompt,
+      candidateResponse: part.candidateResponse,
+      earned: part.earned,
+      max: part.max,
+      status: RESULT_STATUS[part.status],
+      expected: part.expected,
+    }));
+
+    // Matching exercises are marked row by row; present each row as a part so
+    // the pairing the candidate made and the pairing expected are both visible.
+    for (const row of plan.matchingRows) {
+      parts.push({
+        label: row.left,
+        prompt: "Matching pair",
+        candidateResponse: row.candidateRight,
+        earned: null,
+        max: 0,
+        status: RESULT_STATUS[row.status],
+        expected: row.expectedRight,
+      });
+    }
+
+    return {
+      questionId: plan.questionId,
+      number: plan.printedLabel ?? plan.number,
+      criterion: plan.criterion,
+      prompt,
+      earned,
+      max: plan.max,
+      status,
+      options: plan.options.map((option) => ({
+        label: option.letter,
+        text: option.label,
+        selected: chosen.has(option.letter),
+        correct: option.isCorrect,
+        expected: option.isCorrect && !(chosen.size === 1 && chosen.has(option.letter)),
+      })),
+      candidateResponse: plan.parts.length ? null : readSingleResponse(marking.answeredRows.find((row) => row.question_id === plan.questionId)?.answer),
+      parts,
+      teacherFeedback: candidateSafeNote(marking.answeredRows.find((row) => row.question_id === plan.questionId)),
+    };
+  });
 }
 
 function uniqueStrings(values: string[]): string[] {

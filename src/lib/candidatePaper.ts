@@ -14,6 +14,7 @@ import { normaliseProbabilityTreeSpec, probabilityTreeHasWork, type ProbabilityT
 import { normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "./statsSpec";
 import { normaliseStemLeafSpec, stemLeafHasWork, type StemLeafSpec } from "./stemLeafSpec";
 import { normaliseVennSpec, vennSpecHasWork, type VennSpec } from "./vennSpec";
+import { buildQuestionMarkPlans, type QuestionMarkPlan } from "./questionMarkPlan.ts";
 
 /**
  * Candidate-safe examination paper assembler (ManageBac evidence PDF).
@@ -55,7 +56,15 @@ export interface CandidatePaperHeader {
   questionCount: number;
   answeredCount: number;
   resultsPublished: boolean;
-  /** Populated ONLY when `resultsPublished === true`. */
+  /**
+   * Marks are shown as a staff preview of a validated, not-yet-released result.
+   *
+   * The paper is then explicitly labelled a preview so a teacher can review the
+   * complete question-level marking before publication, and so a preview copy
+   * can never be mistaken for a released result.
+   */
+  markingPreview: boolean;
+  /** Populated ONLY when marks are visible (published, or staff preview). */
   score: number | null;
   /** Populated ONLY when `resultsPublished === true`. */
   maxScore: number | null;
@@ -177,6 +186,12 @@ export interface CandidatePaperQuestion {
   awardedMarks: number | null;
   /** Populated ONLY when `resultsPublished === true` and genuine teacher feedback exists. */
   teacherFeedback: string | null;
+  /**
+   * Question-level marking evidence: what the candidate wrote for each part,
+   * the marks each part earned, and (where the scheme allows) the expected
+   * answer. Null unless marks are visible.
+   */
+  markPlan: QuestionMarkPlan | null;
 }
 
 export interface CandidatePaperSection {
@@ -660,6 +675,30 @@ function buildCandidateAnswer(args: {
  * Pure candidate paper data builder (used by the server loader and directly
  * unit-tested with synthetic & realistic exam fixtures).
  */
+/**
+ * True when a marker note describes internal marking mechanics rather than
+ * feedback meant for the candidate.
+ *
+ * Mark corrections, auto-grader fixes, moderation decisions and manual overrides
+ * are audit facts. A candidate sees the resulting mark, never the machinery
+ * behind it.
+ */
+const INTERNAL_NOTE_PATTERNS: RegExp[] = [
+  /\badjust(?:ed|ment|ments)?\b/i,
+  /\bbonus\b/i,
+  /\bregrad(?:e|ed|ing)\b/i,
+  /\bauto-?grad(?:er|ing|ed)?\b/i,
+  /\bmoderat(?:ed|ion|ing)\b/i,
+  /\boverride\b/i,
+  /\bfalse positive/i,
+  /\bkeyword\b/i,
+  /\bscaled?\b.*\bmark/i,
+];
+
+function isInternalMarkingNote(note: string): boolean {
+  return INTERNAL_NOTE_PATTERNS.some((pattern) => pattern.test(note));
+}
+
 export function buildCandidatePaperData(input: {
   attempt: {
     id: string;
@@ -710,6 +749,14 @@ export function buildCandidatePaperData(input: {
     published: boolean;
     criteria: { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[];
   } | null;
+  /**
+   * Staff-only preview of a validated result that has not been released yet.
+   *
+   * Only the staff download route may set this, and only after it has verified
+   * the caller holds an operative staff role in the examination's own
+   * organization. It is never honoured for a learner-facing request.
+   */
+  markingPreview?: boolean;
 }): CandidatePaperData {
   const { attempt, exam, candidate, organization, orderedRows, savedAnswers } = input;
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
@@ -720,6 +767,10 @@ export function buildCandidatePaperData(input: {
   // could print "Pending publication (withheld)" on a paper whose marks the
   // school had already released. The engine is the single source of truth.
   const resultsPublished = examSettings.results_published === true || input.result?.published === true;
+  // Marks are rendered when the result is released, or when a verified staff
+  // member is previewing a validated-but-unreleased result.
+  const markingPreview = resultsPublished ? false : input.markingPreview === true;
+  const marksVisible = resultsPublished || markingPreview;
   const randomizeOptions = Boolean(examSettings.randomize_options);
 
   const firstName = cleanStr(attempt.first_name, 80) ?? cleanStr(candidate.first_name, 80);
@@ -748,6 +799,13 @@ export function buildCandidatePaperData(input: {
   const savedByQuestion = new Map(savedAnswers.map((row) => [row.question_id, row]));
 
   let answeredCount = 0;
+  // Question-level marking evidence, built once and shared by every question so
+  // numbering and per-part splits stay consistent. Only computed when marks are
+  // visible so a withheld paper carries no marking data at all.
+  const markPlans = marksVisible
+    ? new Map(buildQuestionMarkPlans(orderedRows, savedAnswers).map((plan) => [plan.questionId, plan]))
+    : new Map<string, QuestionMarkPlan>();
+
   const questions: CandidatePaperQuestion[] = orderedRows.map((row, index) => {
     const q = row.questions;
     const cfg = (q.config ?? {}) as Record<string, unknown>;
@@ -852,17 +910,22 @@ export function buildCandidatePaperData(input: {
     // Published results information ONLY when officially published
     let awardedMarks: number | null = null;
     let teacherFeedback: string | null = null;
-    if (resultsPublished) {
+    if (marksVisible) {
       const parsedAwarded = finiteNum(saved?.points_awarded);
       if (parsedAwarded !== null) {
         awardedMarks = Math.round(parsedAwarded * 100) / 100;
       } else if (!answer.answered) {
         awardedMarks = 0;
       }
-      // Include genuine teacher feedback only; exclude internal grading/override notes
+      // Include genuine teacher feedback only; exclude internal grading/override
+      // notes. A marker note can also carry internal mechanics — an adjustment
+      // applied after moderation, an auto-grader correction, a moderation
+      // decision — which must never reach a candidate. Those notes are dropped
+      // whole rather than edited, so a candidate never sees a half sentence
+      // that hints at a mark change.
       const note = cleanStr(saved?.marker_note, 1000);
       const internalNote = cleanStr(saved?.grading_note, 1000);
-      if (note && note !== internalNote) {
+      if (note && note !== internalNote && !isInternalMarkingNote(note)) {
         teacherFeedback = note;
       }
     }
@@ -890,6 +953,7 @@ export function buildCandidatePaperData(input: {
       answer,
       awardedMarks,
       teacherFeedback,
+      markPlan: markPlans.get(q.id) ?? null,
     };
   });
 
@@ -922,10 +986,10 @@ export function buildCandidatePaperData(input: {
     cleanStr(quizSettings.grade_level, 60);
   const examVersion = extractExamVersion(exam.title, examSettings, quizSettings);
 
-  const score = resultsPublished ? finiteNum(attempt.score) : null;
-  const maxScore = resultsPublished ? (finiteNum(attempt.max_score) ?? totalPaperMarks) : null;
+  const score = marksVisible ? finiteNum(attempt.score) : null;
+  const maxScore = marksVisible ? (finiteNum(attempt.max_score) ?? totalPaperMarks) : null;
   const percentage =
-    resultsPublished && score !== null && maxScore !== null && maxScore > 0
+    marksVisible && score !== null && maxScore !== null && maxScore > 0
       ? Math.round((score / maxScore) * 1000) / 10
       : null;
 
@@ -951,10 +1015,16 @@ export function buildCandidatePaperData(input: {
     questionCount: questions.length,
     answeredCount,
     resultsPublished,
+    markingPreview,
     score,
     maxScore,
     percentage,
     passMarkPercent: resultsPublished ? (finiteNum(examSettings.pass_mark_percent) ?? 50) : null,
+    // Criteria (A–D) are part of the released award. A staff preview of a
+    // validated result inherits them so the whole marking can be checked,
+    // but the paper stays marked as a preview. The gate is `resultsPublished`,
+    // not `marksVisible`: a paper that is merely being previewed must carry no
+    // award at all, and a withheld paper must never leak a criterion line.
     criteria: buildCandidatePaperCriteria(resultsPublished ? input.result?.criteria : null),
   };
 
@@ -1023,6 +1093,7 @@ export type CandidatePaperLoadResult =
 export async function loadCandidatePaperForAttempt(
   admin: SupabaseClient,
   attemptRow: Record<string, unknown>,
+  options: { markingPreview?: boolean } = {},
 ): Promise<CandidatePaperLoadResult> {
   const attemptId = String(attemptRow.id ?? "");
   const examId = String(attemptRow.exam_id ?? "");
@@ -1159,6 +1230,7 @@ export async function loadCandidatePaperForAttempt(
     templateRow: tplRes.data ?? null,
     className: (classRes.data as { name?: string | null } | null)?.name ?? null,
     orderedRows,
+    markingPreview: options.markingPreview === true,
     result: result
       ? {
           published: result.published,

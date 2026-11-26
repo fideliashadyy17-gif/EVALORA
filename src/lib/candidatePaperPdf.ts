@@ -482,12 +482,20 @@ function fmtNum(v: number): string {
  */
 type QuestionVerdict = { label: string; color: ReturnType<typeof rgb> };
 
+function verdictForStatus(status: string): QuestionVerdict | null {
+  if (status === "correct") return { label: "CORRECT", color: C_EVERGREEN };
+  if (status === "partial") return { label: "PARTIAL CREDIT", color: C_AMBER };
+  if (status === "wrong") return { label: "WRONG", color: C_CORAL };
+  if (status === "unanswered") return { label: "NOT ANSWERED", color: C_CORAL };
+  return null;
+}
+
 function questionVerdict(awarded: number | null, marks: number): QuestionVerdict | null {
   if (awarded === null || !Number.isFinite(awarded)) return null;
   const max = Number.isFinite(marks) ? marks : 0;
-  if (max > 0 && awarded >= max - 1e-9) return { label: "CORRECT", color: C_EVERGREEN };
-  if (awarded <= 1e-9) return { label: "WRONG", color: C_CORAL };
-  return { label: "PARTIAL CREDIT", color: C_AMBER };
+  if (max > 0 && awarded >= max - 1e-9) return verdictForStatus("correct");
+  if (awarded <= 1e-9) return verdictForStatus("wrong");
+  return verdictForStatus("partial");
 }
 
 function fmtDateUtc(iso: string | null): string {
@@ -992,9 +1000,12 @@ class PaperLayout {
       ...(h.examVersion ? [["Exam Version", h.examVersion] as [string, string]] : []),
     ];
 
+    const marksVisible = h.resultsPublished || h.markingPreview;
     const scoreSummary =
-      h.resultsPublished && h.score !== null && h.maxScore !== null
-        ? `${fmtNum(h.score)} / ${fmtNum(h.maxScore)}${h.percentage !== null ? ` (${fmtNum(h.percentage)}%)` : ""}`
+      marksVisible && h.score !== null && h.maxScore !== null
+        ? `${fmtNum(h.score)} / ${fmtNum(h.maxScore)}${h.percentage !== null ? ` (${fmtNum(h.percentage)}%)` : ""}${
+            h.markingPreview ? "  ·  STAFF PREVIEW — NOT RELEASED" : ""
+          }`
         : h.resultsPublished
           ? "Published — Pending final mark"
           : "Pending publication (withheld)";
@@ -2904,15 +2915,20 @@ class PaperLayout {
       borderWidth: 0.6,
     });
 
+    // The printed paper numbers its questions, so lead with that number: a
+    // candidate looks for "Question 19", not for its position on the sheet.
+    // Older revisions that printed no number fall back to the sheet position.
     const qHeading =
       q.printedLabel && q.printedLabel !== String(q.number)
-        ? `Question ${q.number}  (${q.printedLabel})`
+        ? `Question ${q.printedLabel}  (sheet item ${q.number})`
         : `Question ${q.number}`;
 
-    // Marking verdict for this question, shown only once results are released.
-    // CORRECT is green, WRONG is red, and a part-mark answer is labelled
-    // PARTIAL CREDIT so a candidate can see at a glance how the mark was built.
-    const verdict = this.header.resultsPublished ? questionVerdict(q.awardedMarks, q.marks) : null;
+    // Marking verdict for this question. CORRECT is green, WRONG is red, and a
+    // part-mark answer is labelled PARTIAL CREDIT so a reader can see at a
+    // glance how the mark was built. Shown when the result is released, and on
+    // a staff preview of a validated result.
+    const marksVisible = this.header.resultsPublished || this.header.markingPreview;
+    const verdict = marksVisible ? questionVerdict(q.awardedMarks, q.marks) : null;
     const verdictColor = verdict ? verdict.color : C_MUTED;
 
     this.page.drawText(sanitizeWinAnsi(qHeading), {
@@ -2938,7 +2954,7 @@ class PaperLayout {
     const rightBits: string[] = [];
     if (q.criterionLabel) rightBits.push(q.criterionLabel);
     rightBits.push(`${fmtNum(q.marks)} ${q.marks === 1 ? "mark" : "marks"}`);
-    if (this.header.resultsPublished && q.awardedMarks !== null) {
+    if (marksVisible && q.awardedMarks !== null) {
       rightBits.push(`Awarded: ${fmtNum(q.awardedMarks)} / ${fmtNum(q.marks)}`);
     }
     if (verdict) rightBits.push(verdict.label);
@@ -3152,31 +3168,62 @@ class PaperLayout {
     // Multi-part questions (`assess_parts`): always display each public sub-part
     // prompt + the candidate's response (or "No answer submitted.")
     if (ans.parts.length > 0) {
+      // Per-part marking, aligned with the public part list. Part evidence is
+      // matched by label because that is stable across paper revisions.
+      const partPlans = q.markPlan?.parts ?? [];
+      const planByLabel = new Map(partPlans.map((p) => [p.label, p]));
+
       for (const part of ans.parts) {
+        const plan = planByLabel.get(part.label) ?? null;
+        const partVerdict = plan ? verdictForStatus(plan.status) : null;
+
         const partHeadingBits = [part.label];
         if (part.prompt) partHeadingBits.push(formatProseWithMath(part.prompt));
         if (part.points > 0) partHeadingBits.push(`[${fmtNum(part.points)} ${part.points === 1 ? "mark" : "marks"}]`);
+        if (plan && partVerdict) {
+          partHeadingBits.push(`${plan.earned ?? 0}/${plan.max}  ${partVerdict.label}`);
+        } else if (plan && plan.earned === null) {
+          // The question's stored mark is authoritative, but the school did not
+          // record which part earned it. Say so instead of inventing a split.
+          partHeadingBits.push(`of ${fmtNum(plan.max)}  ALLOCATED FROM QUESTION TOTAL`);
+        }
         this.drawWrapped(partHeadingBits.join("  "), {
           x: innerX,
           maxWidth: innerW,
           font: this.fontBold,
           size: 8.6,
           lineHeight: 12.2,
-          color: C_INK,
+          color: partVerdict ? partVerdict.color : C_INK,
           gapAfter: 2,
         });
         if (part.candidateResponse) {
           const formattedResp = formatProseWithMath(part.candidateResponse);
           const withUnit = part.unit ? `${formattedResp} ${formatProseWithMath(part.unit)}` : formattedResp;
+          const responseTone = partVerdict
+            ? partVerdict.color
+            : C_EVERGREEN_DARK;
           this.drawWrapped(`Response: ${withUnit}`, {
             x: innerX + 10,
             maxWidth: innerW - 10,
-            font: this.fontRegular,
+            font: partVerdict && plan?.status === "correct" ? this.fontBold : this.fontRegular,
             size: 9.0,
             lineHeight: 12.8,
-            color: C_EVERGREEN_DARK,
-            gapAfter: part.working ? 3 : 5,
+            color: responseTone,
+            gapAfter: plan?.expected && plan.status !== "correct" ? 2 : part.working ? 3 : 5,
           });
+          // A wrong or part-marked answer prints the expected answer, so the
+          // candidate can see what the mark was given for.
+          if (plan?.expected && plan.status !== "correct") {
+            this.drawWrapped(`Expected answer: ${formatProseWithMath(plan.expected)}`, {
+              x: innerX + 10,
+              maxWidth: innerW - 10,
+              font: this.fontBold,
+              size: 8.6,
+              lineHeight: 12.2,
+              color: C_EVERGREEN,
+              gapAfter: part.working ? 3 : 5,
+            });
+          }
         } else {
           this.drawWrapped(part.working ? "No typed answer (working shown below)." : "No answer submitted.", {
             x: innerX + 10,
@@ -3217,6 +3264,30 @@ class PaperLayout {
         }
       }
 
+      // The parts are marked from the answer key. If the school recorded a
+      // higher question mark than the key accounts for, say where the rest of
+      // the credit sits rather than silently dropping it.
+      const questionPlan = q.markPlan;
+      const marksVisibleForParts = this.header.resultsPublished || this.header.markingPreview;
+      if (marksVisibleForParts && questionPlan && questionPlan.earned !== null && partPlans.length) {
+        const accounted = partPlans.reduce((sum, part) => sum + (part.earned ?? 0), 0);
+        const residual = Math.round((questionPlan.earned - accounted) * 100) / 100;
+        if (residual > 0.005) {
+          this.drawWrapped(
+            `${fmtNum(residual)} of the ${fmtNum(questionPlan.max)} marks on this question were awarded for the answer as a whole and are included in the question mark above.`,
+            {
+              x: innerX,
+              maxWidth: innerW,
+              font: this.fontItalic,
+              size: 8.0,
+              lineHeight: 11.2,
+              color: C_MUTED,
+              gapAfter: 4,
+            },
+          );
+        }
+      }
+
       if (ans.workingText) {
         this.drawWrapped("Working / Explanation:", {
           x: innerX,
@@ -3254,16 +3325,30 @@ class PaperLayout {
       return;
     }
 
-    // Selected option(s)
+    // Selected option(s) — green when the choice is right, red when it is not.
     if (ans.selectedOptions.length > 0) {
+      const plan = q.markPlan;
       for (const sel of ans.selectedOptions) {
+        const isRight = plan ? plan.correctLetters.includes(sel.letter) : null;
+        const tone = isRight === null ? C_EVERGREEN_DARK : isRight ? C_EVERGREEN : C_CORAL;
         this.drawWrapped(`Selected: ${sel.letter}. ${formatProseWithMath(sel.label)}`, {
           x: innerX,
           maxWidth: innerW,
           font: this.fontBold,
           size: 9.1,
-          color: C_EVERGREEN_DARK,
+          color: tone,
           gapAfter: 3,
+        });
+      }
+      // Name the correct choice whenever the candidate's answer is not full marks.
+      if (plan?.expectedAnswer && q.awardedMarks !== null && q.awardedMarks < q.marks - 1e-9) {
+        this.drawWrapped(`Expected answer: ${formatProseWithMath(plan.expectedAnswer)}`, {
+          x: innerX,
+          maxWidth: innerW,
+          font: this.fontBold,
+          size: 9.0,
+          color: C_EVERGREEN,
+          gapAfter: 4,
         });
       }
     }
@@ -3283,13 +3368,37 @@ class PaperLayout {
       });
     }
 
-    // Matching pairs table
+    // Matching pairs — each pair is marked on its own so a partly correct
+    // matching exercise shows exactly which pairs were wrong.
     if (ans.matchingPairs.length > 0) {
-      const rows = ans.matchingPairs.map((pair) => [
-        formatProseWithMath(pair.left),
-        pair.candidateRight ? formatProseWithMath(pair.candidateRight) : "No answer submitted.",
-      ]);
-      this.drawGridTable(["Prompt / Item", "Candidate's Match"], rows, innerX, innerW);
+      const planRows = q.markPlan?.matchingRows ?? [];
+      const planByLeft = new Map(planRows.map((r) => [r.left.trim().toLowerCase(), r]));
+      for (const pair of ans.matchingPairs) {
+        const plan = planByLeft.get(pair.left.trim().toLowerCase()) ?? null;
+        const pairVerdict = plan ? verdictForStatus(plan.status) : null;
+        const given = pair.candidateRight ? formatProseWithMath(pair.candidateRight) : "No answer submitted.";
+        this.drawWrapped(
+          `${formatProseWithMath(pair.left)}  ->  ${given}${pairVerdict ? `   ${pairVerdict.label}` : ""}`,
+          {
+            x: innerX,
+            maxWidth: innerW,
+            size: 8.8,
+            lineHeight: 12.4,
+            color: pairVerdict ? pairVerdict.color : C_INK,
+            gapAfter: plan && plan.status !== "correct" ? 1 : 3,
+          },
+        );
+        if (plan && plan.status !== "correct") {
+          this.drawWrapped(`Expected answer: ${formatProseWithMath(plan.expectedRight)}`, {
+            x: innerX + 10,
+            maxWidth: innerW - 10,
+            font: this.fontBold,
+            size: 8.5,
+            color: C_EVERGREEN,
+            gapAfter: 4,
+          });
+        }
+      }
     }
 
     // Ordering sequence

@@ -108,7 +108,13 @@ export async function GET(
       );
     }
 
-    const loaded = await loadCandidatePaperForAttempt(admin, attempt as Record<string, unknown>);
+    // Only this staff route can ask for a preview, and only after the checks
+    // above have confirmed an operative staff role in the exam's own
+    // organization. It lets a teacher review the full question-level marking of
+    // a validated result before it is released to candidates.
+    const loaded = await loadCandidatePaperForAttempt(admin, attempt as Record<string, unknown>, {
+      markingPreview: true,
+    });
     if (!loaded.ok) {
       if (loaded.reason === "archived") {
         return errorResponse(410, "This examination has been archived or removed.");

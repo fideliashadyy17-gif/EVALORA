@@ -8,6 +8,7 @@ import {
 import type { MypHistoryRow } from "@/lib/mypResults";
 import { fmtDateTime } from "@/lib/utils";
 import { MypStatusLegend, resultTone } from "./MypResultsTable";
+import { MypQuestionReview } from "./MypQuestionReview";
 
 
 
@@ -228,6 +229,11 @@ export function MypResultDetail({
           </details>
         </div>
       </div>
+
+      {/* Question-level marking: only present once the result is released to the
+          candidate, or when a teacher previews a validated result. The engine
+          leaves it empty otherwise, so an unreleased result cannot leak it. */}
+      {result.questions.length > 0 && <MypQuestionReview questions={result.questions} />}
 
       <div className="rounded-2xl border border-evergreen-900/15 bg-paper p-6 shadow-[var(--shadow-card)]">
         <h2 className="font-display text-lg font-semibold text-evergreen-950">Feedback summary</h2>
