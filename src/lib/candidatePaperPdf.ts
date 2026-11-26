@@ -3,24 +3,26 @@ import {
   PDFImage,
   PDFPage,
   PDFFont,
-  StandardFonts,
   rgb,
   type Color,
 } from "pdf-lib";
 import { readFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
-import { normaliseAssessDiagram, type AssessDiagramSpec } from "./assessDiagram";
-import { type RichDoc, type RichNode } from "./content";
-import { normaliseDataTableSpec, type DataTableSpec } from "./dataTableSpec";
-import { normaliseGeometrySpec, type GeometrySpec } from "./geometrySpec";
+import { normaliseAssessDiagram, type AssessDiagramSpec } from "./assessDiagram.ts";
+import { latexToUnicode } from "./latexToUnicode.ts";
+import { renderMathProse } from "./mathProse.ts";
+import { embedPaperFonts } from "./pdfFonts.ts";
+import { type RichDoc, type RichNode } from "./content.ts";
+import { normaliseDataTableSpec, type DataTableSpec } from "./dataTableSpec.ts";
+import { normaliseGeometrySpec, type GeometrySpec } from "./geometrySpec.ts";
 import {
   GRAPH_VIEW,
   graphLayout,
   normaliseGraphSpec,
   sampleGraphFunction,
   type GraphSpec,
-} from "./graphSpec";
-import { type ProbabilityTreeSpec } from "./probabilityTreeSpec";
+} from "./graphSpec.ts";
+import { type ProbabilityTreeSpec } from "./probabilityTreeSpec.ts";
 import {
   cumulativeFrequencies,
   groupedCumulativePoints,
@@ -29,13 +31,13 @@ import {
   normaliseStatsSpec,
   statsSummary,
   type StatsSpec,
-} from "./statsSpec";
-import { type StemLeafSpec } from "./stemLeafSpec";
-import { type VennSpec } from "./vennSpec";
+} from "./statsSpec.ts";
+import { type StemLeafSpec } from "./stemLeafSpec.ts";
+import { type VennSpec } from "./vennSpec.ts";
 import type {
   CandidatePaperData,
   CandidatePaperQuestion,
-} from "./candidatePaper";
+} from "./candidatePaper.ts";
 
 /**
  * Pure server-side A4 PDF renderer for an individual candidate's submitted
@@ -74,395 +76,236 @@ const C_CORAL = rgb(0.761, 0.239, 0.239); // #c23d3d
 const C_AMBER = rgb(0.706, 0.475, 0.047); // #b4790c
 const C_PURPLE = rgb(0.451, 0.267, 0.678); // #7344ad
 
-/* ─── Safe WinAnsi + Math / LaTeX typography ─────────────────────────── */
+/* ─── Unicode-safe text preparation ───────────────────────────────────
+ *
+ * The paper is set in embedded DejaVu Serif (see pdfFonts.ts), which carries the
+ * Unicode mathematical operators, Greek letters and the super/subscript blocks.
+ * So unlike the old WinAnsi pipeline, text is NOT transliterated to ASCII:
+ * `≤`, `√`, `u₂₅`, `π` and `Δ` are printed as themselves.
+ *
+ * What is still cleaned up:
+ *   * characters with no glyph in the embedded face (emoji, symbols used as
+ *     decoration) are dropped rather than printing as tofu;
+ *   * control characters and zero-width joiners are removed;
+ *   * combining marks are kept only where the font composes them.
+ * ─────────────────────────────────────────────────────────────────────── */
 
-const UNICODE_REPLACEMENTS: Record<string, string> = {
-  "\u2212": "-", // minus sign
-  "\u2010": "-",
-  "\u2011": "-",
-  "\u2012": "-",
-  "\u2015": "--",
-  "\u2264": "<=",
-  "\u2265": ">=",
-  "\u2260": "!=",
-  "\u2248": "~",
-  "\u2261": "===",
-  "\u221a": "sqrt",
-  "\u221e": "infinity",
-  "\u2192": "->",
-  "\u2190": "<-",
-  "\u2194": "<->",
-  "\u21d2": "=>",
-  "\u21d4": "<=>",
-  "\u2208": " in ",
-  "\u2209": " not in ",
-  "\u222a": " U ",
-  "\u2229": " n ",
-  "\u2205": "empty set",
-  "\u2220": "angle ",
-  "\u25b3": "triangle ",
-  "\u22a5": "perp",
-  "\u2225": "||",
-  "\u2211": "Sigma",
-  "\u03c0": "pi",
-  "\u03a0": "Pi",
-  "\u03b8": "theta",
-  "\u03b1": "alpha",
-  "\u03b2": "beta",
-  "\u03b3": "gamma",
-  "\u03b4": "delta",
-  "\u0394": "Delta",
-  "\u03c3": "sigma",
-  "\u03a3": "Sigma",
-  "\u03bc": "mu",
-  "\u03bb": "lambda",
-  "\u03c6": "phi",
-  "\u03c9": "omega",
-  "\u2070": "^0",
-  "\u2074": "^4",
-  "\u2075": "^5",
-  "\u2076": "^6",
-  "\u2077": "^7",
-  "\u2078": "^8",
-  "\u2079": "^9",
-  "\u207a": "^+",
-  "\u207b": "^-",
-  "\u207f": "^n",
-  "\u2080": "_0",
-  "\u2081": "_1",
-  "\u2082": "_2",
-  "\u2083": "_3",
-  "\u2084": "_4",
-  "\u2085": "_5",
-  "\u2086": "_6",
-  "\u2087": "_7",
-  "\u2088": "_8",
-  "\u2089": "_9",
-  "\u00a0": " ",
-  "\u200b": "",
-  "\u200c": "",
-  "\u200d": "",
-  "\ufeff": "",
-  "\u202f": " ",
-  "\u2009": " ",
-  "\u2002": " ",
-  "\u2003": " ",
-  "\u2610": "[ ]",
-  "\u2611": "[X]",
-  "\u2713": "v",
-  "\u2714": "v",
-  "\u2717": "x",
-  "\u2718": "x",
-  "\u25a0": "*",
-  "\u25a1": "[ ]",
-  "\u25cf": "•",
-  "\u25cb": "o",
-};
-
-const WINANSI_EXTRA = new Set([
-  0x20ac, 0x201a, 0x0192, 0x201e, 0x2026, 0x2020, 0x2021, 0x02c6, 0x2030,
-  0x0160, 0x2039, 0x0152, 0x017d, 0x2018, 0x2019, 0x201c, 0x201d, 0x2022,
-  0x2013, 0x2014, 0x02dc, 0x2122, 0x0161, 0x203a, 0x0153, 0x017e, 0x0178,
+/** Characters the embedded fonts do not draw; dropped before printing. */
+const DROPPED_CHARS = new Set([
+  "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff", "\u00ad",
 ]);
 
-function isWinAnsiCodePoint(cp: number): boolean {
-  if (cp >= 0x20 && cp <= 0x7e) return true;
-  if (cp >= 0xa0 && cp <= 0xff) return true;
-  return WINANSI_EXTRA.has(cp);
+function isPrintable(cp: number): boolean {
+  // Control characters never print; tabs and newlines are handled by callers.
+  if (cp < 0x20 || cp === 0x7f) return false;
+  // Private use areas are never real text.
+  if (cp >= 0xe000 && cp <= 0xf8ff) return false;
+  // Astral-plane pictographs (emoji) are decoration, not content.
+  if (cp >= 0x1f000 && cp <= 0x1faff) return false;
+  return true;
 }
 
 /**
- * Guaranteed WinAnsi-safe text normalizer so pdf-lib standard fonts NEVER
- * throw on extended Unicode, emoji, or mathematical glyphs.
+ * Make text safe to draw with the embedded fonts while preserving every
+ * mathematical character the fonts can render.
  */
-export function sanitizeWinAnsi(input: string): string {
+export function sanitizeForPdfFont(input: string): string {
   if (!input) return "";
+  // Emphasis markers are typography, never content. Stripping them here as well
+  // as in `renderMathProse` makes it impossible for any remaining draw path to
+  // print "**Find**" to a student, even one that skips the prose formatter.
   let out = "";
-  for (const ch of input) {
-    if (ch === "\n" || ch === "\r" || ch === "\t") {
-      out += ch === "\t" ? "  " : "\n";
-      continue;
-    }
-    const mapped = UNICODE_REPLACEMENTS[ch];
-    if (mapped !== undefined) {
-      out += mapped;
-      continue;
-    }
+  for (const ch of input.replace(/\*{2,}/g, "")) {
+    if (ch === "\n") { out += ch; continue; }
+    if (ch === "\t") { out += "  "; continue; }
+    if (ch === "\r") continue;
+    if (DROPPED_CHARS.has(ch)) continue;
     const cp = ch.codePointAt(0) ?? 0;
-    if (isWinAnsiCodePoint(cp)) {
-      out += ch;
-      continue;
-    }
-    // Strip combining marks / transliterate extended Latin (e.g. Ọ -> O, Ẹ -> E)
-    const stripped = ch.normalize("NFKD").replace(/[\u0300-\u036f]/g, "");
-    for (const sCh of stripped) {
-      const sCp = sCh.codePointAt(0) ?? 0;
-      if (isWinAnsiCodePoint(sCp)) out += sCh;
-    }
+    if (!isPrintable(cp)) continue;
+    if (ch === "\u00a0" || ch === "\u202f") { out += " "; continue; }
+    out += ch;
   }
   return out;
 }
 
-/** Extract brace-delimited argument starting at `start` (index of `{`). */
-function readBraceGroup(str: string, start: number): { content: string; end: number } | null {
-  if (str[start] !== "{") return null;
-  let depth = 0;
-  for (let i = start; i < str.length; i += 1) {
-    if (str[i] === "\\") {
-      i += 1;
-      continue;
-    }
-    if (str[i] === "{") depth += 1;
-    else if (str[i] === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return { content: str.slice(start + 1, i), end: i + 1 };
-      }
-    }
-  }
-  return null;
-}
-
-function replaceCommand2(
-  src: string,
-  commands: string[],
-  format: (a: string, b: string) => string,
-): string {
-  let s = src;
-  for (let pass = 0; pass < 8; pass += 1) {
-    let changed = false;
-    for (const cmd of commands) {
-      const needle = `\\${cmd}`;
-      let idx = s.indexOf(needle);
-      while (idx !== -1) {
-        // Ensure exact command boundary
-        const afterCmd = idx + needle.length;
-        if (afterCmd < s.length && /[a-zA-Z]/.test(s[afterCmd])) {
-          idx = s.indexOf(needle, afterCmd);
-          continue;
-        }
-        let p = afterCmd;
-        while (p < s.length && /\s/.test(s[p])) p += 1;
-        const g1 = readBraceGroup(s, p);
-        if (!g1) break;
-        let q = g1.end;
-        while (q < s.length && /\s/.test(s[q])) q += 1;
-        const g2 = readBraceGroup(s, q);
-        if (!g2) break;
-        const rep = format(g1.content, g2.content);
-        s = s.slice(0, idx) + rep + s.slice(g2.end);
-        changed = true;
-        idx = s.indexOf(needle, idx + rep.length);
-      }
-    }
-    if (!changed) break;
-  }
-  return s;
-}
-
-function replaceCommand1(
-  src: string,
-  commands: string[],
-  format: (a: string) => string,
-): string {
-  let s = src;
-  for (let pass = 0; pass < 8; pass += 1) {
-    let changed = false;
-    for (const cmd of commands) {
-      const needle = `\\${cmd}`;
-      let idx = s.indexOf(needle);
-      while (idx !== -1) {
-        const afterCmd = idx + needle.length;
-        if (afterCmd < s.length && /[a-zA-Z]/.test(s[afterCmd])) {
-          idx = s.indexOf(needle, afterCmd);
-          continue;
-        }
-        let p = afterCmd;
-        while (p < s.length && /\s/.test(s[p])) p += 1;
-        const g1 = readBraceGroup(s, p);
-        if (!g1) break;
-        const rep = format(g1.content);
-        s = s.slice(0, idx) + rep + s.slice(g1.end);
-        changed = true;
-        idx = s.indexOf(needle, idx + rep.length);
-      }
-    }
-    if (!changed) break;
-  }
-  return s;
-}
-
-function isSimpleMathAtom(expr: string): boolean {
-  const t = expr.trim();
-  return /^[A-Za-z0-9.]+$/.test(t);
-}
-
 /**
- * Convert a single LaTeX mathematical expression into clean, print-readable
- * WinAnsi typography (e.g. `\dfrac{x+1}{2} \times 3^2` -> `(x+1)/2 × 3²`).
+ * Convert a single LaTeX expression to Unicode mathematics.
+ *
+ * Delegates to the shared converter so the paper and the results view set an
+ * expression identically. The old implementation applied regular substitutions
+ * that broke on nesting and on TeX shorthands: `\frac12` printed as "frac12"
+ * because only `\frac{..}{..}` was handled, and `^{n-1}` printed as a caret.
  */
 export function formatLatexExpr(latex: string): string {
   if (!latex) return "";
-  let s = latex.trim();
-
-  // Strip surrounding delimiters if present
-  if (s.startsWith("$$") && s.endsWith("$$") && s.length > 4) s = s.slice(2, -2).trim();
-  else if (s.startsWith("$") && s.endsWith("$") && s.length > 2) s = s.slice(1, -1).trim();
-  else if (s.startsWith("\\(") && s.endsWith("\\)")) s = s.slice(2, -2).trim();
-  else if (s.startsWith("\\[") && s.endsWith("\\]")) s = s.slice(2, -2).trim();
-
-  // Handle \sqrt[n]{x}
-  s = s.replace(/\\sqrt\s*\[([^\]]+)\]\s*\{([^{}]+)\}/g, (_, n, body) => `root_${n}(${body})`);
-
-  // Fractions
-  s = replaceCommand2(s, ["dfrac", "tfrac", "frac", "cfrac"], (num, den) => {
-    const n = num.trim();
-    const d = den.trim();
-    const nStr = isSimpleMathAtom(n) ? n : `(${n})`;
-    const dStr = isSimpleMathAtom(d) ? d : `(${d})`;
-    return `${nStr}/${dStr}`;
-  });
-
-  // Binomial
-  s = replaceCommand2(s, ["binom", "dbinom"], (n, k) => `C(${n.trim()}, ${k.trim()})`);
-
-  // Roots, overbars, text wrappers
-  s = replaceCommand1(s, ["sqrt"], (a) => `sqrt(${a.trim()})`);
-  s = replaceCommand1(s, ["bar", "overline"], (a) => `${a.trim()}-bar`);
-  s = replaceCommand1(s, ["hat"], (a) => `${a.trim()}-hat`);
-  s = replaceCommand1(s, ["vec"], (a) => `vec(${a.trim()})`);
-  s = replaceCommand1(
-    s,
-    ["text", "textbf", "textit", "textrm", "mathrm", "mathbf", "mathit", "mathsf", "operatorname", "mathbb", "mathcal"],
-    (a) => a,
-  );
-
-  // Strip display & sizing directives
-  s = s.replace(/\\(left|right|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr|big|Big|bigg|Bigg|displaystyle|textstyle|scriptstyle)\b/g, "");
-  s = s.replace(/\\begin\{(?:aligned|align\*?|array|cases|matrix|pmatrix|bmatrix)\}(?:\{[^}]*\})?/g, "");
-  s = s.replace(/\\end\{(?:aligned|align\*?|array|cases|matrix|pmatrix|bmatrix)\}/g, "");
-  s = s.replace(/\\\\/g, "; ");
-  s = s.replace(/&/g, " ");
-
-  // Exponents for common degrees / squares / cubes
-  s = s.replace(/\^\{\s*\\circ\s*\}|\^\\circ/g, "°");
-  s = s.replace(/\^\{\s*2\s*\}|\^2(?![0-9])/g, "²");
-  s = s.replace(/\^\{\s*3\s*\}|\^3(?![0-9])/g, "³");
-  s = s.replace(/\^\{\s*1\s*\}/g, "¹");
-
-  // Common LaTeX symbols
-  const symMap: [RegExp, string][] = [
-    [/\\times\b/g, " × "],
-    [/\\div\b/g, " ÷ "],
-    [/\\pm\b/g, " ± "],
-    [/\\mp\b/g, " -/+ "],
-    [/\\cdot\b/g, " · "],
-    [/\\circ\b/g, "°"],
-    [/\\degree\b/g, "°"],
-    [/\\leq\b|\\le\b/g, " <= "],
-    [/\\geq\b|\\ge\b/g, " >= "],
-    [/\\neq\b|\\ne\b/g, " != "],
-    [/\\approx\b/g, " ~ "],
-    [/\\equiv\b/g, " === "],
-    [/\\sim\b/g, " ~ "],
-    [/\\propto\b/g, " prop "],
-    [/\\infty\b/g, "infinity"],
-    [/\\rightarrow\b|\\to\b/g, " -> "],
-    [/\\leftarrow\b/g, " <- "],
-    [/\\leftrightarrow\b/g, " <-> "],
-    [/\\Rightarrow\b/g, " => "],
-    [/\\Leftrightarrow\b/g, " <=> "],
-    [/\\notin\b/g, " not in "],
-    [/\\in\b/g, " in "],
-    [/\\subset\b/g, " subset "],
-    [/\\subseteq\b/g, " subseteq "],
-    [/\\cup\b/g, " U "],
-    [/\\cap\b/g, " n "],
-    [/\\emptyset\b|\\varnothing\b/g, "empty set"],
-    [/\\angle\b/g, "angle "],
-    [/\\triangle\b/g, "triangle "],
-    [/\\perp\b/g, " perp "],
-    [/\\parallel\b/g, " || "],
-    [/\\sum\b/g, "Sigma"],
-    [/\\prod\b/g, "Prod"],
-    [/\\int\b/g, "integral "],
-    [/\\pi\b/g, "pi"],
-    [/\\theta\b/g, "theta"],
-    [/\\alpha\b/g, "alpha"],
-    [/\\beta\b/g, "beta"],
-    [/\\gamma\b/g, "gamma"],
-    [/\\delta\b/g, "delta"],
-    [/\\Delta\b/g, "Delta"],
-    [/\\sigma\b/g, "sigma"],
-    [/\\Sigma\b/g, "Sigma"],
-    [/\\mu\b/g, "mu"],
-    [/\\lambda\b/g, "lambda"],
-    [/\\phi\b|\\varphi\b/g, "phi"],
-    [/\\omega\b/g, "omega"],
-    [/\\ldots\b|\\cdots\b|\\dots\b/g, "..."],
-    [/\\sin\b/g, "sin"],
-    [/\\cos\b/g, "cos"],
-    [/\\tan\b/g, "tan"],
-    [/\\log\b/g, "log"],
-    [/\\ln\b/g, "ln"],
-    [/\\exp\b/g, "exp"],
-    [/\\lim\b/g, "lim"],
-    [/\\quad\b|\\qquad\b/g, "  "],
-    [/\\,|\\;|\\:|\\!/g, " "],
-    [/\\%/g, "%"],
-    [/\\\$/g, "$"],
-    [/\\\{/g, "{"],
-    [/\\\}/g, "}"],
-    [/\\_/g, "_"],
-  ];
-  for (const [pattern, replacement] of symMap) {
-    s = s.replace(pattern, replacement);
-  }
-
-  // Clean remaining braced exponents & subscripts
-  s = s.replace(/\^\{([^{}]+)\}/g, (_, exp: string) => {
-    const t = exp.trim();
-    return /^[A-Za-z0-9]$/.test(t) ? `^${t}` : `^(${t})`;
-  });
-  s = s.replace(/_\{([^{}]+)\}/g, (_, sub: string) => {
-    const t = sub.trim();
-    return /^[A-Za-z0-9]+$/.test(t) ? `_${t}` : `_(${t})`;
-  });
-
-  // Remove leftover empty braces or stray command slashes
-  s = s.replace(/\{([^{}]*)\}/g, "$1");
-  s = s.replace(/\\([a-zA-Z]+)/g, "$1");
-  s = s.replace(/[ \t]{2,}/g, " ").trim();
-  return sanitizeWinAnsi(s);
+  return sanitizeForPdfFont(latexToUnicode(latex));
 }
 
 /**
- * Format prose that may contain embedded `$...$` / `$$...$$` / `\(...\)` math
- * segments into crisp WinAnsi text.
+ * Format prose that may contain embedded `$...$` / `$$...$$` / `\(...\)` maths.
+ *
+ * Currency amounts are protected, so `$25 000 in Year 1` stays money while
+ * `$V_n = 25 000(0.8)^{n-1}$` is typeset.
  */
 export function formatProseWithMath(input: string): string {
   if (!input) return "";
-  // Block math $$...$$
-  let s = input.replace(/\$\$([\s\S]+?)\$\$/g, (_, inner: string) => ` ${formatLatexExpr(inner)} `);
-  // Inline math $...$ (avoid matching currency like "$5 and $10" when digits+space follow)
-  s = s.replace(/\$([^$\n]+?)\$/g, (full, inner: string) => {
-    const trimmed = inner.trim();
-    if (!trimmed) return full;
-    // Heuristic: pure currency sentence fragment like "$50 for the..." won't match unless a closing $ follows,
-    // and if the inner looks like a prose clause between two prices ("50 and "), skip formatting.
-    if (/^\d[\d,.]*\s+[a-z]{2,}\s/i.test(trimmed)) return full;
-    return formatLatexExpr(trimmed);
-  });
-  // \( ... \) and \[ ... \]
-  s = s.replace(/\\\(([\s\S]+?)\\\)/g, (_, inner: string) => formatLatexExpr(inner));
-  s = s.replace(/\\\[([\s\S]+?)\\\]/g, (_, inner: string) => ` ${formatLatexExpr(inner)} `);
-  // Bare LaTeX commands in student math inputs (e.g. from MathLive without $ delimiters)
-  if (/\\(?:frac|dfrac|sqrt|times|div|pm|cdot|leq|geq|neq|pi|theta|bar|circ|left|right)\b/.test(s)) {
-    s = formatLatexExpr(s);
+  return sanitizeForPdfFont(renderMathProse(input));
+}
+
+/**
+ * The marker printed before a part's prompt.
+ *
+ * Part labels are authored as "(i) r" while the prompt already says "Common
+ * ratio r", so printing both repeats the variable. When the label's tail is a
+ * word the prompt already contains, only the sub-part marker is printed.
+ */
+/**
+ * Parse a block that was authored as a pipe-delimited table.
+ *
+ * Production prompts carry tables as plain text: a caption line, then a header
+ * row followed by "| 1", "| 2", … value rows, repeated per column group. Printed
+ * verbatim that becomes a tall list of lonely numbers, which is unreadable.
+ *
+ * A line is a header when the next non-empty line starts with "|", so a leading
+ * sentence stays a caption rather than being swallowed as a column title.
+ */
+function parsePipedTable(lines: string[]): {
+  caption: string | null;
+  headers: string[];
+  rows: string[][];
+  trailing: string | null;
+} | null {
+  const items = lines.map((l) => l.trim()).filter(Boolean);
+  const pipeCount = items.filter((l) => l.startsWith("|")).length;
+  if (pipeCount < 2) return null;
+
+  const prose: string[] = [];
+  const trailing: string[] = [];
+  const groups: { header: string; values: string[] }[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const line = items[i];
+    if (line.startsWith("|")) {
+      const target = groups[groups.length - 1];
+      if (!target) return null;
+      target.values.push(...line.replace(/^\|/, "").split("|").map((c) => c.trim()));
+      continue;
+    }
+    const next = items[i + 1];
+    if (next && next.startsWith("|")) {
+      groups.push({ header: line, values: [] });
+      continue;
+    }
+    // A line with no values under it is prose. Before the table it is the
+    // caption; after it, the question's own instruction ("Find k.").
+    if (groups.length) trailing.push(line);
+    else prose.push(line);
   }
-  // Clean inline Markdown emphasis (`**bold**`) occasionally stored inside text nodes
-  s = s.replace(/\*\*([^*\n]+?)\*\*/g, "$1");
-  return sanitizeWinAnsi(s).replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n");
+  if (!groups.length || !groups.every((g) => g.values.length)) return null;
+
+  // Consecutive groups are the columns of a single table: the first names the
+  // row axis ("Term n") and the rest carry the values. Stacking them would put
+  // the term numbers beside the wrong values.
+  if (groups.length > 1) {
+    const height = Math.max(...groups.map((g) => g.values.length));
+    const rows: string[][] = [];
+    for (let r = 0; r < height; r += 1) rows.push(groups.map((g) => g.values[r] ?? ""));
+    return {
+      caption: prose.join(" ") || null,
+      headers: groups.map((g) => g.header),
+      rows,
+      trailing: trailing.join(" ") || null,
+    };
+  }
+
+  const [only] = groups;
+  return {
+    caption: prose.join(" ") || null,
+    headers: [only.header, "Value"],
+    rows: only.values.map((v, i) => [String(i + 1), v]),
+    trailing: trailing.join(" ") || null,
+  };
+}
+
+/**
+ * The prefix to print before a part's prompt.
+ *
+ * A label like "(a)(iii) total" carries a marker plus a description of the part.
+ * Printing the description is right when it adds information ("Q1" before "Lower
+ * quartile"), but it reads as a stutter when the prompt already says the same
+ * words ("grouped mean" before "Common grouped estimated mean"). So a tail is
+ * dropped as soon as any of its content words appear in the prompt, and a tail
+ * made only of generic words ("third", "total") is dropped too — it names
+ * nothing the prompt has not already said.
+ */
+function partMarker(label: string, prompt: string | null | undefined): string {
+  const trimmed = (label ?? "").trim();
+  if (!trimmed) return "";
+  const prose = (prompt ?? "").toLowerCase();
+  // With no prompt the label *is* the description, so print it whole.
+  if (!prose.trim()) return trimmed;
+
+  const restated = (words: string[]) => words.some((w) => hasWord(prose, w));
+
+  // A label can carry several parenthesised markers plus a trailing word, as in
+  // "(a)(iii) total" or "(i) Common ratio r".
+  const m = /^((?:\([^)]*\)\s*)+|[A-Za-z0-9]+\s+)(.*)$/.exec(trimmed);
+  if (!m) return restated(wordsOf(trimmed)) ? "" : trimmed;
+  const [, marker, tail] = m;
+  const isLetterMarker = /^\(/.test(marker);
+
+  // "Midpoint 1" / "Midpoint 2": the tail is a bare ordinal, so the words that
+  // describe the part come from the marker itself.
+  const descriptive = /^\d+$/.test(tail.trim())
+    ? wordsOf(marker.replace(/[^A-Za-z].*$/, ""))
+    : wordsOf(tail);
+
+  // A tail of only generic words ("(c)(i) third", "(b) total") names nothing, so
+  // keep the marker and let the prompt speak for itself.
+  if (!descriptive.length) return isLetterMarker ? marker.trim() : trimmed;
+
+  if (!restated(descriptive)) return trimmed;
+  // The prompt already carries the description: keep only a letter marker,
+  // which is a reference the prompt cannot supply.
+  return isLetterMarker ? marker.trim() : "";
+}
+
+/** Lower-case content words of a label tail, ignoring number and filler words. */
+function wordsOf(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9 &]+/g, " ")
+    .split(/[\s&]+/)
+    .filter((w) => w && !/^\d+$/.test(w) && !STOP_WORDS.has(w))
+    .flatMap((w) => LABEL_ABBREVIATIONS[w] ?? [w]);
+}
+
+/** Abbreviations that a prompt spells out, so comparisons happen on meaning. */
+const LABEL_ABBREVIATIONS: Record<string, string[]> = {
+  sd: ["standard", "deviation"],
+  std: ["standard", "deviation"],
+  iqr: ["interquartile", "range"],
+  med: ["median"],
+  var: ["variance"],
+  q1: ["lower", "quartile"],
+  q3: ["upper", "quartile"],
+};
+
+const STOP_WORDS = new Set([
+  "the", "of", "and", "for", "in", "on", "to", "with", "using", "all", "each",
+  "a", "an", "two", "three", "one", "first", "second", "third", "total",
+]);
+
+/**
+ * Whole-word (or bare number) membership, case-insensitive.
+ *
+ * A label and its prompt often differ only in number ("medians and ranges" for
+ * "Median and range for each group"), so a simple plural ending is accepted as
+ * the same word rather than treated as new information.
+ */
+function hasWord(haystack: string, needle: string): boolean {
+  const stem = needle.replace(/(?:es|s)$/i, "");
+  const escaped = stem.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9])${escaped}(?:e?s)?([^a-z0-9]|$)`, "i").test(haystack);
 }
 
 function fmtNum(v: number): string {
@@ -793,13 +636,13 @@ class PaperLayout {
       // Compact running header on continuation pages
       page.drawRectangle({ x: 0, y: A4_H - 4, width: A4_W, height: 4, color: C_EVERGREEN });
       const leftText = this.truncate(
-        `EVALORA  ·  ${sanitizeWinAnsi(this.header.schoolName)}  ·  ${sanitizeWinAnsi(this.header.candidateFullName)}`,
+        `EVALORA  ·  ${sanitizeForPdfFont(this.header.schoolName)}  ·  ${sanitizeForPdfFont(this.header.candidateFullName)}`,
         335,
         this.fontBold,
         7.5,
       );
       const rightLabel = [this.header.subject, this.header.examVersion].filter(Boolean).join(" · ") || "Candidate Paper";
-      const rightText = this.truncate(sanitizeWinAnsi(rightLabel), 165, this.fontRegular, 7.5);
+      const rightText = this.truncate(sanitizeForPdfFont(rightLabel), 165, this.fontRegular, 7.5);
       page.drawText(leftText, {
         x: MARGIN_X,
         y: A4_H - 24,
@@ -834,7 +677,7 @@ class PaperLayout {
   }
 
   truncate(text: string, maxWidth: number, font: PDFFont, size: number): string {
-    const clean = sanitizeWinAnsi(text).replace(/\s+/g, " ").trim();
+    const clean = sanitizeForPdfFont(text).replace(/\s+/g, " ").trim();
     if (!clean) return "";
     if (font.widthOfTextAtSize(clean, size) <= maxWidth) return clean;
     const ellipsis = "...";
@@ -849,7 +692,7 @@ class PaperLayout {
   }
 
   wrap(text: string, maxWidth: number, font: PDFFont, size: number): string[] {
-    const safe = sanitizeWinAnsi(text);
+    const safe = sanitizeForPdfFont(text);
     const out: string[] = [];
     const paragraphs = safe.split(/\r?\n/);
     for (const para of paragraphs) {
@@ -1052,7 +895,17 @@ class PaperLayout {
     const colW = (CONTENT_W - 22) / 2;
     const leftX = MARGIN_X + 11;
     const rightX = MARGIN_X + 14 + colW;
-    const labelW = 74;
+
+    // The label column is measured from the face actually in use. A fixed width
+    // was fine for Helvetica but the embedded serif is wider, and "Paper Summary"
+    // ran into its value.
+    const labelSize = 8.2;
+    const labelW =
+      Math.max(
+        ...[...leftPairs, ...rightPairs].map(([label]) =>
+          this.fontBold.widthOfTextAtSize(`${label}:`, labelSize),
+        ),
+      ) + 7;
 
     for (let i = 0; i < rowCount; i += 1) {
       const baseline = this.y - boxPadY - i * rowH - 10;
@@ -1061,7 +914,7 @@ class PaperLayout {
         this.page.drawText(`${lp[0]}:`, {
           x: leftX,
           y: baseline,
-          size: 8.2,
+          size: labelSize,
           font: this.fontBold,
           color: C_MUTED,
         });
@@ -1079,7 +932,7 @@ class PaperLayout {
         this.page.drawText(`${rp[0]}:`, {
           x: rightX,
           y: baseline,
-          size: 8.2,
+          size: labelSize,
           font: this.fontBold,
           color: C_MUTED,
         });
@@ -1147,7 +1000,7 @@ class PaperLayout {
     this.page.drawRectangle({ x: MARGIN_X, y: topY - totalH, width: 3, height: totalH, color: C_GOLD });
 
     // Title
-    this.page.drawText(sanitizeWinAnsi(title), {
+    this.page.drawText(sanitizeForPdfFont(title), {
       x: MARGIN_X + 12,
       y: topY - 15,
       size: 10,
@@ -1177,7 +1030,7 @@ class PaperLayout {
 
     cols.forEach((criterion, index) => {
       const baseline = topY - headerH - 10 - (index + 1) * rowH + 6;
-      this.page.drawText(sanitizeWinAnsi(`Criterion ${criterion.code}`), {
+      this.page.drawText(sanitizeForPdfFont(`Criterion ${criterion.code}`), {
         x: xCriterion,
         y: baseline,
         size: 8.6,
@@ -1186,14 +1039,14 @@ class PaperLayout {
       });
       const titleText = this.truncate(criterion.title, xMarks - xTitle - 10, this.fontRegular, 8.4);
       this.page.drawText(titleText, { x: xTitle, y: baseline, size: 8.4, font: this.fontRegular, color: C_INK });
-      this.page.drawText(sanitizeWinAnsi(`${fmtNum(criterion.marksAwarded)} / ${fmtNum(criterion.marksMax)}`), {
+      this.page.drawText(sanitizeForPdfFont(`${fmtNum(criterion.marksAwarded)} / ${fmtNum(criterion.marksMax)}`), {
         x: xMarks,
         y: baseline,
         size: 8.6,
         font: this.fontBold,
         color: C_INK,
       });
-      this.page.drawText(sanitizeWinAnsi(criterion.percent === null ? "—" : `${fmtNum(criterion.percent)}%`), {
+      this.page.drawText(sanitizeForPdfFont(criterion.percent === null ? "—" : `${fmtNum(criterion.percent)}%`), {
         x: xPercent,
         y: baseline,
         size: 8.6,
@@ -1207,14 +1060,14 @@ class PaperLayout {
     const overall = `${h.score !== null ? fmtNum(h.score) : "—"} / ${h.maxScore !== null ? fmtNum(h.maxScore) : "—"}${
       h.percentage !== null ? `  (${fmtNum(h.percentage)}%)` : ""
     }`;
-    this.page.drawText(sanitizeWinAnsi("Overall total"), {
+    this.page.drawText(sanitizeForPdfFont("Overall total"), {
       x: x0,
       y: totalBaseline,
       size: 8.6,
       font: this.fontBold,
       color: C_EVERGREEN_DARK,
     });
-    this.page.drawText(sanitizeWinAnsi(overall), {
+    this.page.drawText(sanitizeForPdfFont(overall), {
       x: xMarks,
       y: totalBaseline,
       size: 8.8,
@@ -1250,7 +1103,7 @@ class PaperLayout {
       color: C_EVERGREEN,
     });
 
-    const headingText = this.truncate(sanitizeWinAnsi(title), CONTENT_W - 110, this.fontBold, 10);
+    const headingText = this.truncate(sanitizeForPdfFont(title), CONTENT_W - 110, this.fontBold, 10);
     this.page.drawText(headingText, {
       x: MARGIN_X + 11,
       y: topY - 15.5,
@@ -1290,9 +1143,58 @@ class PaperLayout {
 
   async drawRichDoc(doc: RichDoc | null, indent = 0, baseSize = 9.3): Promise<void> {
     if (!doc || !Array.isArray(doc.content)) return;
-    for (const node of doc.content) {
-      await this.drawRichNode(node, indent, baseSize);
+    const nodes = doc.content;
+    for (let i = 0; i < nodes.length; i += 1) {
+      // A plain-text table is authored one column group per paragraph, so the
+      // groups only form a table when read together. Collect the whole run of
+      // consecutive paragraphs that look like table text and typeset it once.
+      const run = this.pipeTableRunFrom(nodes, i);
+      if (run) {
+        await this.drawPipedTableRun(run, indent, baseSize);
+        i = run.end;
+        continue;
+      }
+      await this.drawRichNode(nodes[i], indent, baseSize);
     }
+  }
+
+  /** The paragraphs from `start` that together form one plain-text table. */
+  private pipeTableRunFrom(nodes: RichNode[], start: number): { paragraphs: string[]; end: number } | null {
+    const first = nodes[start];
+    if (!first || first.type !== "paragraph") return null;
+    const paragraphs: string[] = [];
+    let end = start;
+    for (let i = start; i < nodes.length; i += 1) {
+      const node = nodes[i];
+      if (!node || node.type !== "paragraph") break;
+      if (Array.isArray(node.content) && node.content.some((c) => c.type === "image")) break;
+      const text = this.inlineTextFromNode(node).trim();
+      if (!text) break;
+      paragraphs.push(text);
+      end = i;
+      // Stop once the block no longer contains a table row; a lone caption line
+      // at the very start is allowed so the header can be included.
+      if (i > start && !text.split("\n").some((l) => l.trim().startsWith("|"))) break;
+    }
+    if (!paragraphs.length) return null;
+    const joined = paragraphs.join("\n").split("\n");
+    if (!parsePipedTable(joined)) return null;
+    return { paragraphs, end };
+  }
+
+  private async drawPipedTableRun(run: { paragraphs: string[] }, indent: number, baseSize: number): Promise<void> {
+    const x = MARGIN_X + indent;
+    const maxW = CONTENT_W - indent;
+    const parsed = parsePipedTable(run.paragraphs.join("\n").split("\n"));
+    if (!parsed) return;
+    if (parsed.caption) {
+      this.drawWrapped(formatProseWithMath(parsed.caption), { x, maxWidth: maxW, size: baseSize, gapAfter: 3 });
+    }
+    this.drawGridTable(parsed.headers, parsed.rows, x, maxW);
+    if (parsed.trailing) {
+      this.drawWrapped(formatProseWithMath(parsed.trailing), { x, maxWidth: maxW, size: baseSize, gapAfter: 4 });
+    }
+    this.y -= 6;
   }
 
   private inlineTextFromNode(node: RichNode): string {
@@ -1302,11 +1204,53 @@ class PaperLayout {
     }
     if (node.type === "mathInline" || node.type === "mathBlock") {
       const latex = typeof node.attrs?.latex === "string" ? node.attrs.latex : "";
-      return formatLatexExpr(latex);
+      // A formula sits *inside* running text, so it keeps its surrounding
+      // spacing. Without this an adjoined formula swallowed the space next to it
+      // ("with u₄" printed as "withu₄") because the text nodes on either side
+      // are drawn as one run.
+      const rendered = formatLatexExpr(latex);
+      if (!rendered) return "";
+      return rendered;
     }
     if (node.type === "hardBreak") return "\n";
     if (!Array.isArray(node.content)) return "";
-    return node.content.map((child) => this.inlineTextFromNode(child)).join("");
+    // Join inline runs with exactly one space between them.
+    //
+    // Every run is trimmed first: `formatProseWithMath` tidies each text node on
+    // its own, which drops the space that used to separate "hours $h$ of" into
+    // "hours" + "h" + "of". Joining on the trimmed pieces restores one space
+    // without ever gluing a formula to the word beside it, and punctuation such
+    // as the colon in "$d =$: [2]" still binds tightly to the formula.
+    const pieces: string[] = [];
+    for (const child of node.content) {
+      const piece = this.inlineTextFromNode(child);
+      if (!piece) continue;
+      if (piece === "\n") pieces.push("\n");
+      // A *trailing* space is meaningful: it marks where the author's `$…$`
+      // ended before a word ("writes $n = …$ and"), and trimming it glued the
+      // two runs into one word. Only the leading space is dropped, because the
+      // joiner supplies its own.
+      else pieces.push(piece.replace(/^[ \t]+/, ""));
+    }
+    let joined = "";
+    for (const piece of pieces) {
+      if (piece === "\n") {
+        joined += "\n";
+        continue;
+      }
+      if (!piece.trim()) continue;
+      // A bullet that follows running text starts its own line. Prompts store a
+      // list inline ("… (in kg): • Set A … • Set B …"), and printing that as one
+      // paragraph hides the structure the author wrote.
+      const startsBullet = /^[ \t]*\u2022/.test(piece);
+      const needsBreak = startsBullet && joined.trim().length > 0 && !/\n[ \t]*$/.test(joined);
+      const needsSpace =
+        !needsBreak &&
+        joined.length > 0 && !/\s$/.test(joined) && !/^[ \t]/.test(piece) && !/^[,.;:!?)\]]/.test(piece);
+      joined += `${needsBreak ? "\n" : needsSpace ? " " : ""}${piece}`;
+      if (/[ \t]$/.test(piece)) joined = joined.replace(/[ \t]+$/, " ");
+    }
+    return joined;
   }
 
   private async drawRichNode(node: RichNode, indent: number, baseSize: number): Promise<void> {
@@ -1708,6 +1652,16 @@ class PaperLayout {
         color: C_EVERGREEN_DARK,
         gapAfter: 2,
       });
+    }
+
+    // A table is a unit: keep it on one page when it fits on a page at all.
+    // Splitting a four-row table across a page break separated a grid from its
+    // header row and left the marks panel stranded on the next sheet.
+    const tableHeight = bodyRows.reduce((sum, r) => sum + lineH + cellPadY * 2, 0) +
+      (headers ? lineH + cellPadY * 2 : 0) + 4;
+    const pageBody = A4_H - MARGIN_BOTTOM - MARGIN_TOP;
+    if (tableHeight <= pageBody && this.y - tableHeight < MARGIN_BOTTOM + 8) {
+      this.newPage(false);
     }
 
     const drawRow = (cells: string[], isHeader: boolean, shaded: boolean) => {
@@ -2664,12 +2618,12 @@ class PaperLayout {
       const r = 38;
       this.page.drawCircle({ x: cx1, y: cy, size: r, color: C_EVERGREEN_SOFT, opacity: 0.55, borderColor: C_EVERGREEN, borderWidth: 1.2 });
       this.page.drawCircle({ x: cx2, y: cy, size: r, color: C_GOLD_SOFT, opacity: 0.55, borderColor: C_GOLD, borderWidth: 1.2 });
-      this.page.drawText(sanitizeWinAnsi(v.leftLabel || "A"), { x: cx1 - r + 4, y: cy + r + 4, size: 8, font: this.fontBold, color: C_EVERGREEN_DARK });
-      this.page.drawText(sanitizeWinAnsi(v.rightLabel || "B"), { x: cx2 + r - 18, y: cy + r + 4, size: 8, font: this.fontBold, color: C_INK });
-      if (v.leftOnly) this.page.drawText(sanitizeWinAnsi(v.leftOnly), { x: cx1 - 22, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
-      if (v.both) this.page.drawText(sanitizeWinAnsi(v.both), { x: (cx1 + cx2) / 2 - 8, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
-      if (v.rightOnly) this.page.drawText(sanitizeWinAnsi(v.rightOnly), { x: cx2 + 12, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
-      if (v.outside) this.page.drawText(`Outside: ${sanitizeWinAnsi(v.outside)}`, { x: cardX + 10, y: bottomY + 8, size: 7.5, font: this.fontRegular, color: C_MUTED });
+      this.page.drawText(sanitizeForPdfFont(v.leftLabel || "A"), { x: cx1 - r + 4, y: cy + r + 4, size: 8, font: this.fontBold, color: C_EVERGREEN_DARK });
+      this.page.drawText(sanitizeForPdfFont(v.rightLabel || "B"), { x: cx2 + r - 18, y: cy + r + 4, size: 8, font: this.fontBold, color: C_INK });
+      if (v.leftOnly) this.page.drawText(sanitizeForPdfFont(v.leftOnly), { x: cx1 - 22, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
+      if (v.both) this.page.drawText(sanitizeForPdfFont(v.both), { x: (cx1 + cx2) / 2 - 8, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
+      if (v.rightOnly) this.page.drawText(sanitizeForPdfFont(v.rightOnly), { x: cx2 + 12, y: cy - 3, size: 8.5, font: this.fontBold, color: C_INK });
+      if (v.outside) this.page.drawText(`Outside: ${sanitizeForPdfFont(v.outside)}`, { x: cardX + 10, y: bottomY + 8, size: 7.5, font: this.fontRegular, color: C_MUTED });
       this.y = bottomY - 8;
       return;
     }
@@ -2787,7 +2741,7 @@ class PaperLayout {
       const py = sy(pt.y);
       this.page.drawCircle({ x: px, y: py, size: 2.8, color: parseHexColor(pt.color, C_EVERGREEN_DARK) });
       if (pt.label && pt.showLabel !== false) {
-        this.page.drawText(sanitizeWinAnsi(pt.label), { x: px + 4, y: py + 3, size: 7.5, font: this.fontBold, color: C_INK });
+        this.page.drawText(sanitizeForPdfFont(pt.label), { x: px + 4, y: py + 3, size: 7.5, font: this.fontBold, color: C_INK });
       }
     }
 
@@ -2931,7 +2885,7 @@ class PaperLayout {
     const verdict = marksVisible ? questionVerdict(q.awardedMarks, q.marks) : null;
     const verdictColor = verdict ? verdict.color : C_MUTED;
 
-    this.page.drawText(sanitizeWinAnsi(qHeading), {
+    this.page.drawText(sanitizeForPdfFont(qHeading), {
       x: MARGIN_X + 8,
       y: barBottom + 6.2,
       size: 9.5,
@@ -2958,7 +2912,7 @@ class PaperLayout {
       rightBits.push(`Awarded: ${fmtNum(q.awardedMarks)} / ${fmtNum(q.marks)}`);
     }
     if (verdict) rightBits.push(verdict.label);
-    const rightStr = sanitizeWinAnsi(rightBits.join("   ·   "));
+    const rightStr = sanitizeForPdfFont(rightBits.join("   ·   "));
     const rw = this.fontBold.widthOfTextAtSize(rightStr, 8.2);
     this.page.drawText(rightStr, {
       x: MARGIN_X + CONTENT_W - 8 - rw,
@@ -3177,8 +3131,11 @@ class PaperLayout {
         const plan = planByLabel.get(part.label) ?? null;
         const partVerdict = plan ? verdictForStatus(plan.status) : null;
 
-        const partHeadingBits = [part.label];
+        const partHeadingBits: string[] = [];
+        const marker = partMarker(part.label, part.prompt);
+        if (marker) partHeadingBits.push(marker);
         if (part.prompt) partHeadingBits.push(formatProseWithMath(part.prompt));
+        if (!partHeadingBits.length) partHeadingBits.push(part.label);
         if (part.points > 0) partHeadingBits.push(`[${fmtNum(part.points)} ${part.points === 1 ? "mark" : "marks"}]`);
         if (plan && partVerdict) {
           partHeadingBits.push(`${plan.earned ?? 0}/${plan.max}  ${partVerdict.label}`);
@@ -3510,7 +3467,7 @@ class PaperLayout {
   stampFooters(): void {
     const total = this.pages.length;
     const leftLabel = this.truncate(
-      `${sanitizeWinAnsi(this.header.examTitle)}  ·  Candidate Submission Evidence`,
+      `${sanitizeForPdfFont(this.header.examTitle)}  ·  Candidate Submission Evidence`,
       385,
       this.fontRegular,
       7.4,
@@ -3549,10 +3506,10 @@ class PaperLayout {
  */
 export async function renderCandidateExamPaperPdf(data: CandidatePaperData): Promise<Uint8Array> {
   const pdf = await PDFDocument.create();
-  pdf.setTitle(sanitizeWinAnsi(`${data.header.examTitle} — ${data.header.candidateFullName}`));
-  pdf.setAuthor(sanitizeWinAnsi(`${data.header.schoolName} via EVALORA`));
+  pdf.setTitle(sanitizeForPdfFont(`${data.header.examTitle} — ${data.header.candidateFullName}`));
+  pdf.setAuthor(sanitizeForPdfFont(`${data.header.schoolName} via EVALORA`));
   pdf.setSubject(
-    sanitizeWinAnsi(
+    sanitizeForPdfFont(
       [data.header.subject, data.header.examVersion, "Candidate Examination Evidence"]
         .filter(Boolean)
         .join(" — "),
@@ -3561,12 +3518,9 @@ export async function renderCandidateExamPaperPdf(data: CandidatePaperData): Pro
   pdf.setCreator("EVALORA Assessment Platform");
   pdf.setProducer("EVALORA PDF Engine");
 
-  const [regular, bold, italic, mono] = await Promise.all([
-    pdf.embedFont(StandardFonts.Helvetica),
-    pdf.embedFont(StandardFonts.HelveticaBold),
-    pdf.embedFont(StandardFonts.HelveticaOblique),
-    pdf.embedFont(StandardFonts.Courier),
-  ]);
+  // Real embedded faces, so mathematical notation prints as notation instead of
+  // being transliterated to ASCII for a WinAnsi-only font.
+  const { regular, bold, italic, mono } = await embedPaperFonts(pdf);
 
   const layout = new PaperLayout(pdf, { regular, bold, italic, mono }, data.header);
   await layout.drawFirstPageHeader();

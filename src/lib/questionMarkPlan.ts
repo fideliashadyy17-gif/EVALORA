@@ -122,6 +122,29 @@ interface AnswerRow {
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   Boolean(v) && typeof v === "object" && !Array.isArray(v);
 
+/**
+ * The text a reader sees for one option.
+ *
+ * Flattened here rather than imported from the content module so this planner
+ * stays independently loadable; it only needs an option's visible words.
+ */
+function optionDisplayText(o: { label?: string | null; content_doc?: unknown }): string {
+  const text = richTextPlain(o.content_doc).replace(/\s+/g, " ").trim();
+  return text || (o.label ?? "").trim();
+}
+
+function richTextPlain(node: unknown): string {
+  if (!isRecord(node)) return "";
+  if (typeof node.text === "string") return node.text;
+  if (node.type === "hardBreak") return " ";
+  if (node.type === "mathInline" || node.type === "mathBlock") {
+    const latex = isRecord(node.attrs) && typeof node.attrs.latex === "string" ? node.attrs.latex : "";
+    return latex ? ` ${latex} ` : "";
+  }
+  const children = Array.isArray(node.content) ? node.content : [];
+  return children.map((child) => richTextPlain(child)).join("");
+}
+
 function strParts(v: unknown): Record<string, string> {
   if (!isRecord(v)) return {};
   const out: Record<string, string> = {};
@@ -164,7 +187,11 @@ export function buildQuestionMarkPlans(
       .sort((a, b) => (a.position ?? 0) - (b.position ?? 0))
       .map((o, i) => ({
         letter: String.fromCharCode(65 + i),
-        label: o.label,
+        // Authored papers keep only the letter ("A") in `label` and the real
+        // option text in `content_doc`. Naming the expected answer from `label`
+        // alone printed "Expected answer: C. C", which tells the student
+        // nothing — so the document's own text wins when it has any.
+        label: optionDisplayText(o),
         isCorrect: Boolean(o.is_correct),
       }));
     const correctLetters = options.filter((o) => o.isCorrect).map((o) => o.letter);

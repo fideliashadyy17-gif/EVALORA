@@ -455,6 +455,49 @@ function extractPartWorking(
 }
 
 /**
+ * Remove a stem's own banner line, which would repeat the printed question bar.
+ *
+ * Stems are authored with an internal header ("QUESTION 2 · CRITERION B:
+ * INVESTIGATING PATTERNS [10 marks]") that the paper prints separately as the
+ * question bar. Only a leading run that names the question number or the
+ * criterion is removed, and only up to the end of that run — the rest of the
+ * stem is untouched, so no question text can be lost.
+ */
+function stripStemBanner(
+  doc: RichDoc,
+  meta: { number: string | null; criterion: string | null },
+): RichDoc {
+  const content = doc.content ?? [];
+  const first = content[0];
+  if (!first || (first.type !== "paragraph" && first.type !== "heading")) return doc;
+  const nodes = first.content ?? [];
+  // The banner may be the first text node followed by a line break, so the run
+  // is gathered across nodes until the first break: an author can split
+  // "QUESTION 2 · CRITERION B: …" from "[10 marks]" across rich-text nodes.
+  let head = "";
+  let cut = 0;
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    if (node.type === "hardBreak") break;
+    if (node.type !== "text") return doc;
+    head += node.text ?? "";
+    cut = i + 1;
+  }
+  const banner = /^\s*\**\s*QUESTION\s*(\d+)\b[^\n]*?(?:\[\s*\d+\s*marks?\s*\]|CRITERION\s*[A-D])[^\n]*$/i.exec(head);
+  if (!banner) return doc;
+  if (meta.number && meta.number !== banner[1]) return doc;
+
+  // Everything after the banner's line survives, including marks inside it.
+  const trailing = nodes
+    .slice(cut)
+    .filter((n) => n.type !== "hardBreak" || true);
+  // Drop the line break that followed the banner so the stem starts cleanly.
+  while (trailing.length && trailing[0].type === "hardBreak") trailing.shift();
+  const rest = [...(trailing.length ? [{ ...first, content: trailing }] : []), ...content.slice(1)];
+  return rest.length ? { ...doc, content: rest } : doc;
+}
+
+/**
  * Extract readable text from an arbitrary saved answer payload while preserving
  * structured workspaces so nothing submitted by the candidate is lost.
  */
@@ -937,7 +980,15 @@ export function buildCandidatePaperData(input: {
     const criterionLabel = criterionRaw ? `Criterion ${criterionRaw.toUpperCase()}` : null;
     const sectionId = cleanStr(cfg.paper_section, 32);
 
-    const promptDoc = q.prompt_doc && !docIsEmpty(q.prompt_doc) ? q.prompt_doc : textToDoc(q.prompt);
+    // A stem sometimes opens with its own printed banner ("QUESTION 2 ·
+    // CRITERION B: INVESTIGATING PATTERNS [10 marks]"). The paper's question bar
+    // already states the number, criterion and marks, so printing the banner
+    // again reads as a duplicated heading. Only that leading run is removed, and
+    // only when it names this question's number or criterion.
+    const promptDoc = stripStemBanner(
+      q.prompt_doc && !docIsEmpty(q.prompt_doc) ? q.prompt_doc : textToDoc(q.prompt),
+      { number: printedLabel, criterion: criterionRaw },
+    );
 
     return {
       number: index + 1,
