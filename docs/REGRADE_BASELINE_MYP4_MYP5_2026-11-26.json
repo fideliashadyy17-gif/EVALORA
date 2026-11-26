@@ -1,0 +1,49 @@
+{
+  "snapshot_taken_at": "2026-11-26T17:47:23Z",
+  "snapshot_reason": "Pre-change baseline before regrading MYP4 and MYP5 Mathematics Version C. Written before the first mark was modified.",
+  "organization_id": "0a400000-0000-4000-8000-000000000001",
+  "supabase_project": "nqxqisjtbfsratgztmch",
+  "exams": {
+    "MYP4_version_c": {
+      "exam_id": "cd000000-0000-4000-8000-000000000002",
+      "quiz_id": "cd000000-0000-4000-8000-000000000001",
+      "status": "closed",
+      "results_published": true,
+      "results_validated": true,
+      "grades_published_at": "2026-11-26 16:17:45.532+00",
+      "attempts": 52,
+      "answers": 1239,
+      "criterion_maxima": { "A": 32, "B": 20, "C": 24, "D": 24 },
+      "score_adjustments": [
+        { "category_key": "A", "points": 5, "scope": "all_eligible", "students_affected": 50 },
+        { "category_key": "B", "points": 4, "scope": "all_eligible", "students_affected": 50 },
+        { "category_key": "C", "points": 1, "scope": "all_eligible", "students_affected": 50 },
+        { "category_key": "D", "points": 5, "scope": "all_eligible", "students_affected": 50 }
+      ]
+    },
+    "MYP5_version_c": {
+      "exam_id": "ce000000-0000-4000-8000-000000000002",
+      "quiz_id": "ce000000-0000-4000-8000-000000000001",
+      "status": "closed",
+      "results_published": true,
+      "results_validated": true,
+      "grades_published_at": "2026-11-26 16:18:23.37+00",
+      "attempts": 55,
+      "answers": 1339,
+      "criterion_maxima": { "A": 32, "B": 24, "C": 20, "D": 24 },
+      "score_adjustments": [
+        { "category_key": "A", "points": 3, "scope": "all_eligible", "students_affected": 55 },
+        { "category_key": "B", "points": 2, "scope": "all_eligible", "students_affected": 55 },
+        { "category_key": "C", "points": 5, "scope": "all_eligible", "students_affected": 55 },
+        { "category_key": "D", "points": 5, "scope": "all_eligible", "students_affected": 55 }
+      ]
+    }
+  },
+  "how_to_roll_back": [
+    "Restore exam settings: results_published = true, results_validated = true, and reinstate grades_published_at from this file.",
+    "For each row in public.regrade_myp_version_c where applied = true, restore exam_answers.points_awarded to old_points.",
+    "Recompute exam_attempts.score as raw answer total plus preserved exam_score_adjustment_items points, clamped to max_score.",
+    "Every prior value is also recoverable from the append-only public.grade_change_log (previous_points / new_points)."
+  ],
+  "note": "Per-attempt scores were verified to equal sum(answer points) + sum(score adjustment items), e.g. MYP5 attempt ce7dc5a3 26.00 = 11 raw + 15 adjustment."
+}
