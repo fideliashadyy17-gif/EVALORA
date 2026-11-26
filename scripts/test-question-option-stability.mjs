@@ -10,7 +10,8 @@ const geometryStub={geometrySpecHasWork:()=>false,geometrySpecSummary:()=>'',nor
 const statsStub={statsSpecHasWork:()=>false,statsSpecSummary:()=>'',normaliseStatsSpec:(v)=>v};
 const tableStub={dataTableHasWork:()=>false,dataTableSummary:()=>'',normaliseDataTableSpec:(v)=>v};
 const assessStub={assessDiagramSummary:()=>'',normaliseAssessDiagram:(v)=>v};
-const content=compile('src/lib/content.ts','scripts/__option_content.cjs',{'./graphSpec':graphStub,'./geometrySpec':geometryStub,'./statsSpec':statsStub,'./dataTableSpec':tableStub,'./assessDiagram':assessStub});
+const mathProseStub={splitProseMath:(t)=>[{kind:'text',value:String(t??'')}]};
+const content=compile('src/lib/content.ts','scripts/__option_content.cjs',{'./mathProse':mathProseStub,'./graphSpec':graphStub,'./geometrySpec':geometryStub,'./statsSpec':statsStub,'./dataTableSpec':tableStub,'./assessDiagram':assessStub});
 const helper=compile('src/lib/questionOptions.ts','scripts/__option_helper.cjs',{'./content':content});
 const qid='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',org='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';let oldOptions,readError,deleteError,writes;
 function setup(){oldOptions=[{label:'Yes',is_correct:true,position:0,content_doc:{type:'doc',content:[]}},{label:'No',is_correct:false,position:1,content_doc:null}];readError=null;deleteError=null;writes=[];}

@@ -17,7 +17,7 @@ import ts from "typescript";
 // build step for tests), bundling the relative imports in one directory so
 // `./assessParts` resolves without the Next.js alias.
 const LIB_FILES = [
-  "content", "mathExpr", "graphSpec", "geometrySpec", "statsSpec", "dataTableSpec", "vennSpec", "probabilityTreeSpec", "stemLeafSpec",
+  "content", "mathProse", "latexToUnicode", "mathExpr", "graphSpec", "geometrySpec", "statsSpec", "dataTableSpec", "vennSpec", "probabilityTreeSpec", "stemLeafSpec",
   "assessDiagram",
   "assessParts", "scoring", "responseTools", "questionValidation",
 ].map((name) => `src/lib/${name}.ts`);

@@ -1,4 +1,5 @@
 import katex from "katex";
+import { splitProseMath } from "./mathProse";
 import { graphSpecHasWork, graphSpecSummary, normaliseGraphSpec } from "./graphSpec";
 import { geometrySpecHasWork, geometrySpecSummary, normaliseGeometrySpec } from "./geometrySpec";
 import { normaliseStatsSpec, statsSpecHasWork, statsSpecSummary } from "./statsSpec";
@@ -125,23 +126,20 @@ export function textToDoc(text: string | null | undefined): RichDoc {
       continue;
     }
     const inline: RichNode[] = [];
-    // Split on $$…$$ first (becomes inline-position display→mathBlock is
-    // block-level, so mid-paragraph $$ is kept as inline for safety), then $…$.
-    const parts = block.split(/(\$\$[\s\S]+?\$\$|\$[^$\n]+?\$)/g).filter(Boolean);
     let blockMath: string | null = null;
     const flushInline = () => {
       if (inline.length) blocks.push({ type: "paragraph", content: [...inline] });
       inline.length = 0;
     };
-    for (const part of parts) {
-      if (part.startsWith("$$") && part.endsWith("$$")) {
-        blockMath = part.slice(2, -2).trim();
+    for (const part of splitProseMath(block)) {
+      if (part.kind === "displayMath") {
+        blockMath = part.value;
         flushInline();
         blocks.push({ type: "mathBlock", attrs: { latex: blockMath } });
-      } else if (part.startsWith("$") && part.endsWith("$")) {
-        inline.push({ type: "mathInline", attrs: { latex: part.slice(1, -1).trim() } });
+      } else if (part.kind === "math") {
+        inline.push({ type: "mathInline", attrs: { latex: part.value } });
       } else {
-        part.split("\n").forEach((line, i, arr) => {
+        part.value.split("\n").forEach((line, i, arr) => {
           if (line) inline.push({ type: "text", text: line });
           if (i < arr.length - 1) inline.push({ type: "hardBreak" });
         });

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { normaliseCriterionShares } from "./criterionShares";
 import { hasAnswerContent } from "./examMessaging";
+import { loadQuizQuestions, type SessionQuestionRow } from "./live";
 import {
   DEFAULT_GRADE_BOUNDARIES,
   DEFAULT_GRADE_SOURCE,
@@ -289,6 +290,8 @@ interface AnswerRow {
   points_awarded: number | string | null;
   is_correct: boolean | null;
   marker_note: string | null;
+  /** Internal marking note; excluded from every candidate-facing surface. */
+  grading_note?: string | null;
   moderation_status: string | null;
 }
 
@@ -471,6 +474,18 @@ export async function loadMypResults(
       )),
     );
   }
+  // The marking view needs the same question payload the paper renders — option
+  // keys and part schemes live in `config`, which the light paper projection
+  // above deliberately does not carry. It is only ever shown on one attempt at
+  // a time, so a list of results never pays for it.
+  const markingRowsByQuiz = new Map<string, SessionQuestionRow[]>();
+  if (filters.attemptId) {
+    for (const quizId of quizIds) {
+      const rows = await loadQuizQuestions(supabase, quizId).catch(() => [] as SessionQuestionRow[]);
+      if (rows.length) markingRowsByQuiz.set(quizId, rows);
+    }
+  }
+
   const paperByQuiz = new Map<string, MypPaperQuestion[]>();
   const subjectIdsByQuiz = new Map<string, Set<string>>();
   for (const row of paperRows) {
@@ -519,7 +534,7 @@ export async function loadMypResults(
       ...(await safeRows<AnswerRow>(
         supabase
           .from("exam_answers")
-          .select("attempt_id, question_id, answer, points_awarded, is_correct, marker_note, moderation_status")
+          .select("attempt_id, question_id, answer, points_awarded, is_correct, marker_note, grading_note, moderation_status")
           .in("attempt_id", group)
           .limit(8000),
       )),
@@ -672,6 +687,10 @@ export async function loadMypResults(
       })),
       rules,
       scoreAdjustments: adjustmentsByAttempt.get(attempt.id) ?? [],
+      questionMarking: {
+        rows: (exam.quiz_id ? markingRowsByQuiz.get(exam.quiz_id) : null) ?? [],
+        answeredRows: answersByAttempt.get(attempt.id) ?? [],
+      },
     });
     results.push(result);
   }

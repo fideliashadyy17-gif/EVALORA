@@ -14,6 +14,7 @@ import { normaliseProbabilityTreeSpec, probabilityTreeHasWork, type ProbabilityT
 import { normaliseStatsSpec, statsSpecHasWork, type StatsSpec } from "./statsSpec";
 import { normaliseStemLeafSpec, stemLeafHasWork, type StemLeafSpec } from "./stemLeafSpec";
 import { normaliseVennSpec, vennSpecHasWork, type VennSpec } from "./vennSpec";
+import { buildQuestionMarkPlans, type QuestionMarkPlan } from "./questionMarkPlan.ts";
 
 /**
  * Candidate-safe examination paper assembler (ManageBac evidence PDF).
@@ -55,7 +56,15 @@ export interface CandidatePaperHeader {
   questionCount: number;
   answeredCount: number;
   resultsPublished: boolean;
-  /** Populated ONLY when `resultsPublished === true`. */
+  /**
+   * Marks are shown as a staff preview of a validated, not-yet-released result.
+   *
+   * The paper is then explicitly labelled a preview so a teacher can review the
+   * complete question-level marking before publication, and so a preview copy
+   * can never be mistaken for a released result.
+   */
+  markingPreview: boolean;
+  /** Populated ONLY when marks are visible (published, or staff preview). */
   score: number | null;
   /** Populated ONLY when `resultsPublished === true`. */
   maxScore: number | null;
@@ -72,10 +81,31 @@ export interface CandidatePaperHeader {
    * verified criterion-level mark corrections — the PDF never recomputes marks
    * of its own.
    *
-   * Candidates are never shown an MYP achievement level here: levels are
-   * school-internal and the award is expressed in marks in the paper record.
+   * Each criterion also carries its MYP achievement level (0–8), taken from the
+   * same engine result and printed beside the marks.
+   *
+   * This reverses the paper's earlier rule, which withheld levels on the grounds
+   * that they were school-internal. The rule was wrong for this record: a
+   * candidate holding an MYP examination paper is entitled to see how each
+   * criterion was awarded, and marks alone are not comparable across criteria
+   * because the criteria are out of different totals (17/30 and 5/20 are not the
+   * same achievement). The level is what makes the marks legible. It is still
+   * sourced from the results engine and never re-derived here, so the paper, the
+   * results screens and any exported record cannot disagree.
+   *
+   * A criterion that has not been fully marked carries `level: null` and prints
+   * as an em dash. It is never coerced to level 0, which would state that the
+   * candidate achieved nothing.
    */
   criteria: CandidatePaperCriterion[];
+  /**
+   * Overall MYP achievement summary (total criterion levels and 1–7 grade).
+   *
+   * Populated under exactly the same rule as `criteria` — only for a released
+   * result. A withheld paper and a pre-publication staff preview both carry no
+   * achievement summary, because neither may state an award.
+   */
+  overallLevel: CandidatePaperOverallLevel | null;
 }
 
 /** One criterion line in the candidate's validated results summary. */
@@ -90,6 +120,42 @@ export interface CandidatePaperCriterion {
   marksMax: number;
   /** Percentage of the criterion's marks, or null when none were available. */
   percent: number | null;
+  /**
+   * MYP achievement level (0–8) for this criterion's marks, from the school's
+   * configured level boundaries, or null when the criterion is not fully marked.
+   *
+   * This is the results engine's own level — never re-derived from the printed
+   * percentage in the PDF. A criterion that is not fully marked has no level at
+   * all rather than a level 0, which would read as "achieved nothing".
+   */
+  level: number | null;
+}
+
+/**
+ * The overall MYP grade summary printed under the criterion table.
+ *
+ * The grade is a sum of criterion levels mapped through the configured total
+ * bands — it is deliberately NOT a conversion of the exam percentage. The two
+ * figures answer different questions, so a paper may show 61% and an overall
+ * grade 3 without either being wrong.
+ */
+export interface CandidatePaperOverallLevel {
+  /** Sum of the criteria's achievement levels, or null when none are marked. */
+  totalLevels: number | null;
+  /** Maximum sum the paper's criteria can reach (e.g. 4 × 8 = 32). */
+  totalLevelsMax: number;
+  /** Overall MYP grade 1–7, or null when the criteria are not all marked. */
+  grade: number | null;
+  /** `final` / `provisional` / `incomplete` / `not_applicable`. */
+  status: string;
+  statusLabel: string;
+  /** Why the grade is final, provisional or absent — shown as a source note. */
+  note: string;
+  /**
+   * Where the criterion-level boundaries come from. Printed as a footnote so a
+   * reader can tell the school's own conversion from an IB-published one.
+   */
+  levelSource: string;
 }
 
 export interface CandidatePaperOption {
@@ -177,6 +243,12 @@ export interface CandidatePaperQuestion {
   awardedMarks: number | null;
   /** Populated ONLY when `resultsPublished === true` and genuine teacher feedback exists. */
   teacherFeedback: string | null;
+  /**
+   * Question-level marking evidence: what the candidate wrote for each part,
+   * the marks each part earned, and (where the scheme allows) the expected
+   * answer. Null unless marks are visible.
+   */
+  markPlan: QuestionMarkPlan | null;
 }
 
 export interface CandidatePaperSection {
@@ -440,6 +512,49 @@ function extractPartWorking(
 }
 
 /**
+ * Remove a stem's own banner line, which would repeat the printed question bar.
+ *
+ * Stems are authored with an internal header ("QUESTION 2 · CRITERION B:
+ * INVESTIGATING PATTERNS [10 marks]") that the paper prints separately as the
+ * question bar. Only a leading run that names the question number or the
+ * criterion is removed, and only up to the end of that run — the rest of the
+ * stem is untouched, so no question text can be lost.
+ */
+function stripStemBanner(
+  doc: RichDoc,
+  meta: { number: string | null; criterion: string | null },
+): RichDoc {
+  const content = doc.content ?? [];
+  const first = content[0];
+  if (!first || (first.type !== "paragraph" && first.type !== "heading")) return doc;
+  const nodes = first.content ?? [];
+  // The banner may be the first text node followed by a line break, so the run
+  // is gathered across nodes until the first break: an author can split
+  // "QUESTION 2 · CRITERION B: …" from "[10 marks]" across rich-text nodes.
+  let head = "";
+  let cut = 0;
+  for (let i = 0; i < nodes.length; i += 1) {
+    const node = nodes[i];
+    if (node.type === "hardBreak") break;
+    if (node.type !== "text") return doc;
+    head += node.text ?? "";
+    cut = i + 1;
+  }
+  const banner = /^\s*\**\s*QUESTION\s*(\d+)\b[^\n]*?(?:\[\s*\d+\s*marks?\s*\]|CRITERION\s*[A-D])[^\n]*$/i.exec(head);
+  if (!banner) return doc;
+  if (meta.number && meta.number !== banner[1]) return doc;
+
+  // Everything after the banner's line survives, including marks inside it.
+  const trailing = nodes
+    .slice(cut)
+    .filter((n) => n.type !== "hardBreak" || true);
+  // Drop the line break that followed the banner so the stem starts cleanly.
+  while (trailing.length && trailing[0].type === "hardBreak") trailing.shift();
+  const rest = [...(trailing.length ? [{ ...first, content: trailing }] : []), ...content.slice(1)];
+  return rest.length ? { ...doc, content: rest } : doc;
+}
+
+/**
  * Extract readable text from an arbitrary saved answer payload while preserving
  * structured workspaces so nothing submitted by the candidate is lost.
  */
@@ -660,6 +775,30 @@ function buildCandidateAnswer(args: {
  * Pure candidate paper data builder (used by the server loader and directly
  * unit-tested with synthetic & realistic exam fixtures).
  */
+/**
+ * True when a marker note describes internal marking mechanics rather than
+ * feedback meant for the candidate.
+ *
+ * Mark corrections, auto-grader fixes, moderation decisions and manual overrides
+ * are audit facts. A candidate sees the resulting mark, never the machinery
+ * behind it.
+ */
+const INTERNAL_NOTE_PATTERNS: RegExp[] = [
+  /\badjust(?:ed|ment|ments)?\b/i,
+  /\bbonus\b/i,
+  /\bregrad(?:e|ed|ing)\b/i,
+  /\bauto-?grad(?:er|ing|ed)?\b/i,
+  /\bmoderat(?:ed|ion|ing)\b/i,
+  /\boverride\b/i,
+  /\bfalse positive/i,
+  /\bkeyword\b/i,
+  /\bscaled?\b.*\bmark/i,
+];
+
+function isInternalMarkingNote(note: string): boolean {
+  return INTERNAL_NOTE_PATTERNS.some((pattern) => pattern.test(note));
+}
+
 export function buildCandidatePaperData(input: {
   attempt: {
     id: string;
@@ -708,8 +847,36 @@ export function buildCandidatePaperData(input: {
    */
   result?: {
     published: boolean;
-    criteria: { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[];
+    criteria: {
+      code: string;
+      title: string;
+      marksAwarded: number;
+      marksMax: number;
+      percent: number | null;
+      level?: number | null;
+    }[];
+    /**
+     * The engine's overall achievement summary. Also read only through the
+     * released-result gate below, so a withheld paper can never print a grade.
+     */
+    overall?: {
+      totalLevels: number | null;
+      totalLevelsMax: number;
+      grade: number | null;
+      status: string;
+      statusLabel: string;
+      note: string;
+      levelSource: string;
+    } | null;
   } | null;
+  /**
+   * Staff-only preview of a validated result that has not been released yet.
+   *
+   * Only the staff download route may set this, and only after it has verified
+   * the caller holds an operative staff role in the examination's own
+   * organization. It is never honoured for a learner-facing request.
+   */
+  markingPreview?: boolean;
 }): CandidatePaperData {
   const { attempt, exam, candidate, organization, orderedRows, savedAnswers } = input;
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
@@ -720,6 +887,10 @@ export function buildCandidatePaperData(input: {
   // could print "Pending publication (withheld)" on a paper whose marks the
   // school had already released. The engine is the single source of truth.
   const resultsPublished = examSettings.results_published === true || input.result?.published === true;
+  // Marks are rendered when the result is released, or when a verified staff
+  // member is previewing a validated-but-unreleased result.
+  const markingPreview = resultsPublished ? false : input.markingPreview === true;
+  const marksVisible = resultsPublished || markingPreview;
   const randomizeOptions = Boolean(examSettings.randomize_options);
 
   const firstName = cleanStr(attempt.first_name, 80) ?? cleanStr(candidate.first_name, 80);
@@ -748,6 +919,13 @@ export function buildCandidatePaperData(input: {
   const savedByQuestion = new Map(savedAnswers.map((row) => [row.question_id, row]));
 
   let answeredCount = 0;
+  // Question-level marking evidence, built once and shared by every question so
+  // numbering and per-part splits stay consistent. Only computed when marks are
+  // visible so a withheld paper carries no marking data at all.
+  const markPlans = marksVisible
+    ? new Map(buildQuestionMarkPlans(orderedRows, savedAnswers).map((plan) => [plan.questionId, plan]))
+    : new Map<string, QuestionMarkPlan>();
+
   const questions: CandidatePaperQuestion[] = orderedRows.map((row, index) => {
     const q = row.questions;
     const cfg = (q.config ?? {}) as Record<string, unknown>;
@@ -852,17 +1030,22 @@ export function buildCandidatePaperData(input: {
     // Published results information ONLY when officially published
     let awardedMarks: number | null = null;
     let teacherFeedback: string | null = null;
-    if (resultsPublished) {
+    if (marksVisible) {
       const parsedAwarded = finiteNum(saved?.points_awarded);
       if (parsedAwarded !== null) {
         awardedMarks = Math.round(parsedAwarded * 100) / 100;
       } else if (!answer.answered) {
         awardedMarks = 0;
       }
-      // Include genuine teacher feedback only; exclude internal grading/override notes
+      // Include genuine teacher feedback only; exclude internal grading/override
+      // notes. A marker note can also carry internal mechanics — an adjustment
+      // applied after moderation, an auto-grader correction, a moderation
+      // decision — which must never reach a candidate. Those notes are dropped
+      // whole rather than edited, so a candidate never sees a half sentence
+      // that hints at a mark change.
       const note = cleanStr(saved?.marker_note, 1000);
       const internalNote = cleanStr(saved?.grading_note, 1000);
-      if (note && note !== internalNote) {
+      if (note && note !== internalNote && !isInternalMarkingNote(note)) {
         teacherFeedback = note;
       }
     }
@@ -874,7 +1057,15 @@ export function buildCandidatePaperData(input: {
     const criterionLabel = criterionRaw ? `Criterion ${criterionRaw.toUpperCase()}` : null;
     const sectionId = cleanStr(cfg.paper_section, 32);
 
-    const promptDoc = q.prompt_doc && !docIsEmpty(q.prompt_doc) ? q.prompt_doc : textToDoc(q.prompt);
+    // A stem sometimes opens with its own printed banner ("QUESTION 2 ·
+    // CRITERION B: INVESTIGATING PATTERNS [10 marks]"). The paper's question bar
+    // already states the number, criterion and marks, so printing the banner
+    // again reads as a duplicated heading. Only that leading run is removed, and
+    // only when it names this question's number or criterion.
+    const promptDoc = stripStemBanner(
+      q.prompt_doc && !docIsEmpty(q.prompt_doc) ? q.prompt_doc : textToDoc(q.prompt),
+      { number: printedLabel, criterion: criterionRaw },
+    );
 
     return {
       number: index + 1,
@@ -890,6 +1081,7 @@ export function buildCandidatePaperData(input: {
       answer,
       awardedMarks,
       teacherFeedback,
+      markPlan: markPlans.get(q.id) ?? null,
     };
   });
 
@@ -922,10 +1114,10 @@ export function buildCandidatePaperData(input: {
     cleanStr(quizSettings.grade_level, 60);
   const examVersion = extractExamVersion(exam.title, examSettings, quizSettings);
 
-  const score = resultsPublished ? finiteNum(attempt.score) : null;
-  const maxScore = resultsPublished ? (finiteNum(attempt.max_score) ?? totalPaperMarks) : null;
+  const score = marksVisible ? finiteNum(attempt.score) : null;
+  const maxScore = marksVisible ? (finiteNum(attempt.max_score) ?? totalPaperMarks) : null;
   const percentage =
-    resultsPublished && score !== null && maxScore !== null && maxScore > 0
+    marksVisible && score !== null && maxScore !== null && maxScore > 0
       ? Math.round((score / maxScore) * 1000) / 10
       : null;
 
@@ -951,11 +1143,21 @@ export function buildCandidatePaperData(input: {
     questionCount: questions.length,
     answeredCount,
     resultsPublished,
+    markingPreview,
     score,
     maxScore,
     percentage,
     passMarkPercent: resultsPublished ? (finiteNum(examSettings.pass_mark_percent) ?? 50) : null,
+    // Criteria (A–D) are part of the released award. A staff preview of a
+    // validated result inherits them so the whole marking can be checked,
+    // but the paper stays marked as a preview. The gate is `resultsPublished`,
+    // not `marksVisible`: a paper that is merely being previewed must carry no
+    // award at all, and a withheld paper must never leak a criterion line.
     criteria: buildCandidatePaperCriteria(resultsPublished ? input.result?.criteria : null),
+    // The overall grade rides the same gate as the criterion table: a withheld
+    // paper carries neither, and a preview copy carries both but stays labelled
+    // as a preview.
+    overallLevel: buildCandidatePaperOverallLevel(resultsPublished ? input.result?.overall : null),
   };
 
   const filename = buildCandidatePaperFilename({
@@ -979,7 +1181,14 @@ export function buildCandidatePaperData(input: {
  */
 export function buildCandidatePaperCriteria(
   criteria:
-    | { code: string; title: string; marksAwarded: number; marksMax: number; percent: number | null }[]
+    | {
+        code: string;
+        title: string;
+        marksAwarded: number;
+        marksMax: number;
+        percent: number | null;
+        level?: number | null;
+      }[]
     | null
     | undefined,
 ): CandidatePaperCriterion[] {
@@ -995,15 +1204,69 @@ export function buildCandidatePaperCriteria(
       criterion.percent !== null && criterion.percent !== undefined && Number.isFinite(Number(criterion.percent))
         ? Math.round(Number(criterion.percent) * 10) / 10
         : Math.round((marksAwarded / marksMax) * 1000) / 10;
+    // A level is shown only when the engine produced one for a fully marked
+    // criterion. Anything else stays null so the paper can print "—" instead of
+    // implying the candidate achieved level 0.
+    //
+    // The upper bound is deliberately not clamped: a criterion's maximum level is
+    // a school setting, so a level above 8 is the engine's to decide, not this
+    // mapper's to silently truncate. Only nonsense (negative, non-finite) is
+    // discarded, becoming "no level" rather than a misleading level 0.
+    const rawLevel = criterion.level === null || criterion.level === undefined ? null : Number(criterion.level);
+    const level = rawLevel !== null && Number.isFinite(rawLevel) && rawLevel >= 0 ? Math.round(rawLevel) : null;
     out.push({
       code: code.toUpperCase(),
       title: cleanStr(criterion.title, 120) ?? `Criterion ${code.toUpperCase()}`,
       marksAwarded: Math.round(marksAwarded * 100) / 100,
       marksMax: Math.round(marksMax * 100) / 100,
       percent,
+      level,
     });
   }
   return out.sort((a, b) => a.code.localeCompare(b.code));
+}
+
+/**
+ * Map the results engine's overall achievement summary to the printable form.
+ *
+ * Levels and the grade are the engine's, never recomputed here: the overall
+ * grade comes from the sum of criterion levels through the configured total
+ * bands, so it cannot be derived from the exam percentage on this page.
+ */
+export function buildCandidatePaperOverallLevel(
+  overall:
+    | {
+        totalLevels: number | null;
+        totalLevelsMax: number;
+        grade: number | null;
+        status: string;
+        statusLabel: string;
+        note: string;
+        levelSource: string;
+      }
+    | null
+    | undefined,
+): CandidatePaperOverallLevel | null {
+  if (!overall) return null;
+  const totalLevels =
+    overall.totalLevels === null || overall.totalLevels === undefined ? null : Math.round(Number(overall.totalLevels));
+  const totalLevelsMax = finiteNum(overall.totalLevelsMax);
+  const gradeRaw = overall.grade === null || overall.grade === undefined ? null : Number(overall.grade);
+  const grade = gradeRaw !== null && Number.isFinite(gradeRaw) ? Math.round(gradeRaw) : null;
+  // A summary with no levels at all carries no information worth printing.
+  if (totalLevels === null && grade === null) return null;
+  return {
+    totalLevels,
+    // The engine always supplies the maximum (required criteria × each criterion's
+    // maximum level), so this is defensive only. 32 — four criteria of 8 — is the
+    // MYP default the engine itself falls back to.
+    totalLevelsMax: totalLevelsMax !== null && totalLevelsMax > 0 ? Math.round(totalLevelsMax) : 32,
+    grade,
+    status: cleanStr(overall.status, 32) ?? "incomplete",
+    statusLabel: cleanStr(overall.statusLabel, 48) ?? "Incomplete",
+    note: cleanStr(overall.note, 300) ?? "",
+    levelSource: cleanStr(overall.levelSource, 300) ?? "",
+  };
 }
 
 export type CandidatePaperLoadError =
@@ -1023,6 +1286,7 @@ export type CandidatePaperLoadResult =
 export async function loadCandidatePaperForAttempt(
   admin: SupabaseClient,
   attemptRow: Record<string, unknown>,
+  options: { markingPreview?: boolean } = {},
 ): Promise<CandidatePaperLoadResult> {
   const attemptId = String(attemptRow.id ?? "");
   const examId = String(attemptRow.exam_id ?? "");
@@ -1159,6 +1423,7 @@ export async function loadCandidatePaperForAttempt(
     templateRow: tplRes.data ?? null,
     className: (classRes.data as { name?: string | null } | null)?.name ?? null,
     orderedRows,
+    markingPreview: options.markingPreview === true,
     result: result
       ? {
           published: result.published,
@@ -1168,7 +1433,19 @@ export async function loadCandidatePaperForAttempt(
             marksAwarded: criterion.marksAwarded,
             marksMax: criterion.marksMax,
             percent: criterion.percent,
+            // The engine's own achievement level. Printed as-is: this layer never
+            // converts marks to a level a second time.
+            level: criterion.level,
           })),
+          overall: {
+            totalLevels: result.totalLevels,
+            totalLevelsMax: result.totalLevelsMax,
+            grade: result.overallGrade,
+            status: result.gradeStatus,
+            statusLabel: result.gradeStatusLabel,
+            note: result.gradeNote,
+            levelSource: result.levelSource,
+          },
         }
       : null,
     savedAnswers: (answersRes.data ?? []) as {

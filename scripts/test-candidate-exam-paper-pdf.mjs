@@ -682,6 +682,14 @@ await check("published candidate PDF includes score & genuine teacher feedback w
   assert.ok(info.fullText.includes("Check the numerator addition carefully."));
   assert.ok(info.fullText.includes("Clear gradient calculation; remember to complete part (b)."));
 
+  // Every marked question carries an explicit verdict: a full award is CORRECT,
+  // a zero is WRONG, and a part-mark answer is labelled PARTIAL CREDIT.
+  assert.ok(info.fullText.includes("CORRECT"), "full-mark questions must be labelled CORRECT");
+  assert.ok(info.fullText.includes("WRONG"), "zero-mark questions must be labelled WRONG");
+  assert.ok(info.fullText.includes("PARTIAL CREDIT"), "part-mark questions must be labelled PARTIAL CREDIT");
+  // The paper must never describe a mark as "adjusted" or show adjustment detail.
+  assert.ok(!/adjusted/i.test(info.fullText), "the paper must not show Adjusted labels or adjustment details");
+
   // STILL strictly excludes answer keys, explanations, marking schemes, hints, admin overrides, and UUIDs!
   const stillForbidden = [
     "CANARY_ANSWER_KEY_9911",
@@ -1398,14 +1406,27 @@ function criterionLayoutRows() {
   return rows;
 }
 
+// Levels are what `buildMypResult` produces for these percentages against the
+// configured boundaries (50→4, 65→5, 60→4, 75→6), so this fixture exercises the
+// same values production passes through rather than invented ones.
 const CRITERIA = [
-  { code: "A", title: "Knowing and understanding", marksAwarded: 8, marksMax: 11, percent: 72.7 },
-  { code: "B", title: "Investigating patterns", marksAwarded: 14, marksMax: 20, percent: 70 },
-  { code: "C", title: "Communicating", marksAwarded: 12, marksMax: 20, percent: 60 },
-  { code: "D", title: "Applying mathematics in real-life contexts", marksAwarded: 7, marksMax: 10, percent: 70 },
+  { code: "A", title: "Knowing and understanding", marksAwarded: 8, marksMax: 11, percent: 72.7, level: 5 },
+  { code: "B", title: "Investigating patterns", marksAwarded: 14, marksMax: 20, percent: 70, level: 5 },
+  { code: "C", title: "Communicating", marksAwarded: 12, marksMax: 20, percent: 60, level: 4 },
+  { code: "D", title: "Applying mathematics in real-life contexts", marksAwarded: 7, marksMax: 10, percent: 70, level: 5 },
 ];
 
-function criterionPaper({ published, criteria, logoUrl }) {
+const OVERALL = {
+  totalLevels: 19,
+  totalLevelsMax: 32,
+  grade: 5,
+  status: "final",
+  statusLabel: "Final",
+  note: "Overall grade from the configured boundaries for Mathematics.",
+  levelSource: "EVALORA default criterion-level conversion",
+};
+
+function criterionPaper({ published, criteria, overall = OVERALL, logoUrl }) {
   const rows = criterionLayoutRows();
   return candidatePaper.buildCandidatePaperData({
     attempt: {
@@ -1427,7 +1448,7 @@ function criterionPaper({ published, criteria, logoUrl }) {
     className: "Grade 9 Oak",
     orderedRows: rows,
     savedAnswers: rows.map((row) => ({ question_id: row.questions.id, answer: { option_id: `${row.questions.id}-b` }, points_awarded: 1 })),
-    result: { published, criteria },
+    result: { published, criteria, overall },
   });
 }
 
@@ -1542,11 +1563,61 @@ await check("logo asset resolution rejects path traversal and non-app URLs", asy
   }
 });
 
-await check("criterion summary never exposes levels, keys, or internal ids", async () => {
+await check("criterion summary prints each criterion's MYP level beside its marks", async () => {
+  const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: null });
+  assert.equal(data.header.criteria.length, 4, "all four criteria must reach the header");
+  for (const criterion of CRITERIA) {
+    assert.equal(data.header.criteria.find((c) => c.code === criterion.code).level, criterion.level);
+  }
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const info = await extractPdfInfo(bytes);
+  // Each row must read "Criterion X … <awarded> / <max>  <level>  <percent>%",
+  // so the level is bound to its own criterion rather than merely present.
+  for (const criterion of CRITERIA) {
+    const row = new RegExp(
+      `Criterion ${criterion.code}[\\s\\S]{0,200}?${criterion.marksAwarded}\\s*\\/\\s*${criterion.marksMax}\\s+${criterion.level}\\s+${criterion.percent}%`,
+    );
+    assert(row.test(info.fullText), `Criterion ${criterion.code} must print level ${criterion.level}`);
+  }
+});
+
+await check("the overall MYP grade prints with the total of levels, not from the percentage", async () => {
   const data = criterionPaper({ published: true, criteria: CRITERIA, logoUrl: null });
   const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
   const info = await extractPdfInfo(bytes);
+  assert.equal(data.header.overallLevel.grade, 5);
+  assert.equal(data.header.overallLevel.totalLevels, 19);
+  assert(info.fullText.includes("Total MYP levels"), "the total of levels must be labelled");
+  assert(/19\s*\/\s*32/.test(info.fullText), "the total of levels must print as n / maximum");
+  assert(/Overall MYP achievement[\s\S]{0,40}Level 5/.test(info.fullText), "the overall grade must print");
+  // The exam percentage is 67.2%, which is not 19/32 and would not yield grade 5
+  // if it were converted directly, so the printed figures must remain distinct.
+  assert(info.fullText.includes("67.2%"), "the exam percentage must still print unchanged");
+  assert(info.fullText.includes("41 / 61"), "the exam marks must still print unchanged");
+});
+
+await check("an unmarked criterion prints an em dash, never level 0", async () => {
+  const partial = CRITERIA.map((c) => (c.code === "C" ? { ...c, level: null } : c));
+  const data = criterionPaper({
+    published: true,
+    criteria: partial,
+    overall: { ...OVERALL, totalLevels: 15, grade: 4, status: "provisional", statusLabel: "Provisional" },
+    logoUrl: null,
+  });
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const info = await extractPdfInfo(bytes);
+  assert(/Criterion C[\s\S]{0,200}?—/.test(info.fullText), "an unmarked criterion must print an em dash");
+  // "Provisional" must be stated so the grade is not read as final.
+  assert(info.fullText.includes("Provisional"), "a provisional grade must be labelled as such");
+});
+
+await check("criterion summary never leaks levels, keys, or internal ids when withheld", async () => {
+  const data = criterionPaper({ published: false, criteria: CRITERIA, logoUrl: null });
+  assert.equal(data.header.overallLevel, null, "a withheld result must not carry an overall grade");
+  const bytes = await candidatePaperPdf.renderCandidateExamPaperPdf(data);
+  const info = await extractPdfInfo(bytes);
   assert(!/\bLevel\s+\d/.test(info.fullText), "no achievement level may be printed");
+  assert(!info.fullText.includes("Total MYP levels"), "no level total may be printed");
   assert(!/myp_criterion/i.test(info.fullText), "internal config key must not leak");
   assert(!/cq-\d/.test(info.fullText), "internal question ids must not leak");
 });
