@@ -1105,16 +1105,29 @@ export async function loadCandidatePaperForAttempt(
   // Criterion-level results come from the SAME engine that powers the Results
   // screens, so the PDF cannot disagree with them and inherits applied criterion
   // mark corrections instead of re-deriving marks. It is strictly a read.
+  //
+  // Scoped to this one examination on purpose. Without `examId` the engine reads
+  // every examination, attempt and answer in the institution -- far more data
+  // than one paper needs, and enough for a truncating query to silently drop the
+  // attempt and withhold the breakdown from every candidate.
+  //
   // A failure here must never block the paper: the paper is the evidence, the
   // breakdown is an addition, so fall back to no summary rather than 500.
   let result: Awaited<ReturnType<typeof loadMypResult>> = null;
   try {
     result = await loadMypResult(admin, {
       attemptId,
+      examId,
       organizationIds: [String(exam.organization_id)],
       includeUnpublished: true,
     });
-  } catch {
+  } catch (reason) {
+    // Never silent: a missing breakdown must never look like an unpublished one.
+    console.warn(
+      "[candidate-paper] criterion breakdown unavailable for attempt",
+      attemptId,
+      reason instanceof Error ? reason.message : String(reason),
+    );
     result = null;
   }
 

@@ -1013,11 +1013,18 @@ await check("Oak MYP4/5 real option content_doc, part-map working, **bold** clea
 
 function createMockSupabase(fixture) {
   let writeCount = 0;
+  const queries = [];
+  const matches = (row, [col, val]) => (typeof val === "function" ? val(row[col]) : row[col] === val);
   function makeQuery(table) {
     const filters = [];
+    // Human-readable mirror of the filters, so assertions can name the values that
+    // a closure would otherwise hide.
+    const shown = [];
+    const record = () => queries.push({ table, filters: shown.slice() });
     const chain = {
       select() { return chain; },
-      eq(col, val) { filters.push([col, val]); return chain; },
+      eq(col, val) { filters.push([col, val]); shown.push([col, val]); return chain; },
+      in(col, vals) { filters.push([col, (value) => (vals ?? []).includes(value)]); shown.push([col, { in: [...(vals ?? [])] }]); return chain; },
       order() { return chain; },
       limit() { return chain; },
       insert() { writeCount += 1; throw new Error("FORBIDDEN WRITE: insert"); },
@@ -1025,15 +1032,18 @@ function createMockSupabase(fixture) {
       delete() { writeCount += 1; throw new Error("FORBIDDEN WRITE: delete"); },
       upsert() { writeCount += 1; throw new Error("FORBIDDEN WRITE: upsert"); },
       maybeSingle: async () => {
-        const rows = (fixture[table] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
+        record();
+        const rows = (fixture[table] ?? []).filter((r) => filters.every((filter) => matches(r, filter)));
         return { data: rows[0] ?? null, error: null };
       },
       single: async () => {
-        const rows = (fixture[table] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
+        record();
+        const rows = (fixture[table] ?? []).filter((r) => filters.every((filter) => matches(r, filter)));
         return { data: rows[0] ?? null, error: rows[0] ? null : { message: "not found" } };
       },
       then(resolve, reject) {
-        const rows = (fixture[table] ?? []).filter((r) => filters.every(([c, v]) => r[c] === v));
+        record();
+        const rows = (fixture[table] ?? []).filter((r) => filters.every((filter) => matches(r, filter)));
         return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
       },
     };
@@ -1043,6 +1053,7 @@ function createMockSupabase(fixture) {
     from(table) { return makeQuery(table); },
     rpc() { writeCount += 1; throw new Error("FORBIDDEN WRITE: rpc"); },
     getWriteCount() { return writeCount; },
+    getQueries() { return queries; },
   };
 }
 
@@ -1489,6 +1500,32 @@ await check("a WebP school logo still embeds when the native transcoder is unava
   const doc = await getDocument({ data: new Uint8Array(bytes), useSystemFonts: true, isEvalSupported: false }).promise;
   const ops = await (await doc.getPage(1)).getOperatorList();
   assert(ops.fnArray.filter((fn) => fn === 85 || fn === 82).length >= 1, "logo must embed from the WebP/Png pair");
+});
+
+await check("the criterion breakdown is scoped to this examination, not the whole institution", async () => {
+  // One candidate's paper needs exactly one examination's marking records. When the
+  // engine was asked for the institution's whole results history instead, a
+  // production deployment withheld the breakdown from every candidate. Pin the
+  // scope so that cannot silently regress: producing the panel must require
+  // filtering attempts by this examination.
+  const scopedDb = createMockSupabase(dbFixture);
+  const loaded = await candidatePaper.loadCandidatePaperForAttempt(scopedDb, dbFixture.exam_attempts[0]);
+  assert.equal(loaded.ok, true);
+
+  const attemptReads = scopedDb.getQueries().filter((query) => query.table === "exam_attempts");
+  // Reading "this examination" is not enough -- an institution-wide read also
+  // contains it. The scan must be narrowed to exactly one examination.
+  const examinedIds = attemptReads.flatMap((query) =>
+    query.filters.filter(([col]) => col === "exam_id").map(([, val]) => (val?.in ?? (Array.isArray(val) ? val : [val]))),
+  );
+  assert.ok(examinedIds.length > 0, "attempts must be read");
+  assert.ok(
+    examinedIds.some((ids) => ids.length === 1 && ids[0] === EXAM_A),
+    `the results engine must read exactly this examination, not the institution; saw ${JSON.stringify(examinedIds)}`,
+  );
+  const orgWide = attemptReads.some((query) => query.filters.some(([col]) => col === "organization_id"));
+  assert.equal(orgWide, false, "attempts must be read per examination, never per organization");
+  assert.equal(scopedDb.getWriteCount(), 0, "scoping the read must not introduce writes");
 });
 
 await check("logo asset resolution rejects path traversal and non-app URLs", async () => {

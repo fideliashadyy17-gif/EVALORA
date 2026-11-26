@@ -810,11 +810,23 @@ export async function loadMypResults(
  */
 export async function loadMypResult(
   supabase: SupabaseClient,
-  args: { attemptId: string; organizationIds: string[]; studentId?: string; includeUnpublished?: boolean },
+  args: {
+    attemptId: string;
+    organizationIds: string[];
+    studentId?: string;
+    /**
+     * Narrow the scan to one examination. A single paper only needs one
+     * examination's rows; without this the engine reads the institution's entire
+     * results history to answer a question about one attempt.
+     */
+    examId?: string;
+    includeUnpublished?: boolean;
+  },
 ): Promise<MypResult | null> {
   const dataset = await loadMypResults(supabase, {
     organizationIds: args.organizationIds,
     attemptId: args.attemptId,
+    examId: args.examId,
     studentId: args.studentId,
     includeUnpublished: args.includeUnpublished,
     limit: 5,
