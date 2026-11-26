@@ -164,3 +164,95 @@ available answers. Either is a policy call, not a grading task.
 | Score/answer-sum mismatches | 2 (both `in_progress`) | 0 |
 
 Both examinations remain **unvalidated and unpublished**.
+
+## 8. Post-fix verification (2026-11-25, production)
+
+Added after the admin reported *"You are not authorized to apply score adjustments to
+this examination."* on the Adjustments page. The report was correct: the permission
+check was broken, and it was failing for every staff member.
+
+### 8.1 The defect
+
+`applyScoreAdjustmentServer()` (`src/lib/scoreAdjustmentsServer.ts:727`) calls
+`public.apply_exam_score_adjustment` through the **service-role** client, so
+`auth.uid()` is `NULL` inside the RPC. The RPC's grading gate called
+`public.access_has_permission(p_actor_id, v_exam.organization_id, 'grading.edit')`,
+which opens with:
+
+```sql
+if auth.uid() is distinct from p_user_id and not public.is_super_admin() then
+  return false;
+end if;
+```
+
+With no session identity that guard returned **false for everyone**, and the RPC
+raised `unauthorized: grading.edit permission in target organization required`
+(42501) — mapped at `scoreAdjustmentsServer.ts:801` to the 403 message shown.
+Super Admins were unaffected only because their branch reads `profiles` directly.
+
+Reproduced live: with empty `request.jwt.claims`,
+`access_has_permission('355ba2fe…','0a400000-…001','grading.edit')` → **false**.
+
+### 8.2 The fix
+
+`supabase/migrations/20261126200000_score_adjustment_actor_permission_resolution.sql`
+adds `public.access_actor_has_permission(uuid, uuid, text)` — the same permission
+graph logic (active profile → permission enabled → super admin → org scope →
+founder ceiling → active org → active membership → deny overrides → grants) with
+the **session guard removed**. It is `SECURITY DEFINER`, revoked from
+`public, anon, authenticated` and granted to **`service_role` only**, which is
+sound because `apply_exam_score_adjustment` is itself service_role-only, takes
+`p_actor_id`, and already records that actor in the ledger and audit trail.
+
+`access_has_permission` itself was **not** changed — removing its guard would let
+any authenticated user query another user's rights.
+
+The RPC was repointed by rewriting its own body via `pg_get_functiondef` +
+targeted `replace`, guarded by `position(...)` assertions, so no hand-retyping of
+the 400-line body. Live migration recorded as
+`20261126155557 score_adjustment_actor_permission_resolution`.
+
+### 8.3 Verification
+
+| Check | Result |
+|---|---|
+| Resolver exists / RPC repointed | 1 / `prosrc` contains `access_actor_has_permission(p_actor_id, …)` |
+| Old resolver gone from RPC | `access_has_permission(p_actor_id, …)` absent |
+| Execute grants on new resolver | `postgres, service_role` — **not** `authenticated`/`anon` |
+| Oak admin `355ba2fe` `grading.edit` | `true` (was `false`) |
+| Owner/super `3c3ed712` | `true` |
+| `school_founder` `cccd0907` edit / view | `false` / `true` (ceiling preserved) |
+| Oak admin vs DEMO org | `false` (cross-tenant refused) |
+| Null actor | `false` |
+| RPC as admin, attempt `55cdad7e`, rolled back | 66.00 → **67.00**, then rolled back clean (0 adjustment rows) |
+| RPC as `school_founder` | 42501 `unauthorized: grading.edit…` (refusal intact) |
+| RPC on published Premium exam `de…3e9` | 42501 `exam_already_published` (lifecycle gate fires first) |
+
+The GET/read path is unaffected: it resolves through `checkPermissions` /
+`hasPermission` (`src/lib/rbac.ts:148,162`) on the **user-session** client after
+`auth.uid()`, so the identity guard is correct there and stays.
+
+Regression coverage: `scripts/test-score-adjustment.mjs` now asserts the artifact
+and role grants, and that the RPC does not use the caller-session resolver
+(16 checks pass; `tsc --noEmit` clean).
+
+### 8.4 Re-confirmed state (unchanged by the fix)
+
+| Check | Value |
+|---|---|
+| `grading_moderation` rows / distinct answers / duplicate answer sets | 216 / 216 / **0** |
+| Decisions | MYP4 127 approved + 1 adjusted; MYP5 86 + 2 pre-existing approved |
+| Answers `human_graded` | 213 (one per approved response besides `adjusted`/legacy rows) |
+| Answers awaiting moderation (`pending`/`proposed`) | **0** |
+| Answers `not_graded` | 3 — all in paused attempt `9f78d40d` |
+| Answers `unanswered` | 17 (MYP4 10, MYP5 7) — all genuinely blank `""` values, 0 marks due, not awaiting marking |
+| `exam_score_adjustments` | 0 (Q7 was reconciled as a moderation `adjusted`, not a ledger adjustment) |
+| MYP4 attempt `248d194b` | 52.00 `marked` — Q7 0 → 1 applied, correct answer `is_correct=true` |
+| MYP4 totals | 52 attempts, 1,317.00 across 28 `auto_submitted` + 20 `submitted` + 2 `marked` + 2 `in_progress` |
+| MYP5 totals | 55 attempts, 1,047.00 across 22 `auto_submitted` + 31 `submitted` + 2 `marked` |
+| Publication | both `paused`, `grades_published_at=NULL`, `grades_published_by=NULL` — **unvalidated, unpublished** |
+
+The 213-vs-215 question is closed by the row-level detail: 216 moderation rows
+map 1:1 onto 216 distinct answers with zero duplicates, and the 213 headline was
+the count of responses *this audit* approved, not the count of decisions in the
+table. No approvals were duplicated to close the gap.
