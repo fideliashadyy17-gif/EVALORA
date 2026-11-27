@@ -172,7 +172,13 @@ declare
   v_org uuid;
 begin
   new.title          := btrim(new.title);
-  new.category_key   := lower(btrim(new.category_key));
+  -- Canonicalized exactly like guard_assessment_category() and
+  -- `normalizeCategoryKey()` in src/lib/assessmentContributions.ts, so a custom
+  -- category can never be stored here as "field trip" while
+  -- assessment_categories holds it as "field_trip".
+  new.category_key   := btrim(lower(btrim(new.category_key)), '_');
+  new.category_key   := regexp_replace(new.category_key, '[^a-z0-9_]+', '_', 'g');
+  new.category_key   := btrim(new.category_key, '_');
   new.category_label := btrim(new.category_label);
   new.term_label     := nullif(btrim(coalesce(new.term_label, '')), '');
   new.criterion_code := upper(btrim(coalesce(new.criterion_code, '')));
