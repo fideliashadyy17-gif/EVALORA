@@ -4,6 +4,7 @@ import { RichContent } from "@/components/RichContent";
 import { MathText } from "@/components/MathText";
 import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
+import { loadCandidateSupplementaryResult } from "@/lib/assessmentContributionsServer";
 import { createAdminClient } from "@/lib/supabase/server";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
@@ -278,6 +279,15 @@ export default async function ExamResultTokenPage({
 
   const score = attempt.score !== null ? Number(attempt.score) : null;
   const maxScore = attempt.max_score !== null ? Number(attempt.max_score) : null;
+
+  // Supplementary assessment contributions & grade consolidation. This resolves
+  // ONLY published consolidation data for THIS attempt: draft assessments,
+  // unpublished consolidations and other students' records are structurally
+  // unreachable. When an examination is published without contributions, this
+  // returns `available: false` and the paper renders exactly as before.
+  const supplementary = resultsPublished
+    ? await loadCandidateSupplementaryResult(admin, String(attempt.id))
+    : { available: false } as Awaited<ReturnType<typeof loadCandidateSupplementaryResult>>;
   const percentage = score !== null && maxScore !== null && maxScore > 0 ? (score / maxScore) * 100 : null;
   const isPass = percentage !== null ? percentage >= passMarkPercent : null;
 
@@ -404,6 +414,115 @@ export default async function ExamResultTokenPage({
                 </Badge>
               </div>
             </Card>
+
+            {/* Supplementary assessment contributions & consolidated score.
+                Rendered ONLY when a consolidation for this attempt has been
+                published; otherwise the paper is unchanged. */}
+            {supplementary.available && (
+              <Card className="p-6">
+                <h2 className="font-display text-lg font-semibold text-evergreen-950">
+                  Assessment Contributions &amp; Consolidated Result
+                </h2>
+                <p className="mt-1 text-xs text-ink-soft">
+                  Your examination score is preserved below exactly as marked. The supplementary classroom
+                  assessments your teacher released, and how they combine with it, are shown transparently.
+                </p>
+
+                <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-evergreen-900/10 bg-white p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Examination score</p>
+                    <p className="mt-1 font-display text-2xl font-bold tabular-nums text-evergreen-950">
+                      {supplementary.originalExamScore} / {supplementary.examMaxScore}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-evergreen-900/10 bg-white p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-ink-soft">Contribution method</p>
+                    <p className="mt-1 text-sm font-semibold capitalize text-evergreen-950">
+                      {supplementary.method?.replace(/_/g, " ") ?? "—"}
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-evergreen-700/30 bg-evergreen-50 p-4">
+                    <p className="text-xs font-bold uppercase tracking-wider text-evergreen-800">Consolidated score</p>
+                    <p className="mt-1 font-display text-2xl font-bold tabular-nums text-evergreen-950">
+                      {supplementary.consolidatedScore ?? "—"} / {supplementary.consolidatedMax ?? "—"}
+                    </p>
+                  </div>
+                </div>
+
+                {supplementary.contributions.length > 0 && (
+                  <div className="mt-5">
+                    <h3 className="text-sm font-bold text-evergreen-950">Supplementary assessment breakdown</h3>
+                    <div className="mt-2 overflow-x-auto rounded-xl border border-evergreen-900/10">
+                      <table className="w-full min-w-[520px] text-left text-sm">
+                        <thead>
+                          <tr className="border-b border-evergreen-900/10 bg-cream text-xs uppercase tracking-wide text-ink-soft">
+                            <th className="px-4 py-2.5">Assessment</th>
+                            <th className="px-4 py-2.5">Type</th>
+                            <th className="px-4 py-2.5">Score</th>
+                            <th className="px-4 py-2.5">Contribution</th>
+                          </tr>
+                        </thead>
+                        <tbody className="[&_td]:px-4 [&_td]:py-2.5 [&_tr]:border-b [&_tr]:border-evergreen-900/10 [&_tr:last-child]:border-0">
+                          {supplementary.contributions.map((contribution) => (
+                            <tr key={`${contribution.title}:${contribution.categoryLabel}`}>
+                              <td className="font-medium text-evergreen-950">{contribution.title}</td>
+                              <td className="text-xs">
+                                {contribution.categoryLabel}
+                                {contribution.criterionCode ? ` · criterion ${contribution.criterionCode}` : ""}
+                              </td>
+                              <td className="tabular-nums text-xs">
+                                {contribution.score} / {contribution.maxScore} ({contribution.percent.toFixed(0)}%)
+                              </td>
+                              <td className="tabular-nums text-xs">
+                                {contribution.points > 0 ? `+${contribution.points.toFixed(2)}` : "recorded"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {supplementary.criterionBreakdown.length > 0 && (
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    {supplementary.criterionBreakdown.map((criterion) => (
+                      <div key={criterion.code} className="rounded-xl border border-evergreen-900/10 bg-white p-4">
+                        <p className="text-xs font-bold text-evergreen-900">Criterion {criterion.code}</p>
+                        <p className="mt-1 text-sm font-semibold tabular-nums text-evergreen-950">
+                          {criterion.total}
+                          {criterion.totalMax > 0 ? ` / ${criterion.totalMax}` : ""}
+                        </p>
+                        <p className="text-[11px] text-ink-soft">including supplementary work</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {supplementary.adjustmentSummary.length > 0 && (
+                  <div className="mt-5 rounded-xl border border-evergreen-900/10 bg-cream p-4">
+                    <h3 className="text-sm font-bold text-evergreen-950">Individual adjustment summary</h3>
+                    <ul className="mt-2 space-y-1 text-xs text-ink-soft">
+                      {supplementary.adjustmentSummary.map((entry) => (
+                        <li key={entry.reasonCode}>
+                          <span className="font-medium capitalize text-evergreen-900">
+                            {entry.reasonCode.replace(/_/g, " ")}
+                          </span>{" "}
+                          ({entry.label}):{" "}
+                          <span className="tabular-nums font-semibold">
+                            {entry.delta > 0 ? `+${entry.delta.toFixed(2)}` : entry.delta.toFixed(2)}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                    <p className="mt-2 text-[11px] text-ink-soft">
+                      Your original examination mark is always preserved; adjustments are recorded and audited
+                      separately.
+                    </p>
+                  </div>
+                )}
+              </Card>
+            )}
 
             {/* Performance by MYP Assessment Criterion (Criteria A, B, C, D) */}
             <Card className="p-6">
