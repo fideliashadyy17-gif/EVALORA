@@ -416,7 +416,7 @@ export const ROLE_WORKSPACES = [
       "Payments queue with signed proof review; subscriptions and plan editor with live limits",
       "Modules & feature flags, audit logs, system health, support tickets, revenue",
     ],
-    evidence: "Verified in /admin (95 routes)",
+    evidence: "Verified in /admin (96 routes)",
   },
   {
     id: "school-admin",
@@ -432,7 +432,7 @@ export const ROLE_WORKSPACES = [
       "Quizzes, examinations, competitions, rubrics, proctoring review and reports",
       "Branded school portal, billing & plan, organisation settings, notifications",
     ],
-    evidence: "Verified in /dashboard (34 routes)",
+    evidence: "Verified in /dashboard (58 routes)",
   },
   {
     id: "teacher",
@@ -584,10 +584,14 @@ export const DEPLOYMENT_FACTS = [
   { k: "Question types", v: "11" },
   { k: "Organisation roles", v: "10" },
   { k: "Role workspaces", v: "4" },
-  // Route census verified by scripts/test-platform-redesign-audit.mjs, which
-  // counts every page.tsx: 95 Super Admin + 53 organization workspace + 37
-  // public/auth/student/portal. The figure is asserted, not typed in by hand.
-  { k: "Product routes", v: "185" },
+  // Route census computed by scripts/test-platform-redesign-audit.mjs, which
+  // counts every page.tsx: 96 Super Admin + 58 organization workspace + 37
+  // public/auth/student/portal. That suite reads this file and asserts all three
+  // advertised figures equal the census it just walked, so the number cannot
+  // drift: adding a page fails the suite until the claim below moves with it.
+  // (It had drifted — this said 185 while the tree held 189, and nothing
+  // checked, because "asserted, not typed in by hand" was not yet true.)
+  { k: "Product routes", v: "191" },
 ];
 
 export const FOOTNOTES = [
