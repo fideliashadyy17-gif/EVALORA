@@ -24,7 +24,7 @@
  * factories at a closed local port and times what they do.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { Module } from "node:module";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
@@ -165,6 +165,36 @@ await check("both server client factories disable the retry policy explicitly", 
     assert.match(factory, /db: SERVER_DB_OPTIONS/, `${name}() must pass the fail-fast option`);
   }
   assert.match(source, /backoff/i, "the comment must still explain what the option is for");
+});
+
+await check("the edge client in src/middleware.ts opts out too", () => {
+  const source = read("src/middleware.ts");
+  assert.match(source, /db: \{ retry: false \}/, "middleware bounds its own calls at 2.5s and 3.5s; a 7s retry stack contradicts that");
+});
+
+await check("no other module builds its own Supabase client", () => {
+  // Every other module imports the TYPE and is handed a client, so it cannot
+  // configure a retry policy. A fourth construction site must decide deliberately.
+  const builders = [];
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const absolute = path.join(dir, entry.name);
+      if (entry.isDirectory()) walk(absolute);
+      else if (/\.tsx?$/.test(entry.name)) {
+        const source = readFileSync(absolute, "utf8");
+        const valueImport = source
+          .split("\n")
+          .some((line) => /^import\s+(?!type\b)/.test(line) && /@supabase\/(ssr|supabase-js)/.test(line));
+        if (valueImport) builders.push(path.relative(ROOT, absolute).split(path.sep).join("/"));
+      }
+    }
+  };
+  walk(path.join(ROOT, "src"));
+  assert.deepEqual(builders.sort(), [
+    "src/lib/supabase/client.ts",
+    "src/lib/supabase/server.ts",
+    "src/middleware.ts",
+  ], "a new client construction site must choose its retry policy on purpose");
 });
 
 await check("the browser client deliberately keeps retrying", () => {

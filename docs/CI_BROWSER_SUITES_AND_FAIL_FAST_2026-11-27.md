@@ -143,12 +143,23 @@ client factories (the request-scoped SSR client and the service-role client),
 with the reasoning recorded above the constant. Every server-side read in this
 codebase has a documented fallback — compiled-in brand defaults, schema-default
 configuration, the platform-wide formatting profile — so failing fast is
-strictly better. The **browser** client keeps the library default: a flaky
-connection on a candidate's own device is exactly what the backoff is for, and
-the candidate's answer queue, not a page render, owns that wait. The asymmetry is
-asserted so it cannot be "cleaned up" into either extreme.
+strictly better.
 
-New suite `scripts/test-supabase-server-fail-fast.mjs` (6 checks) runs the real
+**`src/middleware.ts` builds a third client, and it opts out too.** That file
+already bounds every upstream call it makes (a 2.5 s fetch timeout and a 3.5 s
+auth budget raced against a timer), so a 7 s retry stack on its maintenance-gate
+`profiles` read would contradict its own design — on the edge, before a page even
+starts rendering. These three are the only construction sites in `src/`: every
+other module imports the `SupabaseClient` **type** and is handed one, so it cannot
+configure a policy. The suite asserts that set exactly, so a fourth site has to
+decide deliberately.
+
+The **browser** client keeps the library default: a flaky connection on a
+candidate's own device is exactly what the backoff is for, and the candidate's
+answer queue, not a page render, owns that wait. The asymmetry is asserted so it
+cannot be "cleaned up" into either extreme.
+
+New suite `scripts/test-supabase-server-fail-fast.mjs` (8 checks) runs the real
 client factories against a closed port and times them:
 
 * a raw fetch to the closed port is refused at once (so the timings mean
@@ -158,6 +169,10 @@ client factories against a closed port and times them:
   ≥ 2 s for the same query, so the two checks above cannot pass by accident;
 * both factories pass the option explicitly, and the comment explaining the
   backoff is still there;
+* the edge client in `src/middleware.ts` opts out as well;
+* those three files are the **only** modules in `src/` that import a client
+  constructor as a value (a walk of the tree, type-only imports excluded), so a
+  new construction site fails the suite until it chooses a policy;
 * `src/lib/supabase/client.ts` does **not** disable retries.
 
 ### 2.2 The honesty pin was reading the flight data, not the copy
@@ -206,7 +221,8 @@ in `.next/server`).
 | `verify-landing-html.mjs` (axe, structure, links, honesty pins) | PASS — 68 checks, 0 failing |
 | `verify-attribution.mjs` (15 public routes, 3 redirecting, the landing footer) | PASS — 19 checks |
 | `scripts/test-proctoring-device-checks.mjs` | 33 checks |
-| `scripts/test-supabase-server-fail-fast.mjs` (new, runs in `npm test` in 7.7 s) | 6 checks |
+| `scripts/test-supabase-server-fail-fast.mjs` (new, runs in `npm test`) | 8 checks |
+| `test-role-middleware`, `test-incident-outage-recovery`, `test-performance-regressions`, `test-admin-review-and-canonical-domains` | PASS (the middleware client change) |
 | `npx tsc --noEmit` (clean `npm ci` tree) | exit 0 |
 | `npm run lint` (clean tree) | 0 errors, 21 pre-existing warnings |
 | `npm test` (clean tree) | **188 suites, 0 failed, 8 browser/cron suites skipped, 10,470 checks** |
