@@ -588,6 +588,23 @@ await checkAsync("PGlite: migration, guards, immutability, RLS and unlimited adj
     "a duplicate custom category must be rejected",
   );
 
+  // The assessment record must canonicalize its key the SAME way the category
+  // table does, or "Field Trip" would be stored on the assessment as
+  // "field trip" while the category is "field_trip" and the two would never
+  // join. Found by smoke-testing the migration against the live database.
+  const { rows: canonical } = await db.query(
+    `INSERT INTO public.assessment_contributions
+       (organization_id, title, category_key, category_label, assessed_on, max_score)
+     VALUES ($1, 'Field trip report', 'Field Trip', 'Field Trip', '2026-01-14', 10)
+     RETURNING category_key`,
+    [ORG_A],
+  );
+  assert.equal(canonical[0].category_key, catRows[0].key, "assessment and category keys canonicalize identically");
+  assert.equal(canonical[0].category_key, "field_trip");
+  // Removed again so the row counts the RLS assertions below rely on are
+  // about the assessments that section is actually reasoning about.
+  await db.query(`DELETE FROM public.assessment_contributions WHERE title = 'Field trip report'`);
+
   // ── UNLIMITED individual adjustments on one student + criterion ───────────
   for (let index = 0; index < 5; index += 1) {
     const previous = 10 + index;
