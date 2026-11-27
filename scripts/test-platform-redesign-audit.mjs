@@ -67,6 +67,41 @@ check("route inventory accounts for all 191 page.tsx routes (96 admin, 58 dashbo
   assert.equal(allPages.length, 191);
 });
 
+check("the landing page advertises the census this suite just walked", () => {
+  // src/lib/landing.ts sells three figures on the public home page: a
+  // "Product routes" stat and two "Verified in /admin|/dashboard (N routes)"
+  // evidence lines under the role workspaces. Its comment claimed the figure was
+  // asserted rather than typed in by hand, but nothing read the file, and the
+  // claim had drifted four routes behind the tree. Reading it here makes the
+  // comment true and turns the next new page into a failing check instead of a
+  // stale advertisement.
+  const landing = readFileSync("src/lib/landing.ts", "utf8");
+
+  const product = /k: "Product routes", v: "(\d+)"/.exec(landing);
+  assert.ok(product, "the landing stats still advertise a product-route count");
+  assert.equal(
+    Number(product?.[1]),
+    allPages.length,
+    `the home page advertises ${product?.[1]} product routes; the tree has ${allPages.length}`,
+  );
+
+  const admin = /Verified in \/admin \((\d+) routes\)/.exec(landing);
+  assert.ok(admin, "the Super Admin workspace still cites its route count");
+  assert.equal(
+    Number(admin?.[1]),
+    adminPages.length,
+    `the home page advertises ${admin?.[1]} /admin routes; the tree has ${adminPages.length}`,
+  );
+
+  const dashboard = /Verified in \/dashboard \((\d+) routes\)/.exec(landing);
+  assert.ok(dashboard, "the organization workspace still cites its route count");
+  assert.equal(
+    Number(dashboard?.[1]),
+    dashboardPages.length,
+    `the home page advertises ${dashboard?.[1]} /dashboard routes; the tree has ${dashboardPages.length}`,
+  );
+});
+
 for (const pagePath of adminPages) {
   const src = readFileSync(pagePath, "utf8");
   check(`${pagePath}: uses unified <Table> (no raw <table> tags)`, () => {
