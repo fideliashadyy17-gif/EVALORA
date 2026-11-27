@@ -4,9 +4,9 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { FEATURE_DEFAULTS, type FeatureKey } from "@/lib/platform";
 import { questionPublishError } from "@/lib/questionValidation";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { money } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 async function audit(action: string, entity: string, entityId: string, orgId?: string | null, metadata?: Record<string, unknown>) {
   const ctx = await requireSuperAdmin();
@@ -26,6 +26,11 @@ export async function getProofUrl(path: string) {
 
 export async function reviewPayment(formData: FormData) {
   const ctx = await requireSuperAdmin();
+  // Configured amount format (Platform Control Center → Presentation) for the
+  // notification this review sends. The Super Admin console renders with the
+  // platform-wide profile: one tenant's separators must not be applied to
+  // another tenant's rows.
+  const { money } = await requestFormatter(null);
   const admin = createAdminClient();
   const id = String(formData.get("id"));
   const decision = String(formData.get("decision"));

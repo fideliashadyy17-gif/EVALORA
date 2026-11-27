@@ -3,7 +3,6 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -17,6 +16,7 @@ import { CodesTab } from "./tabs/CodesTab";
 import { ParticipantsTab } from "./tabs/ParticipantsTab";
 import { ResultsTab } from "./tabs/ResultsTab";
 import { SettingsTab } from "./tabs/SettingsTab";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Competition" };
 export const dynamic = "force-dynamic";
@@ -39,6 +39,9 @@ export default async function CompetitionDetailPage({
   searchParams: Promise<{ tab?: string; ok?: string; e?: string; edit_code?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const { id } = await params;
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as string) : "overview";

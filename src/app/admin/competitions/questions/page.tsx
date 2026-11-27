@@ -3,11 +3,11 @@ import { RichContent } from "@/components/RichContent";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { StatusBadge } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Competition questions" };
 export const dynamic = "force-dynamic";
@@ -27,6 +27,9 @@ export default async function CompetitionQuestionsPage({
   searchParams: Promise<{ comp?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

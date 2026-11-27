@@ -11,7 +11,7 @@
  */
 import { Badge, Button, Card, DataTable, EmptyState, Select } from "@/components/ui";
 import { rollbackConfig, type ActionResult } from "@/lib/config/actions";
-import { fmtDateTime } from "@/lib/utils";
+import { useFormatting } from "@/components/formatting/FormattingProvider";
 import { useEffect, useMemo, useState } from "react";
 
 export interface HistoryRow {
@@ -49,6 +49,9 @@ export function HistoryClient({
   organizations: { id: string; name: string }[];
   namespaces: { key: string; label: string }[];
 }) {
+  // Configured timestamps come from the provider the Control Center page
+  // mounted, so this table renders exactly what the server rendered.
+  const { dateTime: fmtDateTime } = useFormatting();
   const [namespace, setNamespace] = useState("all");
   const [org, setOrg] = useState("all");
   const [scope, setScope] = useState("all");

@@ -7,12 +7,12 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { MIN_INITIAL_PASSWORD_LENGTH } from "@/lib/organizationAccounts";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createStaffAccount, resetMemberPassword, setMemberStatus } from "./actions";
 import { createStudentLogin } from "../students/actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Accounts & permissions" };
 export const dynamic = "force-dynamic";
@@ -33,6 +33,9 @@ export default async function AccountsPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const { canManageMembers, canViewRoles } = await canOperateMany(ctx, org.id, {
     canManageMembers: { permission: "organizations.manage_members", module: "accounts" },

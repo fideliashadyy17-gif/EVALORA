@@ -5,12 +5,12 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { checkPermissions } from "@/lib/rbac";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { KeyRound, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { orgAssignRoleAction, orgRevokeRoleAction } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Role & Access Management" };
 export const dynamic = "force-dynamic";
@@ -60,6 +60,9 @@ export default async function OrgRbacPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect("/workspaces");
 
   const supabase = await createClient();

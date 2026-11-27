@@ -1,9 +1,14 @@
 import { Card } from "@/components/ui";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export async function ActivityTab({ orgId }: { orgId: string }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const admin = createAdminClient();
   const [{ data: logs }, { data: sessions }] = await Promise.all([
     admin

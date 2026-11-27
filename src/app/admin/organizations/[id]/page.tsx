@@ -3,7 +3,6 @@ import { Badge, Button, Card } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess } from "@/lib/tenant";
-import { fmtDate } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -17,6 +16,7 @@ import { MembersTab } from "./tabs/MembersTab";
 import { OverviewTab } from "./tabs/OverviewTab";
 import { PlatformTab } from "./tabs/PlatformTab";
 import { SubscriptionTab } from "./tabs/SubscriptionTab";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Organization" };
 export const dynamic = "force-dynamic";
@@ -39,6 +39,9 @@ export default async function OrganizationDetailPage({
   searchParams: Promise<StudentsSearchParams & { tab?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const { id } = await params;
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as string) : "overview";

@@ -10,10 +10,10 @@ import {
   loadPlatformReviewHistory,
 } from "@/lib/proctoring";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { adminReviewIncident } from "../actions";
 import { Section, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Proctoring" };
 export const dynamic = "force-dynamic";
@@ -47,6 +47,9 @@ const isoDay = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
 
 export default async function AdminProctoring({ searchParams }: { searchParams: Promise<SP> }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

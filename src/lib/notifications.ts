@@ -12,8 +12,18 @@ const DAY = 24 * HOUR;
  * Short, human relative timestamp for a notification. Anything older than a
  * week falls back to an absolute date so long-lived items stay readable.
  * Returns an empty string for an unparseable value rather than "Invalid Date".
+ *
+ * `date` renders that absolute fallback, and it is a parameter so the CALLER's
+ * configured profile decides the format — the notification bell passes its
+ * workspace formatter. This module stays import-free on purpose (a test harness
+ * compiles it on its own), so the fallback below is the shipped "1 Oct 2026"
+ * this function has always produced.
  */
-export function formatRelativeTime(iso: string, now: number = Date.now()): string {
+export function formatRelativeTime(
+  iso: string,
+  now: number = Date.now(),
+  date?: (value: string | number | Date) => string,
+): string {
   const time = Date.parse(iso);
   if (Number.isNaN(time)) return "";
   const diff = now - time;
@@ -30,6 +40,7 @@ export function formatRelativeTime(iso: string, now: number = Date.now()): strin
     const days = Math.floor(diff / DAY);
     return `${days} day${days === 1 ? "" : "s"} ago`;
   }
+  if (date) return date(time);
   return new Date(time).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 

@@ -3,11 +3,11 @@ import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@
 import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, Settings2, Trophy, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Competition configuration" };
 export const dynamic = "force-dynamic";
@@ -20,6 +20,9 @@ export default async function CompetitionConfigurationPage({
   searchParams: Promise<{ q?: string; org?: string; status?: string; readiness?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

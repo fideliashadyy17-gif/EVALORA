@@ -14,10 +14,10 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getLiveKitEnvStatus } from "@/lib/livekit";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { reviewIncident } from "../exams/actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Proctoring review" };
 export const dynamic = "force-dynamic";
@@ -52,6 +52,9 @@ const isoDay = (value?: string) => (value && /^\d{4}-\d{2}-\d{2}$/.test(value) ?
 export default async function ProctoringReviewPage({ searchParams }: { searchParams: Promise<SP> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect("/dashboard");
   const { canProctor, canManage, isManager } = await canOperateMany(ctx, org.id, {
     canProctor: { permission: "proctoring.view" },

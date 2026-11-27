@@ -3,11 +3,12 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { Activity, Building2, Clock3, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Audit log" };
 export const dynamic = "force-dynamic";
@@ -45,6 +46,9 @@ export default async function AdminAudit({
   searchParams: Promise<{ q?: string; org?: string; entity?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const orgFilter = (sp.org ?? "").trim();

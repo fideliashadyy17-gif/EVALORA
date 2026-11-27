@@ -12,6 +12,7 @@ import { answerReveal, releasedFeedback } from "@/lib/live";
 import type { RichDoc } from "@/lib/content";
 import type { Metadata } from "next";
 import { CopyButton } from "./CopyButton";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination Result · EVALORA" };
 export const dynamic = "force-dynamic";
@@ -125,6 +126,8 @@ export default async function ExamResultTokenPage({
   // Configured default with organization override; the examination's own
   // stored pass mark always wins.
   const assessmentCfg = await resolveAssessmentConfig(exam.organization_id ?? null);
+  // The examination's own organization decides how its candidates read dates.
+  const { dateTime: fmtDateTime } = await requestFormatter(exam.organization_id ?? null);
   const passMarkPercent = passMarkFrom(settings, assessmentCfg.defaultPassPercent);
 
   // Criteria summary structure
@@ -302,7 +305,7 @@ export default async function ExamResultTokenPage({
               </p>
               {attempt.submitted_at && (
                 <p className="mt-0.5 text-xs text-ink-soft">
-                  Submitted: {new Date(attempt.submitted_at).toLocaleString()}
+                  Submitted: {fmtDateTime(attempt.submitted_at)}
                 </p>
               )}
             </div>

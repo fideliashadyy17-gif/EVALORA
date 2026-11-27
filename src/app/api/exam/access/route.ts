@@ -12,6 +12,7 @@ import { verifyAndConsumeLockdownChallenge } from "@/lib/lockdownAttestation";
 import { createAdminClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 const Body = z.object({
   // Generous length limits: a code pasted with spaces around its hyphens
@@ -54,8 +55,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "This examination is not open yet. Please check with your institution." }, { status: 403 });
 
   const now = new Date();
-  if (exam.starts_at && new Date(exam.starts_at) > now)
-    return NextResponse.json({ error: `This examination opens at ${new Date(exam.starts_at).toLocaleString()}.` }, { status: 403 });
+  if (exam.starts_at && new Date(exam.starts_at) > now) {
+    // Quoted in the examination's own configured timezone, so a candidate reads
+    // the opening time the institution set — not the server's.
+    const { dateTime } = await requestFormatter((exam as { organization_id?: string | null }).organization_id ?? null);
+    return NextResponse.json({ error: `This examination opens at ${dateTime(exam.starts_at)}.` }, { status: 403 });
+  }
   if (exam.ends_at && new Date(exam.ends_at) < now)
     return NextResponse.json({ error: "This examination window has closed." }, { status: 403 });
 

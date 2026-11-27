@@ -2,10 +2,10 @@ import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatC
 import { requireSuperAdmin } from "@/lib/auth";
 import { describeRetention, getRetentionPolicy, isUuid, loadRetentionRuns } from "@/lib/proctoring";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { Section, Table } from "../../ui";
 import { adminRunRetention, adminSaveRetention } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Proctoring retention" };
 export const dynamic = "force-dynamic";
@@ -23,6 +23,9 @@ export default async function AdminRetentionPage({
   searchParams: Promise<{ org?: string; saved?: string; e?: string; dry?: string; applied?: string; held?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

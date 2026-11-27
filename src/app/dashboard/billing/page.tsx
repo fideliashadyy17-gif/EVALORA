@@ -5,11 +5,11 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { computePlanCoverage } from "@/lib/modules";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDate, fmtDateTime, money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { submitPayment } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Billing & Plan" };
 export const dynamic = "force-dynamic";
@@ -25,6 +25,9 @@ export default async function BillingPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate, dateTime: fmtDateTime, money } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const canViewBilling = await canOperate(ctx, org.id, "billing.view", "billing");
   if (!canViewBilling) redirect("/dashboard?e=forbidden");

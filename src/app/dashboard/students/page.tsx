@@ -12,6 +12,7 @@ import Link from "next/link";
 import { transferStudent } from "../academics/actions";
 import { createStudentLogin, setStudentStatus } from "./actions";
 import { StudentRegistrationForm } from "./StudentRegistrationForm";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // This workspace's configured date and time profile (Platform Control Center → Presentation).
+  const { dateTime: fmtDateTime } = await requestFormatter(org.id);
   const { canEdit, canManageClasses } = await canOperateMany(ctx, org.id, {
     canEdit: { permission: "students.edit", module: "students" },
     canManageClasses: { permission: "classes.edit", module: "classes" },
@@ -195,7 +198,7 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
               <ul className="mt-2 divide-y divide-evergreen-900/10 text-sm">
                 {(batches ?? []).map((b) => (
                   <li key={b.id} className="flex flex-wrap justify-between gap-2 py-2">
-                    <span className="text-ink"><strong>{b.file_name ?? "Import"}</strong> <span className="text-ink-soft">· {new Date(b.created_at).toLocaleString()}</span></span>
+                    <span className="text-ink"><strong>{b.file_name ?? "Import"}</strong> <span className="text-ink-soft">· {fmtDateTime(b.created_at)}</span></span>
                     <span className="text-ink-soft">{b.status} · {b.imported_count} imported, {b.updated_count} updated, {b.skipped_count} skipped, {b.failed_count} failed / {b.total_rows}</span>
                   </li>
                 ))}

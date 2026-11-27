@@ -18,7 +18,7 @@ import {
   type ResultsFilters,
 } from "@/lib/resultsManagement";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
 import {
@@ -36,6 +36,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { publishResults, unvalidateResults, validateResults } from "../exams/actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Results Management & Candidate Links" };
 export const dynamic = "force-dynamic";
@@ -94,6 +95,9 @@ export default async function ResultsManagementPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   if (!isOperationalRole(org.role)) redirect("/student");
 

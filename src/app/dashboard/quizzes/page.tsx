@@ -4,11 +4,11 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, PenSquare, Radio } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { deleteQuiz, duplicateQuiz, setQuizStatus, startSession } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Quiz Studio" };
 export const dynamic = "force-dynamic";
@@ -17,6 +17,9 @@ export default async function QuizzesPage({ searchParams }: { searchParams: Prom
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const supabase = await createClient();
   const [{ entitlement }, perms] = await Promise.all([
     getCapabilities(supabase, ctx, org.id),

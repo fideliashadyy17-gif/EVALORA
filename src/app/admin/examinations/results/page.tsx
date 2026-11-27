@@ -6,7 +6,7 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { Award, CheckCircle2, Eye, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -15,6 +15,7 @@ import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
 import { regradeAttemptAsAdmin, regradeExamAsAdmin, setExamResultsPublishedAsAdmin, validateExamResultsAsAdmin } from "../actions";
 import { MypExportButton } from "@/components/myp/MypExportButton";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Results Management & Candidate Links · EVALORA" };
 export const dynamic = "force-dynamic";
@@ -60,6 +61,9 @@ export default async function ExaminationResultsPage({
   searchParams: Promise<{ exam?: string; outcome?: string; ok?: string; e?: string; page?: string; org?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

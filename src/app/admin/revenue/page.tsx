@@ -3,9 +3,10 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate, money, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import type { Metadata } from "next";
 import { Section, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Revenue & Reports" };
 export const dynamic = "force-dynamic";
@@ -16,6 +17,9 @@ export default async function AdminRevenue({
   searchParams: Promise<{ page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate, money } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

@@ -5,10 +5,10 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { getConfigCoverage, getFullResolution } from "@/lib/config/service";
 import { CONFIG_NAMESPACES } from "@/lib/config/schema";
 import type { ConfigNamespace } from "@/lib/config/types";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Organization configuration" };
 export const dynamic = "force-dynamic";
@@ -43,6 +43,9 @@ export default async function OrganizationConfigPage({
   searchParams: Promise<{ section?: string; q?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const { id } = await params;
   const sp = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();

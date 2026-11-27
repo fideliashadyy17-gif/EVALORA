@@ -15,7 +15,6 @@ import { moduleEnabled } from "@/lib/modules";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { GRADING_METHOD_LABEL, MODERATION_LABEL, rubricForQuestion, type ExamRubricLink, type RubricCriterion } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, ClipboardList, FileCheck2, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -38,6 +37,7 @@ import {
   addCandidate, addCandidatesBulk, decideAiProposal, deleteExam, markAnswer, markWithRubric, moderateAnswer,
   pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateExamProctoring, updateWorkspaceExamAccess, validateResults, unvalidateResults,
 } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination" };
 export const dynamic = "force-dynamic";
@@ -56,6 +56,9 @@ export default async function ExamDetailPage({
   const origin = `${h.get("x-forwarded-proto") ?? "https"}://${host}`;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const supabase = await createClient();
 
   const { data: exam } = await supabase
@@ -426,6 +429,7 @@ export default async function ExamDetailPage({
           <ExaminationAccessCard
             examTitle={exam.title}
             organizationName={org.name}
+            organizationId={org.id}
             shareUrl={shareUrl}
             accessLink={accessLink}
             accessCode={exam.access_code}

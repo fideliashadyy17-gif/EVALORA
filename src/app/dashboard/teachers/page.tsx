@@ -5,13 +5,13 @@ import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { isStaffRole } from "@/lib/navAccess";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import { BookOpen, CheckCircle2, GraduationCap, TriangleAlert } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createStaffAccount } from "../accounts/actions";
 import { setTeacherSubjects } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Teachers" };
 export const dynamic = "force-dynamic";
@@ -42,6 +42,9 @@ export default async function TeachersPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   if (!isStaffRole(org.role)) redirect("/student");

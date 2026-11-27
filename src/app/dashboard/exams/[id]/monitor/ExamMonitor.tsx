@@ -21,6 +21,7 @@ import {
   type ThreadMessage,
 } from "@/lib/examMessaging";
 import type { MonitorRow, MonitorSnapshot } from "@/lib/monitorRows";
+import { useFormatting } from "@/components/formatting/FormattingProvider";
 
 const QUICK_MESSAGES = [
   "Keep going! You are making good progress.",
@@ -44,11 +45,6 @@ function formatRemaining(seconds: number, closed: boolean): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-function clock(iso: string): string {
-  const t = Date.parse(iso);
-  return Number.isNaN(t) ? "" : new Date(t).toLocaleString([], { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
-}
-
 interface ThreadState {
   messages: ThreadMessage[];
   cursor: string | null;
@@ -56,6 +52,8 @@ interface ThreadState {
 }
 
 export function ExamMonitor({ examId, initial, canManage = true }: { examId: string; initial: MonitorSnapshot; canManage?: boolean }) {
+  // Supervisor timestamps follow the workspace profile (Platform Control Center → Presentation).
+  const { dateTime: clock } = useFormatting();
   const [snapshot, setSnapshot] = useState<MonitorSnapshot>(initial);
   const [pauseBusy, setPauseBusy] = useState<string | null>(null);
   const [pauseError, setPauseError] = useState<string | null>(null);

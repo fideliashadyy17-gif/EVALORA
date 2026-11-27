@@ -3,11 +3,12 @@ import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
 import { COMPETITION_FORMATS } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { BarChart3, CheckCircle2, Trophy, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Competition reports" };
 export const dynamic = "force-dynamic";
@@ -59,6 +60,9 @@ export default async function CompetitionReportsPage({
   searchParams: Promise<{ org?: string; status?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

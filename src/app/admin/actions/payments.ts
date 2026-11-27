@@ -2,9 +2,9 @@
 
 import { activatePaidSubscription, audit, fdate, fint, fnum, fstr, requireSuperAdmin } from "@/lib/admin";
 import { createAdminClient } from "@/lib/supabase/server";
-import { money } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired", "refunded", "cancelled"];
 
@@ -26,6 +26,9 @@ async function uploadProof(file: File | null): Promise<string | null> {
  */
 export async function createManualPayment(formData: FormData) {
   const ctx = await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { money } = await requestFormatter(null);
   const admin = createAdminClient();
   const orgId = fstr(formData, "organization_id", 60);
   const amount = fnum(formData, "amount");
@@ -137,6 +140,9 @@ export async function updatePayment(formData: FormData) {
 
 export async function setPaymentStatusAdmin(formData: FormData) {
   const ctx = await requireSuperAdmin();
+  // Configured amount format for the refund notification (platform-wide scope:
+  // this console mixes tenants in one table).
+  const { money } = await requestFormatter(null);
   const admin = createAdminClient();
   const id = String(formData.get("id"));
   const status = String(formData.get("status"));

@@ -4,13 +4,13 @@ import { attemptDeadline } from "@/lib/exam";
 import { manualPauseMs } from "@/lib/examPause";
 import { presenceConnection } from "@/lib/presence";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Activity, Eye, TriangleAlert, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { enterOrgWorkspace } from "../../actions/orgs";
 import { Notice, Section, StatusBadge, Table } from "../../ui";
 import { pauseAttemptAsAdmin, pauseExamAsAdmin, reviewProctoringIncidentAsAdmin } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination monitoring" };
 export const dynamic = "force-dynamic";
@@ -54,6 +54,9 @@ export default async function ExaminationMonitoringPage({
   searchParams: Promise<{ exam?: string; severity?: string; incident?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

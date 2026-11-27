@@ -9,7 +9,6 @@ import { moduleEnabled } from "@/lib/modules";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { presenceConnection } from "@/lib/presence";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Activity, Clock, Eye, ShieldAlert, Users, Video } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -22,6 +21,7 @@ import {
   pauseOrgExamFromMonitor,
   sendOrgMonitorMessage,
 } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Live Monitoring & Examination Supervision" };
 export const dynamic = "force-dynamic";
@@ -78,6 +78,9 @@ export default async function OrganizationMonitoringPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect("/dashboard");
 
   const supabase = await createClient();

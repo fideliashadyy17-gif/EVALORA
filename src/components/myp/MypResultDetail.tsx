@@ -5,25 +5,33 @@ import {
   criterionStatusTone,
   type MypResult,
 } from "@/lib/myp";
+import { requestFormatter } from "@/lib/formattingRequest";
 import type { MypHistoryRow } from "@/lib/mypResults";
-import { fmtDateTime } from "@/lib/utils";
 import { MypStatusLegend, resultTone } from "./MypResultsTable";
 import { MypQuestionReview } from "./MypQuestionReview";
 
 
 
 /** Full criterion result page shared by the organization and global consoles. */
-export function MypResultDetail({
+export async function MypResultDetail({
   result,
   history,
   showOrganization,
   snapshotSlot,
+  organizationId = null,
 }: {
   result: MypResult;
   history?: MypHistoryRow[];
   showOrganization?: boolean;
   snapshotSlot?: React.ReactNode;
+  /**
+   * Whose configured date and time profile this result renders with: the
+   * organization that owns the examination. The Super Admin console leaves it
+   * unset and renders with the platform-wide profile.
+   */
+  organizationId?: string | null;
 }) {
+  const { dateTime: fmtDateTime } = await requestFormatter(organizationId);
   return (
     <div className="space-y-6">
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">

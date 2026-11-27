@@ -5,8 +5,8 @@ import { rbacListRolesAction, rbacListPermissionsAction } from "./actions";
 import type { RbacRole, RbacPermission } from "@/lib/rbac";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle } from "@/components/ui";
 import { Section, Table, Notice } from "@/app/admin/ui";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "RBAC & User Role Management" };
 export const dynamic = "force-dynamic";
@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
 export default async function RbacDashboard({searchParams}: {searchParams: Promise<{q?:string;type?:string}>}) {
   const filters=await searchParams;
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
 
   const [rolesResult, permissionsResult] = await Promise.all([
     rbacListRolesAction(),

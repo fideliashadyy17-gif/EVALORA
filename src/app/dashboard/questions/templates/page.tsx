@@ -6,10 +6,10 @@ import { createClient } from "@/lib/supabase/server";
 import { allQuestionTypes } from "@/lib/questionStudioClient";
 import { describeTemplateScope, listTemplatesForOrganization } from "@/lib/questionTemplates";
 import { describeDesign, normalizeQuestionDesign } from "@/lib/questionDesign";
-import { fmtDate } from "@/lib/utils";
 import { FileStack, Layers } from "lucide-react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Question templates" };
 export const dynamic = "force-dynamic";
@@ -30,6 +30,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardQuestionTemplatesPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate } = await requestFormatter(org?.id ?? null);
   if (!(await canOperate(ctx, org.id, "questions.create", "question_bank"))) redirect("/dashboard/questions");
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

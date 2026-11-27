@@ -5,9 +5,9 @@ import { getEntitlement } from "@/lib/entitlements";
 import { CHANGE_TYPE_LABEL, MODERATION_LABEL, loadGradeHistory, loadModerationHistory } from "@/lib/grading";
 import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Grade history" };
 export const dynamic = "force-dynamic";
@@ -34,6 +34,9 @@ export default async function ExamGradesPage({
   const pageSize = 25;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const supabase = await createClient();
 
   const { data: exam } = await supabase

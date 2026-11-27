@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { approveQualification, computeQualifications, overrideQualification } from "../../actions/event-operations";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Qualification review" };
 export const dynamic = "force-dynamic";
@@ -28,6 +29,8 @@ export default async function QualificationsPage({
   searchParams: Promise<{ ok?: string; e?: string; event?: string; to?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Platform-wide profile: the Super Admin console mixes tenants in one table.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
@@ -138,7 +141,7 @@ export default async function QualificationsPage({
             <tr><td colSpan={6} className="py-8 text-center text-ink-soft">No manual overrides recorded.</td></tr>
           ) : overrides.map((o) => (
             <tr key={o.id}>
-              <td>{new Date(o.created_at).toLocaleString()}</td>
+              <td>{fmtDateTime(o.created_at)}</td>
               <td>{o.display_name ?? "—"}</td>
               <td>{o.to_phase_id ? phaseNames.get(o.to_phase_id) ?? "—" : "—"}</td>
               <td>{o.original_status} → {o.new_status}</td>

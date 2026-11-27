@@ -4,9 +4,9 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { applyPreset, createOrUpdatePreset, removePreset } from "./actions";
 import { Flash } from "../../ui";
 import { getConfigDef, organizationWritableConfigs } from "@/lib/config/schema";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Configuration presets" };
 export const dynamic = "force-dynamic";
@@ -40,6 +40,9 @@ interface OrgRow {
  */
 export default async function PresetsPage({ searchParams }: { searchParams: Promise<{ ok?: string; e?: string }> }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

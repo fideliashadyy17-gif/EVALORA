@@ -1,6 +1,5 @@
 import { Button, Card, EmptyState, Field, Input, Select } from "@/components/ui";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import {
   deleteAcademicYear,
   deleteClass,
@@ -10,8 +9,14 @@ import {
   saveStructureItem,
 } from "../../../actions/academics";
 import { Notice, Section, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export async function AcademicsTab({ orgId, sp }: { orgId: string; sp: { ok?: string; e?: string; edit_class?: string; edit_year?: string } }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { date: fmtDate } = await requestFormatter(null);
   const admin = createAdminClient();
   const [{ data: years }, { data: levels }, { data: departments }, { data: subjects }, { data: classes }, { data: teachers }] = await Promise.all([
     admin.from("academic_years").select("*").eq("organization_id", orgId).order("starts_on", { ascending: false }),

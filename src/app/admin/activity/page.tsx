@@ -1,11 +1,11 @@
 import { Badge, Button, ButtonLink, EmptyState, Input, PageTitle, Select, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, money } from "@/lib/utils";
 import { Activity, CreditCard, Layers, ShieldCheck } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Section, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Recent operations" };
 export const dynamic = "force-dynamic";
@@ -30,6 +30,9 @@ export default async function RecentOperationsPage({
   searchParams: Promise<{ kind?: string; q?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime, money } = await requestFormatter(null);
   const sp = await searchParams;
   const kindFilter = (sp.kind ?? "").trim();
   const q = (sp.q ?? "").trim().toLowerCase();

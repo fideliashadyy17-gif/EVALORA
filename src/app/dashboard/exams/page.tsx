@@ -7,11 +7,11 @@ import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
-import { fmtDateTime } from "@/lib/utils";
 import { Archive, CheckCircle2, Clock3, FileCheck2, ShieldCheck, Video } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { deleteExam, pauseExam, setExamStatus } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examinations" };
 export const dynamic = "force-dynamic";
@@ -23,6 +23,9 @@ export default async function ExamsPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const supabase = await createClient();
   const [{ entitlement }, perms] = await Promise.all([

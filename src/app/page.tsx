@@ -30,9 +30,9 @@ import {
   WORKFLOW_STEPS,
 } from "@/lib/landing";
 import { createAdminClient } from "@/lib/supabase/server";
-import { money } from "@/lib/utils";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const dynamic = "force-dynamic";
 
@@ -235,6 +235,9 @@ async function resolveSignedIn(request: { cookies: { getAll(): { name: string }[
 }
 
 export default async function HomePage() {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { money } = await requestFormatter(null);
   const { cookies } = await import("next/headers");
   const [livePlans, cookieStore] = await Promise.all([loadPublicPlans(), cookies()]);
   const authed = await resolveSignedIn({ cookies: { getAll: () => cookieStore.getAll() } });

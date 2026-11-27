@@ -3,10 +3,10 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import type { RubricCriterion, RubricPerformanceLevel } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { addCriterion, attachRubric, deleteCriterion, detachRubric, duplicateRubric, updateCriterion, updateRubric } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Rubric" };
 export const dynamic = "force-dynamic";
@@ -113,6 +113,9 @@ export default async function RubricDetailPage({
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const canMark = await canOperate(ctx, org.id, "grading.edit", "rubrics");
   const supabase = await createClient();
 

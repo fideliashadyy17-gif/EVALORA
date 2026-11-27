@@ -1,5 +1,7 @@
 import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
+import { FormattingProvider } from "@/components/formatting/FormattingProvider";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { requestFormatConfig } from "@/lib/formattingRequest";
 import { getCapabilities } from "@/lib/capabilities";
 import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
 import { notificationsEnabledFor } from "@/lib/notificationService";
@@ -95,6 +97,11 @@ export default async function DashboardLayout({
     );
   }
 
+  // This school's date/time/number profile, for the client components inside
+  // the workspace. Resolved from the session's own organization — never from a
+  // URL segment — and shared with the pages through React's request cache.
+  const formatCfg = await requestFormatConfig(org.id).catch(() => null);
+
   return (
     <>
       {ctx.adminOrgContext && (
@@ -133,20 +140,22 @@ export default async function DashboardLayout({
           This organization is currently {org.status}. Its members cannot access this workspace.
         </div>
       )}
-      <DashboardChrome
-        orgName={org.name}
-        orgSlug={org.slug}
-        orgLogoUrl={orgLogoUrl}
-        isDemo={Boolean(org.is_demo)}
-        orgRole={org.role}
-        canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
-        userName={ctx.profile.full_name || ctx.profile.email}
-        modules={modules}
-        scoreAdjustmentEligible={scoreAdjustmentEligible}
-        notificationsEnabled={notificationsEnabled}
-      >
-        {children}
-      </DashboardChrome>
+      <FormattingProvider cfg={formatCfg}>
+        <DashboardChrome
+          orgName={org.name}
+          orgSlug={org.slug}
+          orgLogoUrl={orgLogoUrl}
+          isDemo={Boolean(org.is_demo)}
+          orgRole={org.role}
+          canSwitchWorkspace={!isSuperAdmin && !ctx.tenantSlug && ctx.memberships.length > 1}
+          userName={ctx.profile.full_name || ctx.profile.email}
+          modules={modules}
+          scoreAdjustmentEligible={scoreAdjustmentEligible}
+          notificationsEnabled={notificationsEnabled}
+        >
+          {children}
+        </DashboardChrome>
+      </FormattingProvider>
     </>
   );
 }

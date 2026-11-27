@@ -2,7 +2,6 @@ import { Badge, Button, Card, Field, Input, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { ORG_ROLES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate, fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -15,6 +14,7 @@ import {
   userMembershipOp,
 } from "../../actions/users";
 import { ConfirmField, Flash, Notice, Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "User" };
 export const dynamic = "force-dynamic";
@@ -27,6 +27,9 @@ export default async function UserDetailPage({
   searchParams: Promise<{ ok?: string; e?: string }>;
 }) {
   const ctx = await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate, dateTime: fmtDateTime } = await requestFormatter(null);
   const { id } = await params;
   const sp = await searchParams;
   const admin = createAdminClient();

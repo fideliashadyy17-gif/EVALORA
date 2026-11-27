@@ -2,13 +2,13 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Button, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import { Award, CheckCircle2, Clock, Sliders } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminCancelSubscription } from "../actions";
 import { assignSubscription, subscriptionOp } from "../actions/payments";
 import { ConfirmField, Notice, StatusBadge, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Subscriptions" };
 export const dynamic = "force-dynamic";
@@ -19,6 +19,9 @@ export default async function AdminSubscriptions({
   searchParams: Promise<{ status?: string; source?: string; q?: string; page?: string; ok?: string; e?: string; saved?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

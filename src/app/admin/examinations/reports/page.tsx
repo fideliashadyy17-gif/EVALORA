@@ -2,13 +2,14 @@ import { Button, Card, PageTitle, Select, StatCard } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
 import { BarChart3, CheckCircle2, ClipboardList, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination reports" };
 export const dynamic = "force-dynamic";
@@ -65,6 +66,9 @@ export default async function ExaminationReportsPage({
   searchParams: Promise<{ org?: string; status?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

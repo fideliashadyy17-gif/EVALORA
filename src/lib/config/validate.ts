@@ -140,8 +140,8 @@ export function validateAgainstDef(def: ConfigKeyDef, submitted: unknown): Valid
       const v = String(submitted).trim();
       const allowed = (def.options ?? []).map((o) => o.value);
       if (allowed.includes(v)) return ok(v);
-      // Accept any IANA name the runtime can actually resolve, so an
-      // administrator is not limited to the curated list.
+      // Capability probe, not presentation: accept any IANA name the runtime can
+      // actually resolve, so an administrator is not limited to the curated list.
       if (!TIMEZONE_RE.test(v) || v.length > 64) return fail(`${def.label} must be a valid timezone such as Africa/Porto-Novo.`);
       try {
         new Intl.DateTimeFormat("en-GB", { timeZone: v }).format(new Date());

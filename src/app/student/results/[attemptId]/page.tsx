@@ -88,7 +88,7 @@ export default async function StudentResultPage({ params }: { params: Promise<{ 
                 </div>
               }
             />
-            <MypResultDetail result={result} />
+            <MypResultDetail result={result} organizationId={org.id} />
             <p className="mt-5 text-center text-xs text-ink-soft">
               Questions about a mark? Contact your subject teacher.{" "}
               <Link href="/student" className="font-semibold text-evergreen-800 underline underline-offset-2">

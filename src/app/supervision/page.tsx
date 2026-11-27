@@ -4,10 +4,10 @@ import { requirePermission } from "@/lib/rbac";
 import { MODULE_CATALOG, moduleEnabled } from "@/lib/modules";
 import { Badge, Card, DataTable, PageTitle, StatCard } from "@/components/ui";
 import { SignOutButton } from "@/components/SignOutButton";
-import { fmtDate, fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Institutional Supervision" };
 export const dynamic = "force-dynamic";
@@ -245,6 +245,9 @@ function stateBadgeTone(state: string | undefined): "green" | "amber" | "gold" |
 export default async function SupervisionPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate, dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org || ctx.tenantDenied) redirect("/workspaces");
   await requirePermission(ctx, org.id, "dashboard.view");
 

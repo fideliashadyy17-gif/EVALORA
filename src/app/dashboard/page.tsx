@@ -5,10 +5,10 @@ import { canOperateMany } from "@/lib/operationalAccess";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess } from "@/lib/tenant";
-import { fmtDate, fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Library, PenSquare, Radio, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Dashboard" };
 export const dynamic = "force-dynamic";
@@ -16,6 +16,9 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<{ e?: string }> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate, dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const supabase = await createClient();
 

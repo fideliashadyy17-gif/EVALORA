@@ -4,11 +4,11 @@ import { canOperate } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { loadRubrics } from "@/lib/grading";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, ClipboardList, ListChecks } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createRubric, duplicateRubric } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Grading rubrics" };
 export const dynamic = "force-dynamic";
@@ -26,6 +26,9 @@ export default async function RubricsPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const canMark = await canOperate(ctx, org.id, "grading.edit", "rubrics");
   const supabase = await createClient();
