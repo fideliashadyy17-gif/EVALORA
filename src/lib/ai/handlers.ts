@@ -53,6 +53,16 @@ export interface ToolRuntime {
   env: NodeJS.ProcessEnv;
   now: () => Date;
   modelTransport?: MarkingTransport;
+  /**
+   * Permission check for a caller authenticated WITHOUT a browser cookie.
+   *
+   * The shared authoring services normally resolve permissions through a
+   * cookie-bound client. An external agent has no cookies, so it supplies this
+   * resolver, which asks the identical `access_has_permission` question under
+   * the owner identity the request already proved. Absent on the native path,
+   * where the browser session answers for itself.
+   */
+  authorize?: (permission: string, module?: string) => Promise<boolean>;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -559,6 +569,10 @@ async function createExamination(runtime: ToolRuntime, args: Record<string, unkn
       entitlement,
       capabilities: { examinations: capabilities.examinations, proctoring: capabilities.proctoring },
       passMarkPercent: plan.passMarkPercent,
+      // Present only on the external-agent path: the services then ask the
+      // permission question under the identity the agent already proved,
+      // instead of through a browser cookie it does not have.
+      authorize: runtime.authorize,
     });
   } catch (error) {
     if (error instanceof MaterializeError) {

@@ -47,6 +47,8 @@ export async function POST(request: Request, context: { params: Promise<{ name: 
   delete args.__approval_id;
   delete args.__execute;
 
+  const hasPermission = permissionResolver(auth);
+
   try {
     const result = await executeTool(
       {
@@ -58,9 +60,12 @@ export async function POST(request: Request, context: { params: Promise<{ name: 
         execute,
       },
       {
-        hasPermission: permissionResolver(auth),
+        hasPermission: hasPermission,
         admin: auth.admin,
         supabase: auth.supabase,
+        // The authoring services ask their own module-aware question; give them
+        // the same answer this request already resolved.
+        authorize: (permission, module) => hasPermission(permission, module),
       },
     );
     const status = result.ok ? 200 : result.code === "approval_required" ? 202 : 400;

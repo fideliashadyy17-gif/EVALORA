@@ -75,6 +75,15 @@ export interface PaperActor {
   ctx: Parameters<typeof canOperate>[0];
   organizationId: string;
   supabase: SupabaseClient;
+  /**
+   * Optional permission check supplied by a caller that authenticated without
+   * a browser cookie (the external-agent path, whose client is bound to the
+   * owner). The default `canOperate` verifies the caller through
+   * `client.auth.getUser()` on a cookie-bound client, which an agent request
+   * does not have; the caller passes a resolver that asks the identical
+   * `access_has_permission` question under the identity it already proved.
+   */
+  authorize?: (permission: string, module?: string) => Promise<boolean>;
 }
 
 export type PaperSaveResult = { ok: true; id: string } | { error: string };
@@ -85,7 +94,11 @@ export async function savePaperForActor(
   hooks: { revalidate?: () => void } = {},
 ): Promise<PaperSaveResult> {
   const { ctx, organizationId: orgId, supabase } = actor;
-  if (!(await canOperate(ctx, orgId, raw?.id ? "quizzes.edit" : "quizzes.create", "quizzes"))) {
+  const permission = raw?.id ? "quizzes.edit" : "quizzes.create";
+  const allowed = actor.authorize
+    ? await actor.authorize(permission, "quizzes")
+    : await canOperate(ctx, orgId, permission, "quizzes");
+  if (!allowed) {
     return { error: "You don't have permission to edit quizzes." };
   }
   const parsed = QuizSchema.safeParse(raw);

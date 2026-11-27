@@ -14,17 +14,22 @@ import "server-only";
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createAdminClient, createClient } from "@/lib/supabase/server";
+import { createAdminClient, createUserSessionClient } from "@/lib/supabase/server";
 import { resolveAgentActor } from "./agents";
 import { getTool } from "./tools";
 import { ToolError, type ActorIdentity, type CallScope, type Surface } from "./types";
+import { getEntitlementFor } from "@/lib/entitlements";
+import { moduleEnabled } from "@/lib/modules";
 
 export interface AiRequestAuth {
   actor: ActorIdentity;
   organizationId: string;
   organizationSlug: string | null;
   admin: SupabaseClient;
-  /** RLS client bound to the agent's owner — the tools' writes use this. */
+  /**
+   * RLS client authenticated as the agent's OWNER (a real auth session, not the
+   * caller's cookies and not the service role). The tools' writes use this.
+   */
   supabase: SupabaseClient;
   scope: CallScope;
   requestId: string;
@@ -124,9 +129,26 @@ export async function authenticateAgent(request: Request, surface: Surface): Pro
     };
   }
 
-  // A request-scoped RLS client established as the owner, so tool writes carry
+  // A request-scoped RLS client established AS THE OWNER, so tool writes carry
   // the same identity a browser session would and RLS applies on top of RBAC.
-  const supabase = await createClient();
+  //
+  // This must be a real session, never `createClient()`: that helper reads the
+  // CALLER's cookies, and an agent request has none. The result would be an
+  // anonymous client, which fails in two silent ways — `access_has_permission`
+  // resolves nothing (so every shared-service `canOperate` returns false and
+  // every write is refused as "no permission"), and RLS sees no identity (so
+  // reads come back empty). A request whose owner session cannot be
+  // established is therefore refused outright rather than run unauthenticated.
+  const supabase = await createUserSessionClient(admin, actor.userId, actor.userEmail ?? "");
+  if (!supabase) {
+    return {
+      ok: false,
+      status: 401,
+      code: "unauthenticated",
+      message: "That credential is not valid for any active agent.",
+      headers: { ...NO_STORE, "WWW-Authenticate": "Bearer" },
+    };
+  }
 
   let requestId = request.headers.get("x-request-id") ?? "";
   if (!/^[A-Za-z0-9._:-]{1,80}$/.test(requestId)) {
@@ -143,6 +165,23 @@ export async function authenticateAgent(request: Request, surface: Surface): Pro
     scope: { surface, organizationId, requestId },
     requestId,
   };
+}
+
+/**
+ * The entitlement resolver only needs a profile status and platform role, so the
+ * agent path builds the smallest honest session for it rather than impersonating
+ * a browser render.
+ */
+function sessionFor(auth: AiRequestAuth) {
+  return {
+    user: { id: auth.actor.userId, email: auth.actor.userEmail ?? "" },
+    profile: { id: auth.actor.userId, platform_role: "user", status: "active" },
+    memberships: [],
+    adminOrgContext: null,
+    tenantSlug: null,
+    tenantDenied: false,
+    workspaceSelected: true,
+  } as unknown as Parameters<typeof getEntitlementFor>[1];
 }
 
 /** Checks the person a tool is attributed to actually exists and is active. */
@@ -164,7 +203,9 @@ export async function ownerIsActive(admin: SupabaseClient, userId: string): Prom
  * (`createExaminationFromForm`, `savePaperForActor`, …) — the AI never has a
  * second, weaker path into those services.
  */
-export function permissionResolver(auth: AiRequestAuth): (permission: string) => Promise<boolean> {
+export function permissionResolver(
+  auth: AiRequestAuth,
+): (permission: string, module?: string) => Promise<boolean> {
   const cache = new Map<string, boolean>();
   const memberships = new Map<string, string>();
 
@@ -182,8 +223,9 @@ export function permissionResolver(auth: AiRequestAuth): (permission: string) =>
     return role;
   };
 
-  return async (permission: string) => {
-    if (cache.has(permission)) return cache.get(permission)!;
+  return async (permission: string, module?: string) => {
+    const key = module ? `${permission}\u0000${module}` : permission;
+    if (cache.has(key)) return cache.get(key)!;
     let allowed = false;
     try {
       const role = await membershipRole(auth.organizationId);
@@ -194,11 +236,18 @@ export function permissionResolver(auth: AiRequestAuth): (permission: string) =>
           p_permission_key: permission,
         });
         allowed = !error && data === true;
+        // The module half of the check, exactly as `canOperate` applies it: a
+        // plan that excludes the module denies the operation even when the
+        // person's role would allow it.
+        if (allowed && module) {
+          const entitlement = await getEntitlementFor(auth.admin, sessionFor(auth), auth.organizationId);
+          allowed = moduleEnabled(entitlement.modules, module);
+        }
       }
     } catch {
       allowed = false;
     }
-    cache.set(permission, allowed);
+    cache.set(key, allowed);
     return allowed;
   };
 }
@@ -227,7 +276,9 @@ export function requiredPermission(tool: string): string | null {
 export function toolErrorResponse(error: unknown) {
   if (error instanceof ToolError) {
     const status =
-      error.code === "permission_denied"
+      error.code === "unauthenticated"
+        ? 401
+        : error.code === "permission_denied"
         ? 403
           : error.code === "not_found"
             ? 404

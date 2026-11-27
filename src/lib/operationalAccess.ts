@@ -1,4 +1,5 @@
 import type { SessionContext } from "./auth";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { getEntitlementFor } from "./entitlements";
 import { moduleEnabled } from "./modules";
 import { checkPermissions, hasPermission } from "./rbac";
@@ -23,6 +24,45 @@ export async function canOperate(
     if (!module || !organizationId) return true;
     const supabase = await createClient();
     const entitlement = await getEntitlementFor(supabase, ctx, organizationId);
+    return moduleEnabled(entitlement.modules, module);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The same check, for a caller that ALREADY holds an authenticated client.
+ *
+ * `canOperate` asks `resolvePermission`, which verifies the identity through
+ * `client.auth.getUser()` on a cookie-bound client. That is correct for a
+ * browser and impossible for an external agent, whose request carries a bearer
+ * token rather than a session cookie — the shared services would then refuse
+ * every write the agent is actually entitled to make.
+ *
+ * This variant takes the client the agent path already authenticated as the
+ * owner, so the permission question is answered by the same
+ * `access_has_permission` resolver, under the same identity, with no cookies
+ * involved. Passing the service-role client here would be a bug: it would
+ * resolve the caller's stored permissions but not prove who is asking.
+ */
+export async function canOperateWithClient(
+  client: SupabaseClient,
+  ctx: SessionContext,
+  organizationId: string | null,
+  permission: string,
+  module?: string,
+): Promise<boolean> {
+  try {
+    if (!ctx || ctx.profile.status !== "active") return false;
+    if (!organizationId && ctx.profile.platform_role !== "super_admin") return false;
+    const { data, error } = await client.rpc("access_has_permission", {
+      p_user_id: ctx.profile.id,
+      p_organization_id: organizationId,
+      p_permission_key: permission,
+    });
+    if (error || data !== true) return false;
+    if (!module || !organizationId) return true;
+    const entitlement = await getEntitlementFor(client, ctx, organizationId);
     return moduleEnabled(entitlement.modules, module);
   } catch {
     return false;

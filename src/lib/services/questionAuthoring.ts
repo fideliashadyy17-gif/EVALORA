@@ -61,6 +61,11 @@ export interface QuestionActor {
   organizationId: string;
   /** RLS client for the acting user, or a service client for a bound agent. */
   supabase: SupabaseClient;
+  /**
+   * Optional permission check for a caller without a browser cookie (the
+   * external-agent path). See `PaperActor.authorize`.
+   */
+  authorize?: (permission: string, module?: string) => Promise<boolean>;
 }
 
 export type QuestionSaveResult = { ok: true; id: string } | { error: string };
@@ -71,7 +76,11 @@ export async function saveQuestionForActor(
   hooks: { revalidate?: () => void } = {},
 ): Promise<QuestionSaveResult> {
   const { ctx, organizationId: orgId, supabase } = actor;
-  if (!(await canOperate(ctx, orgId, q.id ? "questions.edit" : "questions.create", "question_bank"))) {
+  const permission = q.id ? "questions.edit" : "questions.create";
+  const allowed = actor.authorize
+    ? await actor.authorize(permission, "question_bank")
+    : await canOperate(ctx, orgId, permission, "question_bank");
+  if (!allowed) {
     return { error: "You don't have permission to edit questions." };
   }
 

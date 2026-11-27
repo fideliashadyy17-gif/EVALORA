@@ -50,6 +50,7 @@ export class ToolError extends Error {
     | "rate_limited"
     | "unconfigured"
     | "unsupported"
+    | "unauthenticated"
     | "internal";
   /** Safe, user-facing sentence. Never contains a stack or a secret. */
   detail?: string;

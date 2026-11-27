@@ -39,6 +39,12 @@ export interface MaterializeInput {
   examPeriod?: string;
   academicYear?: string;
   passMarkPercent?: number;
+  /**
+   * Permission resolver supplied when the caller authenticated without a
+   * browser cookie (an external agent). Omitted for the native assistant and
+   * the workspace form, which are authorized by their own session.
+   */
+  authorize?: (permission: string, module?: string) => Promise<boolean>;
 }
 
 export interface MaterializeResult {
@@ -86,7 +92,7 @@ export async function materializeExam(input: MaterializeInput): Promise<Material
   }
 
   const { plan, supabase, session, organizationId } = input;
-  const actor = { ctx: session, organizationId, supabase };
+  const actor = { ctx: session, organizationId, supabase, authorize: input.authorize };
   const partial: string[] = [];
   const questionIds: string[] = [];
   const idByRef = new Map<string, string>();

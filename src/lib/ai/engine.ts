@@ -132,6 +132,8 @@ export interface EngineDeps {
   now?: () => Date;
   /** Injected model transport for tests. */
   modelTransport?: ToolRuntime["modelTransport"];
+  /** See `ToolRuntime.authorize`: present only for external-agent requests. */
+  authorize?: ToolRuntime["authorize"];
 }
 
 /** Rate limit + daily quota for an agent identity. */
@@ -288,11 +290,50 @@ async function obtainApproval(
 /**
  * Runs one tool through the full authority chain.
  */
+/**
+ * Proves the request client really is acting as the human this call claims.
+ *
+ * The native assistant passes a cookie-bound client, so `auth.getUser()` must
+ * return the signed-in person. The external-agent path passes the owner-bound
+ * session client. A service-role client (which has no auth session) is never
+ * accepted here: the tools take their write path through this client precisely
+ * so RLS constrains it, and a service-role client would remove that constraint.
+ */
+async function assertRequestClientIdentity(client: SupabaseClient, actor: ActorIdentity): Promise<void> {
+  let userId: string | null = null;
+  try {
+    const { data } = await client.auth.getUser();
+    userId = data?.user?.id ?? null;
+  } catch {
+    userId = null;
+  }
+  if (!userId) {
+    throw new ToolError(
+      "unauthenticated",
+      "This request has no verified identity, so no operation was performed.",
+    );
+  }
+  if (actor.userId && userId !== actor.userId) {
+    throw new ToolError(
+      "permission_denied",
+      "This request is authenticated as a different person than the operation is attributed to.",
+    );
+  }
+}
+
 export async function executeTool(request: ExecutionRequest, deps: EngineDeps): Promise<ExecutionOutcome> {
   const tool = getTool(request.tool);
   if (!tool) throw new ToolError("unsupported", `There is no tool named "${request.tool}".`);
   const risk = riskOf(request.tool);
   const now = (deps.now ?? (() => new Date()))();
+
+  // ── Identity of the request client ───────────────────────────────────
+  // A tool must never run on a client that is not authenticated as the acting
+  // human. An anonymous client fails silently rather than loudly: RLS returns
+  // empty rows and `access_has_permission` resolves nothing, so a read looks
+  // like "no data" and a write looks like "no permission". Both are lies about
+  // a request that was supposed to be authorized, so it is refused here.
+  await assertRequestClientIdentity(deps.supabase, request.actor);
 
   // ── Organization policy ──────────────────────────────────────────────
   const settings = await loadAiSettings(deps.admin, request.scope.organizationId);
@@ -449,6 +490,7 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
     env: deps.env ?? process.env,
     now: () => (deps.now ?? (() => new Date()))(),
     modelTransport: deps.modelTransport,
+    authorize: deps.authorize,
   };
 
   try {

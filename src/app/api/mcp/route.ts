@@ -68,6 +68,11 @@ export async function POST(request: Request) {
   const messages = Array.isArray(payload) ? payload : [payload];
   if (!messages.length) return rpcError(null, -32600, "Invalid Request: empty batch.");
 
+  // One resolver for the whole request: its answers are memoized, so discovery
+  // and invocation cannot disagree about the same permission, and the model
+  // never sees two different views within one conversation turn.
+  const hasPermission = permissionResolver(auth);
+
   const responses: unknown[] = [];
   for (const message of messages) {
     const request_ = message as { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
@@ -79,7 +84,6 @@ export async function POST(request: Request) {
     try {
       const result = await handleRpc(request_.method, request_.params, {
         listTools: async () => {
-          const hasPermission = permissionResolver(auth);
           const out = [];
           for (const tool of TOOLS) {
             if ((auth.actor.deniedPermissions ?? []).includes(tool.risk.permission)) continue;
@@ -106,7 +110,13 @@ export async function POST(request: Request) {
           delete callArgs.__approval_id;
           const outcome = await executeTool(
             { tool: name, args: callArgs, actor: auth.actor, scope: auth.scope, approvalId },
-            { hasPermission: permissionResolver(auth), admin: auth.admin, supabase: auth.supabase },
+            {
+              hasPermission,
+              admin: auth.admin,
+              supabase: auth.supabase,
+              // The authoring services ask their own module-aware question.
+              authorize: (permission, module) => hasPermission(permission, module),
+            },
           );
           if (!outcome.ok) {
             // MCP distinguishes a tool error from a protocol error: an
