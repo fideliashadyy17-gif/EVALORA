@@ -295,7 +295,7 @@ export async function loadExamScoreAdjustmentContext(
     const { data: itemRows } = await admin
       .from("exam_score_adjustment_items")
       .select(
-        "id, adjustment_id, attempt_id, candidate_name, category_type, category_key, category_max_score, original_category_score, adjusted_category_score, exam_max_score, original_exam_score, adjusted_exam_score, points_requested, points_applied, capped, cap_reason, created_at",
+        "id, adjustment_id, attempt_id, candidate_name, category_type, category_key, sequence_no, category_max_score, original_category_score, adjusted_category_score, exam_max_score, original_exam_score, adjusted_exam_score, points_requested, points_applied, capped, cap_reason, created_at",
       )
       .eq("exam_id", examId)
       .order("candidate_name", { ascending: true })
@@ -319,6 +319,9 @@ export async function loadExamScoreAdjustmentContext(
         examMaxScore: Number(item.exam_max_score),
         capped: Boolean(item.capped),
         capReason: (item.cap_reason ?? null) as AdjustmentCapReason | null,
+        // Tolerates a database where the repeated-adjustment migration has not
+        // run yet: the ordinal simply falls back to 0 and ordering uses time.
+        sequenceNo: Number(item.sequence_no ?? 0),
         createdAt: String(item.created_at),
       };
       priorAdjustments.push(parsed);
