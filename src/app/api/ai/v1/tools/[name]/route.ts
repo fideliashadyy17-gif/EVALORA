@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticateAgent, permissionResolver, requiredPermission, toolErrorResponse, unknownTool } from "@/lib/ai/authz";
+import { aiModuleRefusal, authenticateAgent, permissionResolver, requiredPermission, toolErrorResponse, unknownTool } from "@/lib/ai/authz";
 import { executeTool } from "@/lib/ai/engine";
 import { ToolError } from "@/lib/ai/types";
 
@@ -46,6 +46,11 @@ export async function POST(request: Request, context: { params: Promise<{ name: 
   const execute = args.__execute !== false;
   delete args.__approval_id;
   delete args.__execute;
+
+  // The plan gate comes first: an organization whose plan excludes the AI
+  // module cannot reach tools through the API even with a valid credential.
+  const moduleRefusal = await aiModuleRefusal(auth);
+  if (moduleRefusal) return moduleRefusal;
 
   const hasPermission = permissionResolver(auth);
 
