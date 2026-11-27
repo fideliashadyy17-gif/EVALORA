@@ -24,7 +24,6 @@ export type AdjustmentRowStatus =
   | "apply"
   | "capped"
   | "already_at_maximum"
-  | "already_adjusted"
   | "pending_grading"
   | "not_submitted"
   | "not_selected";
@@ -62,6 +61,12 @@ export interface PriorAdjustmentItem {
   examMaxScore: number;
   capped: boolean;
   capReason: AdjustmentCapReason | null;
+  /**
+   * Ordinal within this attempt's history for the category (1 = first
+   * adjustment). Authoritative for ordering; `createdAt` can tie across items
+   * written in the same batch.
+   */
+  sequenceNo: number;
   createdAt: string;
 }
 
@@ -102,6 +107,17 @@ export interface ScoreAdjustmentPreviewRow {
   pointsDroppedByCap: number;
   capped: boolean;
   capReason: AdjustmentCapReason | null;
+  /**
+   * How many adjustments have already been applied to this attempt for this
+   * category, and their combined effect. Purely informational: a non-zero
+   * count never makes a row non-applicable. Repeated adjustments are a
+   * supported operation, and prior points are already folded into
+   * `originalCategoryScore` / `originalExamScore` so they are never added
+   * twice.
+   */
+  priorAdjustmentCount: number;
+  priorPointsApplied: number;
+  /** The most recent prior adjustment, for the history column. */
   priorAdjustment: {
     adjustmentId: string;
     pointsApplied: number;
@@ -120,6 +136,11 @@ export interface ScoreAdjustmentPreview {
   applicableCount: number;
   cappedCount: number;
   atMaxSkippedCount: number;
+  /**
+   * Targeted rows that already carry at least one adjustment for this
+   * category. Informational only — these rows stay applicable and can be
+   * adjusted again.
+   */
   alreadyAdjustedCount: number;
   ineligibleCount: number;
   totalPointsToAdd: number;
@@ -440,12 +461,35 @@ export function buildScoreAdjustmentPreview(input: {
   const { category, pointsRequested, scope, paper, attempts, priorAdjustments } = input;
   const selectedSet = new Set(input.selectedAttemptIds ?? []);
 
-  const priorByAttemptCategory = new Map<string, PriorAdjustmentItem>();
+  // Full adjustment history per attempt for this category. Every entry is
+  // retained: the newest one feeds the history column and the count/total feed
+  // the "adjusted ×N (+X)" indicator. Nothing here restricts applicability.
+  const priorByAttemptCategory = new Map<string, PriorAdjustmentItem[]>();
   for (const item of priorAdjustments) {
     if (item.categoryType === category.categoryType && item.categoryKey === category.categoryKey) {
-      priorByAttemptCategory.set(item.attemptId, item);
+      const list = priorByAttemptCategory.get(item.attemptId) ?? [];
+      list.push(item);
+      priorByAttemptCategory.set(item.attemptId, list);
     }
   }
+
+  /** Newest adjustment on this attempt+category, plus aggregate history. */
+  const priorHistoryFor = (attemptId: string) => {
+    const list = priorByAttemptCategory.get(attemptId);
+    if (!list || list.length === 0) {
+      return { latest: null as PriorAdjustmentItem | null, count: 0, total: 0 };
+    }
+    const latest = [...list].sort((a, b) => {
+      const bySeq = (b.sequenceNo ?? 0) - (a.sequenceNo ?? 0);
+      if (bySeq !== 0) return bySeq;
+      return String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? ""));
+    })[0];
+    return {
+      latest,
+      count: list.length,
+      total: round2(list.reduce((sum, i) => sum + Number(i.pointsApplied || 0), 0)),
+    };
+  };
 
   const rows: ScoreAdjustmentPreviewRow[] = [];
   let targetedCount = 0;
@@ -477,7 +521,14 @@ export function buildScoreAdjustmentPreview(input: {
       attempt,
       priorAdjustments,
     );
-    const prior = priorByAttemptCategory.get(attempt.attemptId) ?? null;
+    const priorHistory = priorHistoryFor(attempt.attemptId);
+    const priorAdjustment = priorHistory.latest
+      ? {
+          adjustmentId: priorHistory.latest.adjustmentId,
+          pointsApplied: priorHistory.latest.pointsApplied,
+          createdAt: priorHistory.latest.createdAt,
+        }
+      : null;
 
     if (!inScope) {
       rows.push({
@@ -501,9 +552,9 @@ export function buildScoreAdjustmentPreview(input: {
         pointsDroppedByCap: 0,
         capped: false,
         capReason: null,
-        priorAdjustment: prior
-          ? { adjustmentId: prior.adjustmentId, pointsApplied: prior.pointsApplied, createdAt: prior.createdAt }
-          : null,
+        priorAdjustmentCount: priorHistory.count,
+        priorPointsApplied: priorHistory.total,
+        priorAdjustment,
       });
       continue;
     }
@@ -533,43 +584,20 @@ export function buildScoreAdjustmentPreview(input: {
         pointsDroppedByCap: 0,
         capped: false,
         capReason: null,
-        priorAdjustment: prior
-          ? { adjustmentId: prior.adjustmentId, pointsApplied: prior.pointsApplied, createdAt: prior.createdAt }
-          : null,
+        priorAdjustmentCount: priorHistory.count,
+        priorPointsApplied: priorHistory.total,
+        priorAdjustment,
       });
       continue;
     }
 
-    if (prior) {
+    // A prior adjustment is history, never a lock. `originalCategoryScore`
+    // already includes every prior point via `computeCategoryScoreForAttempt`,
+    // and `originalExamScore` comes from the persisted attempt score which the
+    // RPC advanced on each earlier adjustment, so headroom below is computed
+    // against the current effective score and nothing is applied twice.
+    if (priorHistory.count > 0) {
       alreadyAdjustedCount += 1;
-      rows.push({
-        attemptId: attempt.attemptId,
-        candidateId: attempt.candidateId,
-        studentId: attempt.studentId,
-        candidateName: attempt.candidateName,
-        className: attempt.className,
-        attemptStatus: attempt.status,
-        status: "already_adjusted",
-        statusLabel: `Already adjusted (+${prior.pointsApplied})`,
-        applicable: false,
-        originalCategoryScore,
-        adjustedCategoryScore: originalCategoryScore,
-        categoryMaxScore: category.maxScore,
-        originalExamScore,
-        adjustedExamScore: originalExamScore,
-        examMaxScore,
-        pointsRequested,
-        pointsApplied: 0,
-        pointsDroppedByCap: 0,
-        capped: false,
-        capReason: null,
-        priorAdjustment: {
-          adjustmentId: prior.adjustmentId,
-          pointsApplied: prior.pointsApplied,
-          createdAt: prior.createdAt,
-        },
-      });
-      continue;
     }
 
     const categoryHeadroom = round2(Math.max(0, category.maxScore - originalCategoryScore));
@@ -604,7 +632,9 @@ export function buildScoreAdjustmentPreview(input: {
             : categoryHeadroom <= 0
               ? "criterion_max"
               : "exam_max",
-        priorAdjustment: null,
+        priorAdjustmentCount: priorHistory.count,
+        priorPointsApplied: priorHistory.total,
+        priorAdjustment,
       });
       continue;
     }
@@ -660,7 +690,9 @@ export function buildScoreAdjustmentPreview(input: {
       pointsDroppedByCap,
       capped,
       capReason,
-      priorAdjustment: null,
+      priorAdjustmentCount: priorHistory.count,
+      priorPointsApplied: priorHistory.total,
+      priorAdjustment,
     });
   }
 
@@ -677,7 +709,7 @@ export function buildScoreAdjustmentPreview(input: {
   }
   if (alreadyAdjustedCount > 0) {
     warnings.push(
-      `${alreadyAdjustedCount} student${alreadyAdjustedCount === 1 ? "" : "s"} already received a score adjustment for ${category.categoryLabel} and will be skipped to prevent duplicate adjustments.`,
+      `${alreadyAdjustedCount} student${alreadyAdjustedCount === 1 ? " has" : "s have"} been adjusted on ${category.categoryLabel} before; the points shown already include those adjustments, so they will not be applied twice. Further adjustments are permitted.`,
     );
   }
   if (ineligibleCount > 0) {

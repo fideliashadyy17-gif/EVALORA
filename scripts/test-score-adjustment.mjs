@@ -214,7 +214,7 @@ check("Preview enforces capping, eligibility, duplicate prevention, and scope se
       submittedAt: "2026-11-24T10:00:00Z",
       answersByQuestion: { q1: 8, q2: 4, q3: 14 },
     },
-    // Dan: already adjusted on Criterion C -> skipped (already_adjusted)
+    // Dan: already adjusted on Criterion C -> STILL adjustable (history, not a lock)
     {
       attemptId: "att-dan",
       candidateId: null,
@@ -292,13 +292,19 @@ check("Preview enforces capping, eligibility, duplicate prevention, and scope se
   });
 
   assert.equal(previewAll.canConfirm, true);
-  assert.equal(previewAll.applicableCount, 2); // Alice & Bob
+  // Dan was already adjusted on Criterion C and is STILL applicable: a prior
+  // adjustment is history, not a lock.
+  assert.equal(previewAll.applicableCount, 3); // Alice, Bob & Dan
   assert.equal(previewAll.cappedCount, 1); // Bob
   assert.equal(previewAll.atMaxSkippedCount, 1); // Cara
-  assert.equal(previewAll.alreadyAdjustedCount, 1); // Dan
+  assert.equal(previewAll.alreadyAdjustedCount, 1); // Dan — informational only
   assert.equal(previewAll.ineligibleCount, 2); // Eve & Frank
-  assert.equal(previewAll.totalPointsToAdd, 3); // 2 + 1
+  assert.equal(previewAll.totalPointsToAdd, 5); // 2 + 1 + 2
   assert.ok(previewAll.warnings.some((w) => w.includes("automatically capped")));
+  assert.ok(
+    !previewAll.warnings.some((w) => /skipped to prevent duplicate/i.test(w)),
+    "no warning may claim previously adjusted students are skipped",
+  );
 
   const alice = previewAll.rows.find((r) => r.attemptId === "att-alice");
   assert.equal(alice.status, "apply");
@@ -316,6 +322,21 @@ check("Preview enforces capping, eligibility, duplicate prevention, and scope se
   assert.equal(bob.adjustedCategoryScore, 16);
   assert.equal(bob.adjustedExamScore, 27);
   assert.equal(bob.pointsApplied, 1);
+
+  // Dan: previously adjusted (+1) on Criterion C, yet fully adjustable again.
+  // The prior point is folded into originalCategoryScore (9 raw + 1 prior = 10)
+  // so it is never added a second time.
+  const dan = previewAll.rows.find((r) => r.attemptId === "att-dan");
+  assert.equal(dan.applicable, true, "a previously adjusted student must stay applicable");
+  assert.equal(dan.status, "apply");
+  assert.equal(dan.originalCategoryScore, 10, "prior +1 already folded in, not re-applied");
+  assert.equal(dan.adjustedCategoryScore, 12);
+  assert.equal(dan.originalExamScore, 18);
+  assert.equal(dan.adjustedExamScore, 20);
+  assert.equal(dan.pointsApplied, 2);
+  assert.equal(dan.priorAdjustmentCount, 1);
+  assert.equal(dan.priorPointsApplied, 1);
+  assert.equal(dan.priorAdjustment.adjustmentId, "adj-old");
 
   // Selected scope: ONLY Alice
   const previewSelected = scoreAdj.buildScoreAdjustmentPreview({
@@ -432,10 +453,13 @@ check("Recompute helper preserves adjustments and clamps strictly to maxScore", 
 // ─── 7. Real PostgreSQL (PGlite) Migration, RPC, Immutability & RLS Tests ───
 await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers, and RLS", async () => {
   const db = new PGlite();
-  const migrationSql = readFileSync(
-    resolve(ROOT, "supabase/migrations/20261125230000_score_adjustments.sql"),
-    "utf8",
-  );
+  // Full score-adjustment migration chain, in order.
+  const migrationSql = [
+    "supabase/migrations/20261125230000_score_adjustments.sql",
+    "supabase/migrations/20261127150000_repeated_score_adjustments.sql",
+  ]
+    .map((rel) => readFileSync(resolve(ROOT, rel), "utf8"))
+    .join("\n");
 
   // Bootstrap minimal synthetic schema matching production tables & roles
   await db.exec(`
@@ -749,7 +773,49 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
     /duplicate_submission/,
   );
 
-  // C. Duplicate adjustment on same (attempt, category_type, category_key) blocked + full rollback
+  // C. A SECOND adjustment on the same (attempt, category) must SUCCEED and
+  //    append sequence 2 to the ledger. A prior adjustment is history, never a
+  //    lock — this is the corrected behaviour.
+  const secondRes = await callRpc([
+    EXAM_INST_OPEN,
+    "myp_criterion",
+    "C",
+    "Criterion C",
+    1,
+    "selected",
+    "Second adjustment on Criterion C",
+    "idem-key-dup-cat-002",
+    USER_TEACHER_INST,
+    "teacher@inst.test",
+    "teacher",
+    "workspace",
+    JSON.stringify([
+      {
+        ...itemsHappy[0],
+        original_category_score: 12,
+        adjusted_category_score: 13,
+        original_exam_score: 22,
+        adjusted_exam_score: 23,
+        points_applied: 1,
+      },
+    ]),
+  ]);
+  assert.equal(secondRes.rows[0].res.students_affected, 1, "a repeat adjustment must be accepted");
+
+  const seqRows = await db.query(
+    `select sequence_no, points_applied, original_category_score, adjusted_category_score
+       from public.exam_score_adjustment_items
+      where attempt_id = '${ATT_1}' and category_type = 'myp_criterion' and category_key = 'C'
+      order by sequence_no`,
+  );
+  assert.deepEqual(
+    seqRows.rows.map((r) => Number(r.sequence_no)),
+    [1, 2],
+    "repeat adjustments append to the ledger instead of being refused",
+  );
+  assert.equal(Number(seqRows.rows[1].original_category_score), 12, "second entry starts where the first ended");
+
+  // C2. The same attempt twice inside ONE batch is still refused (true duplicate click).
   await assert.rejects(
     () =>
       callRpc([
@@ -759,24 +825,18 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
         "Criterion C",
         1,
         "selected",
-        "Second adjustment on Criterion C",
-        "idem-key-dup-cat-002",
+        "Same attempt twice in one batch",
+        "idem-key-batch-dup-002",
         USER_TEACHER_INST,
         "teacher@inst.test",
         "teacher",
         "workspace",
         JSON.stringify([
-          {
-            ...itemsHappy[0],
-            original_category_score: 12,
-            adjusted_category_score: 13,
-            original_exam_score: 22,
-            adjusted_exam_score: 23,
-            points_applied: 1,
-          },
+          { ...itemsHappy[0], original_category_score: 13, adjusted_category_score: 14, original_exam_score: 23, adjusted_exam_score: 24, points_applied: 1 },
+          { ...itemsHappy[0], original_category_score: 13, adjusted_category_score: 14, original_exam_score: 23, adjusted_exam_score: 24, points_applied: 1 },
         ]),
       ]),
-    /duplicate_adjustment/,
+    /duplicate_attempt_in_batch/,
   );
 
   // D. Super Admin applies a SECOND distinct category (Criterion A) on Institution org -> succeeds!
@@ -803,8 +863,9 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
         original_category_score: 10,
         adjusted_category_score: 11,
         exam_max_score: 30,
-        original_exam_score: 22,
-        adjusted_exam_score: 23,
+        // ATT_1 is 23 by now: 20 + 2 (C #1) + 1 (C #2).
+        original_exam_score: 23,
+        adjusted_exam_score: 24,
         points_applied: 1,
         capped: false,
         cap_reason: null,
@@ -813,9 +874,13 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
   ]);
   assert.equal(superRes.rows[0].res.students_affected, 1);
 
-  // Verify helper `exam_attempt_adjustment_total` returns cumulative 2 + 1 = 3
+  // Verify helper `exam_attempt_adjustment_total` is cumulative across every
+  // ledger entry: 2 (C #1) + 1 (C #2) + 1 (A #1) = 4.
   const sumHelper = await db.query(`SELECT public.exam_attempt_adjustment_total('${ATT_1}') AS total`);
-  assert.equal(Number(sumHelper.rows[0].total), 3);
+  assert.equal(Number(sumHelper.rows[0].total), 4);
+
+  const attScore = await db.query(`SELECT score FROM public.exam_attempts WHERE id = '${ATT_1}'`);
+  assert.equal(Number(attScore.rows[0].score), 24, "attempt score tracks the ledger exactly");
 
   // E. Super Admin blocked on Premium org (Institution plan exclusivity!)
   const premItem = [
@@ -924,11 +989,12 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
       student_id: null,
       candidate_name: "Student One",
       category_max_score: 30,
-      original_category_score: 23,
-      adjusted_category_score: 24,
+      // ATT_1 sits at 24 after three accepted ledger entries (C +2, C +1, A +1).
+      original_category_score: 24,
+      adjusted_category_score: 25,
       exam_max_score: 30,
-      original_exam_score: 23,
-      adjusted_exam_score: 24,
+      original_exam_score: 24,
+      adjusted_exam_score: 25,
       points_applied: 1,
       capped: false,
       cap_reason: null,
@@ -1045,10 +1111,12 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
   assert.equal(await countAsUser(USER_STUDENT_INST, "exam_score_adjustment_items"), 0, "Student must NEVER read adjustment items");
   assert.equal(await countAsUser(USER_TEACHER_PREM, "exam_score_adjustments"), 0, "Cross-tenant teacher must NEVER read another org's adjustments");
   assert.equal(await countAsUser(USER_TEACHER_PREM, "exam_score_adjustment_items"), 0, "Cross-tenant teacher must NEVER read another org's adjustment items");
-  assert.equal(await countAsUser(USER_TEACHER_INST, "exam_score_adjustments"), 2, "Org teacher sees org's adjustment headers");
-  assert.equal(await countAsUser(USER_TEACHER_INST, "exam_score_adjustment_items"), 3, "Org teacher sees org's adjustment items");
-  assert.equal(await countAsUser(USER_FOUNDER_INST, "exam_score_adjustments"), 2, "School Founder (read-only) can audit org's adjustments");
-  assert.equal(await countAsUser(USER_SUPER, "exam_score_adjustments"), 2, "Super Admin can read adjustments across orgs");
+  // Three accepted batches on the Institution org (happy C, a repeat C, and the
+  // Super Admin A calibration) covering four per-student ledger items.
+  assert.equal(await countAsUser(USER_TEACHER_INST, "exam_score_adjustments"), 3, "Org teacher sees org's adjustment headers");
+  assert.equal(await countAsUser(USER_TEACHER_INST, "exam_score_adjustment_items"), 4, "Org teacher sees org's adjustment items");
+  assert.equal(await countAsUser(USER_FOUNDER_INST, "exam_score_adjustments"), 3, "School Founder (read-only) can audit org's adjustments");
+  assert.equal(await countAsUser(USER_SUPER, "exam_score_adjustments"), 3, "Super Admin can read adjustments across orgs");
 
   // Direct client write as authenticated must fail (permission denied)
   await db.exec("BEGIN");

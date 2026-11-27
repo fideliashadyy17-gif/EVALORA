@@ -45,7 +45,6 @@ function rowBadgeTone(status: ScoreAdjustmentPreviewRow["status"]): "green" | "g
       return "green";
     case "capped":
       return "amber";
-    case "already_adjusted":
     case "already_at_maximum":
       return "gold";
     case "pending_grading":
@@ -101,18 +100,29 @@ export function ScoreAdjustmentPanel({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [context.attempts]);
 
-  const adjustedAttemptIdsForCategory = useMemo(() => {
-    const set = new Set<string>();
-    if (!selectedCategory) return set;
+  /**
+   * Adjustment history for the selected category, keyed by attempt.
+   *
+   * This is display context only. A student who has already been adjusted stays
+   * fully selectable: repeated adjustments on the same student and the same
+   * criterion are a supported operation, and the preview already folds prior
+   * points into the starting score so nothing is applied twice.
+   */
+  const adjustmentHistoryForCategory = useMemo(() => {
+    const map = new Map<string, { count: number; points: number }>();
+    if (!selectedCategory) return map;
     for (const item of context.priorAdjustments) {
       if (
         item.categoryType === selectedCategory.categoryType &&
         item.categoryKey === selectedCategory.categoryKey
       ) {
-        set.add(item.attemptId);
+        const existing = map.get(item.attemptId) ?? { count: 0, points: 0 };
+        existing.count += 1;
+        existing.points = Math.round((existing.points + Number(item.pointsApplied || 0)) * 100) / 100;
+        map.set(item.attemptId, existing);
       }
     }
-    return set;
+    return map;
   }, [context.priorAdjustments, selectedCategory]);
 
   const filteredAttempts = useMemo(() => {
@@ -127,13 +137,8 @@ export function ScoreAdjustmentPanel({
   }, [context.attempts, classFilter, studentSearch]);
 
   const eligibleAttemptsCount = useMemo(
-    () =>
-      context.attempts.filter(
-        (a) =>
-          evaluateAttemptEligibility(a).eligible &&
-          !adjustedAttemptIdsForCategory.has(a.attemptId),
-      ).length,
-    [context.attempts, adjustedAttemptIdsForCategory],
+    () => context.attempts.filter((a) => evaluateAttemptEligibility(a).eligible).length,
+    [context.attempts],
   );
 
   const clearPreviewState = () => {
@@ -157,10 +162,9 @@ export function ScoreAdjustmentPanel({
     setSelectedAttemptIds((prev) => {
       const next = new Set(prev);
       for (const a of filteredAttempts) {
-        if (
-          evaluateAttemptEligibility(a).eligible &&
-          !adjustedAttemptIdsForCategory.has(a.attemptId)
-        ) {
+        // Previously adjusted students are included: bulk adjustment of the
+        // whole eligible cohort must not silently drop them.
+        if (evaluateAttemptEligibility(a).eligible) {
           next.add(a.attemptId);
         }
       }
@@ -579,8 +583,10 @@ export function ScoreAdjustmentPanel({
                       <tbody className="divide-y divide-evergreen-900/10">
                         {filteredAttempts.map((a) => {
                           const elig = evaluateAttemptEligibility(a);
-                          const already = adjustedAttemptIdsForCategory.has(a.attemptId);
-                          const disabled = !elig.eligible || already;
+                          const history = adjustmentHistoryForCategory.get(a.attemptId);
+                          // Only genuine ineligibility (in progress / pending
+                          // grading) blocks selection. Prior adjustments do not.
+                          const disabled = !elig.eligible;
                           const checked = selectedAttemptIds.has(a.attemptId);
                           return (
                             <tr
@@ -605,14 +611,19 @@ export function ScoreAdjustmentPanel({
                                 {a.maxScore !== null ? fmtScore(a.maxScore) : "—"}
                               </td>
                               <td className="px-3 py-2">
-                                {already ? (
-                                  <Badge tone="gold">Already adjusted</Badge>
-                                ) : elig.eligible ? (
-                                  <Badge tone="green">Eligible</Badge>
-                                ) : (
+                                {!elig.eligible ? (
                                   <Badge tone="red">
                                     {elig.reason === "not_submitted" ? "In progress" : "Pending grading"}
                                   </Badge>
+                                ) : history ? (
+                                  <span className="inline-flex flex-wrap items-center gap-1.5">
+                                    <Badge tone="green">Eligible</Badge>
+                                    <Badge tone="gold">
+                                      Adjusted ×{history.count} (+{fmtScore(history.points)})
+                                    </Badge>
+                                  </span>
+                                ) : (
+                                  <Badge tone="green">Eligible</Badge>
                                 )}
                               </td>
                             </tr>
@@ -705,8 +716,13 @@ export function ScoreAdjustmentPanel({
                     Skipped
                   </p>
                   <p className="mt-1 font-display text-2xl font-bold text-evergreen-950">
-                    {preview.atMaxSkippedCount + preview.alreadyAdjustedCount + preview.ineligibleCount}
+                    {preview.atMaxSkippedCount + preview.ineligibleCount}
                   </p>
+                  {preview.alreadyAdjustedCount > 0 && (
+                    <p className="mt-0.5 text-[11px] text-ink-soft">
+                      {preview.alreadyAdjustedCount} adjusted before, still adjustable
+                    </p>
+                  )}
                 </div>
                 <div className="rounded-xl border border-evergreen-900/15 bg-white p-3">
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-ink-soft">
