@@ -223,6 +223,16 @@ in `.next/server`).
 3. Retries stay on for candidates' own devices; the answer queue still owns
    offline saves.
 
+**What was given up, stated plainly.** The library also retries a `503` (PostgREST
+warming its schema cache) and a `520`, honouring `Retry-After`. Server reads no
+longer do, so a page rendered inside that brief window after a schema change
+serves its compiled-in defaults for that one request instead of waiting it out.
+That is the intended trade: these pages are dynamic, so the next request is
+correct, and defaults-for-one-request is a far smaller harm than ~21 s for every
+request during an actual outage. Writes were never affected either way —
+postgrest-js only ever retries idempotent methods (`GET`, `HEAD`, `OPTIONS`), so
+no write lost a retry it used to have.
+
 ## 5. Method note
 
 The sandbox cannot download GitHub Actions logs (the results host is outside the
