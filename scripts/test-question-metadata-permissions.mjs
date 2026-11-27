@@ -28,6 +28,7 @@ Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/questionOptions')return helper.exports;
  if(request==='@/lib/questionValidation')return {questionPublishError:()=>null};
  if(request==='@/lib/questionGeneration')return {normalizePrompt:(s)=>s};
+ if(request==='@/lib/questionTemplates')return {recordTemplateUse:async()=>0,getQuestionTemplate:async()=>null};
  if(request==='@/lib/supabase/server')return {createClient:async()=>db};
  if(request==='next/cache')return {revalidatePath:()=>{}};
  if(request==='next/navigation')return {redirect:()=>{throw Error('unexpected redirect');}};

@@ -3,6 +3,11 @@
 // deferred deadline closure while pending saves flush, verified pre-deadline
 // recovery saves, DB event constraint fallback, and per-request auth caching.
 // Purely in-memory mocked tests — zero live database or student-attempt access.
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { Module } from "node:module";

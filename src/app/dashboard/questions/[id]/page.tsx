@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { QuestionForm, type QuestionFormValues, type QuestionSaveFn } from "@/components/QuestionForm";
+import { resolveQuestionStudioConfig } from "@/lib/questionStudio";
 import { saveQuestion, uploadQuestionImage, type QuestionInput } from "../actions";
 
 export const metadata: Metadata = { title: "Edit question" };
@@ -18,6 +19,9 @@ export default async function EditQuestionPage({
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
   if (!(await canOperate(ctx, org.id, "questions.edit", "question_bank"))) redirect("/dashboard/questions");
+  // Question Studio configuration for this organization (Control Center →
+  // Question Studio): type picker, difficulty vocabulary, design defaults.
+  const studio = await resolveQuestionStudioConfig(org.id);
   const supabase = await createClient();
 
   const { data: q } = await supabase
@@ -78,6 +82,7 @@ export default async function EditQuestionPage({
         action={<ButtonLink href="/dashboard/questions" variant="outline">Question Bank</ButtonLink>}
       />
       <QuestionForm
+        studio={studio}
         initial={initial}
         categories={categories ?? []}
         save={saveQuestion as unknown as QuestionSaveFn}

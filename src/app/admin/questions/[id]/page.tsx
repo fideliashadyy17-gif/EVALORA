@@ -3,6 +3,7 @@ import { Button, PageTitle } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import type { RichDoc } from "@/lib/content";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveQuestionStudioConfig } from "@/lib/questionStudio";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -30,6 +31,8 @@ export default async function AdminEditQuestionPage({
     .eq("id", id)
     .maybeSingle();
   if (!q) notFound();
+
+  const studio = await resolveQuestionStudioConfig(q.organization_id as string);
 
   const { data: categories } = await admin
     .from("question_categories")
@@ -105,6 +108,7 @@ export default async function AdminEditQuestionPage({
         }}
       />
       <QuestionForm
+        studio={studio}
         key={`${q.id}-${q.updated_at}`}
         initial={initial}
         categories={categories ?? []}

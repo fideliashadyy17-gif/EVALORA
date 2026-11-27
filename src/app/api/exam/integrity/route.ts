@@ -5,10 +5,13 @@ import {
   incidentTypeFor,
   isEventEnabled,
   isRecordable,
-  parseIntegrityPolicy,
   severityForEvent,
 } from "@/lib/integrity";
 import { createAdminClient } from "@/lib/supabase/server";
+import {
+  integrityPolicyWithConfiguredDefaults,
+  resolveProctoringConfig,
+} from "@/lib/proctoringConfig";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
@@ -75,9 +78,21 @@ export async function POST(request: Request) {
           count?: number;
           reason?: string;
           integrity_settings?: unknown;
+          /**
+           * Present since migration 20261126230000. The fast path needs it to
+           * resolve THIS organization's proctoring configuration; without it the
+           * platform-level defaults apply, which is degraded but never wrong.
+           */
+          organization_id?: string | null;
         };
         if (res.ok) {
-          const policy = parseIntegrityPolicy(res.integrity_settings);
+          // Same precedence as the multi-query path below: what the examination
+          // authored in settings.integrity wins verbatim, and the organization's
+          // configured thresholds only fill the fields it left unset. Resolving
+          // here keeps the one-round-trip promise — the configuration service
+          // caches per organization, so this is normally free.
+          const rpcCfg = await resolveProctoringConfig(res.organization_id ?? null);
+          const policy = integrityPolicyWithConfiguredDefaults(res.integrity_settings, rpcCfg);
           const count = Number(res.count ?? 0);
           if (!res.recorded) {
             const level = res.reason === "duplicate" ? escalationLevel(count, policy) : "none";
@@ -113,7 +128,14 @@ export async function POST(request: Request) {
   if (!exam || !candidate || !exam.organization_id)
     return NextResponse.json({ error: "Assessment data is unavailable." }, { status: 500, headers });
 
-  const policy = parseIntegrityPolicy(((exam.settings ?? {}) as Record<string, unknown>).integrity);
+  // Configured proctoring thresholds supply the defaults this examination did
+  // not author. Anything in settings.integrity still wins verbatim, so a
+  // candidate mid-paper is never subjected to rules that changed underneath them.
+  const proctoringCfg = await resolveProctoringConfig(exam.organization_id as string);
+  const policy = integrityPolicyWithConfiguredDefaults(
+    ((exam.settings ?? {}) as Record<string, unknown>).integrity,
+    proctoringCfg,
+  );
   if (!policy.enabled) return answered({ recorded: false, count: 0, level: "none", reason: "integrity_disabled" });
   if (!isEventEnabled(event, policy))
     return answered({ recorded: false, count: 0, level: "none", reason: "event_disabled" });

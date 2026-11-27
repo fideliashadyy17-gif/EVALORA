@@ -6,7 +6,6 @@ import { applyDeadlineSubmission } from "@/lib/examSubmission";
 import { answerReveal, publicQuestion, releasedFeedback } from "@/lib/live";
 import { buildExamResult } from "@/lib/examResults";
 import { parseFormulaSheet } from "@/lib/examFormulas";
-import { parseIntegrityPolicy } from "@/lib/integrity";
 import { parseLockdownSettings } from "@/lib/lockdown";
 import { loadPublishedHints } from "@/lib/examHintsServer";
 import { getEntitlement } from "@/lib/entitlements";
@@ -14,6 +13,10 @@ import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
 import { parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "@/lib/examPaper";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { resolveOrganizationIdentity } from "@/lib/orgIdentity";
+import { integrityPolicyWithConfiguredDefaults, resolveProctoringConfig } from "@/lib/proctoringConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { NextResponse } from "next/server";
 
 const STATE_STATIC_CACHE_TTL_MS = 30_000;
@@ -244,7 +247,7 @@ export async function GET(request: Request) {
 
   // Load candidate-specific saved answers + hint usage in parallel with the
   // cached exam-level static metadata (entitlement, published hints, header rows).
-  const [savedRes, hintUsageRes, staticMeta] = await Promise.all([
+  const [savedRes, hintUsageRes, staticMeta, assessmentConfig, orgIdentity, proctoringCfg] = await Promise.all([
     admin.from("exam_answers").select("*").eq("attempt_id", attempt.id),
     (async () => {
       try {
@@ -262,6 +265,18 @@ export async function GET(request: Request) {
       settings,
       rows.map((row) => row.questions.id),
     ),
+    // Configured assessment defaults (15s cached; degrades to the shipped
+    // values if configuration storage is unreachable, so this can never fail
+    // a candidate's state load).
+    resolveAssessmentConfig(exam.organization_id),
+    // The organization's configured identity: display name, logo default,
+    // paper footer and accent colour. Scoped to THIS examination's
+    // organization, so branding can never leak across tenants.
+    resolveOrganizationIdentity(exam.organization_id, "EVALORA").catch(() => null),
+    // Configured proctoring thresholds. They supply the defaults an examination
+    // did not set; anything the paper authored in settings.integrity wins, so a
+    // candidate already sitting a published examination sees unchanged rules.
+    resolveProctoringConfig(exam.organization_id),
   ]);
 
   const { data: saved, error: savedError } = savedRes;
@@ -297,6 +312,7 @@ export async function GET(request: Request) {
     paperHeader = resolveExamPaperHeader({
       organizationName: (staticMeta.orgRow?.name as string | null) ?? "EVALORA",
       organizationLogoUrl: (staticMeta.orgRow?.logo_url as string | null) ?? null,
+      identity: orgIdentity,
       examTitle: exam.title,
       examInstructions: exam.instructions ?? null,
       examDurationMinutes: exam.duration_minutes ?? null,
@@ -323,7 +339,12 @@ export async function GET(request: Request) {
       instructions: exam.instructions,
       proctoring: Boolean(settings.proctoring),
       require_screen_share: Boolean(settings.require_screen_share),
-      pass_mark_percent: Number(settings.pass_mark_percent ?? 50),
+      // The examination's own pass mark, or the configured platform/organization
+      // default from assessment.default_pass_percent. Audit finding 3.1: this was
+      // a literal 50 here and in thirteen other places while the setting an
+      // administrator edited (platform_settings.exam_pass_threshold) was read by
+      // nothing. One resolver, one source.
+      pass_mark_percent: passMarkFrom(settings, assessmentConfig.defaultPassPercent),
       // Exam-specific formula sheet. It is validated against THIS examination
       // (settings.formula_sheet.exam_id) and is null when absent, malformed or
       // copied from another paper, so no button is shown for an empty sheet.
@@ -331,7 +352,7 @@ export async function GET(request: Request) {
       // The candidate client needs the assessment's integrity policy to know
       // which browser events to report and when to warn. Only thresholds and
       // switches travel here — never an answer, never another candidate.
-      integrity: parseIntegrityPolicy(settings.integrity),
+      integrity: integrityPolicyWithConfiguredDefaults(settings.integrity, proctoringCfg),
       lockdown: parseLockdownSettings(settings.lockdown),
       // The paper's authored language and the premium capability set travel
       // together so the shell can protect the paper and present only tools the

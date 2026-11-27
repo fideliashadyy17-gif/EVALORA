@@ -1,4 +1,9 @@
 // Middleware auth routing and refreshed-cookie checks against mocked Next/Supabase.
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
 const file=path.resolve('scripts/__routing_middleware.cjs');let signedIn=false,refresh=false,seenHeaders;
 const response=(type,url,opts)=>({type,url:url?String(url):null,opts,cookies:{values:[],set(...args){this.values.push(args)},getAll(){return this.values.map(a=>typeof a[0]==='object'?a[0]:{name:a[0],value:a[1],...a[2]})}}});

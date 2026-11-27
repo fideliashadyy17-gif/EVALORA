@@ -1,10 +1,22 @@
 import { Prose, StaticPage } from "@/components/site/StaticPage";
-import { BRAND } from "@/lib/brand";
+import { getEffectiveBrand } from "@/lib/brandConfig";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = { title: "Privacy Policy" };
+// Brand identity is configured at runtime in the Platform Control Center, so
+// this page must not be statically baked at build time.
+export const dynamic = "force-dynamic";
 
-export default function PrivacyPage() {
+export default async function PrivacyPage() {
+  // Effective platform identity: configured values, or the compiled-in
+  // defaults in src/lib/brand.ts when nothing is configured.
+  const brand = await getEffectiveBrand();
+  const BRAND = {
+    name: brand.name,
+    tagline: brand.tagline,
+    description: brand.description,
+    supportEmail: brand.supportEmail,
+  };
   return (
     <StaticPage eyebrow="Legal" title="Privacy Policy" intro={`How ${BRAND.name} collects, uses and protects personal data. Last updated: 4 November 2026.`}>
       <Prose>

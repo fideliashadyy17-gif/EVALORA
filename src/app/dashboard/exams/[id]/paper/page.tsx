@@ -12,6 +12,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { formatDuration, parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "@/lib/examPaper";
+import { resolveOrganizationIdentity } from "@/lib/orgIdentity";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -49,15 +50,19 @@ export default async function PrintableExam({
   if (quizError || !quiz) notFound();
   const examSettings = (exam.settings ?? {}) as Record<string, unknown>;
   const quizSettings = ((quiz.settings as Record<string, unknown> | null) ?? {});
-  const [{ data: orgRow }, { data: tplRow }] = await Promise.all([
+  const [{ data: orgRow }, { data: tplRow }, identity] = await Promise.all([
     db.from("organizations").select("name, logo_url").eq("id", org.id).maybeSingle(),
     typeof examSettings.exam_paper_template_id === "string" && examSettings.exam_paper_template_id
       ? db.from("exam_paper_templates").select("*").eq("id", examSettings.exam_paper_template_id).eq("organization_id", org.id).maybeSingle()
       : Promise.resolve({ data: null }),
+    // Organization-configured identity (display name, logo default, paper
+    // footer, accent colour) from the Control Center.
+    resolveOrganizationIdentity(org.id, org.name).catch(() => null),
   ]);
   const header = resolveExamPaperHeader({
     organizationName: (orgRow?.name as string | null) ?? org.name,
     organizationLogoUrl: (orgRow?.logo_url as string | null) ?? null,
+    identity,
     examTitle: exam.title,
     examInstructions: exam.instructions ?? null,
     examDurationMinutes: exam.duration_minutes ?? null,

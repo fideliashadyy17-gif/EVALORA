@@ -241,6 +241,11 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     workspacePath: "Dashboard → Question Bank",
     adminReferenceHref: "/admin/questions",
     capability: "question_bank",
+    // Only hrefs the organization sidebar actually offers belong here: the
+    // catalog invariant (test-plan-modules.mjs) is that a configurable module can
+    // never promise a surface that does not exist. The Question Studio template
+    // library (/dashboard/questions/templates) is reached from the Question Bank
+    // header instead, and is gated by this same module inside the page.
     surface: { kind: "nav", hrefs: ["/dashboard/questions"] },
   },
   {
@@ -479,9 +484,9 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     description: "Tenant settings, branding and portal.",
     recommendedPlan: "free",
     availability: "implemented",
-    workspacePath: "Dashboard → Organization Settings",
-    adminReferenceHref: "/admin/organizations/settings",
-    surface: { kind: "nav", hrefs: ["/dashboard/settings"] },
+    workspacePath: "Dashboard → Organization Settings → Configuration",
+    adminReferenceHref: "/admin/control-center/organizations",
+    surface: { kind: "nav", hrefs: ["/dashboard/settings", "/dashboard/settings/configuration"] },
   },
   {
     key: "rubrics",

@@ -2,6 +2,7 @@ import { DashboardChrome } from "@/components/dashboard/DashboardChrome";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities } from "@/lib/capabilities";
 import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
+import { notificationsEnabledFor } from "@/lib/notificationService";
 import Link from "next/link";
 import { isLearnerRole } from "@/lib/roleRouting";
 import { redirect } from "next/navigation";
@@ -22,6 +23,13 @@ export default async function DashboardLayout({
   // organization's REAL entitlement (no ownerBypass) so the sidebar entry
   // appears exactly where the page and the RPC would allow it.
   let scoreAdjustmentEligible = false;
+  // In-app notification switch (Control Center → Notifications), intersected
+  // with the plan entitlement. Defaults to visible when it cannot be read, so
+  // a configuration outage hides nothing that already worked.
+  let notificationsEnabled = true;
+  if (org) {
+    notificationsEnabled = await notificationsEnabledFor(org.id).catch(() => true);
+  }
   if (org) {
     try {
       const { createClient } = await import("@/lib/supabase/server");
@@ -135,6 +143,7 @@ export default async function DashboardLayout({
         userName={ctx.profile.full_name || ctx.profile.email}
         modules={modules}
         scoreAdjustmentEligible={scoreAdjustmentEligible}
+        notificationsEnabled={notificationsEnabled}
       >
         {children}
       </DashboardChrome>

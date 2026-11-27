@@ -3,6 +3,7 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities } from "@/lib/capabilities";
 import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -16,6 +17,12 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
   const org = activeOrg(ctx)!;
   if (!(await canOperate(ctx, org.id, "exams.create", "examinations"))) redirect("/dashboard/exams");
   const supabase = await createClient();
+  // Pre-filled from the Platform Control Center's examination and assessment
+  // defaults for this organization, instead of literals baked into the form.
+  const [examDefaults, assessmentCfg] = await Promise.all([
+    resolveExamDefaults(org.id),
+    resolveAssessmentConfig(org.id),
+  ]);
   const [{ data: quizzes }, { data: templates }, { data: mySubjectRows }] = await Promise.all([
     supabase
       .from("quizzes")
@@ -83,10 +90,10 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
             </Field>
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="Duration (minutes)">
-                <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={60} required />
+                <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={examDefaults.durationMinutes} required />
               </Field>
               <Field label="Pass mark (%)">
-                <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={50} />
+                <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={assessmentCfg.defaultPassPercent} />
               </Field>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">

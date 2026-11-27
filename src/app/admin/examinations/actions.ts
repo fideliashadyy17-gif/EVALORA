@@ -8,6 +8,7 @@ import { normalizeExamLanguage } from "@/lib/examLanguage";
 import { scoreAnswerDetailed } from "@/lib/scoring";
 import { computeAttemptScoreWithAdjustments } from "@/lib/scoreAdjustmentsServer";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -96,8 +97,14 @@ export async function createExamAsAdmin(formData: FormData) {
 
   const statusRaw = String(formData.get("status") ?? "draft");
   const status = (EXAM_STATUSES as readonly string[]).includes(statusRaw) ? statusRaw : "draft";
-  const duration = Math.max(1, Math.min(1440, fint(formData, "duration_minutes") ?? 60));
-  const passMark = Math.max(0, Math.min(100, fint(formData, "pass_mark_percent") ?? 50));
+  // Configured defaults for the target organization fill in what the operator
+  // left blank; an explicit form value always wins.
+  const [examDefaults, assessmentCfg] = await Promise.all([
+    resolveExamDefaults(organizationId),
+    resolveAssessmentConfig(organizationId),
+  ]);
+  const duration = Math.max(1, Math.min(1440, fint(formData, "duration_minutes") ?? examDefaults.durationMinutes));
+  const passMark = Math.max(0, Math.min(100, fint(formData, "pass_mark_percent") ?? assessmentCfg.defaultPassPercent));
 
   const { data: exam, error } = await admin
     .from("exams")
@@ -193,7 +200,16 @@ export async function updateExamTimingAsAdmin(formData: FormData) {
   if (!exam) go("/admin/examinations/time-limits", "e=exam");
 
   const duration = Math.max(1, Math.min(1440, fint(formData, "duration_minutes") ?? exam!.duration_minutes));
-  const passMark = Math.max(0, Math.min(100, fint(formData, "pass_mark_percent") ?? 50));
+  const timingAssessmentCfg = await resolveAssessmentConfig(exam!.organization_id ?? null);
+  const storedPassMark = Number(((exam!.settings as Record<string, unknown>) ?? {}).pass_mark_percent);
+  const passMark = Math.max(
+    0,
+    Math.min(
+      100,
+      fint(formData, "pass_mark_percent")
+        ?? (Number.isFinite(storedPassMark) ? storedPassMark : timingAssessmentCfg.defaultPassPercent),
+    ),
+  );
   const settings = {
     ...((exam!.settings as Record<string, unknown>) ?? {}),
     pass_mark_percent: passMark,

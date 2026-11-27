@@ -10,7 +10,7 @@
  * its authored language (see lib/examLanguage).
  */
 import { useI18n } from "./I18nProvider";
-import { LOCALES, LOCALE_NAMES, type Locale } from "@/lib/i18n/config";
+import { LOCALE_NAMES, type Locale } from "@/lib/i18n/config";
 import { Globe } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,10 @@ export function LanguageSwitcher({
   className?: string;
   compact?: boolean;
 }) {
-  const { locale, setLocale, t } = useI18n();
+  // The offered languages come from localization.supported_locales, resolved
+  // on the server and provided through the i18n context — so an administrator
+  // can withdraw a language without a redeploy.
+  const { locale, setLocale, t, supportedLocales } = useI18n();
 
   return (
     <label
@@ -48,7 +51,7 @@ export function LanguageSwitcher({
           variant === "dark" ? "text-inherit" : "text-inherit",
         )}
       >
-        {LOCALES.map((code) => (
+        {supportedLocales.map((code) => (
           <option key={code} value={code} lang={code} className="text-evergreen-950">
             {LOCALE_NAMES[code]}
           </option>

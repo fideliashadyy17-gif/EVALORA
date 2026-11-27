@@ -9,6 +9,7 @@ import {
 } from "@/lib/exam-access";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import { getEntitlement } from "@/lib/entitlements";
+import { resolveProctoringConfig } from "@/lib/proctoringConfig";
 import { examExperienceFromLimits } from "@/lib/examExperience";
 import { detectExamLanguage } from "@/lib/examLanguage";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -62,6 +63,16 @@ export default async function SharedExamJoinPage({
 
   const entitlement = await getEntitlement(admin, exam.organization_id);
   const experience = examExperienceFromLimits(entitlement.limits);
+  // Device checks are an organization-level proctoring setting. Resolving it
+  // here (never in the browser) means the candidate is only ever asked for a
+  // camera or microphone this institution actually switched on, and a failure to
+  // read configuration degrades to "no checks" rather than blocking admission.
+  const proctoring = await resolveProctoringConfig(exam.organization_id);
+  const deviceChecks = {
+    camera: proctoring.requireCameraCheck,
+    microphone: proctoring.requireMicrophoneCheck,
+    browser: proctoring.requireBrowserCheck,
+  };
   const language = detectExamLanguage(
     examSettings.language,
     [exam.title, exam.description, exam.instructions].filter(Boolean).join("\n"),
@@ -168,6 +179,7 @@ export default async function SharedExamJoinPage({
       lockdownRequired={lockdownRequired}
       strictMultiDisplay={Boolean(lockdown.enabled && lockdown.strict_multi_display)}
       lockdownLaunchUrl={lockdownLaunchUrl}
+      deviceChecks={deviceChecks}
     />
   );
 }

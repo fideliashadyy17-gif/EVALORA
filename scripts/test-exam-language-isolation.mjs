@@ -83,7 +83,9 @@ ok(wsCreate.includes("normalizeExamLanguage(formData.get(\"language\")) ?? \"aut
 
 // Root layout lang = interface locale (UI), independent of paper.
 const layout = read("src/app/layout.tsx");
-ok(layout.includes("<html lang={locale}>"), "html lang follows interface locale");
+// The tag may carry further attributes (data-theme, suppressHydrationWarning);
+// what must hold is that `lang` is bound to the resolved interface locale.
+ok(/<html\s+lang=\{locale\}[\s>]/.test(layout), "html lang follows interface locale");
 ok(layout.includes("getRequestLocale"), "root layout resolves interface locale");
 
 // Candidate APIs never accept a language override from the client.

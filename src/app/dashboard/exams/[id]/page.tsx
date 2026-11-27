@@ -6,6 +6,8 @@ import { describeIncidentType } from "@/lib/integrity";
 import { ExaminationAccessCard } from "@/components/ExaminationAccessCard";
 import { Badge, Button, ButtonLink, Card, DataTable, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { getEntitlement } from "@/lib/entitlements";
 import { isScoreAdjustmentPlanEligible } from "@/lib/scoreAdjustments";
@@ -65,6 +67,10 @@ export default async function ExamDetailPage({
   if (!exam) notFound();
 
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
+  // Configured assessment defaults for this organization. The examination's
+  // own stored pass mark always wins; this only supplies the fallback that
+  // used to be a literal 50.
+  const assessmentCfg = await resolveAssessmentConfig(org.id);
   const lockdown = parseLockdownSettings(settings.lockdown);
   const { data: templates } = await supabase
     .from("exam_paper_templates")
@@ -298,7 +304,7 @@ export default async function ExamDetailPage({
       <PageTitle
         eyebrow="Examinations · Assessment Control & Marking Studio"
         title={exam.title}
-        subtitle={`Paper: ${(exam.quizzes as { title: string } | null)?.title ?? "—"} · ${exam.duration_minutes} minutes · Pass mark ${String(settings.pass_mark_percent ?? 50)}%`}
+        subtitle={`Paper: ${(exam.quizzes as { title: string } | null)?.title ?? "—"} · ${exam.duration_minutes} minutes · Pass mark ${passMarkFrom(settings, assessmentCfg.defaultPassPercent)}%`}
         action={
           <div className="flex flex-wrap gap-2">
             {Boolean(settings.proctoring) && canManageProctoring && (

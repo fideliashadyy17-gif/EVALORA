@@ -8,6 +8,7 @@ import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { audit } from "@/lib/admin";
+import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
 import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
 import { computeAttemptScoreWithAdjustments } from "@/lib/scoreAdjustmentsServer";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -50,8 +51,15 @@ export async function createExam(formData: FormData) {
     return !row.questions || row.questions.organization_id !== org.id || !Number.isFinite(points) || points < 0;
   })) redirect("/dashboard/exams/new?e=paper");
 
-  const rawDuration = String(formData.get("duration_minutes") ?? "60").trim();
-  const rawPass = String(formData.get("pass_mark_percent") ?? "50").trim();
+  // Configured examination and assessment defaults for this organization.
+  // They only fill in what the author left blank — an explicit form value
+  // always wins, and no existing examination is touched.
+  const [examDefaults, assessmentCfg] = await Promise.all([
+    resolveExamDefaults(org.id),
+    resolveAssessmentConfig(org.id),
+  ]);
+  const rawDuration = String(formData.get("duration_minutes") ?? examDefaults.durationMinutes).trim();
+  const rawPass = String(formData.get("pass_mark_percent") ?? assessmentCfg.defaultPassPercent).trim();
   const duration = Number(rawDuration), passMark = Number(rawPass);
   if (!rawDuration || !Number.isInteger(duration) || duration < 1 || duration > 1440 || !rawPass || !Number.isFinite(passMark) || passMark < 0 || passMark > 100) redirect("/dashboard/exams/new?e=fields");
   const startRaw = String(formData.get("starts_at") ?? "").trim();

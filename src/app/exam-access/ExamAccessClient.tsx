@@ -1,6 +1,9 @@
 "use client";
 
 import { Logo } from "@/components/Logo";
+import { DeviceCheckPanel } from "@/components/exam/DeviceCheckPanel";
+import { useDeviceCheckGate } from "@/components/exam/useDeviceCheckGate";
+import type { DeviceCheckRequirements } from "@/lib/deviceCheck";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
 import { PlatformCredit } from "@/components/PlatformCredit";
@@ -27,11 +30,18 @@ export function ExamAccessClient({
   classes = [],
   codeToClassMap = {},
   defaultClassId = null,
+  deviceChecks = null,
 }: {
   initialExamCode?: string;
   classes?: ClassOption[];
   codeToClassMap?: Record<string, string>;
   defaultClassId?: string | null;
+  /**
+   * Device checks for this examination's organization, known only when the page
+   * could resolve an examination from the URL. Otherwise the requirements are
+   * fetched once the access code has been verified.
+   */
+  deviceChecks?: DeviceCheckRequirements | null;
 }) {
   const { t } = useI18n();
   const router = useRouter();
@@ -50,6 +60,13 @@ export function ExamAccessClient({
   const [busy, setBusy] = useState(false);
 
   const [isLockdownClient, setIsLockdownClient] = useState(() => isSecureBrowserEnvironment());
+
+  // Proctoring device checks. When the organization was unknown at render time
+  // the requirements are asked for after admission and the checks run on a
+  // dedicated step before the paper opens, so the candidate is never prompted
+  // for a camera this institution did not ask for.
+  const deviceGate = useDeviceCheckGate(deviceChecks);
+  const [pendingEntry, setPendingEntry] = useState<{ attemptId: string; token: string; href: string } | null>(null);
 
   const [lockdownInfo, setLockdownInfo] = useState<{
     required: boolean;
@@ -193,7 +210,66 @@ export function ExamAccessClient({
       persistSecureBrowserState();
     }
 
-    router.push(activeLockdown || data?.lockdown_verified ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
+    const entryHref =
+      activeLockdown || data?.lockdown_verified
+        ? `/take-exam/${data.attempt_id}?lockdown=1`
+        : `/take-exam/${data.attempt_id}`;
+
+    if (!deviceGate.report?.result) {
+      const required = await deviceGate.loadRequirementsForAttempt(data.attempt_id, data.access_token);
+      if (required) {
+        setPendingEntry({ attemptId: data.attempt_id, token: data.access_token, href: entryHref });
+        return;
+      }
+    }
+    await deviceGate.submit(data.attempt_id, data.access_token);
+    router.push(entryHref);
+  }
+
+  if (pendingEntry) {
+    return (
+      <main className="exam-entry min-h-screen px-4 py-8 sm:px-6 sm:py-12">
+        <div className="mx-auto w-full max-w-xl">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <Logo />
+            <span className="exam-entry-secure">{t("examAccess.secureAccess")}</span>
+          </div>
+          <Card className="exam-entry-card overflow-hidden">
+            <div className="exam-entry-heading px-6 py-7 sm:px-9 sm:py-8">
+              <p className="exam-entry-kicker">{t("examAccess.studentCheckIn")}</p>
+              <h1 className="mt-2 font-display text-2xl font-semibold text-white sm:text-3xl">
+                {t("examAccess.deviceCheckTitle")}
+              </h1>
+              <p className="mt-2 max-w-lg text-sm leading-6 text-emerald-50/80">
+                {t("examAccess.deviceCheckStarted")}
+              </p>
+            </div>
+            <div className="p-6 sm:p-9">
+              <DeviceCheckPanel {...deviceGate.panelProps} />
+              <Button
+                type="button"
+                variant="gold"
+                className="mt-5 w-full py-3 text-base"
+                disabled={deviceGate.blocking}
+                onClick={() => {
+                  const entry = pendingEntry;
+                  if (!entry) return;
+                  setBusy(true);
+                  void (async () => {
+                    await deviceGate.submit(entry.attemptId, entry.token);
+                    router.push(entry.href);
+                  })();
+                }}
+              >
+                {deviceGate.blocking
+                  ? t("examAccess.deviceCheckCompleting")
+                  : t("examAccess.deviceCheckContinue")}
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </main>
+    );
   }
 
   return (
@@ -417,6 +493,8 @@ export function ExamAccessClient({
                 )}
               </Field>
 
+              <DeviceCheckPanel {...deviceGate.panelProps} />
+
               <label className="flex items-start gap-3 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 text-sm leading-6 text-ink">
                 <input
                   type="checkbox"
@@ -435,9 +513,13 @@ export function ExamAccessClient({
                 type="submit"
                 variant="gold"
                 className="w-full py-3 text-base"
-                disabled={busy || !consent}
+                disabled={busy || !consent || deviceGate.blocking}
               >
-                {busy ? t("examAccess.verifying") : t("examAccess.verifyBegin")}
+                {busy
+                  ? t("examAccess.verifying")
+                  : deviceGate.blocking
+                    ? t("examAccess.deviceCheckCompleting")
+                    : t("examAccess.verifyBegin")}
               </Button>
 
               <p className="text-center text-xs text-ink-soft">

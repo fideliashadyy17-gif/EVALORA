@@ -9,6 +9,11 @@
 //
 // Covers Scenarios A, B, C, D, and E from the shared-browser specification.
 
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";

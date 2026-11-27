@@ -2,6 +2,7 @@
 
 import type { QuestionFormValues } from "@/components/QuestionForm";
 import { audit, fstr, requireSuperAdmin } from "@/lib/admin";
+import { recordTemplateUse } from "@/lib/questionTemplates";
 import { questionPublishError } from "@/lib/questionValidation";
 import { questionOptionsUnchanged } from "@/lib/questionOptions";
 import { normalizePrompt } from "@/lib/questionGeneration";
@@ -53,6 +54,9 @@ const QuestionSchema = z.object({
   source_url: z.string().url().max(2000).refine((url) => /^https?:\/\//i.test(url)).nullable().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   options: z.array(OptionSchema).max(50).default([]),
+  // Question Studio template this question was started from. Never stored on the
+  // question itself: it only drives the template's usage counter.
+  template_id: z.string().uuid().nullable().optional(),
 });
 
 function adminJson(value: unknown) {
@@ -183,6 +187,11 @@ export async function saveQuestionAsAdmin(raw: QuestionFormValues) {
       type: q.type,
       status: q.status,
     });
+    if (q.template_id) {
+      // Counted only after the question exists. A failed counter must never undo
+      // or block a saved question, so the result is intentionally not checked.
+      await recordTemplateUse(q.template_id).catch(() => 0);
+    }
   }
 
   if (!optionsUnchanged && q.options.length) {

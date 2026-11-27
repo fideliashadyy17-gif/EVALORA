@@ -1,6 +1,11 @@
 // Exercises the real markWithRubric / moderateAnswer server actions with mocked
 // authorization and database, so the criterion-parsing and bounds logic is not
 // only proven by the browser.
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Module} from 'node:module';

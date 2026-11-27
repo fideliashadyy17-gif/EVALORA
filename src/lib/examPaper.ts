@@ -35,6 +35,13 @@ export interface ExamPaperHeader {
   instructions: string | null;
   candidateName: string | null;
   candidateRef: string | null;
+  /**
+   * Organization-configured footer line (org_identity.paper_footer). Optional
+   * so every existing consumer keeps compiling; when absent nothing is printed.
+   */
+  footer?: string | null;
+  /** Organization accent colour (org_identity.accent_color), or undefined. */
+  accentColor?: string | null;
 }
 
 export interface ExamPaperSection {
@@ -114,10 +121,26 @@ export function parsePaperSections(value: unknown): ExamPaperSection[] {
  * The organization identity (name/logo) always comes from the organization
  * row, never from a template, so one school's branding can never leak into
  * another school's paper.
+ *
+ * `identity`, when supplied, is the organization's configured identity from
+ * the Platform Control Center (org_identity namespace, see
+ * src/lib/orgIdentity.ts). It overrides only the *organization-level* fields —
+ * display name, logo availability, whether the logo prints by default, the
+ * footer line and the accent colour. Examination settings, paper settings and
+ * the chosen template keep their existing precedence, so a template that
+ * explicitly hides the logo still hides it and an already-built paper is never
+ * restyled by an organization changing its default.
  */
 export function resolveExamPaperHeader(input: {
   organizationName: string;
   organizationLogoUrl?: string | null;
+  identity?: {
+    displayName?: string | null;
+    logoUrl?: string | null;
+    paperShowLogo?: boolean;
+    paperFooter?: string | null;
+    accentColor?: string | null;
+  } | null;
   examTitle: string;
   examInstructions?: string | null;
   examDurationMinutes?: number | null;
@@ -131,12 +154,21 @@ export function resolveExamPaperHeader(input: {
   const exam = input.examSettings ?? {};
   const quiz = input.quizSettings ?? {};
   const tpl = input.template ?? null;
+  const identity = input.identity ?? null;
+  // The configured display name replaces the registered organization name; the
+  // caller-supplied name remains the fallback so an unconfigured organization
+  // renders exactly as it did before.
+  const organizationName = (identity?.displayName ?? "").trim() || input.organizationName;
+  const logoUrl = input.organizationLogoUrl ?? identity?.logoUrl ?? null;
+  // A template that says show_logo:false always wins. Otherwise the
+  // organization's configured default decides.
+  const showLogo = tpl ? tpl.show_logo : (identity?.paperShowLogo ?? true);
   const pick = (examKey: string, quizKey: string, tplValue: string | null | undefined): string | null =>
     str(exam[examKey]) ?? str(quiz[quizKey]) ?? (tplValue ?? null);
   return {
-    organizationName: input.organizationName,
-    organizationLogoUrl: input.organizationLogoUrl ?? null,
-    showLogo: tpl ? tpl.show_logo : true,
+    organizationName,
+    organizationLogoUrl: logoUrl,
+    showLogo,
     title: input.examTitle,
     period: pick("exam_period", "exam_period", tpl?.period),
     academicYear: pick("academic_year", "academic_year", tpl?.academic_year),
@@ -148,6 +180,8 @@ export function resolveExamPaperHeader(input: {
       str(exam.instructions, 4000) ?? str(quiz.instructions, 4000) ?? tpl?.instructions ?? input.examInstructions ?? null,
     candidateName: input.candidateName ?? null,
     candidateRef: input.candidateRef ?? null,
+    footer: identity?.paperFooter ?? null,
+    accentColor: identity?.accentColor ?? null,
   };
 }
 

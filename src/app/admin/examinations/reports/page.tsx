@@ -3,6 +3,8 @@ import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { BarChart3, CheckCircle2, ClipboardList, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -117,12 +119,26 @@ export default async function ExaminationReportsPage({
   const questionsByQuiz = new Map<string, number>();
   for (const q of quizQuestions ?? []) questionsByQuiz.set(q.quiz_id, (questionsByQuiz.get(q.quiz_id) ?? 0) + 1);
 
+  // One configured pass-mark default per organization present in the report,
+  // so a cross-tenant report respects each tenant's override instead of a
+  // single literal 50 for every examination on the platform.
+  const orgIds = [...new Set(exams.map((e) => e.organization_id).filter(Boolean))] as string[];
+  const passDefaults = new Map<string, number>();
+  for (const orgId of orgIds) {
+    const cfg = await resolveAssessmentConfig(orgId);
+    passDefaults.set(orgId, cfg.defaultPassPercent);
+  }
+  const platformCfg = await resolveAssessmentConfig(null);
+
   const rows = exams.map((e) => {
     const list = attemptsByExam.get(e.id) ?? [];
     const submitted = list.filter((a) => a.status !== "in_progress");
     const scored = submitted.filter((a) => a.score != null && a.max_score);
     const pcts = scored.map((a) => (Number(a.score) / Math.max(1, Number(a.max_score))) * 100);
-    const passMark = Number(e.settings?.pass_mark_percent ?? 50);
+    const passMark = passMarkFrom(
+      e.settings ?? {},
+      passDefaults.get(e.organization_id) ?? platformCfg.defaultPassPercent,
+    );
     const candidates = e.exam_candidates[0]?.count ?? 0;
     return {
       e,

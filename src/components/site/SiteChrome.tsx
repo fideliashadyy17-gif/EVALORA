@@ -5,7 +5,7 @@ import { PlatformCredit } from "@/components/PlatformCredit";
 import { ButtonLink } from "@/components/ui";
 import { LanguageSwitcher } from "@/components/i18n/LanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
-import { BRAND } from "@/lib/brand";
+import { useBrand } from "@/components/platform/BrandProvider";
 import { createClient } from "@/lib/supabase/client";
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
@@ -114,6 +114,8 @@ export function SiteHeader() {
 }
 
 export function SiteFooter() {
+  // Effective brand from the Platform Control Center (root layout provider).
+  const brand = useBrand();
   const { t } = useI18n();
   const cols: { title: string; links: { href: string; labelKey: string }[] }[] = [
     {
@@ -158,10 +160,10 @@ export function SiteFooter() {
           <div>
             <Logo variant="light" />
             <p className="mt-4 max-w-xs text-[0.82rem] leading-relaxed text-evergreen-100/80">
-              {BRAND.tagline}. One secure platform for schools, universities, training centres and
+              {brand.tagline}. One secure platform for schools, universities, training centres and
               examination organisations.
             </p>
-            <p className="mt-4 text-[0.78rem] text-evergreen-200/70">{BRAND.supportEmail}</p>
+            <p className="mt-4 text-[0.78rem] text-evergreen-200/70">{brand.supportEmail}</p>
             <div className="mt-5 flex flex-wrap gap-1.5">
               {["Server-authoritative timing", "Tenant-isolated", "Human-reviewed"].map((t) => (
                 <span key={t} className="rounded-full border border-white/12 px-2 py-0.5 text-[0.62rem] text-evergreen-100/80">
@@ -189,7 +191,7 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-10 flex flex-wrap items-center justify-between gap-3 border-t border-white/12 pt-5 text-[0.7rem] text-evergreen-200/70">
-          <span>© {new Date().getFullYear()} {BRAND.name}. {t("public.footerRights")}</span>
+          <span>© {new Date().getFullYear()} {brand.name}. {t("public.footerRights")}</span>
           <PlatformCredit tone="inverse" className="text-evergreen-200/70" />
           <span>Hosted on Vercel · Data in Supabase · Video by LiveKit</span>
         </div>

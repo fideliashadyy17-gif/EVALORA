@@ -5,6 +5,8 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { MypExportButton } from "@/components/myp/MypExportButton";
@@ -27,7 +29,8 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   const { data: exam } = await supabase.from("exams").select("*").eq("id", id).eq("organization_id", org.id).maybeSingle();
   if (!exam) notFound();
   const settings = (exam.settings ?? {}) as Record<string, unknown>;
-  const passMark = Number(settings.pass_mark_percent ?? 50);
+  const assessmentCfg = await resolveAssessmentConfig(org.id);
+  const passMark = passMarkFrom(settings, assessmentCfg.defaultPassPercent);
 
   const { data: hintUsage } = await supabase.from("exam_hint_usage").select("attempt_id, question_id, part_id, level").eq("exam_id", id);
   const hintsByAttempt = new Map<string, number>();
