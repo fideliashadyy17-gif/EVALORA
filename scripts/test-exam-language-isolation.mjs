@@ -78,7 +78,10 @@ const adminExamForm = read("src/app/admin/examinations/new/page.tsx");
 ok(adminExamForm.includes('<option value="es">Spanish</option>'), "admin creation offers Spanish content");
 const adminCreate = read("src/app/admin/examinations/actions.ts");
 ok(adminCreate.includes("normalizeExamLanguage(formData.get(\"language\")) ?? \"auto\""), "admin create persists normalized language only");
-const wsCreate = read("src/app/dashboard/exams/actions.ts");
+// The workspace create body lives in the shared creation service now (the AI
+// core creates examinations through the same code), so the normalization rule is
+// asserted where the persisted value is actually built.
+const wsCreate = read("src/lib/services/examinationCreation.ts");
 ok(wsCreate.includes("normalizeExamLanguage(formData.get(\"language\")) ?? \"auto\""), "workspace create persists normalized language only");
 
 // Root layout lang = interface locale (UI), independent of paper.

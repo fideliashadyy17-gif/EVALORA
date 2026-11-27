@@ -122,7 +122,11 @@ const examActions = read("src/app/dashboard/exams/actions.ts");
 ok(examActions.includes('requireModule(pubEnt, "exam_publication"'), "publishResults guarded by exam_publication");
 ok(examActions.includes('requireModule(accessEnt, "exam_share_codes"'), "share-link/access-code writes guarded");
 ok(examActions.includes('requireModule(valEnt, "exam_validation"'), "validation guarded by exam_validation");
-ok(examActions.includes('moduleEnabled(ent.modules, "exam_calculator")'), "calculator offering respects module");
+// The examination create body moved into the shared creation service (the AI
+// core and agents create examinations through it too), so the calculator gate
+// is asserted where it now lives.
+const examService = read("src/lib/services/examinationCreation.ts");
+ok(examService.includes('moduleEnabled(entitlement.modules, "exam_calculator")'), "calculator offering respects module");
 const paperPage = read("src/app/dashboard/exams/[id]/paper/page.tsx");
 ok(paperPage.includes('"exam_printable"'), "printable papers page guarded");
 const monitorPage = read("src/app/dashboard/exams/[id]/monitor/page.tsx");

@@ -432,7 +432,7 @@ export const ROLE_WORKSPACES = [
       "Quizzes, examinations, competitions, rubrics, proctoring review and reports",
       "Branded school portal, billing & plan, organisation settings, notifications",
     ],
-    evidence: "Verified in /dashboard (58 routes)",
+    evidence: "Verified in /dashboard (62 routes)",
   },
   {
     id: "teacher",
@@ -591,7 +591,7 @@ export const DEPLOYMENT_FACTS = [
   // drift: adding a page fails the suite until the claim below moves with it.
   // (It had drifted — this said 185 while the tree held 189, and nothing
   // checked, because "asserted, not typed in by hand" was not yet true.)
-  { k: "Product routes", v: "191" },
+  { k: "Product routes", v: "195" },
 ];
 
 export const FOOTNOTES = [

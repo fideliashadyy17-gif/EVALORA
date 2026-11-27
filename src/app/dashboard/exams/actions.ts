@@ -3,6 +3,7 @@
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { normalizeExamLanguage } from "@/lib/examLanguage";
+import { createExaminationFromForm } from "@/lib/services/examinationCreation";
 import { validateSheetDraft } from "@/lib/formulaLibrary";
 import { isPlanLimitError, withinLimit } from "@/lib/entitlements";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
@@ -17,126 +18,57 @@ import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
+/**
+ * Workspace wizard: create a draft examination from a published paper.
+ *
+ * The body of this action moved into `lib/services/examinationCreation.ts` when
+ * the AI core needed to create examinations as well. This action keeps its exact
+ * behaviour — the same guards, in the same order, with the same redirect codes
+ * — but no longer owns the logic, so the assistant and the agent cannot drift
+ * away from what a teacher's browser does.
+ */
 export async function createExam(formData: FormData) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || (org.status !== "active" && ctx.profile.platform_role !== "super_admin") || !(await canOperate(ctx, org.id, "exams.create", "examinations"))) redirect("/dashboard/exams");
+  const noOrg = `/dashboard/exams`;
+  if (
+    !org ||
+    (org.status !== "active" && ctx.profile.platform_role !== "super_admin") ||
+    // Authorization is checked HERE, before the shared service is called: the
+    // service serves the AI and agent paths too, and an agent's rights are
+    // resolved from its owner's permissions, not from this action's context.
+    !(await canOperate(ctx, org.id, "exams.create", "examinations"))
+  ) {
+    redirect(noOrg);
+  }
   const supabase = await createClient();
   const { entitlement: ent, capabilities } = await getCapabilities(supabase, ctx, org.id);
-  if (!capabilities.examinations) redirect("/dashboard/exams?e=module");
 
-  const { count, error: countError } = await supabase.from("exams").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
-  // An unavailable count must never be interpreted as zero usage.
-  if (countError || count === null) redirect("/dashboard/exams/new?e=availability");
-  if (!withinLimit(ent.limits.max_exams, count)) redirect("/dashboard/exams?e=limit");
+  const result = await createExaminationFromForm(formData, {
+    supabase,
+    ctx,
+    organizationId: org.id,
+    isSuperAdmin: ctx.profile.platform_role === "super_admin",
+    entitlement: ent,
+    capabilities: { examinations: capabilities.examinations, proctoring: capabilities.proctoring },
+  });
 
-  const proctoringWanted = formData.get("proctoring") === "on";
-  if (proctoringWanted && !capabilities.proctoring) redirect("/dashboard/exams?e=proctoring");
-  const title = String(formData.get("title") ?? "").trim().slice(0, 160);
-  const quizId = String(formData.get("quiz_id") ?? "");
-  if (!title || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(quizId)) redirect("/dashboard/exams/new?e=fields");
-
-  // A client dropdown is not an authorization check, including for a global
-  // Super Admin operating within a selected customer workspace.
-  const { data: quiz, error: quizError } = await supabase.from("quizzes").select("id")
-    .eq("id", quizId).eq("organization_id", org.id).eq("status", "published").maybeSingle();
-  if (quizError || !quiz) redirect("/dashboard/exams/new?e=paper");
-  const { data: paper, error: paperError, count: paperCount } = await supabase.from("quiz_questions")
-    .select("id,points,questions(organization_id,points)", { count: "exact" }).eq("quiz_id", quizId).limit(1000);
-  type PaperRow = { points: number | null; questions: { organization_id: string; points: number } | null };
-  const rows = paper as unknown as PaperRow[] | null;
-  // Reject truncated, empty, inaccessible, foreign or invalid paper rows.
-  if (paperError || !rows || paperCount === null || paperCount === 0 || rows.length !== paperCount || rows.some((row) => {
-    const points = Number(row.points ?? row.questions?.points);
-    return !row.questions || row.questions.organization_id !== org.id || !Number.isFinite(points) || points < 0;
-  })) redirect("/dashboard/exams/new?e=paper");
-
-  // Configured examination and assessment defaults for this organization.
-  // They only fill in what the author left blank — an explicit form value
-  // always wins, and no existing examination is touched.
-  const [examDefaults, assessmentCfg] = await Promise.all([
-    resolveExamDefaults(org.id),
-    resolveAssessmentConfig(org.id),
-  ]);
-  const rawDuration = String(formData.get("duration_minutes") ?? examDefaults.durationMinutes).trim();
-  const rawPass = String(formData.get("pass_mark_percent") ?? assessmentCfg.defaultPassPercent).trim();
-  const duration = Number(rawDuration), passMark = Number(rawPass);
-  if (!rawDuration || !Number.isInteger(duration) || duration < 1 || duration > 1440 || !rawPass || !Number.isFinite(passMark) || passMark < 0 || passMark > 100) redirect("/dashboard/exams/new?e=fields");
-  const startRaw = String(formData.get("starts_at") ?? "").trim();
-  const endRaw = String(formData.get("ends_at") ?? "").trim();
-  const start = startRaw ? new Date(startRaw) : null;
-  const end = endRaw ? new Date(endRaw) : null;
-  if ((start && !Number.isFinite(start.getTime())) || (end && !Number.isFinite(end.getTime())) || (start && end && end <= start)) redirect("/dashboard/exams/new?e=window");
-
-  const lockdownWanted = formData.get("lockdown_enabled") === "on";
-
-  // One insert only: a lost response can mean the insert succeeded. Retrying
-  // blindly could create duplicate examinations.
-  const { data: exam, error } = await supabase.from("exams").insert({
-    organization_id: org.id,
-    quiz_id: quizId,
-    title,
-    description: String(formData.get("description") ?? "").slice(0, 1000) || null,
-    instructions: String(formData.get("instructions") ?? "").slice(0, 4000) || null,
-    duration_minutes: duration,
-    starts_at: start?.toISOString() ?? null,
-    ends_at: end?.toISOString() ?? null,
-    status: "draft",
-    settings: {
-      // Content language, authored by the exam creator. Independent of the
-      // viewer's interface locale (lib/i18n) — the paper never re-translates.
-      language: normalizeExamLanguage(formData.get("language")) ?? "auto",
-      proctoring: proctoringWanted,
-      require_screen_share: proctoringWanted && formData.get("require_screen_share") === "on",
-      randomize_questions: formData.get("randomize_questions") === "on",
-      randomize_options: formData.get("randomize_options") === "on",
-      calculator: formData.get("calculator") === "on" && moduleEnabled(ent.modules, "exam_calculator"),
-      calculator_mode: formData.get("calculator_mode") === "basic" ? "basic" : "scientific",
-      calculator_angle_mode: formData.get("calculator_angle_mode") === "rad" ? "rad" : "deg",
-      exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
-      academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
-      grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
-      subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
-      exam_paper_template_id: String(formData.get("exam_paper_template_id") ?? "").trim() || null,
-      lockdown: {
-        enabled: lockdownWanted,
-        require_app: true,
-        strict_multi_display: formData.get("lockdown_strict_multi_display") !== "off",
-        block_clipboard: formData.get("lockdown_block_clipboard") !== "off",
-        min_app_version: "1.0.0",
-      },
-      pass_mark_percent: passMark,
-      results_published: false,
-      access_mode: "shared_link", identity_fields: [], eligible_class_ids: [], attempt_policy: "single_resume",
-      // A new paper starts as a single-sit examination; the access settings
-      // page is where an organizer chooses Limited or Unlimited Attempts.
-      attempt_mode: "limited", max_attempts: 1,
-    },
-    created_by: ctx.user.id,
-  }).select("id, access_code, invite_token, access_link").single();
-  if (error && isPlanLimitError(error)) redirect("/dashboard/exams?e=limit");
-  if (error || !exam) redirect("/dashboard/exams/new?e=create");
-
-  let roomError = false;
-  if (proctoringWanted) {
-    try {
-      const admin = createAdminClient();
-      const now = new Date().toISOString();
-      const result = await admin.from("proctoring_rooms").insert({
-        exam_id: exam.id,
-        organization_id: org.id,
-        room_name: `exam-${exam.id}`,
-        created_by: ctx.user.id,
-        status: "active",
-        started_at: now,
-        last_event_at: now,
-        updated_at: now,
-      });
-      roomError = Boolean(result.error);
-    } catch { roomError = true; }
+  if (!result.ok) {
+    const target: Record<string, string> = {
+      module: "/dashboard/exams?e=module",
+      availability: "/dashboard/exams/new?e=availability",
+      limit: "/dashboard/exams?e=limit",
+      proctoring: "/dashboard/exams?e=proctoring",
+      fields: "/dashboard/exams/new?e=fields",
+      paper: "/dashboard/exams/new?e=paper",
+      window: "/dashboard/exams/new?e=window",
+      create: "/dashboard/exams/new?e=create",
+    };
+    redirect(target[result.code] ?? noOrg);
   }
+
   revalidatePath("/dashboard/exams");
-  redirect(`/dashboard/exams/${exam.id}?ok=created${roomError ? "&room_error=1" : ""}`);
+  redirect(`/dashboard/exams/${result.examId}?ok=created${result.roomError ? "&room_error=1" : ""}`);
 }
 
 export async function setExamStatus(formData: FormData) {

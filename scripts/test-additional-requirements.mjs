@@ -175,7 +175,10 @@ const sources = {
   linkApi: await file("src/app/api/exam/link-access/route.ts"),
   joinClient: await file("src/app/exam/join/[token]/JoinClient.tsx"),
   invitations: await file("src/app/admin/examinations/invitations/page.tsx"),
-  dashboardCreate: await file("src/app/dashboard/exams/actions.ts"),
+  // The workspace create body moved into the shared creation service (the AI
+  // core creates examinations through it), so the DB-generated-code contract is
+  // asserted where the insert now happens.
+  dashboardCreate: await file("src/lib/services/examinationCreation.ts"),
   adminCreate: await file("src/app/admin/examinations/actions.ts"),
   dashboardDetail: await file("src/app/dashboard/exams/[id]/page.tsx"),
   livekit: await file("src/app/api/livekit/token/route.ts"),
