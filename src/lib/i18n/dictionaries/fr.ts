@@ -290,6 +290,7 @@ export const fr = {
     deviceCheckStarted: "Votre examen a commencé. Terminez cette vérification rapide avant l'ouverture du sujet.",
     deviceCheckContinue: "Continuer vers l'examen",
     deviceCheckCompleting: "Vérification de l'appareil…",
+    deviceCheckAcknowledge: "Confirmez la vérification de l'appareil pour continuer",
   },
   dashboard: {
     overviewTitle: "Aperçu de l'espace",

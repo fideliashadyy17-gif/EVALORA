@@ -261,9 +261,11 @@ export function ExamAccessClient({
                   })();
                 }}
               >
-                {deviceGate.blocking
-                  ? t("examAccess.deviceCheckCompleting")
-                  : t("examAccess.deviceCheckContinue")}
+                {deviceGate.state === "acknowledge"
+                  ? t("examAccess.deviceCheckAcknowledge")
+                  : deviceGate.blocking
+                    ? t("examAccess.deviceCheckCompleting")
+                    : t("examAccess.deviceCheckContinue")}
               </Button>
             </div>
           </Card>
@@ -517,9 +519,11 @@ export function ExamAccessClient({
               >
                 {busy
                   ? t("examAccess.verifying")
-                  : deviceGate.blocking
-                    ? t("examAccess.deviceCheckCompleting")
-                    : t("examAccess.verifyBegin")}
+                  : deviceGate.state === "acknowledge"
+                    ? t("examAccess.deviceCheckAcknowledge")
+                    : deviceGate.blocking
+                      ? t("examAccess.deviceCheckCompleting")
+                      : t("examAccess.verifyBegin")}
               </Button>
 
               <p className="text-center text-xs text-ink-soft">

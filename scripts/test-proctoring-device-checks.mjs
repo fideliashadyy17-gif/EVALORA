@@ -634,6 +634,26 @@ await check("the panel renders nothing when no check is required", () => {
   assert.ok(!panel.includes("dangerouslySetInnerHTML"));
 });
 
+await check("a finished check that needs an acknowledgement never claims to still be running", () => {
+  const gate = read("src/components/exam/useDeviceCheckGate.ts");
+  assert.ok(gate.includes("const running = required && (!report || report.running);"), "the gate knows when the checks are still working");
+  assert.ok(gate.includes("const awaitingAcknowledgement = Boolean(report?.awaitingAcknowledgement);"), "the gate knows when only the candidate is outstanding");
+  assert.ok(gate.includes("const blocking = running || awaitingAcknowledgement;"), "both still hold the start button");
+  assert.ok(gate.includes('export type DeviceCheckGateState = "none" | "running" | "acknowledge" | "clear";'), "the two are distinguishable by consumers");
+  // A desktop with no camera is an ordinary candidate, not an error: the panel
+  // reports the check that could not be completed and asks for an acknowledgement.
+  // While only that acknowledgement is outstanding, a button reading "Completing
+  // device check…" tells the candidate the platform is still working when it is
+  // waiting for them — which reads as a hang on the one screen where a hang costs
+  // an examination. Both admission screens must say which of the two it is.
+  for (const file of ["src/app/exam/join/[token]/JoinClient.tsx", "src/app/exam-access/ExamAccessClient.tsx"]) {
+    assert.match(read(file), /deviceGate\.state === "acknowledge"/, `${file} distinguishes the two waits`);
+  }
+  for (const dictionary of ["en", "fr", "es"]) {
+    assert.match(read(`src/lib/i18n/dictionaries/${dictionary}.ts`), /deviceCheckAcknowledge:/, `${dictionary} translates the acknowledgement label`);
+  }
+});
+
 await check("the schema points at the code that really consumes each switch", () => {
   const schemaSource = read("src/lib/config/schema.ts");
   for (const key of ["require_camera_check", "require_microphone_check", "require_browser_check"]) {

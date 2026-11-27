@@ -474,7 +474,13 @@ export function ExamJoinClient({
                 className="w-full py-3 text-base"
                 disabled={busy || !consent || !guestKey || effectiveRequiresAccount || deviceGate.blocking}
               >
-                {busy ? "Verifying…" : deviceGate.blocking ? "Completing device check…" : "Verify and Begin"}
+                {busy
+                  ? "Verifying…"
+                  : deviceGate.state === "acknowledge"
+                    ? "Confirm the device check to continue"
+                    : deviceGate.blocking
+                      ? "Completing device check…"
+                      : "Verify and Begin"}
               </Button>
               <p className="text-center text-xs text-ink-soft">
                 Returning after a disconnection? Re-enter the same link, code, name, identification fields and class on this browser to resume your saved answers.

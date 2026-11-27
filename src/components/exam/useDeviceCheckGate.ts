@@ -55,14 +55,33 @@ export function useDeviceCheckGate(initial?: DeviceCheckRequirements | null) {
     [requirements],
   );
 
+  const required = Boolean(requirements && deviceChecksRequired(requirements));
+  /** True while a required check has not reported yet, or is still running. */
+  const running = required && (!report || report.running);
+  /** True when the checks finished and a failure is waiting for the candidate. */
+  const awaitingAcknowledgement = Boolean(report?.awaitingAcknowledgement);
+
   /**
    * True while a required check has not finished, or while the candidate has not
    * yet acknowledged a failure. False whenever the platform asked for nothing,
    * so organizations that switch the checks off are never delayed.
    */
-  const blocking = Boolean(
-    requirements && deviceChecksRequired(requirements) && (!report || report.running || report.awaitingAcknowledgement),
-  );
+  const blocking = running || awaitingAcknowledgement;
+
+  /**
+   * Which of the two the blocking is, because they read completely differently
+   * to a candidate. `running` is the platform working; `acknowledge` needs the
+   * candidate to tick a box, and a button that claims the check is still
+   * completing while nothing runs looks like a hang — which is exactly how a
+   * desktop with no camera used to present itself at admission.
+   */
+  const state: DeviceCheckGateState = !required
+    ? "none"
+    : running
+      ? "running"
+      : awaitingAcknowledgement
+        ? "acknowledge"
+        : "clear";
 
   /**
    * Ask the server which checks this attempt's organization requires. Used by
@@ -112,7 +131,20 @@ export function useDeviceCheckGate(initial?: DeviceCheckRequirements | null) {
     [report, requirements],
   );
 
-  return { requirements, report, blocking, panelProps, setRequirements, loadRequirementsForAttempt, submit };
+  return {
+    requirements,
+    report,
+    running,
+    awaitingAcknowledgement,
+    blocking,
+    state,
+    panelProps,
+    setRequirements,
+    loadRequirementsForAttempt,
+    submit,
+  };
 }
 
 export type DeviceCheckGate = ReturnType<typeof useDeviceCheckGate>;
+/** `none` = the platform asked for no check; `clear` = every required check passed. */
+export type DeviceCheckGateState = "none" | "running" | "acknowledge" | "clear";

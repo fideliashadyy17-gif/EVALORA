@@ -298,6 +298,7 @@ export const en = {
     deviceCheckStarted: "Your examination has started. Complete this quick check before the paper opens.",
     deviceCheckContinue: "Continue to examination",
     deviceCheckCompleting: "Completing device check…",
+    deviceCheckAcknowledge: "Confirm the device check to continue",
   },
   dashboard: {
     overviewTitle: "Workspace overview",

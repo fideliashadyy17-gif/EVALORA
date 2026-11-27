@@ -54,3 +54,7 @@ tmp/
 
 # Isolated browser evidence (never deployed)
 .cache/
+
+# Landing verification screenshots and report: written by scripts/verify-landing.mjs
+# and uploaded as a CI build artifact, never committed.
+verification/
