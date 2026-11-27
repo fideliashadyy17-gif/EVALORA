@@ -19,6 +19,8 @@ import {
 } from "@/lib/resultsManagement";
 import { createClient } from "@/lib/supabase/server";
 import { fmtDateTime, toCsv } from "@/lib/utils";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import {
   AlertTriangle,
   Award,
@@ -245,7 +247,8 @@ export default async function ResultsManagementPage({
         supabase.from("exam_candidates").select("id", { count: "exact", head: true }).eq("exam_id", selectedExamId),
       ]);
       const attempts = (rawAttempts ?? []) as unknown as CandidateAttempt[];
-      const passMark = Number(selectedRow.settings.pass_mark_percent ?? 50);
+      const assessmentCfg = await resolveAssessmentConfig(org.id);
+      const passMark = passMarkFrom(selectedRow.settings, assessmentCfg.defaultPassPercent);
       const scored = attempts.filter((a) => a.status !== "in_progress" && a.score != null && a.max_score);
       const percentages = scored.map((a) => (Number(a.score) / Math.max(1, Number(a.max_score))) * 100);
       const passes = percentages.filter((pct) => pct >= passMark).length;

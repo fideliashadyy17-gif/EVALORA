@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { getTenantSlugFromHost } from "@/lib/tenant";
+import { isMaintenanceOpenPath, parseMaintenanceState, type MaintenanceState } from "@/lib/maintenance";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PRIVATE = ["/supervision", "/dashboard", "/admin", "/onboarding", "/student", "/workspaces"];
@@ -29,6 +30,46 @@ function createBoundedFetch(timeoutMs: number): typeof fetch {
       if (upstreamSignal) upstreamSignal.removeEventListener("abort", onUpstreamAbort);
     }
   };
+}
+
+/**
+ * Maintenance mode (Platform Control Center → Platform behaviour).
+ *
+ * Read straight from the configuration store with the anon key: the migration
+ * exposes exactly three global keys to anonymous readers —
+ * maintenance_mode, maintenance_message and global_announcements — because
+ * those are content every visitor sees by definition. Everything else in the
+ * store stays authenticated-only.
+ *
+ * Cached in module scope for a short window so the hot path costs nothing, and
+ * FAILS OPEN: if the configuration store cannot be reached, the platform keeps
+ * serving. A configuration read must never be able to take EVALORA down.
+ */
+const MAINTENANCE_CACHE_TTL_MS = 15_000;
+let maintenanceCache: { at: number; state: MaintenanceState } | null = null;
+
+async function readMaintenanceState(boundedFetch: typeof fetch): Promise<MaintenanceState> {
+  if (maintenanceCache && Date.now() - maintenanceCache.at < MAINTENANCE_CACHE_TTL_MS) {
+    return maintenanceCache.state;
+  }
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return { enabled: false, message: "" };
+  try {
+    const endpoint =
+      `${url.replace(/\/$/, "")}/rest/v1/platform_config_values` +
+      `?select=key,value&scope_level=eq.global&namespace=eq.platform_behavior` +
+      `&key=in.(maintenance_mode,maintenance_message)`;
+    const res = await boundedFetch(endpoint, {
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}`, Accept: "application/json" },
+    });
+    if (!res.ok) return { enabled: false, message: "" };
+    const state = parseMaintenanceState(await res.json());
+    maintenanceCache = { at: Date.now(), state };
+    return state;
+  } catch {
+    return { enabled: false, message: "" };
+  }
 }
 
 export async function middleware(request: NextRequest) {
@@ -70,12 +111,17 @@ export async function middleware(request: NextRequest) {
     return NextResponse.rewrite(rewriteUrl, { request: { headers: requestHeaders } });
   }
 
+  // Maintenance mode is checked before the public fast path, because it has to
+  // cover public pages too. One cached boolean on the hot path.
+  const maintenance = await readMaintenanceState(createBoundedFetch(MIDDLEWARE_FETCH_TIMEOUT_MS));
+  const maintenanceActive = maintenance.enabled && !isMaintenanceOpenPath(pathname);
+
   // Fast path: candidate exam routes (/take-exam/*, /exam-access/*, /exam/*, /retake/*),
   // live sessions (/play/*, /join/*, /live/*), public pages, and all /api/* route handlers
   // perform their own server-side token/session/tenant validation and never need Edge GoTrue calls.
   const isPrivate = PRIVATE.some((p) => pathname === p || pathname.startsWith(p + "/"));
   const isAuthPage = AUTH_PAGES.includes(pathname) && !request.nextUrl.searchParams.has("error");
-  if (!isPrivate && !isAuthPage) {
+  if (!isPrivate && !isAuthPage && !maintenanceActive) {
     return response;
   }
 
@@ -149,6 +195,35 @@ export async function middleware(request: NextRequest) {
     authUpstreamFailed = true;
   } finally {
     if (budgetTimer) clearTimeout(budgetTimer);
+  }
+
+  // Maintenance gate. A verified active Super Admin is always let through, so
+  // the platform can never lock out the administrator who has to switch
+  // maintenance off. Candidate, live-session and authentication routes are
+  // already excluded by isMaintenanceOpenPath(), so an attempt in progress is
+  // never cut off and an administrator can always sign in.
+  if (maintenanceActive) {
+    let isSuperAdmin = false;
+    if (user) {
+      try {
+        const { data: profileRow } = await supabase
+          .from("profiles")
+          .select("platform_role, status")
+          .eq("id", user.id)
+          .maybeSingle();
+        isSuperAdmin = profileRow?.platform_role === "super_admin" && profileRow?.status === "active";
+      } catch {
+        isSuperAdmin = false;
+      }
+    }
+    if (!isSuperAdmin) {
+      const maintenanceUrl = request.nextUrl.clone();
+      maintenanceUrl.pathname = "/maintenance";
+      maintenanceUrl.search = "";
+      return withCookies(
+        NextResponse.rewrite(maintenanceUrl, { request: { headers: requestHeaders } }),
+      );
+    }
   }
 
   // If GoTrue timed out or returned 5xx, never stall into a 504 or force-logout a user

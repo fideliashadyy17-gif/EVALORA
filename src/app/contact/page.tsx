@@ -1,6 +1,6 @@
 import { StaticPage } from "@/components/site/StaticPage";
 import { Button, Card, Field, Input, Textarea } from "@/components/ui";
-import { BRAND } from "@/lib/brand";
+import { getEffectiveBrand } from "@/lib/brandConfig";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -25,11 +25,16 @@ export default async function ContactPage({
   searchParams: Promise<{ sent?: string; error?: string }>;
 }) {
   const sp = await searchParams;
+  // The public support address is configured in the Platform Control Center.
+  // Audit finding 3.2: platform_settings.support_email was editable but only
+  // ever read by the admin page that displayed it, while every customer
+  // surface used the hardcoded BRAND.supportEmail. This is now the live value.
+  const brand = await getEffectiveBrand();
   return (
     <StaticPage
       eyebrow="Contact"
-      title="Talk to the EVALORA team"
-      intro={`Questions about plans, examinations at scale, or an institutional contract? Write to us — or email ${BRAND.supportEmail}.`}
+      title={`Talk to the ${brand.name} team`}
+      intro={`Questions about plans, examinations at scale, or an institutional contract? Write to us — or email ${brand.supportEmail}.`}
     >
       <Card className="p-7">
         {sp.sent ? (

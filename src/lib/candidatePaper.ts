@@ -7,6 +7,8 @@ import { docIsEmpty, docToPlainText, textToDoc, type RichDoc, type RichNode } fr
 import { dataTableHasWork, normaliseDataTableSpec, type DataTableSpec } from "./dataTableSpec";
 import { attemptRows } from "./exam";
 import { parseExamPaperTemplate, parsePaperSections, resolveExamPaperHeader } from "./examPaper";
+import { formatQuestionNumber, hasDesign, normalizeQuestionDesign } from "./questionDesign";
+import { resolveOrganizationIdentity } from "./orgIdentity";
 import { geometrySpecHasWork, normaliseGeometrySpec, type GeometrySpec } from "./geometrySpec";
 import { graphSpecHasWork, normaliseGraphSpec, type GraphSpec } from "./graphSpec";
 import { publicQuestion, type SessionQuestionRow } from "./live";
@@ -826,6 +828,19 @@ export function buildCandidatePaperData(input: {
     name?: string | null;
     logo_url?: string | null;
   } | null;
+  /**
+   * The organization's configured identity (org_identity namespace, resolved by
+   * src/lib/orgIdentity.ts). Optional: when absent the registered organization
+   * name and logo are used exactly as before, so an organization that has never
+   * opened the Control Center renders an identical paper.
+   */
+  identity?: {
+    displayName?: string | null;
+    logoUrl?: string | null;
+    paperShowLogo?: boolean;
+    paperFooter?: string | null;
+    accentColor?: string | null;
+  } | null;
   quizSettings?: Record<string, unknown> | null;
   templateRow?: unknown;
   className?: string | null;
@@ -905,6 +920,7 @@ export function buildCandidatePaperData(input: {
   const paperHeader = resolveExamPaperHeader({
     organizationName: cleanStr(organization?.name, 160) ?? "EVALORA",
     organizationLogoUrl: cleanStr(organization?.logo_url, 400),
+    identity: input.identity ?? null,
     examTitle: exam.title,
     examInstructions: exam.instructions ?? null,
     examDurationMinutes: exam.duration_minutes ?? null,
@@ -1050,9 +1066,19 @@ export function buildCandidatePaperData(input: {
       }
     }
 
+    // Numbering precedence: a label the author typed wins, then a number the
+    // author set, then the numbering style saved in this question's own
+    // appearance snapshot (Question Studio). A question authored before Question
+    // Studio has no snapshot, so its numbering is exactly what it has always
+    // been — a published paper never changes appearance because an administrator
+    // later changed a platform or organization default.
+    const snapshotNumbering = hasDesign(cfg.design)
+      ? formatQuestionNumber(index + 1, normalizeQuestionDesign(cfg.design).numberingStyle)
+      : null;
     const printedLabel =
       cleanStr(cfg.question_label, 32) ??
-      (finiteNum(cfg.question_number) !== null ? String(finiteNum(cfg.question_number)) : null);
+      (finiteNum(cfg.question_number) !== null ? String(finiteNum(cfg.question_number)) : null) ??
+      snapshotNumbering;
     const criterionRaw = cleanStr(cfg.myp_criterion, 8);
     const criterionLabel = criterionRaw ? `Criterion ${criterionRaw.toUpperCase()}` : null;
     const sectionId = cleanStr(cfg.paper_section, 32);
@@ -1336,7 +1362,7 @@ export async function loadCandidatePaperForAttempt(
     return { ok: false, reason: "paper_unavailable" };
   }
 
-  const [answersRes, orgRes, quizRes, classRes, tplRes] = await Promise.all([
+  const [answersRes, orgRes, quizRes, classRes, tplRes, identityRes] = await Promise.all([
     admin
       .from("exam_answers")
       .select("question_id, answer, points_awarded, marker_note, grading_note")
@@ -1360,7 +1386,14 @@ export async function loadCandidatePaperForAttempt(
           .eq("organization_id", exam.organization_id as string)
           .maybeSingle()
       : Promise.resolve({ data: null }),
+    // The organization's configured identity from the Platform Control Center
+    // (display name, logo default, paper footer, accent colour). Scoped to this
+    // examination's organization. Failure must never block the paper: an
+    // identity we cannot read simply means the registered organization name and
+    // logo are used, exactly as before this existed.
+    resolveOrganizationIdentity(String(exam.organization_id), "EVALORA").catch(() => null),
   ]);
+  const identity = identityRes;
 
   if (answersRes.error) {
     return { ok: false, reason: "paper_unavailable" };
@@ -1419,6 +1452,10 @@ export async function loadCandidatePaperForAttempt(
       last_name: (candidate.last_name as string | null) ?? null,
     },
     organization: (orgRes.data as { name?: string | null; logo_url?: string | null } | null) ?? null,
+    // Organization-configured identity from the Control Center. Null when it
+    // could not be read, in which case the registered organization name and
+    // logo above are used unchanged.
+    identity,
     quizSettings: ((quizRes.data as { settings?: Record<string, unknown> | null } | null)?.settings ?? null),
     templateRow: tplRes.data ?? null,
     className: (classRes.data as { name?: string | null } | null)?.name ?? null,

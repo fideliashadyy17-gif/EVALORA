@@ -5,6 +5,8 @@ import { MathText } from "@/components/MathText";
 import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { attemptRows } from "@/lib/exam";
 import { answerReveal, releasedFeedback } from "@/lib/live";
 import type { RichDoc } from "@/lib/content";
@@ -120,7 +122,10 @@ export default async function ExamResultTokenPage({
   const confirmationCode = String(attempt.access_token).slice(0, 8).toUpperCase();
   const candidateName = candidate.full_name || `${candidate.first_name ?? ""} ${candidate.last_name ?? ""}`.trim() || "Candidate";
   const candidateIdentifier = candidate.candidate_ref || candidate.email || (candidate.access_code ? `Code: ${candidate.access_code}` : null);
-  const passMarkPercent = Number(settings.pass_mark_percent ?? 50);
+  // Configured default with organization override; the examination's own
+  // stored pass mark always wins.
+  const assessmentCfg = await resolveAssessmentConfig(exam.organization_id ?? null);
+  const passMarkPercent = passMarkFrom(settings, assessmentCfg.defaultPassPercent);
 
   // Criteria summary structure
   const criteriaTotals: Record<string, { title: string; max: number; awarded: number }> = {

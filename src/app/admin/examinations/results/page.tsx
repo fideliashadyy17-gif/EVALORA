@@ -4,6 +4,8 @@ import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { CopyResultLinkButton } from "@/components/CopyResultLinkButton";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { fmtDateTime, toCsv } from "@/lib/utils";
 import { Award, CheckCircle2, Eye, FileCheck2 } from "lucide-react";
 import type { Metadata } from "next";
@@ -75,7 +77,10 @@ export default async function ExaminationResultsPage({
   const exams = (rawExams ?? []) as unknown as ExamRow[];
   const selected = (sp.exam && exams.find((e) => e.id === sp.exam)) || exams[0];
   const settings = selected?.settings ?? {};
-  const passMark = Number(settings.pass_mark_percent ?? 50);
+  // Configured default (assessment.default_pass_percent) with organization
+  // override, replacing the literal 50 that ignored the stored setting.
+  const assessmentCfg = await resolveAssessmentConfig(selected?.organization_id ?? null);
+  const passMark = passMarkFrom(settings, assessmentCfg.defaultPassPercent);
   const published = Boolean(settings.results_published);
   const validated = settings.results_validated === true;
 

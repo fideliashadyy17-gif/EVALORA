@@ -1,4 +1,5 @@
 import { validUuid } from "@/lib/exam-access";
+import { resolveProctoringConfig } from "@/lib/proctoringConfig";
 import { createAdminClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
 import { ExamAccessClient } from "./ExamAccessClient";
@@ -88,6 +89,14 @@ export default async function ExamAccessPage({
     }
   }
 
+  // When the URL already carried an examination code the organization is known,
+  // so the device checks this institution configured can run BEFORE admission.
+  // Otherwise the requirements arrive with the admission response and the client
+  // runs them before opening the paper.
+  const proctoring = matchedExam?.organization_id
+    ? await resolveProctoringConfig(matchedExam.organization_id as string)
+    : null;
+
   return (
     <main className="min-h-screen bg-cream">
       <ExamAccessClient
@@ -95,6 +104,15 @@ export default async function ExamAccessPage({
         classes={classes}
         codeToClassMap={codeToClassMap}
         defaultClassId={(matchedExam?.class_id as string | null | undefined) ?? null}
+        deviceChecks={
+          proctoring
+            ? {
+                camera: proctoring.requireCameraCheck,
+                microphone: proctoring.requireMicrophoneCheck,
+                browser: proctoring.requireBrowserCheck,
+              }
+            : null
+        }
       />
     </main>
   );

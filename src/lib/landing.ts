@@ -416,7 +416,7 @@ export const ROLE_WORKSPACES = [
       "Payments queue with signed proof review; subscriptions and plan editor with live limits",
       "Modules & feature flags, audit logs, system health, support tickets, revenue",
     ],
-    evidence: "Verified in /admin (79 routes)",
+    evidence: "Verified in /admin (95 routes)",
   },
   {
     id: "school-admin",
@@ -584,7 +584,10 @@ export const DEPLOYMENT_FACTS = [
   { k: "Question types", v: "11" },
   { k: "Organisation roles", v: "10" },
   { k: "Role workspaces", v: "4" },
-  { k: "Product routes", v: "154" },
+  // Route census verified by scripts/test-platform-redesign-audit.mjs, which
+  // counts every page.tsx: 95 Super Admin + 53 organization workspace + 37
+  // public/auth/student/portal. The figure is asserted, not typed in by hand.
+  { k: "Product routes", v: "185" },
 ];
 
 export const FOOTNOTES = [

@@ -593,7 +593,7 @@ html.assessment-protected img {
   flex: 1;
   overflow-y: auto;
   padding: 0.75rem;
-  background: var(--color-cream, #faf7f0);
+  background: var(--color-cream, #f5f3ec);
 }
 @media (min-width: 768px) {
   .diagram-dialog { align-items: center; padding: 1.5rem; }
@@ -1613,4 +1613,81 @@ html.assessment-protected img {
   .evalora-landing .lp-hero::after,
   .evalora-landing .lp-marquee { display: none !important; }
   .evalora-landing .lp-reveal { opacity: 1 !important; transform: none !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Platform Control Center — runtime theme + Question Studio design tokens
+ * ═══════════════════════════════════════════════════════════════════════════
+ * Brand colours and typography are NOT hardcoded here: the root layout emits
+ * overrides for the same --color-* / --font-* custom properties declared in the
+ * @theme block above (see src/lib/config/palette.ts brandCssVariables), so one
+ * saved setting re-themes every component at once.
+ *
+ * What lives here is structure the configuration can select between: the
+ * optional high-contrast theme, and the Question Studio design-token classes
+ * that a question's saved design resolves to.
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+/* ── High-contrast theme (branding.default_theme = "contrast") ─────────── */
+[data-theme="contrast"] body { background: #ffffff; }
+[data-theme="contrast"] .contrast-surface,
+[data-theme="contrast"] [data-contrast-surface] { background: #ffffff !important; }
+[data-theme="contrast"] :where(p, li, td, th, dd, dt, figcaption) { color: var(--color-ink); }
+[data-theme="contrast"] :where(.text-ink-soft) { color: var(--color-ink); opacity: 0.92; }
+[data-theme="contrast"] :where(input, textarea, select) { border-width: 2px; }
+[data-theme="contrast"] :where(.ring-1) { --tw-ring-opacity: 1; }
+[data-theme="contrast"] :where(a) { text-underline-offset: 3px; }
+
+/* ── Question Studio design tokens ────────────────────────────────────────
+ * A question's saved design (src/lib/questionDesign.ts) resolves to a set of
+ * inline custom properties on the card plus one layout class per axis. The
+ * classes below are the only presentation the tokens can select, which is what
+ * keeps a no-code design tool from becoming a way to inject arbitrary CSS.
+ * Every value is bounded by the schema before it is stored.               */
+.qs-card {
+  --qs-radius: 12px;
+  --qs-spacing: 16px;
+  --qs-padding: 20px;
+  --qs-font-size: 16px;
+  --qs-image-max: 100%;
+  border-radius: var(--qs-radius);
+  padding: var(--qs-padding);
+  display: flex;
+  flex-direction: column;
+  gap: var(--qs-spacing);
+}
+.qs-card .qs-text { font-size: var(--qs-font-size); line-height: 1.6; }
+.qs-card .qs-media { max-width: var(--qs-image-max); }
+.qs-card .qs-media :where(img, svg, canvas) { max-width: 100%; height: auto; }
+
+/* Card layouts */
+.qs-layout-standard { background: var(--color-paper); border: 1px solid rgb(6 53 31 / 0.14); box-shadow: var(--shadow-card); }
+.qs-layout-plain    { background: transparent; border: 0; box-shadow: none; padding-inline: 0; }
+.qs-layout-panel    { background: var(--color-evergreen-50); border: 1px solid var(--color-evergreen-200); }
+.qs-layout-outline_bold { background: var(--color-paper); border: 2px solid var(--color-evergreen-700); }
+
+/* Answer option layouts */
+.qs-options { display: grid; gap: calc(var(--qs-spacing) * 0.5); }
+.qs-options-vertical   { grid-template-columns: minmax(0, 1fr); }
+.qs-options-two_column { grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) {
+  .qs-options-two_column { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.qs-options-inline { display: flex; flex-wrap: wrap; gap: calc(var(--qs-spacing) * 0.5); }
+.qs-options-inline > * { flex: 0 1 auto; }
+
+/* Media placement relative to the question text */
+.qs-media-above { order: -1; }
+.qs-media-below { order: 1; }
+@media (min-width: 1024px) {
+  .qs-body-right { flex-direction: row; align-items: flex-start; }
+  .qs-body-right > .qs-text { flex: 1 1 auto; min-width: 0; }
+  .qs-body-right > .qs-media { flex: 0 0 auto; max-width: 42%; }
+}
+
+/* Print / examination-paper rendering: the screen tokens must never leak
+ * typographic scale into the printable paper, which keeps its own scale. */
+@media print {
+  .qs-card { box-shadow: none; break-inside: avoid; }
+  .qs-layout-panel { background: #fff; }
 }

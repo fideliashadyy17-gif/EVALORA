@@ -1,4 +1,9 @@
 // Actual workspace action with mocked session, RLS client, and audit database.
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
 // Test-harness fallback: newly introduced platform modules (i18n, exam
 // content language, entitlement/module helpers) resolve with safe stubs when

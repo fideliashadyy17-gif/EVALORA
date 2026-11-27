@@ -3,16 +3,35 @@ import { ButtonLink, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
+import { resolveQuestionStudioConfig } from "@/lib/questionStudio";
+import { getQuestionTemplate, templateContentForEditor } from "@/lib/questionTemplates";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { saveQuestion, uploadQuestionImage } from "../actions";
 
 export const metadata: Metadata = { title: "New question" };
 
-export default async function NewQuestionPage() {
+export default async function NewQuestionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ template?: string }>;
+}) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  const sp = await searchParams;
   if (!(await canOperate(ctx, org.id, "questions.create", "question_bank"))) redirect("/dashboard/questions");
+  // Question Studio configuration for this organization (Control Center →
+  // Question Studio): type picker, difficulty vocabulary, design defaults.
+  const studio = await resolveQuestionStudioConfig(org.id);
+  // A Question Studio template pre-fills the editor. The read is scoped to this
+  // organization plus the platform-wide library, so a template id from another
+  // tenant resolves to nothing here. Archived templates are refused: they are no
+  // longer offered to authors, although questions already created from them are
+  // untouched.
+  const template = sp.template ? await getQuestionTemplate(sp.template, org.id) : null;
+  const templateInitial = template && template.status === "active"
+    ? { ...templateContentForEditor(template), template_id: template.id }
+    : undefined;
   const supabase = await createClient();
   const { data: categories } = await supabase
     .from("question_categories")
@@ -42,13 +61,20 @@ export default async function NewQuestionPage() {
         subtitle="Author once with the full mathematical editor — reuse in quizzes, live competitions and examinations."
         action={<ButtonLink href="/dashboard/questions" variant="outline">Question Bank</ButtonLink>}
       />
+      {templateInitial && (
+        <p className="mb-4 rounded-lg border border-evergreen-900/20 bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
+          Started from template <strong>{template?.name}</strong>. Everything below is a copy — saving creates a new
+          question and never changes the template.
+        </p>
+      )}
       <QuestionForm
+        studio={studio}
         categories={categories ?? []}
         save={saveQuestion as unknown as QuestionSaveFn}
         uploadImage={uploadQuestionImage}
         successHref="/dashboard/questions"
         subjectOptions={subjectOptions ?? []}
-        initial={defaultSubjectId ? { subject_id: defaultSubjectId } : undefined}
+        initial={templateInitial ?? (defaultSubjectId ? { subject_id: defaultSubjectId } : undefined)}
         classOptions={classOptions ?? []}
         curriculumOptions={programmes ?? []}
       />

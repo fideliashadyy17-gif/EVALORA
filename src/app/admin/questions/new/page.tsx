@@ -2,6 +2,8 @@ import { QuestionForm } from "@/components/QuestionForm";
 import { Button, ButtonLink, Card, Field, PageTitle, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveQuestionStudioConfig } from "@/lib/questionStudio";
+import { getQuestionTemplate, templateContentForEditor } from "@/lib/questionTemplates";
 import type { Metadata } from "next";
 import { saveQuestionAsAdmin, uploadQuestionImageAsAdmin } from "../actions";
 
@@ -11,7 +13,7 @@ export const dynamic = "force-dynamic";
 export default async function AdminNewQuestionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; type?: string }>;
+  searchParams: Promise<{ org?: string; type?: string; template?: string }>;
 }) {
   await requireSuperAdmin();
   const sp = await searchParams;
@@ -42,6 +44,22 @@ export default async function AdminNewQuestionPage({
       </>
     );
   }
+
+  // Question Studio configuration for the organization the question will be
+  // authored into: which types the picker offers, the difficulty vocabulary and
+  // the design defaults. Resolved from the Platform Control Center, with the
+  // shipped defaults as fallback. Resolved AFTER the organization is known, so a
+  // console with no organizations yet renders its empty state instead of
+  // dereferencing nothing.
+  const studio = await resolveQuestionStudioConfig(selected.id);
+
+  // A Question Studio template pre-fills the editor. Applying one copies its
+  // payload: the question saved from it is independent, and the template's own
+  // design tokens become this question's snapshot.
+  const template = sp.template ? await getQuestionTemplate(sp.template) : null;
+  const templateInitial = template && template.status === "active"
+    ? { ...templateContentForEditor(template), template_id: template.id }
+    : undefined;
 
   const { data: categories } = await admin
     .from("question_categories")
@@ -78,9 +96,17 @@ export default async function AdminNewQuestionPage({
         <Button type="submit" variant="outline">Use organization</Button>
       </form>
 
+      {templateInitial && (
+        <p className="mb-4 rounded-lg border border-evergreen-900/20 bg-evergreen-50 px-4 py-3 text-sm text-evergreen-900">
+          Started from template <strong>{template?.name}</strong>. Everything below is a copy — saving creates a new
+          question and never changes the template.
+        </p>
+      )}
+
       <QuestionForm
-        key={`${selected.id}-${sp.type ?? "single_choice"}`}
-        initial={sp.type ? { type: sp.type } : undefined}
+        studio={studio}
+        key={`${selected.id}-${templateInitial?.template_id ?? sp.type ?? "single_choice"}`}
+        initial={templateInitial ?? (sp.type ? { type: sp.type } : undefined)}
         categories={categories ?? []}
         save={saveQuestionAsAdmin}
         uploadImage={uploadQuestionImageAsAdmin}

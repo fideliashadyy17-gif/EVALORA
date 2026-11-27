@@ -74,6 +74,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/rbac", label: "Role & Access Management", labelKey: "nav.rbac", icon: ShieldCheck, audience: "managers" },
       { href: "/dashboard/grading", label: "Grading Systems", labelKey: "nav.gradingSystems", icon: Percent, audience: "managers" },
       { href: "/dashboard/settings", label: "Organization Settings", labelKey: "nav.organizationSettings", icon: Settings, audience: "managers" },
+      { href: "/dashboard/settings/configuration", label: "Configuration", labelKey: "nav.orgConfiguration", icon: SlidersHorizontal, audience: "managers" },
     ],
   },
   {
@@ -144,6 +145,7 @@ export function DashboardChrome({
   userName,
   modules,
   scoreAdjustmentEligible = false,
+  notificationsEnabled = true,
   children,
 }: {
   orgName: string;
@@ -157,6 +159,14 @@ export function DashboardChrome({
   modules?: Record<string, boolean>;
   /** Institution-plan score adjustment eligibility (real entitlement). */
   scoreAdjustmentEligible?: boolean;
+  /**
+   * Whether in-app notifications are enabled for this organization. Resolved on
+   * the server from `notifications.in_app_enabled` intersected with the plan
+   * entitlement (src/lib/notificationService.ts). When false the bell is not
+   * rendered at all, so the switch has a visible effect rather than being a
+   * setting that only exists in the database.
+   */
+  notificationsEnabled?: boolean;
   children: ReactNode;
 }) {
   const pathname = usePathname();
@@ -256,9 +266,11 @@ export function DashboardChrome({
           {orgSlug && <p className="mt-0.5 truncate text-[11px] text-evergreen-700">{tenantPortalLabel(orgSlug)}</p>}
           {isDemo && <p className="mt-1 inline-block rounded-full bg-gold-500 px-2 py-0.5 text-[10px] font-bold text-evergreen-950">DEMO — SAMPLE DATA</p>}
         </div>
-        <div className="dashboard-notification mt-4">
-          <NotificationBell />
-        </div>
+        {notificationsEnabled && (
+          <div className="dashboard-notification mt-4">
+            <NotificationBell />
+          </div>
+        )}
         <div className="mt-2 flex-1 overflow-y-auto scroll-slim">{nav}</div>
         <div className="mt-4 border-t border-evergreen-900/10 pt-4">
           <p className="truncate px-1 text-sm font-medium text-ink">{userName}</p>
@@ -278,7 +290,7 @@ export function DashboardChrome({
           <Logo variant="light" href="/dashboard" />
           <div className="flex items-center gap-1">
             <LanguageSwitcher compact />
-            <NotificationBell variant="icon" />
+            {notificationsEnabled && <NotificationBell variant="icon" />}
             <button onClick={() => setOpen((v) => !v)} className="rounded-lg p-2 text-evergreen-900" aria-label="Toggle menu" aria-expanded={open} aria-controls="workspace-mobile-navigation">
               {open ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
             </button>

@@ -2,6 +2,11 @@
 // stubbed provider. The point of most checks here is what does NOT happen: no
 // credential, a failed model call or an unusable reply must leave every mark
 // untouched.
+// Newly introduced platform-configuration modules (assessmentConfig, orgIdentity,
+// proctoringConfig, notificationService, maintenance, config/service …) resolve
+// through this shared fallback, installed before this suite captures Module._load
+// so every stub defined below still takes precedence.
+import "./__platform_config_stubs.mjs";
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Module } from 'node:module';

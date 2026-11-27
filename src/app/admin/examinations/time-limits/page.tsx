@@ -3,6 +3,8 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { attemptDeadline } from "@/lib/exam";
 import { createAdminClient } from "@/lib/supabase/server";
 import { fmtDateTime } from "@/lib/utils";
+import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
+import { passMarkFrom } from "@/lib/examFeedback";
 import { AlarmClock, Clock3, Hourglass, Timer } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -29,6 +31,7 @@ interface ExamRow {
   duration_minutes: number;
   ends_at: string | null;
   settings: Record<string, unknown> | null;
+  organization_id: string | null;
   organizations: { name: string } | null;
 }
 
@@ -55,11 +58,15 @@ export default async function ExaminationTimeLimitsPage({
 
   const { data: rawExams } = await admin
     .from("exams")
-    .select("id, title, status, duration_minutes, ends_at, settings, organizations(name)")
+    .select("id, title, status, duration_minutes, ends_at, settings, organization_id, organizations(name)")
     .order("created_at", { ascending: false })
     .limit(300);
   const exams = (rawExams ?? []) as unknown as ExamRow[];
   const selected = (sp.exam && exams.find((e) => e.id === sp.exam)) || exams.find((e) => e.status === "open") || exams[0];
+  // Configured assessment defaults for the selected examination's organization,
+  // so the pass-mark field shows the real effective fallback rather than a
+  // literal 50.
+  const selectedAssessmentCfg = await resolveAssessmentConfig(selected?.organization_id ?? null);
 
   let attemptQuery = admin
     .from("exam_attempts")
@@ -119,7 +126,7 @@ export default async function ExaminationTimeLimitsPage({
                   <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={selected.duration_minutes} required />
                 </Field>
                 <Field label="Pass mark (%)">
-                  <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={Number(selected.settings?.pass_mark_percent ?? 50)} required />
+                  <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={passMarkFrom(selected.settings ?? {}, selectedAssessmentCfg.defaultPassPercent)} required />
                 </Field>
                 <Button type="submit" variant="gold">Save timing policy</Button>
                 <p className="text-xs text-ink-soft">

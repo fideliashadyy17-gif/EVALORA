@@ -247,7 +247,14 @@ ok("the route trusts only the attempt token", /loadAttemptContext\(admin, attemp
 ok("the candidate, paper and organisation come from the token", /organization_id: exam\.organization_id/.test(route) && /candidate_id: candidate\.id/.test(route) && /exam_id: exam\.id/.test(route));
 ok("no client-supplied identity is accepted", !/z\.object\([^)]*organization_id/.test(route) && !/z\.object\([^)]*candidate_id/.test(route));
 ok("a closed attempt records nothing", /attempt\.status !== "in_progress"/.test(route));
-ok("the assessment policy gates recording server-side", /parseIntegrityPolicy/.test(route) && /reason: "integrity_disabled"/.test(route) && /reason: "event_disabled"/.test(route));
+ok("the assessment policy gates recording server-side", /parseIntegrityPolicy|integrityPolicyWithConfiguredDefaults/.test(route) && /reason: "integrity_disabled"/.test(route) && /reason: "event_disabled"/.test(route));
+ok("the single-RPC fast path applies the same configured policy as the fallback",
+  /const rpcCfg = await resolveProctoringConfig\(res\.organization_id/.test(route)
+  && /integrityPolicyWithConfiguredDefaults\(res\.integrity_settings, rpcCfg\)/.test(route));
+ok("the RPC returns the organization the attempt belongs to",
+  /'organization_id', v_ctx\.organization_id/.test(
+    readFileSync("supabase/migrations/20261126230000_integrity_event_rpc_returns_organization.sql", "utf8"),
+  ));
 ok("duplicate bursts are collapsed server-side too", /DEDUPE_MS/.test(route) && /reason: "duplicate"/.test(route));
 ok("a runaway client cannot flood the review queue", /MAX_EVENTS_PER_ATTEMPT/.test(route) && /reason: "capped"/.test(route));
 ok("returns are stored but never counted as violations", /integrity_tab_visible,integrity_focus_back,integrity_online/.test(route));
@@ -268,7 +275,15 @@ ok("the live quiz is locked once a participant has joined", /useAssessmentLockdo
 ok("the projection screen is locked while open", /useAssessmentLockdown\(true\)/.test(screenClient));
 ok("the monitor's lockdown is detached on stop()", /this\.detachLockdown\?\.\(\)/.test(readFileSync("src/lib/integrityMonitor.ts", "utf8")));
 const state = readFileSync("src/app/api/exam/state/route.ts", "utf8");
-ok("the candidate client receives the policy but never an answer key", /integrity: parseIntegrityPolicy\(settings\.integrity\)/.test(state) && !/settings\.integrity.*is_correct/.test(state));
+// The policy the candidate receives is still parsed from the examination's own
+// settings.integrity. The platform control center only supplies defaults for
+// the thresholds the examination did not author, so assert the whole chain:
+// route → integrityPolicyWithConfiguredDefaults → parseIntegrityPolicy, and
+// that an authored threshold always beats the configured one.
+const proctoringCfgSrc = readFileSync("src/lib/proctoringConfig.ts", "utf8");
+ok("the candidate client receives the policy but never an answer key", /integrity: integrityPolicyWithConfiguredDefaults\(settings\.integrity/.test(state) && !/settings\.integrity.*is_correct/.test(state));
+ok("the configured-defaults helper still parses the authored policy", /export function integrityPolicyWithConfiguredDefaults[\s\S]{0,900}parseIntegrityPolicy\(source\)/.test(proctoringCfgSrc));
+ok("an examination's own thresholds beat the configured platform defaults", /hasOwnNumber\(source\.warnAfter\) \? policy\.warnAfter : cfg\.maxTabSwitchWarnings/.test(proctoringCfgSrc) && /hasOwnNumber\(source\.reviewAfter\) \? policy\.reviewAfter :/.test(proctoringCfgSrc));
 
 /* ── Teacher consoles ── */
 const examConsole = readFileSync("src/app/dashboard/exams/[id]/page.tsx", "utf8");

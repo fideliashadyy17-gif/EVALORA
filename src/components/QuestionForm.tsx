@@ -4,6 +4,21 @@ import { RichContentEditor, type UploadResult } from "@/components/editor/RichCo
 import { RichContent } from "@/components/RichContent";
 import { Button, Card, Field, Input, Select, Textarea } from "@/components/ui";
 import { QUESTION_TYPES } from "@/lib/brand";
+import { QuestionDesignPanel } from "@/components/QuestionDesignPanel";
+import {
+  DEFAULT_STUDIO_CONFIG,
+  SUPPORTED_DIFFICULTY_LEVELS,
+  isTypeStillEnabled,
+  type QuestionStudioClientConfig,
+} from "@/lib/questionStudioClient";
+import {
+  designClassNames,
+  designCssVariables,
+  designToStorage,
+  effectiveDesign,
+  formatQuestionNumber,
+  type QuestionDesign,
+} from "@/lib/questionDesign";
 import { RESPONSE_TOOLS } from "@/lib/responseTools";
 import { emptyGraphSpec } from "@/lib/graphSpec";
 import { emptyGeometrySpec } from "@/lib/geometrySpec";
@@ -44,6 +59,12 @@ export interface QuestionFormValues {
   source_url?: string | null;
   config?: Record<string, unknown>;
   options: QuestionFormOption[];
+  /**
+   * Set only when this NEW question was started from a Question Studio template.
+   * The save action uses it to count one real use; editing an existing question
+   * never carries it, so a template's usage count reflects creations only.
+   */
+  template_id?: string | null;
 }
 
 export type QuestionSaveFn = (
@@ -137,6 +158,7 @@ export function QuestionForm({
   classOptions,
   subjectOptions,
   curriculumOptions,
+  studio = DEFAULT_STUDIO_CONFIG,
 }: {
   initial?: Partial<QuestionFormValues> & { id?: string };
   categories: { id: string; name: string }[];
@@ -147,6 +169,14 @@ export function QuestionForm({
   classOptions?: { id: string; name: string }[];
   subjectOptions?: { id: string; name: string }[];
   curriculumOptions?: { key: string; name: string }[];
+  /**
+   * Question Studio configuration resolved on the server from the Platform
+   * Control Center (question_studio namespace): which types authors may create,
+   * the difficulty vocabulary, and the design defaults applied to a newly
+   * authored question. Defaults to the shipped configuration so the editor
+   * still works when a caller has not resolved it.
+   */
+  studio?: QuestionStudioClientConfig;
 }) {
   const router = useRouter();
   const [type, setType] = useState<string>(initial?.type ?? "single_choice");
@@ -169,6 +199,13 @@ export function QuestionForm({
   const [sourceReference, setSourceReference] = useState(initial?.source_reference ?? "");
   const [sourceUrl, setSourceUrl] = useState(initial?.source_url ?? "");
   const cfg = (initial?.config ?? {}) as Record<string, unknown>;
+  /**
+   * Appearance for this question. A question that already carries a `config.design`
+   * snapshot keeps it (so editing a platform default can never restyle published
+   * content); a new question starts from the Question Studio defaults resolved on
+   * the server, which is what makes those settings real.
+   */
+  const [design, setDesign] = useState<QuestionDesign>(() => effectiveDesign(cfg.design, studio.design));
   const [numericAnswer, setNumericAnswer] = useState(String(cfg.numeric_answer ?? ""));
   const [tolerance, setTolerance] = useState(String(cfg.tolerance ?? "0"));
   const [mediaUrl, setMediaUrl] = useState(String(cfg.media_url ?? ""));
@@ -484,6 +521,9 @@ export function QuestionForm({
     // The transferable takeaway shown to the candidate once results are
     // published: what to do differently next time. Never shown mid-paper, and
     // available on every type that can be marked, not just open answers.
+    // Stored with the question: this snapshot is what renders later, on screen
+    // and in print, so a later change to the studio defaults cannot alter it.
+    config.design = designToStorage(design);
     if (nextTimeHint.trim()) config.next_time_hint = nextTimeHint.trim();
     if (markingCriteria.trim() && config.marking_criteria === undefined) {
       config.marking_criteria = markingCriteria.trim();
@@ -534,6 +574,8 @@ export function QuestionForm({
       source_url: sourceUrl || null,
       config,
       options: finalOptions,
+      // Only a first save from a template counts as one use of it.
+      template_id: initial?.id ? null : (initial?.template_id ?? null),
     });
     setBusy(false);
     if (res.error) return setError(res.error);
@@ -545,16 +587,43 @@ export function QuestionForm({
   const supportsResponseWorkspace = type === "open_ended" || type === "assess_parts";
   const letters = ["A", "B", "C", "D", "E", "F", "G", "H"];
 
+  // Question Studio configuration (Control Center → Question Studio). The
+  // picker shows the configured types; a question already stored with a
+  // withdrawn type keeps that type selectable so a save cannot silently change
+  // what the question is.
+  const pickerTypes = studio.questionTypes;
+  const withdrawnCurrent =
+    !isTypeStillEnabled(studio, type)
+      ? QUESTION_TYPES.find((t) => t.value === type) ?? null
+      : null;
+  const difficultyChoices = studio.difficultyLevels.length
+    ? studio.difficultyLevels
+    : [...SUPPORTED_DIFFICULTY_LEVELS];
+
   return (
     <div className="grid gap-6 xl:grid-cols-[1fr_360px]">
       <Card className="space-y-5 p-6">
         {error && <p className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-800">{error}</p>}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Question type">
+          <Field
+            label="Question type"
+            hint={
+              studio.withdrawnTypes.length
+                ? `${studio.withdrawnTypes.length} type${studio.withdrawnTypes.length === 1 ? "" : "s"} withdrawn from authoring by configuration; existing questions of those types still open and save normally.`
+                : "Offered types come from Question Studio configuration."
+            }
+          >
             <Select value={type} onChange={(e) => setType(e.target.value)}>
-              {QUESTION_TYPES.map((t) => (
+              {(pickerTypes.length ? pickerTypes : QUESTION_TYPES).map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
+              {/* An existing question whose type has been withdrawn must remain
+                  selectable, otherwise saving it would silently change its type. */}
+              {withdrawnCurrent && (
+                <option value={withdrawnCurrent.value}>
+                  {withdrawnCurrent.label} (withdrawn — kept for this question)
+                </option>
+              )}
             </Select>
           </Field>
           <Field label="Status">
@@ -997,10 +1066,18 @@ export function QuestionForm({
           </Field>
           <Field label="Difficulty">
             <Select value={difficulty} onChange={(e) => setDifficulty(e.target.value)}>
-              <option value="easy">Easy</option>
-              <option value="medium">Medium</option>
-              <option value="hard">Hard</option>
-              <option value="competition">Competition</option>
+              {difficultyChoices.map((level) => (
+                <option key={level} value={level}>
+                  {level.charAt(0).toUpperCase() + level.slice(1)}
+                </option>
+              ))}
+              {/* A stored label no longer in the vocabulary is preserved rather
+                  than dropped, so editing cannot erase existing metadata. */}
+              {difficulty && !difficultyChoices.includes(difficulty) && (
+                <option value={difficulty}>
+                  {difficulty.charAt(0).toUpperCase() + difficulty.slice(1)} (retired label)
+                </option>
+              )}
             </Select>
           </Field>
           <Field label="Topic">
@@ -1063,6 +1140,8 @@ export function QuestionForm({
           </div>
         )}
 
+        <QuestionDesignPanel design={design} onChange={setDesign} studioDefault={studio.design} />
+
         <div className="flex gap-3">
           <Button onClick={submit} disabled={busy} variant="gold" className="px-6">
             {busy ? "Saving…" : initial?.id ? "Save changes" : "Save question"}
@@ -1073,16 +1152,25 @@ export function QuestionForm({
 
       <Card className="h-fit p-6 xl:sticky xl:top-6">
         <h2 className="font-display text-lg font-semibold text-evergreen-950">Participant preview</h2>
-        <div className="mt-4 rounded-xl border border-evergreen-900/10 bg-cream p-4">
+        <div
+          className={`qs-card mt-4 ${designClassNames(design).card}`}
+          style={{ ...designCssVariables(design), textAlign: design.textAlign } as React.CSSProperties}
+        >
+          {design.showInstructionPanel && (
+            <p className="qs-text mb-2 text-[11px] font-semibold uppercase tracking-wide text-evergreen-800">
+              Question {formatQuestionNumber(1, design.numberingStyle)} · {points || 0} {Number(points) === 1 ? "mark" : "marks"}
+            </p>
+          )}
           {mediaUrl && mediaType === "image" && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={mediaUrl} alt="" className="mb-3 max-h-48 w-full rounded-lg object-cover" />
+            <img src={mediaUrl} alt="" className={`mb-3 max-h-48 w-full rounded-lg object-cover ${designClassNames(design).media}`} />
           )}
-          <div className="font-medium text-ink">
+          <div className="qs-text font-medium text-ink" style={{ textAlign: design.textAlign }}>
+            <span className="mr-1 font-semibold">{formatQuestionNumber(1, design.numberingStyle)}.</span>
             <RichContent doc={docIsEmpty(promptDoc) ? null : promptDoc} text="Your question will appear here…" />
           </div>
           {isChoice && (
-            <div className="mt-3 space-y-2">
+            <div className={`qs-options mt-3 ${designClassNames(design).options}`}>
               {options.filter((o) => !docIsEmpty(o.doc)).map((o, i) => (
                 <div key={i} className="flex items-start gap-2 rounded-lg border border-evergreen-900/10 bg-white px-3 py-2 text-sm">
                   <span className="font-bold text-evergreen-700">{letters[i]}.</span>
@@ -1122,7 +1210,10 @@ export function QuestionForm({
             </div>
           )}
         </div>
-        <p className="mt-3 text-xs text-ink-soft">Correctness is never shown in previews or sent to participant devices during live events or examinations.</p>
+        <p className="mt-3 text-xs text-ink-soft">
+          Correctness is never shown in previews or sent to participant devices during live events or examinations.
+          The appearance above is saved with this question.
+        </p>
       </Card>
     </div>
   );

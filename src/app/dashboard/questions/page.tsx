@@ -78,7 +78,14 @@ export default async function QuestionsPage({
         eyebrow="Assessment Authoring · Institutional Question Bank"
         title="Question Bank"
         subtitle="Reusable questions for quizzes and examinations. Imports wait here for review before they can be published."
-        action={perms.canCreate ? <ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink> : undefined}
+        action={
+          perms.canCreate ? (
+            <span className="flex flex-wrap items-center gap-2">
+              <ButtonLink href="/dashboard/questions/templates" variant="outline">Templates</ButtonLink>
+              <ButtonLink href="/dashboard/questions/new">+ New question</ButtonLink>
+            </span>
+          ) : undefined
+        }
       />
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

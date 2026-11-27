@@ -1,6 +1,7 @@
 import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
+import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
 import { FileCheck2, Library, Timer } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -36,6 +37,14 @@ export default async function CreateExaminationPage({
     (sp.org && (orgs ?? []).find((o) => o.id === sp.org)) ||
     (orgs ?? []).find((o) => o.slug === "evalora-platform") ||
     (orgs ?? [])[0];
+
+  // Pre-fill from the Platform Control Center defaults. The organization is
+  // chosen in the form below, so when one is already selected its own
+  // overrides are used; otherwise the platform-level defaults apply.
+  const [examDefaults, assessmentCfg] = await Promise.all([
+    resolveExamDefaults(selected?.id ?? null),
+    resolveAssessmentConfig(selected?.id ?? null),
+  ]);
 
   let quizzes: { id: string; title: string; updated_at: string }[] = [];
   let questionCount = 0;
@@ -124,10 +133,10 @@ export default async function CreateExaminationPage({
                     </Select>
                   </Field>
                   <Field label="Duration per candidate (minutes) *">
-                    <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={60} required />
+                    <Input name="duration_minutes" type="number" min={1} max={1440} defaultValue={examDefaults.durationMinutes} required />
                   </Field>
                   <Field label="Pass mark (%)">
-                    <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={50} />
+                    <Input name="pass_mark_percent" type="number" min={0} max={100} defaultValue={assessmentCfg.defaultPassPercent} />
                   </Field>
                 </div>
 

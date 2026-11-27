@@ -10,6 +10,7 @@
 import { createContext, useCallback, useContext, useMemo, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import {
+  LOCALES,
   LOCALE_COOKIE,
   LOCALE_COOKIE_MAX_AGE,
   LOCALE_NAMES,
@@ -26,6 +27,8 @@ interface I18nContextValue {
   t: (key: string, params?: TranslateParams) => string;
   setLocale: (locale: Locale) => void;
   localeNames: Record<Locale, string>;
+  /** Locales the Platform Control Center has enabled for the interface. */
+  supportedLocales: Locale[];
   formatNumber: (value: number, options?: Intl.NumberFormatOptions) => string;
   formatDate: (value: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
   formatTime: (value: Date | string | number, options?: Intl.DateTimeFormatOptions) => string;
@@ -38,10 +41,17 @@ export function I18nProvider({
   locale,
   dict,
   children,
+  supportedLocales,
 }: {
   locale: Locale;
   dict: Dictionary;
   children: ReactNode;
+  /**
+   * Locales enabled in the Platform Control Center (localization.supported_locales).
+   * Omitted or empty falls back to every bundled dictionary, so an
+   * unconfigured platform behaves exactly as before.
+   */
+  supportedLocales?: Locale[] | null;
 }) {
   const router = useRouter();
 
@@ -69,12 +79,16 @@ export function I18nProvider({
       t: (key, params) => translate(dict, key, params),
       setLocale,
       localeNames: LOCALE_NAMES,
+      // Configured locales first; the resolved locale is always offered even
+      // if an administrator disabled it, so nobody is stranded on a language
+      // they cannot switch away from.
+      supportedLocales: normalizeSupported(supportedLocales, locale),
       formatNumber: (v, o) => formatNumber(locale, v, o),
       formatDate: (v, o) => formatDate(locale, v, o),
       formatTime: (v, o) => formatTime(locale, v, o),
       formatDateTime: (v) => formatDateTime(locale, v),
     }),
-    [locale, dict, setLocale],
+    [locale, dict, setLocale, supportedLocales],
   );
 
   return <I18nContext.Provider value={value}>{children}</I18nContext.Provider>;
@@ -91,6 +105,7 @@ export function useI18n(): I18nContextValue {
       t: (key) => key,
       setLocale: () => undefined,
       localeNames: LOCALE_NAMES,
+      supportedLocales: [...LOCALES],
       formatNumber: (v) => String(v),
       formatDate: (v) => String(v),
       formatTime: (v) => String(v),
@@ -98,6 +113,16 @@ export function useI18n(): I18nContextValue {
     };
   }
   return ctx;
+}
+
+/**
+ * Keep only locales that actually have a bundled dictionary, preserve the
+ * canonical order, and always include the locale currently in use.
+ */
+function normalizeSupported(raw: Locale[] | null | undefined, current: Locale): Locale[] {
+  const requested = Array.isArray(raw) ? raw.filter((c) => (LOCALES as string[]).includes(c)) : [];
+  const ordered = LOCALES.filter((c) => requested.includes(c) || c === current);
+  return ordered.length ? ordered : [...LOCALES];
 }
 
 /** BCP-47 tag for Intl helpers exposed through the provider. */

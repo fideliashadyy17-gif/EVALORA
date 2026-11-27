@@ -20,6 +20,31 @@ import { normaliseCriterionShares } from "./criterionShares";
 
 export const DEFAULT_PASS_PERCENT = 50;
 
+/**
+ * The pass mark for one examination.
+ *
+ * An examination may carry its own `settings.pass_mark_percent`. When it does
+ * not, the fallback is the CONFIGURED platform/organization default resolved
+ * from `assessment.default_pass_percent` (src/lib/assessmentConfig.ts) and
+ * passed in by the server caller — not a literal 50 repeated at every call
+ * site. Audit finding 3.1: that literal existed in fourteen places while
+ * platform_settings.exam_pass_threshold, the setting an administrator was
+ * editing, was read by nothing at all.
+ *
+ * Pure, so the candidate client can use the same function the server used.
+ */
+export function passMarkFrom(settings: unknown, configuredDefault?: number | null): number {
+  const stored =
+    settings && typeof settings === "object" && !Array.isArray(settings)
+      ? (settings as Record<string, unknown>).pass_mark_percent
+      : undefined;
+  const fromExam = Number(stored);
+  if (Number.isFinite(fromExam) && fromExam >= 0 && fromExam <= 100) return fromExam;
+  const fromConfig = Number(configuredDefault);
+  if (Number.isFinite(fromConfig) && fromConfig >= 0 && fromConfig <= 100) return fromConfig;
+  return DEFAULT_PASS_PERCENT;
+}
+
 export { criterionBand };
 export type { CriterionBand };
 

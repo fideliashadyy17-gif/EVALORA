@@ -19,7 +19,13 @@ export const BRAND = {
     primary: "#0a5c36",
     primaryDeep: "#06351f",
     accent: "#c9a227",
-    cream: "#faf7f0",
+    /**
+     * Canvas colour behind cards. Matches --color-cream in globals.css @theme
+     * and branding.color_cream in the configuration schema — three surfaces,
+     * one value. An administrator can override it in the Platform Control
+     * Center; this constant is the shipped default it falls back to.
+     */
+    cream: "#f5f3ec",
     ink: "#16241c",
   },
 } as const;

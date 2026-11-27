@@ -1,6 +1,9 @@
 "use client";
 
 import { ExamLanguageShield } from "@/components/ExamLanguageShield";
+import { DeviceCheckPanel } from "@/components/exam/DeviceCheckPanel";
+import { useDeviceCheckGate } from "@/components/exam/useDeviceCheckGate";
+import type { DeviceCheckRequirements } from "@/lib/deviceCheck";
 import { Logo } from "@/components/Logo";
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import type { AccessMode, IdentityField } from "@/lib/exam-access";
@@ -38,6 +41,7 @@ export function ExamJoinClient({
   lockdownRequired,
   strictMultiDisplay,
   lockdownLaunchUrl,
+  deviceChecks,
 }: {
   token: string;
   title: string;
@@ -56,6 +60,8 @@ export function ExamJoinClient({
   lockdownRequired?: boolean;
   strictMultiDisplay?: boolean;
   lockdownLaunchUrl?: string;
+  /** Proctoring device checks resolved server-side for this organization. */
+  deviceChecks?: DeviceCheckRequirements | null;
 }) {
   const router = useRouter();
   const [code, setCode] = useState(initialCode);
@@ -75,6 +81,11 @@ export function ExamJoinClient({
   const [busy, setBusy] = useState(false);
 
   const [isLockdownClient, setIsLockdownClient] = useState(() => isSecureBrowserEnvironment());
+
+  // Camera / microphone / browser checks this institution switched on. Runs
+  // before admission so a candidate learns about a missing device before the
+  // clock starts, and reports the outcome once the attempt exists.
+  const deviceGate = useDeviceCheckGate(deviceChecks);
 
   const [lockdownAlert, setLockdownAlert] = useState<{
     required: boolean;
@@ -238,6 +249,9 @@ export function ExamJoinClient({
     if (activeLockdown || data?.lockdown_verified) {
       persistSecureBrowserState();
     }
+    // Tell the invigilation record what the device check found. Awaited so the
+    // report is not lost to navigation, but it can never fail the admission.
+    await deviceGate.submit(data.attempt_id, data.access_token);
     router.push(activeLockdown || data?.lockdown_verified ? `/take-exam/${data.attempt_id}?lockdown=1` : `/take-exam/${data.attempt_id}`);
   }
 
@@ -449,12 +463,18 @@ export function ExamJoinClient({
                   {classes.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </Select>
               </Field>
+              <DeviceCheckPanel {...deviceGate.panelProps} className="mb-4" />
               <label className="flex items-start gap-3 rounded-xl border border-evergreen-900/10 bg-cream/70 p-4 text-sm leading-6 text-ink">
                 <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-evergreen-700" required />
                 <span>I confirm these details are mine and understand that the time limit, submission, autosave and any enabled proctoring are enforced by the server.</span>
               </label>
-              <Button type="submit" variant="gold" className="w-full py-3 text-base" disabled={busy || !consent || !guestKey || effectiveRequiresAccount}>
-                {busy ? "Verifying…" : "Verify and Begin"}
+              <Button
+                type="submit"
+                variant="gold"
+                className="w-full py-3 text-base"
+                disabled={busy || !consent || !guestKey || effectiveRequiresAccount || deviceGate.blocking}
+              >
+                {busy ? "Verifying…" : deviceGate.blocking ? "Completing device check…" : "Verify and Begin"}
               </Button>
               <p className="text-center text-xs text-ink-soft">
                 Returning after a disconnection? Re-enter the same link, code, name, identification fields and class on this browser to resume your saved answers.

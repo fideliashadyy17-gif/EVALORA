@@ -6,6 +6,7 @@ import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } fr
 import { questionPublishError } from "@/lib/questionValidation";
 import { questionOptionsUnchanged } from "@/lib/questionOptions";
 import { normalizePrompt } from "@/lib/questionGeneration";
+import { getQuestionTemplate, recordTemplateUse } from "@/lib/questionTemplates";
 import { createHash } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -43,6 +44,9 @@ const QuestionSchema = z.object({
   source_url: z.string().url().max(2000).refine((url) => /^https?:\/\//i.test(url)).nullable().optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   options: z.array(OptionSchema).default([]),
+  // Question Studio template this NEW question was started from. Never stored on
+  // the question: it only drives the template's usage counter.
+  template_id: z.string().uuid().nullable().optional(),
 });
 
 export type QuestionInput = z.infer<typeof QuestionSchema>;
@@ -144,6 +148,14 @@ export async function saveQuestion(raw: QuestionInput) {
     if (error && isPlanLimitError(error)) return { error: planLimitMessage(error) };
     if (error || !data) return { error: error?.message ?? "Could not save the question." };
     questionId = data.id;
+    if (q.template_id) {
+      // Counted only after the question exists, and only for a template this
+      // organization may actually read (its own or the platform-wide library), so
+      // an author cannot inflate another tenant's counter. A template counter can
+      // never fail or roll back a saved question, hence the swallowed result.
+      const visible = await getQuestionTemplate(q.template_id, org.id);
+      if (visible) await recordTemplateUse(q.template_id).catch(() => 0);
+    }
   }
 
   if (!optionsUnchanged && q.options.length > 0) {
