@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {Module} from 'node:module';
 import path from 'node:path';
 import ts from 'typescript';
+import { compileRealModule } from './__platform_config_stubs.mjs';
 const file=path.resolve('scripts/__virtual_question_action.cjs');
 let org={id:'org-a',role:'teacher'}, canEdit=true, category={id:'cat-a'}, categoryError=null, optionDeleteError=null, optionReadError=null, oldOptions=[{label:'Old',is_correct:true,position:0,content_doc:null}], writes=[];
 const db={from(table){const query={filters:[],select(){return this;},eq(key,value){this.filters.push([key,value]);return this;},maybeSingle:async()=>{
@@ -21,7 +22,10 @@ const contentBefore=Module._load;Module._load=function(req,parent){if(parent?.fi
 try{content._compile(ts.transpileModule(readFileSync('src/lib/content.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,contentFile);}finally{Module._load=contentBefore;}
 const helperFile=path.resolve('scripts/__question_options.cjs'),helper=new Module(helperFile);helper.filename=helperFile;helper.paths=Module._nodeModulePaths(path.dirname(helperFile));const beforeHelper=Module._load;Module._load=function(req,parent){if(parent?.filename===helperFile&&req==='./content')return content.exports;return beforeHelper.apply(this,arguments)};try{helper._compile(ts.transpileModule(readFileSync('src/lib/questionOptions.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,helperFile)}finally{Module._load=beforeHelper};
 const original=Module._load;
-Module._load=function(request,parent){if(parent?.filename===file){
+const SERVICE_FILE=path.resolve('scripts/__question_authoring_service.cjs');
+// The action delegates to the shared authoring service; both modules must see the
+// same tenant/permission boundaries, or the suite would test an unstubbed copy.
+Module._load=function(request,parent){if(parent?.filename===file||parent?.filename===SERVICE_FILE){
  if(request==='@/lib/auth')return {requireUser:async()=>({user:{id:'user'}}),activeOrg:()=>org,can:()=>canEdit,CREATOR_ROLES:['owner','admin','teacher','organizer']};
  if(request==='@/lib/operationalAccess')return {canOperate:async()=>canEdit};
  if(request==='@/lib/entitlements')return {};
@@ -30,6 +34,18 @@ Module._load=function(request,parent){if(parent?.filename===file){
  if(request==='@/lib/questionGeneration')return {normalizePrompt:(s)=>s};
  if(request==='@/lib/questionTemplates')return {recordTemplateUse:async()=>0,getQuestionTemplate:async()=>null};
  if(request==='@/lib/supabase/server')return {createClient:async()=>db};
+ // The save body moved into a shared authoring service when the AI core needed
+ // the same guards; compile that REAL module under this suite's stubs so the
+ // assertions still exercise shipped code rather than a copy of it.
+ if(request==='@/lib/services/questionAuthoring')return compileRealModule(SERVICE_FILE,'src/lib/services/questionAuthoring.ts');
+ // The service imports its collaborators RELATIVELY, so the same stubs are
+ // mapped onto those specifiers.
+ if(request==='../operationalAccess')return {canOperate:async()=>canEdit};
+ if(request==='../questionOptions')return helper.exports;
+ if(request==='../questionValidation')return {questionPublishError:()=>null};
+ if(request==='../questionGeneration')return {normalizePrompt:(x)=>x};
+ if(request==='../questionTemplates')return {recordTemplateUse:async()=>0,getQuestionTemplate:async()=>null};
+ if(request==='server-only')return {};
  if(request==='next/cache')return {revalidatePath:()=>{}};
  if(request==='next/navigation')return {redirect:()=>{throw Error('unexpected redirect');}};
 }return original.apply(this,arguments);};

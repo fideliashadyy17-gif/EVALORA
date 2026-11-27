@@ -492,6 +492,21 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     },
   },
   {
+    key: "ai_assistant",
+    group: "institution",
+    label: "AI Assistant & agents",
+    description:
+      "The native EVALORA AI assistant, the external agent console, the human approval queue and the AI operation log.",
+    recommendedPlan: "institution",
+    availability: "implemented",
+    workspacePath: "Dashboard → AI Assistant (+ Agents & approvals, operation log)",
+    adminReferenceHref: "/admin/control-center/organizations",
+    surface: {
+      kind: "nav",
+      hrefs: ["/dashboard/ai", "/dashboard/ai/agents", "/dashboard/ai/approvals", "/dashboard/ai/activity"],
+    },
+  },
+  {
     key: "rubrics",
     group: "institution",
     label: "Rubrics",

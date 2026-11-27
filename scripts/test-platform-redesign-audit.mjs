@@ -30,7 +30,7 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 191 page.tsx routes (96 admin, 58 dashboard, 37 public/auth/student/portal)", () => {
+check("route inventory accounts for all 195 page.tsx routes (96 admin, 62 dashboard, 37 public/auth/student/portal)", () => {
   // 95 = 89 + the five Platform Control Center surfaces added for the centralized
   //      configuration architecture: /admin/control-center (global defaults),
   //      /admin/control-center/organizations (per-organization overrides list),
@@ -60,11 +60,15 @@ check("route inventory accounts for all 191 page.tsx routes (96 admin, 58 dashbo
   //      + /dashboard/settings/notifications (the organization's own notification
   //        wording, with the same resolver and the same store as the platform
   //        console, scoped from the session rather than from a posted field).
-  assert.equal(dashboardPages.length, 58, `expected 58 dashboard pages, found ${dashboardPages.length}`);
+  // 62 = 58 + the four AI-core surfaces:
+  //      /dashboard/ai (the native assistant), /dashboard/ai/agents (external
+  //      agent credentials and narrowing), /dashboard/ai/approvals (the human
+  //      approval queue) and /dashboard/ai/activity (the AI operation journal).
+  assert.equal(dashboardPages.length, 62, `expected 62 dashboard pages, found ${dashboardPages.length}`);
   // 37 = 36 + /maintenance, the public holding page the middleware rewrites to
   //      while platform_behavior.maintenance_mode is on.
   assert.equal(otherPages.length, 37, `expected 37 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 191);
+  assert.equal(allPages.length, 195);
 });
 
 check("the landing page advertises the census this suite just walked", () => {
@@ -189,4 +193,4 @@ check("Student & candidate entry surfaces expose <main> landmarks and cross-link
   assert.ok(!pricingSrc.includes("<table"), "pricing/page.tsx should use <DataTable>");
 });
 
-console.log(`✓ platform redesign & 191-route audit — ${passed} checks passed`);
+console.log(`✓ platform redesign & 195-route audit — ${passed} checks passed`);

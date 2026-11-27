@@ -36,6 +36,7 @@ import {
   Settings,
   ShieldCheck,
   SlidersHorizontal,
+  Sparkles,
   Trophy,
   Users,
   X,
@@ -73,6 +74,9 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/academics", label: "Academic Structure", labelKey: "nav.academicStructure", icon: Layers3, exact: true, audience: "operational" },
       { href: "/dashboard/accounts", label: "Accounts & Permissions", labelKey: "nav.accountsPermissions", icon: KeyRound, audience: "managers" },
       { href: "/dashboard/rbac", label: "Role & Access Management", labelKey: "nav.rbac", icon: ShieldCheck, audience: "managers" },
+      { href: "/dashboard/ai/agents", label: "AI Agents", labelKey: "nav.aiAgents", icon: Sparkles, audience: "managers" },
+      { href: "/dashboard/ai/approvals", label: "AI Approvals", labelKey: "nav.aiApprovals", icon: ShieldCheck, audience: "managers" },
+      { href: "/dashboard/ai/activity", label: "AI Operation Log", labelKey: "nav.aiActivity", icon: Activity, audience: "managers" },
       { href: "/dashboard/grading", label: "Grading Systems", labelKey: "nav.gradingSystems", icon: Percent, audience: "managers" },
       { href: "/dashboard/settings", label: "Organization Settings", labelKey: "nav.organizationSettings", icon: Settings, audience: "managers" },
       { href: "/dashboard/settings/configuration", label: "Configuration", labelKey: "nav.orgConfiguration", icon: SlidersHorizontal, audience: "managers" },
@@ -82,6 +86,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
   {
     title: "Assessment", titleKey: "nav.assessments",
     items: [
+      { href: "/dashboard/ai", label: "AI Assistant", labelKey: "nav.aiAssistant", icon: Sparkles, audience: "operational" },
       { href: "/dashboard/paper-builder", label: "Question Paper Builder", labelKey: "nav.paperBuilder", icon: FileText, audience: "operational" },
       { href: "/dashboard/quizzes", label: "Quizzes", labelKey: "nav.quizzes", icon: PenSquare, audience: "operational" },
       { href: "/dashboard/exams", label: "Examinations", labelKey: "nav.examinations", icon: FileCheck2, audience: "operational" },

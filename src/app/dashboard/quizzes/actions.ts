@@ -4,243 +4,44 @@ import { audit } from "@/lib/admin";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperate } from "@/lib/operationalAccess";
-import { getEntitlementFor, isPlanLimitError, planLimitMessage, withinLimit } from "@/lib/entitlements";
+import { getEntitlementFor } from "@/lib/entitlements";
 import { defaultLiveSessionSettings } from "@/lib/live";
-import {
-  assessmentEquals,
-  parseQuestionAssessment,
-  validateQuestionAssessment,
-} from "@/lib/questionAssessment";
 import { isFeatureEnabledFor } from "@/lib/platform";
 import { createClient } from "@/lib/supabase/server";
+import { savePaperForActor, QuizSchema as PaperQuizSchema } from "@/lib/services/paperAuthoring";
 import { genCode } from "@/lib/utils";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-const QuizSchema = z.object({
-  id: z.string().optional(),
-  title: z.string().min(1).max(160),
-  description: z.string().max(1000).optional(),
-  status: z.enum(["draft", "published", "archived"]),
-  randomize_questions: z.boolean(),
-  randomize_options: z.boolean(),
-  time_per_question_seconds: z.number().int().min(5).max(3600),
-  question_ids: z.array(z.string()),
-  sections: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(8),
-        title: z.string().min(1).max(200),
-        instructions: z.string().max(1000).optional(),
-        questions: z.number().int().min(0).optional(),
-        marks: z.number().min(0).optional(),
-      }),
-    )
-    .max(12)
-    .optional(),
-  section_of: z.record(z.string(), z.string()).optional(),
-  /** Per-question assessment mapping (framework / MYP criteria+strands /
-   *  framework elements), keyed by question id. null clears a mapping. */
-  assessment_of: z.record(z.string(), z.unknown()).optional(),
-  calculator: z.boolean().optional(),
-  calculator_mode: z.enum(["scientific", "basic"]).optional(),
-  calculator_angle_mode: z.enum(["deg", "rad"]).optional(),
-  exam_period: z.string().max(120).optional(),
-  academic_year: z.string().max(40).optional(),
-  grade_label: z.string().max(80).optional(),
-  subject: z.string().max(120).optional(),
-  instructions: z.string().max(4000).optional(),
-  exam_paper_template_id: z.string().nullable().optional(),
-});
+/**
+ * The editor's contract is the shared authoring schema, not a copy of it.
+ *
+ * The save body moved into `lib/services/paperAuthoring.ts` so the AI core
+ * writes papers through the same code. Keeping one schema means a field the
+ * editor accepts can never be one the service silently drops.
+ */
+/** The validated paper shape, derived from the shared schema. */
+type QuizInput = z.infer<typeof PaperQuizSchema>;
 
-/** Turn database errors into something a teacher can act on — notably the
- *  assessment-source guard, which fires when a paper's questions belong to an
- *  attempt that is already in progress. */
-function friendlySaveError(error: { message?: string } | null): string {
-  const message = error?.message ?? "Unknown database error.";
-  if (message.includes("ASSESSMENT_SOURCE_IMMUTABLE")) {
-    return "This paper's questions belong to an examination attempt that is already in progress, so its question content and structure are locked. The paper title, template, instructions and other settings can still be saved.";
-  }
-  return message;
-}
-
-export async function saveQuiz(raw: z.infer<typeof QuizSchema>) {
+/**
+ * Paper Builder save. The implementation moved to
+ * `lib/services/paperAuthoring.ts` so the AI core writes papers through the
+ * same code; this action keeps the browser contract.
+ */
+export async function saveQuiz(raw: QuizInput) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
-  if (!org || !(await canOperate(ctx, org.id, raw?.id ? "quizzes.edit" : "quizzes.create", "quizzes"))) return { error: "You don't have permission to edit quizzes." };
-  const parsed = QuizSchema.safeParse(raw);
-  if (!parsed.success) return { error: "Please check the form." };
-  const q = parsed.data;
+  if (!org) return { error: "You don't have permission to edit quizzes." };
   const supabase = await createClient();
-
-  if (!q.id) {
-    const ent = await getEntitlementFor(supabase, ctx, org.id);
-    const { count } = await supabase.from("quizzes").select("id", { count: "exact", head: true }).eq("organization_id", org.id);
-    if (!withinLimit(ent.limits.max_quizzes, count ?? 0))
-      return { error: `Your ${ent.planName} plan allows ${ent.limits.max_quizzes} quizzes. Upgrade in Billing.` };
-  }
-
-  // Preserve unrelated settings keys (e.g. criterion totals, source) when
-  // editing an existing paper; only the builder-owned keys are replaced.
-  let preservedSettings: Record<string, unknown> = {};
-  if (q.id) {
-    const { data: existing } = await supabase
-      .from("quizzes")
-      .select("settings")
-      .eq("id", q.id)
-      .eq("organization_id", org.id)
-      .maybeSingle();
-    preservedSettings = ((existing?.settings as Record<string, unknown>) ?? {}) as Record<string, unknown>;
-  }
-
-  const payload = {
-    organization_id: org.id,
-    title: q.title,
-    description: q.description || null,
-    status: q.status,
-    settings: {
-      ...preservedSettings,
-      randomize_questions: q.randomize_questions,
-      randomize_options: q.randomize_options,
-      time_per_question_seconds: q.time_per_question_seconds,
-      ...(q.sections ? { sections: q.sections } : {}),
-      ...(q.calculator !== undefined ? { calculator: q.calculator } : {}),
-      ...(q.calculator_mode ? { calculator_mode: q.calculator_mode } : {}),
-      ...(q.calculator_angle_mode ? { calculator_angle_mode: q.calculator_angle_mode } : {}),
-      ...(q.exam_period !== undefined ? { exam_period: q.exam_period } : {}),
-      ...(q.academic_year !== undefined ? { academic_year: q.academic_year } : {}),
-      ...(q.grade_label !== undefined ? { grade_label: q.grade_label } : {}),
-      ...(q.subject !== undefined ? { subject: q.subject } : {}),
-      ...(q.instructions !== undefined ? { instructions: q.instructions } : {}),
-      ...(q.exam_paper_template_id !== undefined ? { exam_paper_template_id: q.exam_paper_template_id } : {}),
+  const result = await savePaperForActor(raw, { ctx, organizationId: org.id, supabase }, {
+    revalidate: () => {
+      revalidatePath("/dashboard/quizzes");
+      revalidatePath("/dashboard/paper-builder");
     },
-    created_by: ctx.user.id,
-    updated_at: new Date().toISOString(),
-  };
-
-  let quizId = q.id;
-  if (quizId) {
-    const { error } = await supabase.from("quizzes").update(payload).eq("id", quizId).eq("organization_id", org.id);
-    if (error) return { error: friendlySaveError(error) };
-  } else {
-    const { data, error } = await supabase.from("quizzes").insert(payload).select().single();
-    if (error && isPlanLimitError(error)) return { error: planLimitMessage(error) };
-    if (error || !data) return { error: error?.message ?? "Could not create the quiz." };
-    quizId = data.id;
-  }
-
-  // Verify the questions belong to this org (RLS also enforces on read).
-  // An empty in-list is skipped: PostgREST treats `in.()` inconsistently and
-  // a paper with no questions simply has nothing to verify.
-  const { data: owned } = q.question_ids.length
-    ? await supabase.from("questions").select("id, config").eq("organization_id", org.id).in("id", q.question_ids)
-    : { data: [] as { id: string; config: Record<string, unknown> | null }[] };
-  const ownedIds = new Set((owned ?? []).map((r) => r.id));
-  const desired = q.question_ids.filter((id) => ownedIds.has(id));
-
-  // Skip membership writes when the set and order are already correct: an
-  // attempt-locked paper must still save its settings, and a no-op write
-  // would trip the assessment-source guard for no reason.
-  const { data: currentRows } = await supabase
-    .from("quiz_questions")
-    .select("question_id")
-    .eq("quiz_id", quizId!)
-    .order("position", { ascending: true });
-  const current = (currentRows ?? []).map((r) => r.question_id);
-  const membershipUnchanged =
-    current.length === desired.length && current.every((id, index) => id === desired[index]);
-
-  if (!membershipUnchanged) {
-    // Membership: upsert the desired question set FIRST, then remove anything
-    // no longer on the paper. Deleting before writing meant a single failed
-    // insert silently emptied the paper's question list — checked writes only.
-    if (desired.length) {
-      const rows = desired.map((question_id, i) => ({ quiz_id: quizId!, question_id, position: i }));
-      const { error } = await supabase.from("quiz_questions").upsert(rows, { onConflict: "quiz_id,question_id" });
-      if (error) return { error: friendlySaveError(error) };
-    }
-    {
-      const deleteQuery = supabase.from("quiz_questions").delete().eq("quiz_id", quizId!);
-      const { error: removeError } = desired.length
-        ? await deleteQuery.not("question_id", "in", `(${desired.join(",")})`)
-        : await deleteQuery;
-      if (removeError) return { error: friendlySaveError(removeError) };
-    }
-  }
-
-  // ── Question-level assessment mapping ────────────────────────────────
-  // Persisted on quiz_questions.assessment (per paper+question association).
-  // Unchanged mappings are skipped order-insensitively (jsonb key order),
-  // so re-saving a paper on an attempt-locked exam never trips the
-  // assessment-source guard. Changed mappings are validated against the
-  // LIVE reference before writing — a mapping whose MYP strand no longer
-  // exists is rejected with a clear message, never silently rewritten.
-  if (q.assessment_of) {
-    const { data: assessRows, error: assessReadError } = await supabase
-      .from("quiz_questions")
-      .select("question_id, assessment")
-      .eq("quiz_id", quizId!);
-    if (assessReadError) return { error: friendlySaveError(assessReadError) };
-    const storedByQuestion = new Map<string, unknown>(
-      (assessRows ?? []).map((row: { question_id: string; assessment: unknown }) => [row.question_id, row.assessment ?? null]),
-    );
-    for (const questionId of desired) {
-      if (!(questionId in q.assessment_of)) continue; // untouched by this save
-      const raw = q.assessment_of[questionId];
-      if (raw === null || raw === undefined) {
-        const stored = storedByQuestion.get(questionId) ?? null;
-        if (stored === null) continue;
-        const { error: clearError } = await supabase
-          .from("quiz_questions")
-          .update({ assessment: null })
-          .eq("quiz_id", quizId!)
-          .eq("question_id", questionId);
-        if (clearError) return { error: friendlySaveError(clearError) };
-        continue;
-      }
-      const validation = validateQuestionAssessment(raw);
-      if (!validation.ok) {
-        return {
-          error: `Assessment mapping on one question is not valid (${validation.error}). Re-open the question's Assessment mapping panel, re-select the framework criteria and strands from the current reference, and save again.`,
-        };
-      }
-      const parsed = parseQuestionAssessment(raw);
-      if (!parsed) {
-        return { error: "Assessment mapping on one question could not be read. Re-select it in the Assessment mapping panel and save again." };
-      }
-      const stored = storedByQuestion.get(questionId) ?? null;
-      if (assessmentEquals(stored, parsed)) continue;
-      const { error: assessWriteError } = await supabase
-        .from("quiz_questions")
-        .update({ assessment: parsed })
-        .eq("quiz_id", quizId!)
-        .eq("question_id", questionId);
-      if (assessWriteError) return { error: friendlySaveError(assessWriteError) };
-    }
-  }
-
-  if (q.section_of) {
-    // Persist per-question section assignment without touching wording,
-    // options, keys or marks. Only the paper_section config key changes —
-    // and a guard rejection here must surface, never vanish silently.
-    for (const row of owned ?? []) {
-      const section = q.section_of[row.id];
-      if (!section) continue;
-      const cfg = ((row as { config?: Record<string, unknown> | null }).config ?? {}) as Record<string, unknown>;
-      if (cfg.paper_section === section) continue;
-      const { error: sectionError } = await supabase
-        .from("questions")
-        .update({ config: { ...cfg, paper_section: section }, updated_at: new Date().toISOString() })
-        .eq("id", row.id)
-        .eq("organization_id", org.id);
-      if (sectionError) return { error: friendlySaveError(sectionError) };
-    }
-  }
-
-  revalidatePath("/dashboard/quizzes");
-  revalidatePath("/dashboard/paper-builder");
-  return { ok: true, id: quizId };
+  });
+  if ("error" in result) return { error: result.error };
+  return { ok: true, id: result.id };
 }
 
 export async function duplicateQuiz(formData: FormData) {

@@ -1,6 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "./supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { OrgRole } from "./brand";
 import { getTenantSlugFromHost } from "./tenant";
 
@@ -235,4 +236,44 @@ export function can(ctx: SessionContext, orgId: string, roles: OrgRole[]) {
   if (ctx.profile.platform_role === "super_admin") return true;
   const m = ctx.memberships.find((x) => x.organization_id === orgId);
   return !!m && roles.includes(m.role);
+}
+
+/**
+ * Builds a `SessionContext` for a user WITHOUT reading cookies or headers.
+ *
+ * Used by the AI core's external-agent path: the agent's credential identifies
+ * an owner, and every operation then runs as that owner. The tenant is chosen
+ * explicitly by the caller and is only ever one of the owner's active
+ * memberships, so a credential can never reach a second organization.
+ */
+export async function sessionContextForUser(
+  supabase: SupabaseClient,
+  userId: string,
+  organizationId: string,
+): Promise<SessionContext | null> {
+  const [{ data: profile }, { data: membership }] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("id, email, full_name, platform_role, is_primary, status")
+      .eq("id", userId)
+      .maybeSingle(),
+    supabase
+      .from("organization_members")
+      .select("organization_id, role, organizations(id, name, slug, status, is_demo)")
+      .eq("user_id", userId)
+      .eq("organization_id", organizationId)
+      .eq("status", "active")
+      .maybeSingle(),
+  ]);
+  if (!profile || !membership) return null;
+  const row = membership as unknown as SessionContext["memberships"][number];
+  return {
+    user: { id: profile.id as string, email: (profile.email as string) ?? "" },
+    profile: profile as unknown as SessionContext["profile"],
+    memberships: [row],
+    adminOrgContext: null,
+    tenantSlug: null,
+    tenantDenied: false,
+    workspaceSelected: true,
+  };
 }

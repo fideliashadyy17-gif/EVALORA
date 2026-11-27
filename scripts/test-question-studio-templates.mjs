@@ -597,9 +597,11 @@ await check("a counter can never throw at a caller", async () => {
 
 await check("the counter is wired to question creation in both save paths", () => {
   const adminSave = read("src/app/admin/questions/actions.ts");
-  const dashboardSave = read("src/app/dashboard/questions/actions.ts");
+  // The organization save body moved into the shared authoring service when the
+  // AI core began creating questions through the same guards.
+  const dashboardSave = read("src/lib/services/questionAuthoring.ts");
   assert.ok(adminSave.includes("recordTemplateUse(q.template_id)"), "the Super Admin save counts one use");
-  assert.ok(dashboardSave.includes("getQuestionTemplate(q.template_id, org.id)"), "the organization save first checks the template is readable by that organization");
+  assert.ok(dashboardSave.includes("getQuestionTemplate(q.template_id, orgId)"), "the organization save first checks the template is readable by that organization");
   assert.ok(dashboardSave.includes("recordTemplateUse(q.template_id)"));
   const insertBlock = adminSave.slice(adminSave.indexOf('from("questions").insert(payload)'));
   assert.ok(insertBlock.indexOf("recordTemplateUse") < insertBlock.indexOf("update(payload)") || !insertBlock.includes("update(payload)"),

@@ -12,6 +12,7 @@ import path from "node:path";
 import ts from "typescript";
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
+import { compileRealModule } from "./__platform_config_stubs.mjs";
 import { renderToStaticMarkup } from "react-dom/server";
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -215,10 +216,15 @@ const db = makeDb();
 const serverStub = { createClient: async () => db };
 
 const quizActionsFile = path.resolve("scripts/__quiz_actions.cjs");
+const paperServiceFile = path.resolve("scripts/__paper_authoring_service.cjs");
 const quizActions = (() => {
   const orig = Module._load;
   Module._load = function (req, parent) {
     if (parent?.filename === quizActionsFile) {
+      // The paper save body moved into a shared authoring service (the AI core
+      // writes papers through it). Compile the REAL module under this suite's
+      // stubs so the persistence assertions still exercise shipped code.
+      if (req === "@/lib/services/paperAuthoring") return compileRealModule(paperServiceFile, "src/lib/services/paperAuthoring.ts");
       if (req === "@/lib/auth") return authStub;
       if (req === "@/lib/admin") return { audit: async () => {} };
       if (req === "@/lib/capabilities") return { getCapabilities: async () => ({ entitlement: { modules: null } }), requireModule: () => {} };
@@ -234,6 +240,15 @@ const quizActions = (() => {
       if (req === "@/lib/mypReference") return realMypReference;
       if (req === "next/cache") return cacheStub;
       if (req === "next/navigation") return navStub;
+    }
+    if (parent?.filename === paperServiceFile) {
+      if (req === "server-only") return {};
+      if (req === "../operationalAccess") return { canOperate: async () => true };
+      if (req === "../entitlements") return entitlementStub;
+      if (req === "../questionAssessment") return realQuestionAssessment;
+      if (req === "../mypExamConfig") return realMypExamConfig;
+      if (req === "../gradingSystems") return realGradingSystems;
+      if (req === "../mypReference") return realMypReference;
     }
     return orig.apply(this, arguments);
   };
@@ -638,11 +653,16 @@ check(paperEditPage.includes("grading_systems"), "edit page loads org grading sy
 const paperNewPage = readFileSync("src/app/dashboard/paper-builder/new/page.tsx", "utf8");
 check(paperNewPage.includes("grading_systems"), "new-paper page loads grading systems too");
 
+// The save body moved into the shared authoring service (the AI core writes
+// papers through the same guards), so the mapping contract is asserted there.
+// The action must still be the thin browser adapter for that service.
 const quizActionsSrc = readFileSync("src/app/dashboard/quizzes/actions.ts", "utf8");
-check(quizActionsSrc.includes("assessment_of"), "saveQuiz schema accepts assessment_of");
-check(quizActionsSrc.includes("validateQuestionAssessment"), "saveQuiz validates mappings server-side");
-check(quizActionsSrc.includes("assessmentEquals"), "saveQuiz skips unchanged mappings (attempt-lock safe)");
-check(quizActionsSrc.includes("friendlySaveError"), "guard errors stay friendly after mapping writes");
+const paperServiceSrc = readFileSync("src/lib/services/paperAuthoring.ts", "utf8");
+check(paperServiceSrc.includes("assessment_of"), "saveQuiz schema accepts assessment_of");
+check(paperServiceSrc.includes("validateQuestionAssessment"), "saveQuiz validates mappings server-side");
+check(paperServiceSrc.includes("assessmentEquals"), "saveQuiz skips unchanged mappings (attempt-lock safe)");
+check(paperServiceSrc.includes("friendlySaveError"), "guard errors stay friendly after mapping writes");
+check(quizActionsSrc.includes("savePaperForActor"), "the workspace save delegates to that one implementation");
 
 const examActionsSrc = readFileSync("src/app/dashboard/exams/actions.ts", "utf8");
 check(examActionsSrc.includes('from("quiz_questions")'), "exam workflow reads the paper through quiz_questions (mapping carries over)");

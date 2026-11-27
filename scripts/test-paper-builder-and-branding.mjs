@@ -147,8 +147,16 @@ const builderSrc = readFileSync("src/app/dashboard/paper-builder/PaperBuilder.ts
 check("builder never force-unwraps missing bank rows", !builderSrc.includes("byId.get(id)!") && builderSrc.includes("sectionFor("));
 check("builder shows missing paper questions instead of dropping them", builderSrc.includes("was not found in the loaded question bank"));
 
+// The paper save body moved into a shared service when the AI core needed to
+// write papers through the same guards; the action is now a thin browser
+// adapter, so the write-checking assertions follow the code to its home.
 const quizActions = readFileSync("src/app/dashboard/quizzes/actions.ts", "utf8");
-check("saveQuiz checks every write and maps the guard to a friendly error", quizActions.includes("friendlySaveError") && quizActions.includes("membershipUnchanged") && quizActions.includes("upsert"));
+const paperAuthoring = readFileSync("src/lib/services/paperAuthoring.ts", "utf8");
+check(
+  "saveQuiz checks every write and maps the guard to a friendly error",
+  paperAuthoring.includes("friendlySaveError") && paperAuthoring.includes("membershipUnchanged") && paperAuthoring.includes("upsert")
+    && quizActions.includes("savePaperForActor"),
+);
 
 const printableLib = readFileSync("src/lib/printablePaper.ts", "utf8");
 check("preview supports matching/ordering/assess_parts", ["\"matching\"", "\"ordering\"", "\"assess_parts\""].every((t) => printableLib.includes(t)));

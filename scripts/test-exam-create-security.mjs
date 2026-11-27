@@ -3,7 +3,7 @@
 // proctoringConfig, notificationService, maintenance, config/service …) resolve
 // through this shared fallback, installed before this suite captures Module._load
 // so every stub defined below still takes precedence.
-import "./__platform_config_stubs.mjs";
+import { registerRealParent } from "./__platform_config_stubs.mjs";
 import assert from 'node:assert/strict';import {readFileSync} from 'node:fs';import {Module} from 'node:module';import path from 'node:path';import ts from 'typescript';
 // Test-harness fallback: newly introduced platform modules (i18n, exam
 // content language, entitlement/module helpers) resolve with safe stubs when
@@ -17,7 +17,26 @@ const file=path.resolve('scripts/__workspace_exam_create.cjs');const org='aaaaaa
 function setup(){ctx={user:{id:'actor'},profile:{platform_role:'user'},org:{id:org,status:'active'},allowed:true};rows={quiz:{id:quizId,organization_id:org,status:'published'},paper:[{id:'item',points:2,questions:{organization_id:org,points:2}}]};flags={examinations:true,proctoring:true,limit:5,examCount:0};fail={};writes=[];adminWrites=[];insertError=null}
 const db={from(table){let mode='',payload;const filter={};const q={select(_cols,opts){if(!mode)mode=opts?.head?'count':'select';return q},eq(k,v){filter[k]=v;return q},limit(){return q},insert(v){mode='insert';payload=v;return q},async maybeSingle(){if(table==='quizzes'){if(fail.quiz)return{data:null,error:{}};const z=rows.quiz;return{data:z&&Object.entries(filter).every(([k,v])=>z[k]===v)?z:null,error:null}}throw Error('unexpected maybeSingle '+table)},async single(){assert.equal(table,'exams');assert.equal(mode,'insert');writes.push(payload);return insertError||fail.insert?{data:null,error:insertError??{}}:{data:{id:examId},error:null}},then(resolve,reject){let result;if(table==='exams'&&mode==='count')result={count:fail.count?null:flags.examCount,error:fail.count?{}:null};else if(table==='quiz_questions')result={data:fail.paper?null:rows.paper,count:fail.paper?null:flags.paperCount??rows.paper.length,error:fail.paper?{}:null};else throw Error('unexpected query '+table+' '+mode);return Promise.resolve(result).then(resolve,reject)}};return q}};
 const admin={from(table){assert.equal(table,'proctoring_rooms');return{async insert(v){adminWrites.push(v);return {error:fail.room?{}:null}}}}};const old=Module._load;
-Module._load=function(req,parent){if(parent?.filename===file){if(req==='@/lib/auth')return{requireUser:async()=>ctx,activeOrg:c=>c.org,can:c=>c.allowed,CREATOR_ROLES:[],MARKER_ROLES:[],PROCTOR_ROLES:[]};if(req==='@/lib/operationalAccess')return{canOperate:async(c)=>c.allowed};if(req==='@/lib/capabilities')return{getCapabilities:async()=>({entitlement:{limits:{max_exams:flags.limit}},capabilities:{examinations:flags.examinations,proctoring:flags.proctoring}})};if(req==='@/lib/entitlements')return{withinLimit:(limit,count)=>limit===-1||count<limit,isPlanLimitError:e=>Boolean(e&&(String(e.details??'').includes('PLAN_LIMIT:')||/reached its plan limit/i.test(String(e.message??'')))),planLimitMessage:()=>'Your plan limit has been reached. Upgrade in Billing to add more.'};if(req==='@/lib/ai-marking')return{describeAiMarking:()=>({configured:false,reason:'not configured'}),suggestCriterionMarks:async()=>{throw Error('unconfigured')},AiMarkingError:class extends Error{}};if(req==='@/lib/supabase/server')return{createClient:async()=>db,createAdminClient:()=>admin};if(req==='@/lib/utils')return{};if(req==='next/cache')return{revalidatePath:()=>{}};if(req==='next/navigation')return{redirect:url=>{const e=Error(url);e.url=url;throw e}}}return old.apply(this,arguments)};
+const SERVICE_FILE=path.resolve('scripts/__exam_creation_service.cjs');
+// The shared creation service is compiled under SERVICE_FILE below; it must see
+// the same auth/DB/limit boundaries this suite stubs for the action itself.
+Module._load=function(req,parent){if(parent?.filename===file||parent?.filename===SERVICE_FILE){if(req==='@/lib/auth')return{requireUser:async()=>ctx,activeOrg:c=>c.org,can:c=>c.allowed,CREATOR_ROLES:[],MARKER_ROLES:[],PROCTOR_ROLES:[]};if(req==='@/lib/operationalAccess')return{canOperate:async(c)=>c.allowed};if(req==='@/lib/capabilities')return{getCapabilities:async()=>({entitlement:{limits:{max_exams:flags.limit}},capabilities:{examinations:flags.examinations,proctoring:flags.proctoring}})};if(req==='@/lib/entitlements')return{withinLimit:(limit,count)=>limit===-1||count<limit,isPlanLimitError:e=>Boolean(e&&(String(e.details??'').includes('PLAN_LIMIT:')||/reached its plan limit/i.test(String(e.message??'')))),planLimitMessage:()=>'Your plan limit has been reached. Upgrade in Billing to add more.'};if(req==='@/lib/ai-marking')return{describeAiMarking:()=>({configured:false,reason:'not configured'}),suggestCriterionMarks:async()=>{throw Error('unconfigured')},AiMarkingError:class extends Error{}};if(req==='@/lib/supabase/server')return{createClient:async()=>db,createAdminClient:()=>admin};if(req==='../supabase/server')return{createClient:async()=>db,createAdminClient:()=>admin};
+if(req==='@/lib/services/examinationCreation'){
+  // `createExam` moved its body into a shared service when the AI assistant and
+  // external agents needed the identical guards. Compile that REAL module here,
+  // under this suite's boundary stubs, so the assertions still execute shipped
+  // code: `registerRealParent` lets its relative imports resolve to src/ even
+  // though it is loaded from a scripts/ stand-in filename.
+  const sf=SERVICE_FILE;
+  registerRealParent(sf,path.resolve('src/lib/services/examinationCreation.ts'));
+  const sv=new Module(sf);sv.filename=sf;sv.paths=Module._nodeModulePaths(path.dirname(sf));
+  sv._compile(ts.transpileModule(readFileSync('src/lib/services/examinationCreation.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,sf);
+  return sv.exports;
+}
+if(req==='@/lib/utils')return{};if(req==='next/cache')return{revalidatePath:()=>{}};if(req==='next/navigation')return{redirect:url=>{const e=Error(url);e.url=url;throw e}}}return old.apply(this,arguments)};
+// The creation service moved into src/lib/services/examinationCreation.ts when the
+// AI assistant needed the same guards. The interceptor above compiles that real
+// module on demand, so every assertion below still exercises shipped code.
 const m=new Module(file);m.filename=file;m.paths=Module._nodeModulePaths(path.dirname(file));m._compile(ts.transpileModule(readFileSync('src/app/dashboard/exams/actions.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,file);Module._load=old;
 async function run(overrides={}){const fd=new FormData();for(const [k,v] of Object.entries({title:'Exam',quiz_id:quizId,duration_minutes:'60',pass_mark_percent:'50',...overrides}))if(v!==null)fd.set(k,v);try{await m.exports.createExam(fd);throw Error('expected redirect')}catch(e){if(!e.url)throw e;return e.url}}
 let n=0;async function test(name,fn){setup();await fn();n++;console.log('  ✓ '+name)}
@@ -32,3 +51,4 @@ await test('proctoring room failure reports partial creation',async()=>{fail.roo
 await test('missing or suspended workspace and insufficient role are denied',async()=>{ctx.org=null;assert.equal(await run(),'/dashboard/exams');ctx.org={id:org,status:'suspended'};assert.equal(await run(),'/dashboard/exams');ctx.org.status='active';ctx.allowed=false;assert.equal(await run(),'/dashboard/exams');assert.equal(writes.length,0)});
 await test('a database quota rejection reaches the upgrade prompt, not a generic error',async()=>{insertError={message:'This workspace has reached its plan limit for examinations (2). Upgrade the plan to add more.',details:'PLAN_LIMIT:max_exams:2'};assert.match(await run(),/e=limit/);assert.equal(writes.length,1,'the insert was attempted and refused exactly once')});
 console.log(`\n${n} workspace exam creation security checks passed (actual action, mocked DB/auth).`);
+

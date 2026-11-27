@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createServiceClient } from "@supabase/supabase-js";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
 const SUPABASE_SERVER_TIMEOUT_MS = 10_000;
@@ -84,4 +85,45 @@ export function createAdminClient() {
       global: { fetch: createTimeoutFetch() },
     },
   );
+}
+
+/**
+ * A server client authenticated as a REAL user, without a browser.
+ *
+ * The external-agent path has no cookies: `createClient()` would hand back an
+ * anonymous client, so every RLS read returned nothing and every service-level
+ * `canOperate` resolved false. An agent then looked authenticated at the token
+ * boundary and powerless underneath it — a silent half-failure.
+ *
+ * Supabase's admin API can mint a one-time magic-link token for a user, and the
+ * public client can exchange it for a genuine session. That session carries the
+ * owner's real claims, so RLS evaluates exactly as it would in that person's
+ * browser: the agent is the owner, not a service role wearing their name.
+ *
+ * The token is single-use and never leaves this function. On any failure the
+ * caller must treat the request as unauthenticated rather than fall back to the
+ * service role.
+ */
+export async function createUserSessionClient(admin: SupabaseClient, userId: string, email: string) {
+  const { data, error } = await admin.auth.admin.generateLink({ type: "magiclink", email });
+  const hashed = data?.properties?.hashed_token;
+  if (error || !hashed) return null;
+
+  const client = createServiceClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+      db: SERVER_DB_OPTIONS,
+      global: { fetch: createTimeoutFetch() },
+    },
+  );
+  const { data: verified, error: verifyError } = await client.auth.verifyOtp({ token_hash: hashed, type: "magiclink" });
+  const session = verified?.session;
+  if (verifyError || !session) return null;
+  // The minted token must belong to the person we are acting for. A mismatch
+  // here would mean the agent was about to act as somebody else.
+  if (session.user?.id !== userId) return null;
+  await client.auth.setSession({ access_token: session.access_token, refresh_token: session.refresh_token });
+  return client;
 }

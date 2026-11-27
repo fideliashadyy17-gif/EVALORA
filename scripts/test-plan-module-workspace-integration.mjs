@@ -3,7 +3,7 @@
 //   node scripts/test-plan-module-workspace-integration.mjs
 //
 // Verifies end-to-end:
-//   1. Differentiated Free (12) / Premium (26) / Institution (41) plan matrices
+//   1. Differentiated Free (12) / Premium (26) / Institution (42) plan matrices
 //      in BOTH code (`PLAN_MODULE_TEMPLATES`) and non-destructive SQL migration.
 //   2. Zero "Not yet available in the organization workspace" (`surface.kind === "none"`)
 //      or org modules trapped in Super Admin only (`surface.kind === "admin"`).
@@ -70,7 +70,7 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
 
   ok(freeCount === 12, `Free enables 12 essential modules (got ${freeCount})`);
   ok(premCount === 26, `Premium enables 26 modules (got ${premCount})`);
-  ok(instCount === M.MODULE_CATALOG.length && instCount === 41, `Institution enables all 41 org modules (got ${instCount})`);
+  ok(instCount === M.MODULE_CATALOG.length && instCount === 42, `Institution enables all 42 org modules (got ${instCount})`);
   ok(freeCount < premCount && premCount < instCount, "Strict tier progression: Free < Premium < Institution");
 
   // Strict subset hierarchy: Free ⊂ Premium ⊂ Institution.
@@ -116,7 +116,12 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
 
 // ── 2. Non-destructive SQL migration matches code matrices 1:1 ──
 {
-  const sql = read("supabase/migrations/20261125180000_differentiated_plan_modules.sql");
+  // Modules added after the differentiated matrix get their own additive
+  // migration, so the key check reads every plan-matrix migration together.
+  const sql = [
+    read("supabase/migrations/20261125180000_differentiated_plan_modules.sql"),
+    read("supabase/migrations/20261127181000_ai_assistant_plan_module.sql"),
+  ].join("\n");
   const stmts = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
   ok(!/\bDROP\b|\bDELETE\b|\bTRUNCATE\b/i.test(stmts), "Migration contains zero DROP/DELETE/TRUNCATE");
   ok(stmts.includes("WHERE slug = 'free'") && stmts.includes("WHERE slug = 'premium'") && stmts.includes("WHERE slug = 'institution'"),
@@ -248,15 +253,15 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
   const premCov = M.computePlanCoverage(M.recommendedModulesForPlan("premium"));
   const instCov = M.computePlanCoverage(M.recommendedModulesForPlan("institution"));
   ok(
-    freeCov.enabled === 12 && freeCov.total === 41 && freeCov.percentLabel === "29.27%",
+    freeCov.enabled === 12 && freeCov.total === 42 && freeCov.percentLabel === "28.57%",
     `Free plan coverage computed dynamically: ${freeCov.enabled}/${freeCov.total} (${freeCov.percentLabel})`,
   );
   ok(
-    premCov.enabled === 26 && premCov.total === 41 && premCov.percentLabel === "63.41%",
+    premCov.enabled === 26 && premCov.total === 42 && premCov.percentLabel === "61.90%",
     `Premium plan coverage computed dynamically: ${premCov.enabled}/${premCov.total} (${premCov.percentLabel})`,
   );
   ok(
-    instCov.enabled === 41 && instCov.total === 41 && instCov.percentLabel === "100%",
+    instCov.enabled === 42 && instCov.total === 42 && instCov.percentLabel === "100%",
     `Institution plan coverage computed dynamically: ${instCov.enabled}/${instCov.total} (${instCov.percentLabel})`,
   );
 
@@ -264,28 +269,28 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
   const customMap = Object.fromEntries(M.MODULE_KEYS.map((k, idx) => [k, idx < 15]));
   const customCov = M.computePlanCoverage(customMap);
   ok(
-    customCov.enabled === 15 && customCov.total === 41 && customCov.percentLabel === "36.59%",
+    customCov.enabled === 15 && customCov.total === 42 && customCov.percentLabel === "35.71%",
     `Custom saved plan map recalculates dynamically: ${customCov.enabled}/${customCov.total} (${customCov.percentLabel})`,
   );
 
-  // Institution with NULL modules (pure default inheritance) ALSO yields 41/41 — 100%.
+  // Institution with NULL modules (pure default inheritance) ALSO yields 42/42 — 100%.
   const nullPlanCov = M.computePlanCoverage(null);
   ok(
-    nullPlanCov.enabled === 41 && nullPlanCov.total === 41 && nullPlanCov.percentLabel === "100%",
-    "Null plan modules default-inherit all 41 modules (100%)",
+    nullPlanCov.enabled === 42 && nullPlanCov.total === 42 && nullPlanCov.percentLabel === "100%",
+    "Null plan modules default-inherit all 42 modules (100%)",
   );
 
   // Override breakdown for Oak International School (Institution + null overrides)
   const oakBreakdown = M.computeOverrideBreakdown(M.recommendedModulesForPlan("institution"), null);
   ok(
-    oakBreakdown.enabled === 41 &&
-      oakBreakdown.total === 41 &&
+    oakBreakdown.enabled === 42 &&
+      oakBreakdown.total === 42 &&
       oakBreakdown.percentLabel === "100%" &&
-      oakBreakdown.inherited === 41 &&
-      oakBreakdown.inheritedEnabled === 41 &&
+      oakBreakdown.inherited === 42 &&
+      oakBreakdown.inheritedEnabled === 42 &&
       oakBreakdown.explicitOn === 0 &&
       oakBreakdown.explicitOff === 0,
-    "Oak Institution breakdown: 41/41 (100%), 41 inherited, 0 explicitly enabled, 0 explicitly disabled",
+    "Oak Institution breakdown: 42/42 (100%), 42 inherited, 0 explicitly enabled, 0 explicitly disabled",
   );
 
   // Override breakdown for Free with 2 explicitly enabled & 1 explicitly disabled
@@ -296,14 +301,14 @@ const C = require(`${process.cwd()}/.tmp-test-pmw/capability-rules.js`);
   });
   ok(
     mixedBreakdown.enabled === 13 &&
-      mixedBreakdown.inherited === 38 &&
+      mixedBreakdown.inherited === 39 &&
       mixedBreakdown.inheritedEnabled === 11 &&
       mixedBreakdown.explicitOn === 2 &&
       mixedBreakdown.explicitOff === 1,
     `Mixed override breakdown accurately separates inherited vs explicit on/off (got enabled=${mixedBreakdown.enabled})`,
   );
 
-  // Every single one of the 41 modules has a verified workspacePath, real existing /dashboard route file,
+  // Every single one of the 42 modules has a verified workspacePath, real existing /dashboard route file,
   // zero "none" surfaces, zero "not_implemented" availability, and strictly /admin/* reference links.
   const routeToPageFile = (href) => {
     const clean = href.split("?")[0].replace(/\/+$/, "");

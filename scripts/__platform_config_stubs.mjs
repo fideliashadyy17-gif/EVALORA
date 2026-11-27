@@ -50,14 +50,27 @@ function resolveAlias(specifier) {
  * Resolve a RELATIVE specifier from a module this shim loaded. Node's own
  * resolver cannot do this: the sources are TypeScript, so `./config/service`
  * has to be tried as `.ts` / `.tsx` / `/index.ts` before it resolves.
+ *
+ * A suite may also compile
+ * A suite may compile a genuine `src/` module under a stand-in filename inside
+ * `scripts/` so it runs the shipped body against that suite's own stubs. Such a
+ * filename is outside `src/`, but its relative imports still have to resolve
+ * against the real source it was compiled from — the suite registers that origin
+ * here before compiling.
  */
+const realParents = new Map();
+function registerRealParent(aliasFilename, sourceFilename) {
+  if (aliasFilename && sourceFilename) realParents.set(path.resolve(aliasFilename), sourceFilename);
+}
+
 function resolveRelative(specifier, parentFilename) {
   if (!specifier.startsWith(".")) return null;
   if (!parentFilename) return null;
   // Only handle parents inside src/ — anywhere else Node's resolver is correct.
   const srcRoot = path.join(ROOT, "src");
-  if (!parentFilename.startsWith(srcRoot)) return null;
-  const absolute = path.resolve(path.dirname(parentFilename), specifier);
+  const origin = realParents.get(path.resolve(parentFilename)) ?? parentFilename;
+  if (!origin.startsWith(srcRoot)) return null;
+  const absolute = path.resolve(path.dirname(origin), specifier);
   return resolveFromBase(absolute, "");
 }
 
@@ -283,7 +296,38 @@ export function installPlatformConfigStubs() {
   };
 }
 
-export { emptyDb, namespaceDefaults };
+/**
+ * Compile a genuine `src/` module under a stand-in filename, so a suite can run
+ * the SHIPPED body against its own boundary stubs instead of a copy of it.
+ *
+ * The stand-in filename is registered as an alias of the real source, so the
+ * module's relative imports (`../entitlements`, `./content`) resolve against the
+ * real location even though the file does not live there. The suite's own
+ * `Module._load` interceptor still sees the alias filename and can stub what it
+ * likes first.
+ */
+export function compileRealModule(aliasFilename, sourceFilename) {
+  const alias = path.resolve(aliasFilename);
+  const source = path.resolve(sourceFilename);
+  registerRealParent(alias, source);
+  const mod = new Module(alias);
+  mod.filename = alias;
+  mod.paths = Module._nodeModulePaths(path.dirname(alias));
+  const { outputText } = ts.transpileModule(readFileSync(source, "utf8"), {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2022,
+      jsx: ts.JsxEmit.ReactJSX,
+      esModuleInterop: true,
+      resolveJsonModule: true,
+    },
+    fileName: source,
+  });
+  mod._compile(outputText, alias);
+  return mod.exports;
+}
+
+export { emptyDb, namespaceDefaults, registerRealParent };
 
 // Self-installing on import. A suite adds `import "./__platform_config_stubs.mjs";`
 // as its first import and every interceptor it defines afterwards layers on top
