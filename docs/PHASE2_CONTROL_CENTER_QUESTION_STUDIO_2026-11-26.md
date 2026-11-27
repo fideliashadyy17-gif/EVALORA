@@ -5,9 +5,11 @@ Companion documents: `PLATFORM_CONTROL_CENTER_AUDIT_2026-11-26.md` (the discover
 that this record implements) and `EXECUTION_TRACKER.md` (the evidence ledger).
 
 This is a delivery record, not a completion claim. Everything below is code that
-exists on this branch and is exercised by the test suites named. Nothing here has
-been deployed to production or applied to the live database yet — see
-**Deployment state** at the end.
+exists on this branch and is exercised by the test suites named. Both migrations
+are now applied to the live database and a production build of this branch is
+promoted on Vercel — the exact state, including the smoke tests that ran against
+the live site and the one rollback candidate, is recorded in **Deployment
+state** at the end.
 
 ---
 
@@ -231,14 +233,13 @@ New pages: `/admin/control-center{,/organizations,/organizations/[id],/history,/
 
 ## 4. Deliberately not done (recorded, not implied)
 
-- **The two migrations are not applied to the live database.**
-  `20261126220000_platform_control_center_config.sql` and
-  `20261126230000_integrity_event_rpc_returns_organization.sql` exist on this
-  branch only. Until they are applied, every configured value resolves to its
-  schema default and the template tables do not exist — the code fails soft, so
-  the platform behaves exactly as it does today.
-- **No production deployment.** Vercel auto-deploy is disabled for project
-  `evalora`; a production deployment must be created explicitly.
+- The 8 new `access_permissions` keys (`platform.config.view|manage|org`,
+  `question.templates.manage`, `notification.templates.manage`,
+  `workflows.manage`, `reports.templates.manage`, `dashboard.layout.manage`) are
+  granted to **no** role yet. Until a role is granted them in the organization
+  access editor, the organization-facing Control Center page resolves to
+  read-only and the dashboard template page is reachable only through the
+  existing `questions.create` + `question_bank` module check.
 - The 277 `fmtDate`/`fmtDateTime`/`money()` call sites are not yet routed through
   `src/lib/formatting.ts` (Phase 4).
 - Notification *templates* (`notification_templates`), workflows, report
@@ -251,15 +252,34 @@ New pages: `/admin/control-center{,/organizations,/organizations/[id],/history,/
 
 ## 5. Deployment state
 
+Executed in the order the plan required: migrations first, then a promoted
+production build, then verification against the live site and the live database.
+
 | Step | Status |
 |---|---|
-| Branch pushed | pending |
-| Pull request opened | pending |
-| Migrations applied to Supabase `nqxqisjtbfsratgztmch` | pending |
-| Vercel production deployment (`prj_1PJb6jCOZPKQSxTTWkE6Gx9l6Ax7`, team `team_Wm3wd7SMXAgNyJggxDHo3l32`, repo id `1445403108`) | pending |
+| Branch pushed | `arena/fb70276a-evalora` @ `aa00a82` (Phase 2 code in `d620525`, landing-copy correction on top) |
+| Pull request opened | [#111](https://github.com/fideliashadyy17-gif/EVALORA/pull/111), base `main`, **not merged** |
+| Migrations applied to Supabase `nqxqisjtbfsratgztmch` | applied as `20261127022244 platform_control_center_config` and `20261127022309 integrity_event_rpc_returns_organization`; verified (9 tables, all RLS-enabled, 18 policies, 78 permission rows, 2 seeded values, RPC counter 0→1→2 then the probe row deleted) |
+| Production build of the branch | `npm run build` locally: exit 0, every new route compiled |
+| Vercel production deployment (`prj_1PJb6jCOZPKQSxTTWkE6Gx9l6Ax7`, team `team_Wm3wd7SMXAgNyJggxDHo3l32`, repo id `1445403108`) | `dpl_2EXF8TmC4uY69FS6JcMvS6YrotXH` from `aa00a82`, promoted to `evalora-edu.online`; its predecessor `dpl_8QUGpCEbMstcFjvH49veqhXFsn98` (`d620525`) was the first promoted build; rollback candidate `dpl_HAgHdakCqbmV5TfpEeeLDuDnV9xN` (`main` @ `fbdadab`) |
+| Live smoke test | `/` renders on the new build; `/maintenance` renders the configured notice page; `/admin/control-center` and `/dashboard/questions/templates` redirect unauthenticated visitors to `/login?next=…`, which is the authorized path; the new API route `/api/exam/device-check` is registered in the build output |
 
-Order matters: apply the migrations **before** promoting a build that writes
-configuration rows, and verify `/admin/control-center` and
-`/dashboard/questions/templates` against the live database afterwards. The
-rollback path is to leave the tables empty — every consumer fails soft to the
-shipped defaults.
+Two consequences to keep in view:
+
+1. **Production now serves code from this branch, not from `main`.** Vercel
+   auto-deploy is disabled for project `evalora`, so every deploy is explicit —
+   and this one was promoted while PR #111 is still open. Merging the PR does
+   not redeploy anything; it only makes `main` match what users are already
+   served. Rolling back is a Vercel action, not a database one.
+2. **The database change is not reversible by rolling the build back.** The
+   migrations are additive and were applied before the build, so the previous
+   deployment keeps working against them (it simply never reads the new tables).
+   The supported rollback path is to leave `platform_config_values` and
+   `question_templates` empty — every consumer fails soft to its shipped
+   default.
+
+A correction that this deployment surfaced: `src/lib/landing.ts` hard-codes the
+route counts it quotes as verified ("Product routes", "Verified in /admin
+(… routes)") and both had drifted from the census that
+`scripts/test-platform-redesign-audit.mjs` asserts. They are now 185 and 95, and
+the comment points at the suite so the claim and the assertion stay together.

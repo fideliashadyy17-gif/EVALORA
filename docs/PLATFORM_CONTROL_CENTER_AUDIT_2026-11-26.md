@@ -229,3 +229,19 @@ Phase 6: 5.10 dashboard builder.
 Phase 7: end-to-end verification, regression, deployment.
 
 Every phase ships functional and wired — no placeholder screens.
+
+### Delivery status as shipped (updated after the build was promoted)
+
+The order above was the plan; what actually shipped moved Phase 3 into the same
+delivery, because the Question Studio settings only became honest once the
+templates and design tokens existed to carry them.
+
+| Phase | State |
+|---|---|
+| 2 — 5.1–5.5 architecture, Control Center, platform + organization configuration, the two confirmed defect repairs | **Delivered**, on branch `arena/fb70276a-evalora` (PR #111), migrations applied to Supabase `nqxqisjtbfsratgztmch`, production build promoted. Record: `PHASE2_CONTROL_CENTER_QUESTION_STUDIO_2026-11-26.md`. |
+| 3 — 5.6 Question Studio templates + design tokens | **Delivered in the same increment** (deliberately: `question_studio.*` had no consumer without it). |
+| — Admission device checks (defect 3.x) | **Delivered in the same increment.** |
+| 4 — assessment/marking/results configuration surface | Partially delivered: the `assessment` and `examination` namespaces exist and are consumed (`examFeedback.passMarkFrom`, marking defaults, result-link expiry). The 277 `fmtDate`/`fmtDateTime`/`money()` call sites in `src/lib/utils.ts` are still not routed through `src/lib/formatting.ts`, so `formatting.*` is honoured by the new code paths only. **Open.** |
+| 5 — 5.7 notifications, 5.8 workflows, 5.9 reports, 5.11 proctoring | Proctoring policy delivered (thresholds, capability report, incident note). Notification *delivery* is exposed read-only because no email provider exists. `notification_templates`, `workflow_definitions`, `workflow_runs`, `report_templates` exist as tables + RLS + permission keys with **no administrative surface**. **Open.** |
+| 6 — 5.10 dashboard builder | `dashboard_layouts` table + RLS + permission key only. **Open.** |
+| 7 — end-to-end verification, regression, deployment | Deployment done and smoke-tested unauthenticated; the authenticated end-to-end pass (a real Super Admin editing a value and watching it change a rendered page) has **not** been run against production. **Open.** |
