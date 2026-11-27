@@ -1,5 +1,5 @@
 import { PageNavigation } from "@/components/PageNavigation";
-import { Badge, Button, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
+import { Badge, Button, ButtonLink, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
 import { Bell, CreditCard, LifeBuoy, ShieldAlert, Users } from "lucide-react";
@@ -55,7 +55,27 @@ export default async function AdminNotifications({
         eyebrow="Platform Administration · Alerts & Communications"
         title="Notifications & broadcast center"
         subtitle="Monitor operational attention queues and dispatch immediate, audit-logged in-app announcements to every user, an entire institution or an individual account."
+        action={
+          <ButtonLink href="/admin/control-center/notifications" variant="outline">
+            Notification wording & templates →
+          </ButtonLink>
+        }
       />
+
+      <Card className="mb-6 p-5">
+        <h2 className="font-display text-base font-semibold text-evergreen-950">
+          Generated notifications are written from templates
+        </h2>
+        <p className="mt-1.5 text-sm text-ink-soft">
+          The messages EVALORA generates itself — a payment verified, a member added, a retake decided — take their
+          wording from the{" "}
+          <Link href="/admin/control-center/notifications" className="font-medium text-evergreen-800 underline">
+            notification wording console
+          </Link>
+          , where each event shows the copy in force and who it came from. What you compose below is different: a
+          broadcast or a targeted message is written by you at send time, so it has no template.
+        </p>
+      </Card>
       {sp.sent && (
         <p role="status" className="mb-4 rounded-xl bg-evergreen-50 px-4 py-3 text-sm font-medium text-evergreen-900 ring-1 ring-evergreen-600/30">
           Delivered to {sp.sent} recipient(s).

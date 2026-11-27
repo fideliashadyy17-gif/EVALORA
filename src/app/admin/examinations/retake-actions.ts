@@ -168,6 +168,7 @@ export async function approveRetakeAsAdmin(formData: FormData) {
     note,
     accessExpiresAt: window.expiresAt,
     retakeCode,
+    organizationId: exam.organization_id,
   });
 
   revalidateAll();
@@ -236,6 +237,7 @@ export async function rejectRetakeAsAdmin(formData: FormData) {
     examTitle: exam.title,
     decision: "rejected",
     note,
+    organizationId: exam.organization_id,
   });
 
   revalidateAll();

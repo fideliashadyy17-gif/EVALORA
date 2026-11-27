@@ -481,12 +481,15 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     key: "org_settings",
     group: "institution",
     label: "Organization settings",
-    description: "Tenant settings, branding and portal.",
+    description: "Tenant settings, branding, portal and notification wording.",
     recommendedPlan: "free",
     availability: "implemented",
-    workspacePath: "Dashboard → Organization Settings → Configuration",
+    workspacePath: "Dashboard → Organization Settings → Configuration / Notification wording",
     adminReferenceHref: "/admin/control-center/organizations",
-    surface: { kind: "nav", hrefs: ["/dashboard/settings", "/dashboard/settings/configuration"] },
+    surface: {
+      kind: "nav",
+      hrefs: ["/dashboard/settings", "/dashboard/settings/configuration", "/dashboard/settings/notifications"],
+    },
   },
   {
     key: "rubrics",

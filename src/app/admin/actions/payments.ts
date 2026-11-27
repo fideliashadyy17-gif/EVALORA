@@ -5,6 +5,7 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { sendNotification } from "@/lib/notificationDelivery";
 
 const PAYMENT_STATUSES = ["pending", "approved", "rejected", "expired", "refunded", "cancelled"];
 
@@ -80,7 +81,10 @@ export async function createManualPayment(formData: FormData) {
   let subscriptionId: string | null = null;
   if (status === "approved" && planId) {
     subscriptionId = await activatePaidSubscription(orgId!, planId, String(formData.get("billing_period") ?? "monthly"));
-    await notifyOrgAdmins(orgId!, "Subscription activated", `A payment of ${money(Math.round(amount! * 100), (fstr(formData, "currency", 3) ?? "USD").toUpperCase())} (ref ${ref}) was recorded and your subscription is now active.`, "/dashboard/billing");
+    await notifyOrgAdmins(orgId!, "payment_recorded", {
+      amount: money(Math.round(amount! * 100), (fstr(formData, "currency", 3) ?? "USD").toUpperCase()),
+      transaction_ref: ref,
+    });
   }
   await audit(ctx, "payment.manual_recorded", "payment_requests", data!.id, orgId, {
     amount_cents: Math.round(amount! * 100), ref, status, source, subscription: subscriptionId,
@@ -128,7 +132,9 @@ export async function updatePayment(formData: FormData) {
   // Newly approved from pending → activate the subscription once.
   if (status === "approved" && before!.status === "pending" && planId) {
     await activatePaidSubscription(before!.organization_id, planId, before!.billing_period);
-    await notifyOrgAdmins(before!.organization_id, "Payment approved — subscription active", `Your payment (ref ${patch.transaction_ref}) was verified and your subscription is active.`, "/dashboard/billing");
+    await notifyOrgAdmins(before!.organization_id, "payment_verified", {
+      transaction_ref: patch.transaction_ref,
+    });
   }
   await audit(ctx, "payment.updated", "payment_requests", id, before!.organization_id, {
     before: { amount_cents: before!.amount_cents, status: before!.status, ref: before!.transaction_ref },
@@ -159,13 +165,24 @@ export async function setPaymentStatusAdmin(formData: FormData) {
     from: before!.status, amount_cents: before!.amount_cents, note,
   });
   if (status === "refunded") {
-    await notifyOrgAdmins(before!.organization_id, "Payment refunded", `A payment of ${money(before!.amount_cents, before!.currency)} was refunded by the EVALORA team.`, "/dashboard/billing");
+    await notifyOrgAdmins(before!.organization_id, "payment_refunded", {
+      amount: money(before!.amount_cents, before!.currency),
+    });
   }
   revalidatePath("/admin/payments");
   redirect(`/admin/payments/${id}?ok=status_${status}`);
 }
 
-async function notifyOrgAdmins(orgId: string, title: string, body: string, link: string) {
+/**
+ * Tell an organization's owners and administrators about a billing decision.
+ *
+ * The copy comes from the notification template in force for that organization
+ * (its own, else the platform default, else the wording shipped with the
+ * event), and delivery honours that organization's in-app switch. A suppressed
+ * or failed notification never fails the decision it reports: the payment has
+ * already been recorded by the time anyone is told about it.
+ */
+async function notifyOrgAdmins(orgId: string, event: string, values: Record<string, unknown> = {}) {
   const admin = createAdminClient();
   const { data: members } = await admin
     .from("organization_members")
@@ -173,11 +190,13 @@ async function notifyOrgAdmins(orgId: string, title: string, body: string, link:
     .eq("organization_id", orgId)
     .in("role", ["owner", "admin"])
     .eq("status", "active");
-  if (members?.length) {
-    await admin.from("notifications").insert(
-      members.map((m) => ({ user_id: m.user_id, type: "payment", title, body, link })),
-    );
-  }
+  if (!members?.length) return;
+  await sendNotification(admin, {
+    event,
+    organizationId: orgId,
+    userIds: members.map((m) => m.user_id as string),
+    values,
+  });
 }
 
 export async function savePaymentConfig(formData: FormData) {
@@ -249,7 +268,7 @@ export async function assignSubscription(formData: FormData) {
   const { data, error } = await admin.from("subscriptions").insert(payload).select("id").single();
   if (error || !data) redirect(`${back}${sep}e=assign_failed`);
   await audit(ctx, "subscription.assigned", "subscriptions", data!.id, orgId, { kind, plan_id: planId });
-  await notifyOrgAdmins(orgId!, "Subscription updated", "Your organization's plan was updated by the EVALORA team.", "/dashboard/billing");
+  await notifyOrgAdmins(orgId!, "subscription_updated");
   revalidatePath("/admin/subscriptions");
   redirect(`${back}${sep}ok=subscription_assigned`);
 }

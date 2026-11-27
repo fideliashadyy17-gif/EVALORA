@@ -16,6 +16,7 @@ import { loadQuizQuestions, randomizeQuestionRows } from "./live";
 import { retakeState, usableGrant, type RetakeRequestView, type RetakeState } from "./examRetake";
 import { parseExamAccessSettings } from "./exam-access.ts";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { sendNotification } from "./notificationDelivery";
 
 export interface RetakeExamRow {
   id: string;
@@ -286,6 +287,12 @@ export async function notifyRetakeDecision(
     accessExpiresAt?: string | null;
     /** The code issued by the approval, shown to the student with the decision. */
     retakeCode?: string | null;
+    /**
+     * Organization the examination belongs to. Its notification templates and
+     * its own in-app switch apply to this message; without it only the platform
+     * default copy can be used.
+     */
+    organizationId?: string | null;
   },
 ) {
   let profileId: string | null = input.request.requested_by ?? null;
@@ -315,22 +322,33 @@ export async function notifyRetakeDecision(
   if (!profileId) return;
 
   const approved = input.decision === "approved";
-  const body = approved
-    ? `Your retake request for “${input.examTitle}” was approved.`
-      + (input.retakeCode ? ` Retake code: ${input.retakeCode}.` : "")
-      + (input.accessExpiresAt ? ` Start the authorized attempt before ${input.accessExpiresAt} (UTC).` : "")
-      + " Your original submitted attempt is preserved."
-    : `Your retake request for “${input.examTitle}” was rejected.`
-      + (input.note ? ` Reason: ${input.note}` : "")
-      + " Your original submitted attempt is unchanged.";
 
-  // The link opens the decision page itself, so a notification always leads to
-  // the exact request — never to a dashboard the student then has to search.
-  await admin.from("notifications").insert({
-    user_id: profileId,
-    type: approved ? "exam_retake_approved" : "exam_retake_rejected",
-    title: approved ? "Retake approved" : "Retake request rejected",
-    body,
-    link: `/retake/${input.request.id}`,
+  // The wording comes from the notification template in force for this
+  // organization (or the platform default, or the copy shipped in the event
+  // registry). The optional clauses are composed here, whole, so an edited
+  // template can never leave a student reading "Retake code: ." when no code
+  // was issued — the sentences around them are the editable part.
+  //
+  // The link is declared by the event as `/retake/{{retake_request_id}}`, so a
+  // notification still opens the decision page itself and never a dashboard the
+  // student then has to search.
+  await sendNotification(admin, {
+    event: approved ? "exam_retake_approved" : "exam_retake_rejected",
+    organizationId: input.organizationId ?? null,
+    userIds: [profileId],
+    values: approved
+      ? {
+          exam_title: input.examTitle,
+          retake_request_id: input.request.id,
+          retake_code_clause: input.retakeCode ? ` Retake code: ${input.retakeCode}.` : "",
+          access_deadline_clause: input.accessExpiresAt
+            ? ` Start the authorized attempt before ${input.accessExpiresAt} (UTC).`
+            : "",
+        }
+      : {
+          exam_title: input.examTitle,
+          retake_request_id: input.request.id,
+          rejection_reason_clause: input.note ? ` Reason: ${input.note}` : "",
+        },
   });
 }

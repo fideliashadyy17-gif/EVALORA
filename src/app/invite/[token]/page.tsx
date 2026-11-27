@@ -1,6 +1,7 @@
 import { AuthShell } from "@/components/AuthShell";
 import { Button, ButtonLink } from "@/components/ui";
 import { getSessionContext } from "@/lib/auth";
+import { sendNotification } from "@/lib/notificationDelivery";
 import { createAdminClient } from "@/lib/supabase/server";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -33,12 +34,10 @@ async function accept(formData: FormData) {
   if (outcome === "limit") redirect(`/invite/${token}?e=limit`);
   if (outcome === "expired") redirect(`/invite/${token}?e=expired`);
   if (outcome === "invalid") redirect(`/invite/${token}?e=expired`);
-  await admin.from("notifications").insert({
-    user_id: ctx.user.id,
-    type: "invitation",
-    title: "Invitation accepted",
-    body: "You joined a new organization workspace.",
-    link: "/dashboard",
+  await sendNotification(admin, {
+    event: "invitation_accepted",
+    organizationId: inv.organization_id,
+    userIds: [ctx.user.id],
   });
   redirect("/auth/resolve");
 }

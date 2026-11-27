@@ -939,7 +939,11 @@ export const CONFIG_SCHEMA: readonly ConfigKeyDef[] = [
     label: "In-app notifications",
     description: "Master switch for the notification bell and the notifications page. Operational: notifications are written to the notifications table and delivered through the existing bell.",
     kind: "boolean", writableScopes: ["global", "organization"], default: true,
-    consumedBy: ["src/lib/notificationService.ts", "src/components/dashboard/NotificationBell.tsx"],
+    consumedBy: [
+      "src/lib/notificationService.ts",
+      "src/lib/notificationDelivery.ts (delivery is suppressed when this is off)",
+      "src/components/dashboard/NotificationBell.tsx",
+    ],
     connectedModules: ["platform"], order: 1,
   },
   {
@@ -947,7 +951,12 @@ export const CONFIG_SCHEMA: readonly ConfigKeyDef[] = [
     label: "Sender display name",
     description: "Name shown as the sender on generated notifications and, once an email provider is connected, on outgoing mail.",
     kind: "string", writableScopes: ["global", "organization"], default: "EVALORA",
-    maxLength: 80, consumedBy: ["src/lib/notificationService.ts"], connectedModules: ["platform"], order: 2,
+    maxLength: 80,
+    consumedBy: [
+      "src/lib/notificationService.ts",
+      "src/lib/notificationDelivery.ts (supplied to templates as {{sender_name}})",
+    ],
+    connectedModules: ["platform"], order: 2,
   },
   {
     namespace: "notifications", key: "email_delivery_available", group: "Delivery",

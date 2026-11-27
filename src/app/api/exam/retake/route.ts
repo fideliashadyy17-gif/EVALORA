@@ -9,6 +9,7 @@ import {
   type RetakeCandidateRow,
   type RetakeExamRow,
 } from "@/lib/examRetakeServer";
+import { sendNotification } from "@/lib/notificationDelivery";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
 import { z } from "zod";
@@ -375,22 +376,23 @@ export async function POST(request: Request) {
     },
   });
 
-  // Tell the Super Admins there is something to decide.
+  // Tell the Super Admins there is something to decide. The wording comes from
+  // the notification template in force; the platform's own in-app switch
+  // governs delivery, so an organization can never silence the retake queue.
   const { data: supers } = await admin
     .from("profiles")
     .select("id")
     .eq("platform_role", "super_admin");
-  if (supers?.length) {
-    await admin.from("notifications").insert(
-      supers.map((s) => ({
-        user_id: s.id as string,
-        type: "exam_retake_requested",
-        title: "New retake request",
-        body: `${requesterName} requested a retake of “${exam.title}”.`,
-        link: "/admin/examinations/retakes",
-      })),
-    );
-  }
+  await sendNotification(admin, {
+    event: "exam_retake_requested",
+    organizationId: exam.organization_id,
+    userIds: (supers ?? []).map((s) => s.id as string),
+    values: {
+      requester_name: requesterName,
+      exam_title: exam.title,
+      candidate_name: typeof candidate.full_name === "string" ? candidate.full_name : "",
+    },
+  });
 
   const next = await loadRetakeStateForCandidate(admin, {
     examId: exam.id,

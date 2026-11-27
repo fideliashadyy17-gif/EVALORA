@@ -337,6 +337,7 @@ export async function authorizeOrgRetake(formData: FormData) {
       note: reason,
       accessExpiresAt: window.expiresAt,
       retakeCode,
+      organizationId: org.id,
     }),
   ]);
 
@@ -398,6 +399,7 @@ export async function decideOrgRetakeRequest(formData: FormData) {
         decision: "rejected",
         note,
         accessExpiresAt: null,
+        organizationId: org.id,
       }),
     ]);
     revalidatePath("/dashboard/monitoring");
@@ -460,6 +462,7 @@ export async function decideOrgRetakeRequest(formData: FormData) {
       decision: "approved",
       note,
       accessExpiresAt: window.expiresAt,
+      organizationId: org.id,
       retakeCode,
     }),
   ]);

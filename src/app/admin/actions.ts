@@ -7,6 +7,7 @@ import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { sendNotification } from "@/lib/notificationDelivery";
 
 async function audit(action: string, entity: string, entityId: string, orgId?: string | null, metadata?: Record<string, unknown>) {
   const ctx = await requireSuperAdmin();
@@ -65,15 +66,25 @@ export async function reviewPayment(formData: FormData) {
     }).eq("id", id);
   }
 
+  // The wording of this decision comes from the notification template in force
+  // for the paying organization — its own, else the platform default, else the
+  // copy shipped with the event. The amount keeps the currency recorded on the
+  // request; a template can move the words but never the money.
   if (pr.submitted_by) {
-    await admin.from("notifications").insert({
-      user_id: pr.submitted_by,
-      type: "payment",
-      title: decision === "approve" ? "Payment approved — subscription active" : "Payment not approved",
-      body: decision === "approve"
-        ? `Your ${pr.plans.name} subscription (${money(pr.amount_cents, pr.currency)}, ref ${pr.transaction_ref}) is now active.`
-        : `Your payment (ref ${pr.transaction_ref}) was not approved. ${note ?? "Please check the reference and try again."}`,
-      link: "/dashboard/billing",
+    await sendNotification(admin, {
+      event: decision === "approve" ? "payment_request_approved" : "payment_request_rejected",
+      organizationId: pr.organization_id,
+      userIds: [pr.submitted_by],
+      values: decision === "approve"
+        ? {
+            plan_name: pr.plans.name,
+            amount: money(pr.amount_cents, pr.currency),
+            transaction_ref: pr.transaction_ref,
+          }
+        : {
+            transaction_ref: pr.transaction_ref,
+            admin_note: note ?? "Please check the reference and try again.",
+          },
     });
   }
   await audit(decision === "approve" ? "payment.approved" : "payment.rejected", "payment_requests", id, pr.organization_id, { ref: pr.transaction_ref });

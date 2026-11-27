@@ -14,7 +14,10 @@ import "server-only";
  * What *is* operational:
  *   • in-app notifications — rows in the `notifications` table, surfaced by the
  *     bell and `/dashboard/notifications`, gated by `in_app_enabled`;
- *   • the sender display name used when a notification is generated.
+ *   • the sender display name used when a notification is generated;
+ *   • the wording of every generated notification, from `notification_templates`
+ *     (see `@/lib/notificationTemplates` for the event registry and
+ *     `@/lib/notificationDelivery` for the resolution and the write).
  *
  * Nothing here exposes credentials, tokens or passwords, and no template
  * variable is ever resolved to a secret.
@@ -159,44 +162,22 @@ export async function notificationsEnabledFor(
   }
 }
 
-/**
- * Variables a notification template may use.
- *
- * Deliberately a closed list of non-sensitive values. No password, token,
- * secret, access code hash or credential is ever offered as a template
- * variable, so a template cannot leak one even by accident.
- */
-export const NOTIFICATION_TEMPLATE_VARIABLES = [
-  { token: "{{candidate_name}}", label: "Candidate name", example: "Amina Diallo" },
-  { token: "{{exam_title}}", label: "Examination title", example: "MYP 4 Mathematics — Term 1 Summative" },
-  { token: "{{exam_date}}", label: "Examination date", example: "12 March 2026" },
-  { token: "{{exam_time}}", label: "Examination start time", example: "09:00" },
-  { token: "{{access_code}}", label: "Examination access code", example: "K7Q2M9" },
-  { token: "{{result_link}}", label: "Secure individual result link", example: "https://…/exam/result/<token>" },
-  { token: "{{organization_name}}", label: "Organization name", example: "Oak International School" },
-  { token: "{{sender_name}}", label: "Configured sender display name", example: "EVALORA" },
-] as const;
-
-export type NotificationTemplateVariable = (typeof NOTIFICATION_TEMPLATE_VARIABLES)[number]["token"];
+// ─────────────────────────── templates ─────────────────────────────────────
 
 /**
- * Substitute template variables from a closed, non-sensitive value map.
+ * The template variable allowlist and the renderer live in
+ * `@/lib/notificationTemplates`, next to the event registry they belong to, and
+ * are re-exported here so the surfaces and suites that already import them from
+ * the notification service keep one source of truth.
  *
- * Unknown tokens are left untouched rather than replaced with an empty string,
- * so a preview shows an author exactly which variable they got wrong. Values
- * are coerced to text and control characters stripped; nothing here parses or
- * executes the template.
+ * Both remain what they were: a closed list of non-sensitive values — no
+ * password, token, secret, access-code hash or credential is ever offered, so a
+ * template cannot leak one even by accident — and pure string substitution that
+ * leaves an unknown token visible instead of blanking it.
  */
-export function renderNotificationTemplate(
-  template: string,
-  values: Record<string, unknown>,
-): string {
-  if (typeof template !== "string" || !template) return "";
-  return template.replace(/\{\{\s*([a-z_]+)\s*\}\}/gi, (match, name: string) => {
-    const key = name.trim().toLowerCase();
-    if (!(key in values)) return match;
-    const raw = values[key];
-    if (raw === null || raw === undefined) return "";
-    return String(raw).replace(/[\u0000-\u001f\u007f]/g, " ").slice(0, 2000);
-  });
-}
+export {
+  NOTIFICATION_TEMPLATE_VARIABLES,
+  NOTIFICATION_VARIABLES,
+  renderNotificationTemplate,
+} from "@/lib/notificationTemplates";
+export type { NotificationTemplateVariable } from "@/lib/notificationTemplates";

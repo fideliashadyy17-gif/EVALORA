@@ -186,6 +186,7 @@ const GROUPS: NavGroup[] = [
       { href: "/admin/control-center", label: "Platform Control Center", labelKey: "admin.controlCenterNav", icon: SlidersHorizontal },
       { href: "/admin/control-center/organizations", label: "Organization Configuration", labelKey: "admin.orgConfigNav", icon: Building2 },
       { href: "/admin/control-center/history", label: "Configuration History", labelKey: "admin.configHistoryNav", icon: History },
+      { href: "/admin/control-center/notifications", label: "Notification Wording", labelKey: "admin.notificationWordingNav", icon: PenSquare },
       { href: "/admin/settings", label: "Platform Settings", labelKey: "admin.platformSettingsNav", icon: Settings },
       { href: "/admin/modules", label: "Modules & Features", labelKey: "admin.modulesFeatures", icon: Blocks },
       { href: "/admin/audit", label: "Audit Logs", labelKey: "admin.auditLogs", icon: ScrollText },

@@ -122,6 +122,7 @@ export default async function SettingsPage({
         action={isManager ? (
           <div className="flex flex-wrap gap-2">
             <ButtonLink href="/dashboard/settings/templates" variant="outline">Paper templates →</ButtonLink>
+            <ButtonLink href="/dashboard/settings/notifications" variant="outline">Notification wording →</ButtonLink>
             <ButtonLink href="/dashboard/settings/proctoring" variant="outline">Proctoring retention →</ButtonLink>
           </div>
         ) : undefined}

@@ -76,6 +76,7 @@ const NAV_SECTIONS: { title?: string; titleKey?: string; items: NavItem[] }[] = 
       { href: "/dashboard/grading", label: "Grading Systems", labelKey: "nav.gradingSystems", icon: Percent, audience: "managers" },
       { href: "/dashboard/settings", label: "Organization Settings", labelKey: "nav.organizationSettings", icon: Settings, audience: "managers" },
       { href: "/dashboard/settings/configuration", label: "Configuration", labelKey: "nav.orgConfiguration", icon: SlidersHorizontal, audience: "managers" },
+      { href: "/dashboard/settings/notifications", label: "Notification Wording", labelKey: "nav.orgNotificationWording", icon: PenSquare, audience: "managers" },
     ],
   },
   {

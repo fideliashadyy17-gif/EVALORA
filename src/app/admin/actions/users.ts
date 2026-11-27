@@ -1,6 +1,7 @@
 "use server";
 
 import { audit, FLASH_COOKIE, fstr, requireSuperAdmin } from "@/lib/admin";
+import { sendNotification } from "@/lib/notificationDelivery";
 import { createAdminClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
@@ -54,11 +55,11 @@ export async function createUserAccount(formData: FormData) {
       { organization_id: orgId, user_id: userId, role, status: "active" },
       { onConflict: "organization_id,user_id" },
     );
-    await admin.from("notifications").insert({
-      user_id: userId, type: "info",
-      title: "Welcome to EVALORA",
-      body: `Your account was created by an administrator with the role ${role}.`,
-      link: "/dashboard",
+    await sendNotification(admin, {
+      event: "account_created",
+      organizationId: orgId,
+      userIds: userId ? [userId] : [],
+      values: { member_role: role },
     });
   }
 
@@ -113,13 +114,12 @@ export async function setSuperAdminRole(formData: FormData) {
   if (id === ctx.user.id) redirect(`/admin/users/${id}?e=self`);
 
   await admin.from("profiles").update({ platform_role: grant ? "super_admin" : "user" }).eq("id", id);
-  await admin.from("notifications").insert({
-    user_id: id, type: "security",
-    title: grant ? "You are now a platform administrator" : "Administrator access removed",
-    body: grant
-      ? "The platform owner granted you Super Admin access. Handle it with care — actions are audit-logged."
-      : "Your Super Admin access was removed by the platform owner.",
-    link: grant ? "/admin" : "/dashboard",
+  // A platform-security message: only the platform default template applies,
+  // and only the platform's own in-app switch can suppress it. No tenant's
+  // configuration is involved in telling someone their access changed.
+  await sendNotification(admin, {
+    event: grant ? "super_admin_granted" : "super_admin_revoked",
+    userIds: [id],
   });
   await audit(ctx, grant ? "user.super_admin_granted" : "user.super_admin_revoked", "profiles", id, null, { email: target!.email });
   revalidatePath(`/admin/users/${id}`);
