@@ -550,8 +550,11 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
       created_at timestamptz NOT NULL DEFAULT now()
     );
 
-    -- Simulated RBAC helper mirroring production access_has_permission
-    CREATE OR REPLACE FUNCTION public.access_has_permission(
+    -- Actor-scoped resolver mirroring production access_actor_has_permission.
+    -- This is what a service-role caller (no JWT) must use to authorize an
+    -- explicitly named actor: apply_exam_score_adjustment() runs through the
+    -- service-role client, where auth.uid() is NULL.
+    CREATE OR REPLACE FUNCTION public.access_actor_has_permission(
       p_user_id uuid, p_organization_id uuid, p_permission_key text
     ) RETURNS boolean LANGUAGE plpgsql STABLE AS $$
     DECLARE
@@ -578,6 +581,27 @@ await checkAsync("PGlite: full SQL migration, atomic RPC, constraints, triggers,
       END IF;
       RETURN false;
     END $$;
+
+    -- Session-scoped wrapper mirroring production access_has_permission. It
+    -- carries production's caller-identity guard, so it answers false for
+    -- everyone but a Super Admin when there is no session identity. Omitting
+    -- this guard is exactly what let the service-role regression ship: every
+    -- suite stayed green while Confirm & Apply failed in production.
+    CREATE OR REPLACE FUNCTION public.access_has_permission(
+      p_user_id uuid, p_organization_id uuid, p_permission_key text
+    ) RETURNS boolean LANGUAGE plpgsql STABLE AS $$
+    BEGIN
+      IF auth.uid() IS DISTINCT FROM p_user_id
+         AND NOT EXISTS (SELECT 1 FROM public.profiles
+                          WHERE id = auth.uid() AND platform_role = 'super_admin' AND status = 'active')
+      THEN RETURN false; END IF;
+      RETURN public.access_actor_has_permission(p_user_id, p_organization_id, p_permission_key);
+    END $$;
+
+    -- The resolver accepts an arbitrary actor id, so it stays out of reach of
+    -- end users; only the trusted server may call it.
+    REVOKE ALL ON FUNCTION public.access_actor_has_permission(uuid,uuid,text) FROM public, anon, authenticated;
+    GRANT EXECUTE ON FUNCTION public.access_actor_has_permission(uuid,uuid,text) TO service_role;
 
     GRANT USAGE ON SCHEMA public, auth TO anon, authenticated, service_role;
     GRANT SELECT ON ALL TABLES IN SCHEMA public TO authenticated, service_role;

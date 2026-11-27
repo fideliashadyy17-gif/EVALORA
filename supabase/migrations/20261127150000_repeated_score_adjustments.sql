@@ -281,7 +281,7 @@ begin
             and p.status = 'active'
             and lower(coalesce(m.role, '')) not in ('student', 'candidate', 'parent', 'participant', 'school_founder')
         )
-        and public.access_has_permission(p_actor_id, v_exam.organization_id, 'grading.edit')
+        and public.access_actor_has_permission(p_actor_id, v_exam.organization_id, 'grading.edit')
       ) into v_actor_can_grade;
 
       if not coalesce(v_actor_can_grade, false) then

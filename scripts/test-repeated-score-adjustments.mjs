@@ -44,7 +44,16 @@ import { PGlite } from "@electric-sql/pglite";
 const ROOT = process.cwd();
 let passed = 0;
 async function checkAsync(label, fn) {
-  await fn();
+  try {
+    await fn();
+  } catch (error) {
+    // Surface which check failed. Without this the process aborts on the first
+    // failure with a bare error and no indication of where it came from, which
+    // makes a real regression hard to distinguish from harness noise.
+    const detail = error && error.message ? error.message : String(error);
+    console.error(`FAIL: ${label}\n      ${detail.split("\n")[0]}`);
+    throw error;
+  }
   passed += 1;
 }
 
@@ -988,6 +997,133 @@ await checkAsync("19. Schema no longer carries the one-adjustment-ever constrain
       `the migration must never contain "${forbidden}"`,
     );
   }
+});
+
+// ═══ 20. Service-role authorization — the regression that broke Confirm & Apply
+await checkAsync("20. Confirm & Apply works through the service-role path (no session identity)", async () => {
+  // Nothing in this suite sets request.jwt.claim.sub, so auth.uid() is NULL.
+  // That is exactly the context applyScoreAdjustmentServer() runs in: it calls
+  // the RPC with the service-role client, which carries no end-user JWT.
+  const ctx = await db.query("select auth.uid() as uid");
+  assert.equal(ctx.rows[0].uid, null, "the suite runs without a session identity, like the service-role client");
+
+  // The session-scoped wrapper refuses everyone in that context...
+  const wrapper = await db.query(
+    "select public.access_has_permission($1::uuid, $2::uuid, 'grading.edit') as ok",
+    [U_TEACHER, ORG],
+  );
+  assert.equal(
+    wrapper.rows[0].ok,
+    false,
+    "the session-scoped wrapper must refuse when there is no session identity",
+  );
+
+  // ...while the actor-scoped resolver correctly allows a teacher who really
+  // does hold grading.edit. This is the distinction the RPC depends on.
+  const resolver = await db.query(
+    "select public.access_actor_has_permission($1::uuid, $2::uuid, 'grading.edit') as ok",
+    [U_TEACHER, ORG],
+  );
+  assert.equal(
+    resolver.rows[0].ok,
+    true,
+    "the actor-scoped resolver must allow a teacher who genuinely holds grading.edit",
+  );
+
+  // The actual defect: a legitimate teacher applying an adjustment through the
+  // service-role path. This previously raised
+  //   unauthorized: grading.edit permission in target organization required
+  // so Confirm & Apply failed while Preview kept working.
+  for (const [label, actor, email, role] of [
+    ["Teacher", U_TEACHER, "teacher@synthetic.test", "teacher"],
+    ["Organization Admin", U_ADMIN, "admin@synthetic.test", "admin"],
+    ["Organization Owner", U_OWNER, "owner@synthetic.test", "owner"],
+  ]) {
+    const { outcome, error } = await adjust({
+      attemptIds: [ATT_PERM],
+      categoryKey: "B",
+      points: 1,
+      reason: `Service-role authorization check — ${label}`,
+      actor,
+      email,
+      role,
+    });
+    assert.equal(
+      error,
+      null,
+      `${label} must be able to Confirm & Apply through the service-role path: ${error}`,
+    );
+    assert.equal(outcome.students_affected, 1, `${label} adjustment must persist`);
+  }
+
+  // School Founder stays read-only in the very same context.
+  const founder = await db.query(
+    "select public.access_actor_has_permission($1::uuid, $2::uuid, 'grading.edit') as edit, " +
+      "public.access_actor_has_permission($1::uuid, $2::uuid, 'grading.view') as view",
+    [U_FOUNDER, ORG],
+  );
+  assert.equal(founder.rows[0].edit, false, "School Founder can never hold grading.edit");
+  assert.equal(founder.rows[0].view, true, "School Founder keeps read-only visibility");
+
+  // Wiring: the RPC must resolve permissions for the named actor, never through
+  // the session-scoped wrapper.
+  const ddl = await db.query(
+    `select pg_get_functiondef('public.apply_exam_score_adjustment(uuid,text,text,text,numeric,text,text,text,uuid,text,text,text,jsonb)'::regprocedure) as def`,
+  );
+  assert.ok(
+    /access_actor_has_permission/.test(ddl.rows[0].def),
+    "the RPC must call the actor-scoped resolver",
+  );
+  assert.ok(
+    !/public\.access_has_permission\(p_actor_id/.test(ddl.rows[0].def),
+    "the RPC must never authorize a named actor through the session-scoped wrapper",
+  );
+
+  // The resolver accepts an arbitrary actor id, so it must stay out of reach of
+  // signed-in users; only the trusted server may call it.
+  const exposed = await db.query(
+    `select has_function_privilege('authenticated', 'public.access_actor_has_permission(uuid,uuid,text)', 'EXECUTE') as can`,
+  );
+  assert.equal(
+    exposed.rows[0].can,
+    false,
+    "the actor-scoped resolver must not be executable by authenticated users",
+  );
+
+  // The migration chain must end in the correct state. 20261125230000 is the
+  // historical definition and still names the wrapper; 20261126200000 and
+  // 20261127160000 repair it. What matters is that the LAST migration to define
+  // the RPC body resolves permissions for the named actor, and that a repair
+  // step asserts the wiring rather than assuming it.
+  const lastDefinition = readFileSync(
+    resolve(ROOT, "supabase/migrations/20261127150000_repeated_score_adjustments.sql"),
+    "utf8",
+  );
+  assert.ok(
+    /access_actor_has_permission\(p_actor_id/.test(lastDefinition),
+    "the latest migration defining the RPC must call the actor-scoped resolver",
+  );
+  assert.ok(
+    !/access_has_permission\(p_actor_id/.test(lastDefinition),
+    "the latest migration defining the RPC must not call the session-scoped wrapper",
+  );
+
+  const repair = readFileSync(
+    resolve(ROOT, "supabase/migrations/20261127160000_score_adjustment_actor_resolver_regression.sql"),
+    "utf8",
+  );
+  assert.ok(
+    /create or replace function public\.access_actor_has_permission/.test(repair),
+    "the repair migration must (re)create the actor-scoped resolver",
+  );
+  assert.ok(
+    /repair failed/.test(repair),
+    "the repair migration must assert the wiring instead of assuming it",
+  );
+  assert.ok(
+    /revoke all on function public\.access_actor_has_permission/.test(repair),
+    "the repair migration must keep the resolver away from end users",
+  );
 });
 
 console.log(`PASS test-repeated-score-adjustments (${passed} checks)`);
