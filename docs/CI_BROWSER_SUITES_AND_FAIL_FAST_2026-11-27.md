@@ -264,3 +264,35 @@ own commands. Two rules came out of it and are worth keeping:
   test-only packages: `--no-save` alone still rewrote the lockfile, so both were
   reverted before committing. The browser and verifier packages stay
   install-on-demand, exactly as the workflows do it.
+
+---
+
+## 6. Outcome on the pull request and in production
+
+Pushed to PR #112 and watched: **all five checks pass**, on the first green run
+either job has ever had.
+
+| Check | Before | After |
+|---|---|---|
+| `exam-browser` | fail after 13 m 6 s (three suites) | **pass in 3 m 49 s** |
+| `screenshots` | fail after ~25 m (the job's own limit) | **pass in 2 m 2 s** |
+| `build-windows` | pass | pass (2 m 27 s) |
+| Vercel preview build | pass | pass |
+
+The collapse in runtime is itself evidence for §2.1: those jobs were not doing
+more work than the passing runs, they were waiting ~21 s per page for a backoff
+that never produced an answer. With the Supabase secrets absent in CI, every
+public page was paying it.
+
+PR #112 (this work plus the Phase 4 formatting rollout) was merged as `bae922a`,
+which deployed production automatically: **`dpl_12CTsvavpj6VEFDEQ2QwHJoLLRs7`
+READY / PROMOTED**, aliases assigned, built in 72.6 s. `/` and `/login` were
+fetched from production afterwards and render complete documents. Rollback path:
+`dpl_EsmPSn5JVdiHMsabPYBAsMNYfxFM` (the PR #111 merge), with nothing to undo in
+the database — none of this touched schema or stored values.
+
+Still open, and now worth doing: the audit's Phase 7 authenticated end-to-end
+pass. A real Super Admin changing `formatting.date_format` or
+`localization.default_timezone` in the Control Center and watching a dashboard
+table move is the one verification that cannot be faked with a mock origin, and
+Phase 4 made it observable.

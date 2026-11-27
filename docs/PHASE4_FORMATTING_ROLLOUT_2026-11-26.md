@@ -273,13 +273,23 @@ and both modules remain unit-testable without a bundler.
 
 | Step | Status |
 |---|---|
-| Branch pushed | pending |
-| Pull request opened | pending |
+| Branch pushed | done — `970e4d6`, then `2a8a9d0` and `aa04f55` |
+| Pull request | **[#112](https://github.com/fideliashadyy17-gif/EVALORA/pull/112) MERGED** as `bae922a` on `main` (2026-11-27 07:07 UTC) |
+| CI on the merged head | all five checks pass — `exam-browser` 3 m 49 s, `screenshots` 2 m 2 s, `build-windows` 2 m 27 s, Vercel preview build, preview comments |
 | Migration | **none required** — this phase changes no schema and no data |
-| Production build | pending |
+| Production build | `npm run build` exit 0 locally, and Vercel built the merge commit in 72.6 s |
+| Production deployment | **`dpl_12CTsvavpj6VEFDEQ2QwHJoLLRs7` READY / `readySubstate: PROMOTED`**, aliases assigned (`evalora-edu.online`, `www.`, `ois.`, `*.evalora-edu.online`), region cdg1, node 26.x, Fluid compute, cron `/api/cron/close-expired-attempts` registered |
+| Post-deploy smoke test | `/` and `/login` fetched from production after promotion: both render complete documents (185 product routes, "Verified in /admin (95 routes)", brand, attribution). Authenticated surfaces were not exercised — that is still the open item in §6 of the audit. |
 
-Note for the release: merging to `main` **deploys production automatically** (the
-merge of PR #111 produced `dpl_H5DK1rmPq8vA6CWzRGWevUXJAbt8` from the GitHub
-integration without an explicit API call), so the timezone change in §2.6 goes
-live the moment this is merged. The rollback path is a Vercel rollback — there is
+Merging to `main` **deployed production automatically** from the GitHub
+integration, exactly as PR #111 did, so the timezone change in §2.6 is live:
+`localization.default_timezone` (`Africa/Porto-Novo`) now sets the wall clock on
+every configured screen. The live database holds no `formatting.*` or
+`localization.default_timezone` row, so the schema defaults resolve; the rollback
+path is a Vercel rollback to `dpl_EsmPSn5JVdiHMsabPYBAsMNYfxFM` — there is
 nothing to undo in the database.
+
+The two commits after this phase's own work are recorded in
+`CI_BROWSER_SUITES_AND_FAIL_FAST_2026-11-27.md`: they repaired the two CI jobs
+that had never been green and, in doing so, removed an outage amplifier in which
+an unreachable database cost ~21 s per page render.
