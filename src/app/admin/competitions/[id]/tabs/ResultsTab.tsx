@@ -1,10 +1,11 @@
 import { Button, Card } from "@/components/ui";
 import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import Link from "next/link";
 import { setResultsPublished } from "../../../actions/competitions";
 import { Notice, StatusBadge, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 interface CompRow {
   id: string;
@@ -16,6 +17,11 @@ interface CompRow {
 }
 
 export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string } }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { dateTime: fmtDateTime, number: fmtNumber } = await requestFormatter(null);
   const admin = createAdminClient();
 
   if (!comp.session_id) {
@@ -137,7 +143,7 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
                     {p.participant_ref && <span className="block text-xs text-ink-soft">ref {p.participant_ref}</span>}
                   </td>
                   <td className="text-xs">{reg?.org ?? "—"}{reg?.cls && <span className="block">{reg.cls}</span>}</td>
-                  <td className="font-display text-lg font-semibold tabular-nums">{Number(p.score).toLocaleString()}</td>
+                  <td className="font-display text-lg font-semibold tabular-nums">{fmtNumber(p.score)}</td>
                   <td className="tabular-nums">{s.answered}</td>
                   <td className="tabular-nums">{s.correct}</td>
                   <td><StatusBadge status={p.status} /></td>
@@ -157,9 +163,9 @@ export async function ResultsTab({ comp, sp }: { comp: CompRow; sp: { ok?: strin
               <td className="font-display font-semibold">{i + 1}</td>
               <td className="font-medium">{r.org}</td>
               <td className="tabular-nums">{r.participants}</td>
-              <td className="tabular-nums">{r.avg.toLocaleString()}</td>
-              <td className="tabular-nums">{r.best.toLocaleString()}</td>
-              <td className="tabular-nums">{r.totalScore.toLocaleString()}</td>
+              <td className="tabular-nums">{fmtNumber(r.avg)}</td>
+              <td className="tabular-nums">{fmtNumber(r.best)}</td>
+              <td className="tabular-nums">{fmtNumber(r.totalScore)}</td>
             </tr>
           ))}
         </Table>

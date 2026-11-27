@@ -82,7 +82,13 @@ ok("the list scrolls instead of growing", /max-h-\[min\(70vh,22rem\)\] overflow-
 ok("rows show the title", /\{item\.title\}/.test(bell));
 ok("rows show the message", /\{item\.body\}/.test(bell));
 ok("rows show a machine-readable timestamp", /<time dateTime=\{item\.created_at\}>/.test(bell));
-ok("rows show a relative timestamp", /formatRelativeTime\(item\.created_at, now\)/.test(bell));
+ok("rows show a relative timestamp", /formatRelativeTime\(item\.created_at, now, fmtDate\)/.test(bell));
+ok(
+  "the week-old fallback follows the configured date profile",
+  /const \{ date: fmtDate \} = useFormatting\(\);/.test(bell)
+    && /from "@\/components\/formatting\/FormattingProvider"/.test(bell),
+);
+ok("the pure helper keeps its own shipped fallback", /if \(date\) return date\(time\);/.test(readFileSync("src/lib/notifications.ts", "utf8")));
 ok("rows show read/unread state", /!item\.read_at && "border-l-2 border-l-gold-500/.test(bell) && /\{!item\.read_at && \(/.test(bell));
 ok("rows open the destination", /<Link\s+href=\{item\.link\}/.test(bell) || /href=\{item\.link\}/.test(bell));
 ok("a single notification can be marked read", /\.eq\("id", id\)\s*\n?\s*\.is\("read_at", null\)/.test(bell));

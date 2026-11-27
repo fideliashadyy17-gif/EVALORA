@@ -4,6 +4,26 @@ import { cookies } from "next/headers";
 
 const SUPABASE_SERVER_TIMEOUT_MS = 10_000;
 
+/**
+ * Server-side reads never retry.
+ *
+ * postgrest-js retries an idempotent request up to three times with exponential
+ * backoff (1s, 2s, 4s) whenever the fetch rejects, so an unreachable database
+ * costs about seven seconds *per query*. A public page reads branding,
+ * announcements, formatting and the locale in sequence, which turned a closed
+ * database port into a ~21 s render with the CPU idle and no socket open — the
+ * page was not waiting for the database, it was waiting out the backoff before
+ * reaching the fallback it was always going to use.
+ *
+ * Every server-side read in this codebase has a documented fallback (compiled-in
+ * brand defaults, schema-default configuration, the platform-wide profile), so
+ * failing fast is strictly better than making a candidate, an invigilator or a
+ * serverless function's billed duration wait it out. Retries stay enabled in the
+ * browser client, where a flaky connection on a candidate's own device is exactly
+ * what they are for.
+ */
+const SERVER_DB_OPTIONS = { retry: false } as const;
+
 function createTimeoutFetch(timeoutMs = SUPABASE_SERVER_TIMEOUT_MS): typeof fetch {
   return async (input, init) => {
     const controller = new AbortController();
@@ -30,6 +50,7 @@ export async function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      db: SERVER_DB_OPTIONS,
       global: {
         fetch: createTimeoutFetch(),
       },
@@ -59,6 +80,7 @@ export function createAdminClient() {
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
     {
       auth: { persistSession: false, autoRefreshToken: false },
+      db: SERVER_DB_OPTIONS,
       global: { fetch: createTimeoutFetch() },
     },
   );

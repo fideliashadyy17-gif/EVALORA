@@ -5,13 +5,13 @@ import { requireSuperAdmin } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess } from "@/lib/tenant";
-import { fmtDate } from "@/lib/utils";
 import { Building2, GraduationCap, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { setOrgStatus } from "../actions";
 import { enterOrgWorkspace } from "../actions/orgs";
 import { Notice, StatusBadge, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Organizations" };
 export const dynamic = "force-dynamic";
@@ -22,6 +22,9 @@ export default async function AdminOrganizations({
   searchParams: Promise<{ q?: string; type?: string; status?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

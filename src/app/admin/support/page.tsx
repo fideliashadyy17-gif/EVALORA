@@ -2,11 +2,11 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, Input, PageTitle, Select, StatCard, buttonClass } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, Clock3, Inbox, LifeBuoy, Mail } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { setTicketStatus } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Support tickets" };
 export const dynamic = "force-dynamic";
@@ -17,6 +17,9 @@ export default async function AdminSupport({
   searchParams: Promise<{ status?: string; q?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const statusFilter = (sp.status ?? "").trim();
   const q = (sp.q ?? "").trim();

@@ -1,8 +1,10 @@
 import { BrandProvider } from "@/components/platform/BrandProvider";
 import { AnnouncementBanner } from "@/components/platform/AnnouncementBanner";
+import { FormattingProvider } from "@/components/formatting/FormattingProvider";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { getEffectiveBrand } from "@/lib/brandConfig";
 import { getPlatformBehaviorConfig } from "@/lib/config/service";
+import { requestFormatConfig } from "@/lib/formattingRequest";
 import { brandCssVariables } from "@/lib/config/palette";
 import { getDictionary } from "@/lib/i18n";
 import { getRequestLocale, getSupportedLocales, primeDefaultLocaleCache } from "@/lib/i18n/server";
@@ -29,6 +31,11 @@ import "./globals.css";
  *   • branding.default_theme     → <html data-theme>
  *   • platform_behavior.global_announcements → banner on every page
  *   • localization.default_locale → shell language (never examination content)
+ *   • formatting.* + localization.default_timezone → the date, time and number
+ *     profile every screen renders with. The platform-wide profile is mounted
+ *     here; an organization workspace mounts its own nested provider, and a
+ *     server component resolves the same profile through
+ *     src/lib/formattingRequest.ts.
  *
  * Maintenance mode is enforced earlier, in Edge middleware, because that is
  * the only layer that knows the pathname before a page renders.
@@ -65,11 +72,14 @@ export default async function RootLayout({
   // back to it when a visitor has no cookie and no stored preference, and doing
   // it here keeps that fallback free of an extra round trip per request.
   await primeDefaultLocaleCache();
-  const [locale, supportedLocales, brand, behavior] = await Promise.all([
+  const [locale, supportedLocales, brand, behavior, formatCfg] = await Promise.all([
     getRequestLocale(),
     getSupportedLocales(),
     getEffectiveBrand(),
     getPlatformBehaviorConfig().catch(() => null),
+    // Platform-wide formatting profile for client components. Organization
+    // workspaces nest their own provider with the school's profile.
+    requestFormatConfig(null).catch(() => null),
   ]);
   const dict = getDictionary(locale);
   const themeCss = brandCssVariables(brand);
@@ -89,7 +99,7 @@ export default async function RootLayout({
         <BrandProvider brand={brand}>
           <AnnouncementBanner announcements={behavior?.global_announcements ?? []} />
           <I18nProvider locale={locale} dict={dict} supportedLocales={supportedLocales}>
-            {children}
+            <FormattingProvider cfg={formatCfg}>{children}</FormattingProvider>
           </I18nProvider>
         </BrandProvider>
       </body>

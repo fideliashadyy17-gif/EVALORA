@@ -2,12 +2,12 @@ import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, Card, EmptyState, Field, Input, PageTitle, Select, StatCard, Textarea } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Bell, CreditCard, LifeBuoy, ShieldAlert, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { broadcastNotification, sendTargetedNotification } from "../actions";
 import { Section, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Notifications" };
 export const dynamic = "force-dynamic";
@@ -18,6 +18,9 @@ export default async function AdminNotifications({
   searchParams: Promise<{ sent?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

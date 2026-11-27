@@ -5,7 +5,6 @@ import { createAdminClient } from "@/lib/supabase/server";
 import { SUPPORTED_DIFFICULTY_LEVELS, allQuestionTypes } from "@/lib/questionStudioClient";
 import { describeTemplateScope, listQuestionTemplates } from "@/lib/questionTemplates";
 import { describeDesign, normalizeQuestionDesign } from "@/lib/questionDesign";
-import { fmtDate } from "@/lib/utils";
 import { Archive, ArchiveRestore, FileStack, Layers, Library, Plus } from "lucide-react";
 import type { Metadata } from "next";
 import {
@@ -14,6 +13,7 @@ import {
   deleteQuestionTemplate,
   setQuestionTemplateStatus,
 } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Question templates" };
 export const dynamic = "force-dynamic";
@@ -39,6 +39,9 @@ export default async function QuestionTemplatesPage({
   searchParams: Promise<{ org?: string; source_org?: string; status?: string; type?: string; q?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

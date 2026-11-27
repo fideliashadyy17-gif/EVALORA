@@ -4,12 +4,12 @@ import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { parsePaperSections } from "@/lib/examPaper";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { CheckCircle2, FileText, Library, PenSquare } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { archivePaper, duplicatePaper, publishPaper } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Question Paper Builder" };
 export const dynamic = "force-dynamic";
@@ -17,6 +17,9 @@ export const dynamic = "force-dynamic";
 export default async function PaperBuilderPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const perms = await canOperateMany(ctx, org.id, {
     canView: { permission: "paper_builder.view" },
     canCreate: { permission: "paper_builder.create", module: "paper_builder" },

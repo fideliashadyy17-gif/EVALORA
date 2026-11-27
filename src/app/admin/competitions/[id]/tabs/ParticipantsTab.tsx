@@ -1,7 +1,7 @@
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import {
   importParticipants,
   registerClassForCompetition,
@@ -10,6 +10,7 @@ import {
 } from "../../../actions/competitions";
 import { CsvImport } from "../../../CsvImport";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 interface CompRow {
   id: string;
@@ -18,6 +19,11 @@ interface CompRow {
 }
 
 export async function ParticipantsTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string } }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { dateTime: fmtDateTime, number: fmtNumber } = await requestFormatter(null);
   const admin = createAdminClient();
   const [{ data: regs }, { data: orgStudents }, { data: orgs }, { data: classes }, { data: codes }, liveRes] = await Promise.all([
     admin
@@ -187,7 +193,7 @@ export async function ParticipantsTab({ comp, sp }: { comp: CompRow; sp: { ok?: 
               <tr key={p.id}>
                 <td className="font-medium">{p.display_name}</td>
                 <td>{p.participant_ref ?? "—"}</td>
-                <td className="tabular-nums">{Number(p.score).toLocaleString()}</td>
+                <td className="tabular-nums">{fmtNumber(p.score)}</td>
                 <td><StatusBadge status={p.status} /></td>
                 <td className="text-xs text-ink-soft">{fmtDateTime(p.joined_at)}</td>
                 <td className="text-xs text-ink-soft">{fmtDateTime(p.last_seen_at)}</td>

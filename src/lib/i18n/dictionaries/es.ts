@@ -289,6 +289,7 @@ export const es = {
     deviceCheckStarted: "Tu examen ha comenzado. Completa esta comprobación rápida antes de abrir el examen.",
     deviceCheckContinue: "Continuar al examen",
     deviceCheckCompleting: "Comprobando el dispositivo…",
+    deviceCheckAcknowledge: "Confirma la comprobación del dispositivo para continuar",
   },
   dashboard: {
     overviewTitle: "Resumen del espacio",

@@ -39,6 +39,7 @@ import {
   saveSubscriptionModules,
 } from "./actions";
 import { cn } from "@/lib/utils";
+import { useFormatting } from "@/components/formatting/FormattingProvider";
 
 export interface PlanRow {
   id: string;
@@ -106,11 +107,11 @@ function fmtLimit(val: unknown): string {
   return "—";
 }
 
-function fmtShortDate(iso: string | null | undefined): string {
+function fmtShortDate(iso: string | null | undefined, date: (value: string | number | Date | null | undefined) => string): string {
   if (!iso) return "No end date";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return date(d);
 }
 
 function buildPlanDraft(
@@ -176,6 +177,8 @@ export function PlanModulesAdminClient({
   initialPlanId?: string;
   initialSubId?: string;
 }) {
+  // Configured date profile from the provider the console page mounted.
+  const { date: fmtDate } = useFormatting();
   const { t } = useI18n();
   const [planId, setPlanId] = useState(initialPlanId ?? plans[0]?.id ?? "");
   const [subId, setSubId] = useState(initialSubId ?? subs[0]?.id ?? "");
@@ -811,8 +814,8 @@ export function PlanModulesAdminClient({
                   </p>
                   <p className="mt-0.5 text-sm font-medium text-evergreen-950">
                     {sub.status === "trialing"
-                      ? `Trial until ${fmtShortDate(sub.trialEndsAt)}`
-                      : `Valid until ${fmtShortDate(sub.currentPeriodEnd)}`}
+                      ? `Trial until ${fmtShortDate(sub.trialEndsAt, fmtDate)}`
+                      : `Valid until ${fmtShortDate(sub.currentPeriodEnd, fmtDate)}`}
                   </p>
                 </div>
                 <div>

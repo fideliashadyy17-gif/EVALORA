@@ -4,10 +4,10 @@ import { requireSuperAdmin } from "@/lib/auth";
 import type { OrgRole } from "@/lib/brand";
 import { ORG_ROLES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import { Building2, ShieldCheck, Users } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 interface Props {
   eyebrow?: string;
@@ -21,6 +21,9 @@ interface Props {
 
 export async function RoleDirectory({ eyebrow, title, subtitle, pathname, roles, organizationTypes, searchParams: sp }: Props) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
   const admin = createAdminClient();

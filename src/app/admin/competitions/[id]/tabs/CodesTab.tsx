@@ -1,6 +1,5 @@
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import Link from "next/link";
 import {
   accessCodeOp,
@@ -8,6 +7,7 @@ import {
   saveAccessCode,
 } from "../../../actions/competitions";
 import { ConfirmField, Notice, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 interface CompRow {
   id: string;
@@ -17,6 +17,11 @@ interface CompRow {
 }
 
 export async function CodesTab({ comp, sp }: { comp: CompRow; sp: { ok?: string; e?: string; edit_code?: string } }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const admin = createAdminClient();
   const [{ data: codes }, { data: orgs }, { data: classes }, sessionRes] = await Promise.all([
     admin

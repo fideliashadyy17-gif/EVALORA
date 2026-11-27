@@ -228,6 +228,18 @@ await test("/supervision/page.tsx renders all 17 domains via React SSR strictly 
       };
       if (req === "@/components/SignOutButton") return { SignOutButton: () => React.createElement("button", { type: "button" }, "Sign out") };
       if (req === "@/lib/utils") return { fmtDate: (v) => String(v), fmtDateTime: (v) => String(v) };
+      // Configured formatting is not what this suite exercises: hand back a
+      // formatter that stringifies, exactly like the @/lib/utils stub above.
+      if (req === "@/lib/formattingRequest") {
+        const passthrough = (v) => String(v ?? "");
+        return {
+          requestFormatter: async () => ({
+            cfg: {}, date: passthrough, time: passthrough, dateTime: passthrough,
+            number: passthrough, percent: passthrough, money: passthrough,
+          }),
+          requestFormatConfig: async () => ({}),
+        };
+      }
       if (req === "next/link") return { __esModule: true, default: ({ href, children, ...rest }) => React.createElement("a", { href, ...rest }, children) };
       if (req === "next/navigation") return { redirect: (u) => { throw new Error(`REDIRECT:${u}`); } };
     }

@@ -2,11 +2,11 @@ import { Badge, ButtonLink, Card, PageTitle, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { getLiveKitEnvStatus } from "@/lib/livekit";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Activity, Database, HardDrive, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { Section, Table } from "../ui";
 import { LiveKitVerifyCard } from "./LiveKitVerifyCard";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "System Health" };
 export const dynamic = "force-dynamic";
@@ -25,6 +25,9 @@ const human = (b: number) =>
 
 export default async function AdminSystem() {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime, number: fmtNumber } = await requestFormatter(null);
   // Session client: the RPC verifies is_super_admin() against this JWT.
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("admin_platform_stats");
@@ -90,9 +93,9 @@ export default async function AdminSystem() {
         <>
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatCard label="Database footprint" value={human(stats.database_bytes)} hint="PostgreSQL live relation size" icon={<Database className="h-5 w-5" />} />
-            <StatCard label="Auth identities" value={stats.auth_users.toLocaleString()} hint="Supabase Auth accounts" icon={<Users className="h-5 w-5" />} />
-            <StatCard label="Object storage" value={stats.storage_objects.toLocaleString()} hint={`${human(stats.storage_bytes)} stored media & assets`} icon={<HardDrive className="h-5 w-5" />} />
-            <StatCard label="Tracked tables" value={stats.tables.length} hint={`${totalRows.toLocaleString()} total rows · ${fmtDateTime(stats.generated_at)}`} icon={<Activity className="h-5 w-5" />} />
+            <StatCard label="Auth identities" value={fmtNumber(stats.auth_users, 0)} hint="Supabase Auth accounts" icon={<Users className="h-5 w-5" />} />
+            <StatCard label="Object storage" value={fmtNumber(stats.storage_objects, 0)} hint={`${human(stats.storage_bytes)} stored media & assets`} icon={<HardDrive className="h-5 w-5" />} />
+            <StatCard label="Tracked tables" value={stats.tables.length} hint={`${fmtNumber(totalRows, 0)} total rows · ${fmtDateTime(stats.generated_at)}`} icon={<Activity className="h-5 w-5" />} />
           </div>
 
           <Section title="Environment & service integrations" hint="Verifies presence of server runtime configuration without exposing secret values.">
@@ -128,7 +131,7 @@ export default async function AdminSystem() {
                 return (
                   <tr key={t.table}>
                     <td className="font-mono text-xs font-semibold text-evergreen-950">{t.table}</td>
-                    <td className="font-semibold tabular-nums text-ink">{t.rows.toLocaleString()}</td>
+                    <td className="font-semibold tabular-nums text-ink">{fmtNumber(t.rows, 0)}</td>
                     <td className="tabular-nums text-xs text-ink-soft">{share}%</td>
                     <td className="w-56">
                       <div className="h-2 overflow-hidden rounded-full bg-evergreen-900/10">

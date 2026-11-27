@@ -288,19 +288,43 @@ await page.route("**/api/exam/**", async (route) => {
 });
 
 
-/** The entry form enables its submit button only after the browser guest key
- *  has been minted. Clicking before then silently waits on a disabled control. */
+/**
+ * Clear the entry form's two gates and start the paper.
+ *
+ * Both are ordinary candidate situations, not test artifacts:
+ *
+ *   1. The device check. A headless browser has no camera and
+ *      `proctoring.require_camera_check` defaults to true, so the panel reports
+ *      one check that could not be completed and asks the candidate to
+ *      acknowledge it — exactly what a desktop without a webcam does. The paper
+ *      must still be reachable afterwards, and once the checks have finished the
+ *      start button must ask for that acknowledgement instead of claiming the
+ *      check is still running (which reads as a hang).
+ *   2. The consent declaration, plus the browser guest key that is minted one
+ *      tick after mount: clicking before then waits on a disabled control.
+ */
 async function verifyAndBegin() {
+  const acknowledge = page.getByLabel(/checks could not be completed/i);
+  if (await acknowledge.count()) {
+    await page.getByText(/You can still sit this examination/).waitFor({ timeout: 60_000 });
+    assert.equal(
+      await page.getByRole("button", { name: /Completing device check/ }).count(),
+      0,
+      "the checks have finished: the button must ask for the acknowledgement, not claim it is still working",
+    );
+    await acknowledge.check();
+  }
+
   const btn = page.getByRole("button", { name: "Verify and Begin" });
   await btn.waitFor({ state: "visible", timeout: 120_000 });
-  // The consent declaration is required; the submit button also waits on the
-  // freshly minted guest key, which arrives one tick after mount.
-  const consent = page.getByRole("checkbox").first();
-  if ((await consent.count()) && !(await consent.isChecked())) await consent.check();
+  const consent = page.getByLabel(/I confirm these details are mine/i);
+  await consent.waitFor({ timeout: 30_000 });
+  if (!(await consent.isChecked())) await consent.check();
   for (let i = 0; i < 200; i += 1) {
     if (await btn.isEnabled()) break;
     await page.waitForTimeout(100);
   }
+  assert.ok(await btn.isEnabled(), "the start button must enable once the device check is acknowledged and consent is given");
   await btn.click();
 }
 
@@ -479,7 +503,9 @@ try {
   await page.getByLabel("First Name").fill("Ulrich");
   await page.getByLabel("Last Name").fill("Talon");
   await page.getByLabel("Examination Code").fill(ACCESS_CODE);
-  await page.getByRole("checkbox").check();
+  // The consent declaration and the device-check acknowledgement are both
+  // handled by verifyAndBegin(): this page has two checkboxes, so a bare
+  // getByRole("checkbox") is ambiguous here.
   await verifyAndBegin();
   // A cold dev-server compile of /take-exam can exceed two minutes on the very
   // first student; the server-rendered shell always arrives, the route change is

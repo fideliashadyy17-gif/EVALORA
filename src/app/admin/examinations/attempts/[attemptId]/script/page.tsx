@@ -6,11 +6,11 @@ import { Badge, Button, ButtonLink, Card, PageTitle, StatCard } from "@/componen
 import { requireSuperAdmin } from "@/lib/auth";
 import { loadExamScript, SCRIPT_STATUS_LABEL, type ScriptStatus } from "@/lib/examScript";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { overrideAnswerMarkAsAdmin, regradeAttemptAsAdmin, regradeSingleQuestionAsAdmin } from "../../../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Complete examination script — platform" };
 export const dynamic = "force-dynamic";
@@ -38,6 +38,9 @@ export default async function ExaminationScriptPage({
   params: Promise<{ attemptId: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const { attemptId } = await params;
   const admin = createAdminClient();
   const script = await loadExamScript(admin, attemptId);

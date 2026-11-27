@@ -172,9 +172,12 @@ export const TIME_FORMAT_OPTIONS = [
 ] as const;
 
 export const NUMBER_FORMAT_OPTIONS = [
-  { value: "en_gb", label: "1,234.56" },
-  { value: "fr_fr", label: "1 234,56" },
-  { value: "en_us", label: "1,234.56 (US)" },
+  // en_us is the shipped default: it is the locale the platform's amounts were
+  // always rendered with, and for USD it prints "$1,234" where en-GB prints
+  // "US$1,234". Plain numbers and percentages are identical in both.
+  { value: "en_us", label: "1,234.56 — $1,234 (default)" },
+  { value: "en_gb", label: "1,234.56 — US$1,234 (British)" },
+  { value: "fr_fr", label: "1 234,56 — 1 234 $US (French)" },
 ] as const;
 
 export const ROUNDING_OPTIONS = [
@@ -494,7 +497,7 @@ export const CONFIG_SCHEMA: readonly ConfigKeyDef[] = [
     description: "Timezone used to display examination schedules, deadlines and report dates. Individual users still see their own device time inside a live examination so a candidate is never misled about remaining time.",
     kind: "timezone", options: TIMEZONE_OPTIONS, writableScopes: ["global", "organization"],
     default: "Africa/Porto-Novo",
-    consumedBy: ["src/lib/formatting.ts", "src/lib/config/resolve.ts"],
+    consumedBy: ["src/lib/formattingRequest.ts requestFormatConfig()", "src/lib/formatting.ts parts()"],
     connectedModules: ["platform", "org_settings", "examinations"], order: 10,
   },
 
@@ -504,29 +507,32 @@ export const CONFIG_SCHEMA: readonly ConfigKeyDef[] = [
     label: "Date format",
     description: "How dates are written across dashboards, reports and exports.",
     kind: "enum", options: DATE_FORMAT_OPTIONS, writableScopes: ["global", "organization"], default: "dmy_short",
-    consumedBy: ["src/lib/formatting.ts fmtDate/fmtDateTime"], connectedModules: ["platform", "org_settings"], order: 1,
+    consumedBy: ["src/lib/formattingRequest.ts requestFormatter()", "src/lib/formatting.ts formatDate", "src/components/formatting/FormattingProvider.tsx"],
+    connectedModules: ["platform", "org_settings"], order: 1,
   },
   {
     namespace: "formatting", key: "time_format", group: "Presentation",
     label: "Time format",
     description: "12-hour or 24-hour clock for schedule and deadline display.",
     kind: "enum", options: TIME_FORMAT_OPTIONS, writableScopes: ["global", "organization"], default: "24h",
-    consumedBy: ["src/lib/formatting.ts fmtDateTime/fmtTime"], connectedModules: ["platform", "org_settings"], order: 2,
+    consumedBy: ["src/lib/formattingRequest.ts requestFormatter()", "src/lib/formatting.ts formatTime/formatDateTime"],
+    connectedModules: ["platform", "org_settings"], order: 2,
   },
   {
     namespace: "formatting", key: "number_format", group: "Presentation",
     label: "Number format",
     description: "Thousands and decimal separators used for marks, averages and statistics.",
-    kind: "enum", options: NUMBER_FORMAT_OPTIONS, writableScopes: ["global", "organization"], default: "en_gb",
-    consumedBy: ["src/lib/formatting.ts fmtNumber/fmtPercent"], connectedModules: ["platform", "org_settings"], order: 3,
+    kind: "enum", options: NUMBER_FORMAT_OPTIONS, writableScopes: ["global", "organization"], default: "en_us",
+    consumedBy: ["src/lib/formattingRequest.ts requestFormatter()", "src/lib/formatting.ts formatNumber/formatPercent/formatMoney"],
+    connectedModules: ["platform", "org_settings"], order: 3,
   },
   {
     namespace: "formatting", key: "default_academic_year", group: "Academic",
     label: "Default academic year",
-    description: "Value offered as the academic year when a new paper, class or report is created and none is specified. Existing records are not changed.",
+    description: "Label offered as the academic year when a new examination or a new academic year record is created and none is typed. Existing records are never relabelled.",
     kind: "string", writableScopes: ["global", "organization"], default: "2026-2027",
     maxLength: 20, placeholder: "2026-2027",
-    consumedBy: ["src/lib/formatting.ts", "src/app/dashboard/paper-builder/new/page.tsx"],
+    consumedBy: ["src/app/dashboard/exams/new/page.tsx (new examination form)", "src/app/dashboard/academics/page.tsx (new academic year record)"],
     connectedModules: ["academics", "paper_builder"], order: 10,
   },
 

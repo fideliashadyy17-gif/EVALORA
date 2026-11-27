@@ -3,10 +3,10 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { describeRetention, getRetentionPolicy, loadRetentionRuns } from "@/lib/proctoring";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { applyProctoringRetention, saveProctoringRetention } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Proctoring retention" };
 export const dynamic = "force-dynamic";
@@ -27,6 +27,9 @@ export default async function ProctoringRetentionPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect("/dashboard");
   if (!(await canOperate(ctx, org.id, "organizations.edit", "proctoring"))) redirect("/dashboard/proctoring");
 

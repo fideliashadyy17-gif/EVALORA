@@ -6,6 +6,7 @@ import type { Metadata } from "next";
 import { enterOrgWorkspace } from "../actions/orgs";
 import { ConfirmField, Flash, Notice, Section, Table } from "../ui";
 import { generateDemoLogin, recordMigrationRun, resetDemoActivity } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "DEMO school & migration" };
 export const dynamic = "force-dynamic";
@@ -13,6 +14,8 @@ export const dynamic = "force-dynamic";
 export default async function DemoAdminPage({ searchParams }: { searchParams: Promise<{ ok?: string; e?: string }> }) {
   const sp = await searchParams;
   await requireSuperAdmin();
+  // Platform-wide profile: the Super Admin console mixes tenants in one table.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const admin = createAdminClient();
   const { data: demo } = await admin.from("organizations").select("*").eq("is_demo", true).maybeSingle();
 
@@ -112,7 +115,7 @@ export default async function DemoAdminPage({ searchParams }: { searchParams: Pr
             {(runs ?? []).length === 0 ? <p className="mt-2 text-sm text-ink-soft">No migration runs recorded yet.</p> : (
               <ul className="mt-2 divide-y divide-evergreen-900/10 text-sm">
                 {(runs ?? []).map((r) => (
-                  <li key={r.id} className="py-2"><strong>{r.source_name ?? r.source_project_ref}</strong> · {r.status} · {new Date(r.created_at).toLocaleString()}
+                  <li key={r.id} className="py-2"><strong>{r.source_name ?? r.source_project_ref}</strong> · {r.status} · {fmtDateTime(r.created_at)}
                     <span className="block text-ink-soft">{String((r.summary as { note?: string } | null)?.note ?? "")}</span></li>
                 ))}
               </ul>

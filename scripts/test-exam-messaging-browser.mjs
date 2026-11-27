@@ -116,10 +116,25 @@ await page.route('**/api/exam/**', async (route) => {
   throw Error(`Unexpected request ${url.pathname}`);
 });
 
-/** Waits for the launcher's badge to show n unread (the badge is text inside the Messages button). */
-const waitForBadge = (n, timeout = 25_000) => page.waitForFunction((count) => {
-  const button = [...document.querySelectorAll('button')].find((b) => (b.textContent ?? '').startsWith('Messages'));
-  return Boolean(button && (button.textContent ?? '').trim() === `Messages${count}`);
+/**
+ * Waits for the closed launcher to show n unread.
+ *
+ * The badge is a <span> inside the "Messages" button carrying both the count and
+ * an `n unread message(s)` label, and JSX puts whitespace between the two text
+ * nodes — so the count is read from the badge itself, not from a concatenation of
+ * the button's text. The launcher only renders while the drawer is closed, which
+ * is asserted too: a badge behind an open panel would prove nothing.
+ *
+ * The default timeout covers the product's own polling policy: a closed, healthy
+ * drawer deliberately stretches its poll to 30-35 s with jitter so 1,000
+ * candidates never synchronise a burst. Waiting for a real poll is the point of
+ * this scenario, so the suite waits it out instead of forcing a refresh.
+ */
+const waitForBadge = (n, timeout = 50_000) => page.waitForFunction((count) => {
+  const button = [...document.querySelectorAll('button')].find((b) => (b.textContent ?? '').replace(/\s+/g, ' ').trim().startsWith('Messages'));
+  if (!button || button.getAttribute('aria-expanded') !== 'false') return false;
+  const badge = button.querySelector('span[aria-label*="unread message"]');
+  return Boolean(badge && badge.textContent.trim() === String(count) && badge.getAttribute('aria-label') === `${count} unread message${count === 1 ? '' : 's'}`);
 }, n, { timeout });
 
 const reloadMarker = () => page.evaluate(() => { window.__noReload = window.__noReload ?? 'marker'; return window.__noReload; });

@@ -3,7 +3,6 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import {
@@ -11,6 +10,7 @@ import {
   deleteOrgHint,
   transitionOrgHintStatus,
 } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination Hints" };
 export const dynamic = "force-dynamic";
@@ -47,6 +47,9 @@ export default async function OrgExamHintsPage({
   const sp = (await searchParams) ?? {};
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect("/dashboard");
 
   const supabase = await createClient();

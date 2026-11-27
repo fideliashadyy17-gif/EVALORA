@@ -2,7 +2,6 @@ import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatC
 import { requireSuperAdmin } from "@/lib/auth";
 import { attemptDeadline } from "@/lib/exam";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
 import { AlarmClock, Clock3, Hourglass, Timer } from "lucide-react";
@@ -10,6 +9,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Notice, Section, Table } from "../../ui";
 import { grantAttemptExtensionAsAdmin, updateExamTimingAsAdmin } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination time limits" };
 export const dynamic = "force-dynamic";
@@ -53,6 +53,9 @@ export default async function ExaminationTimeLimitsPage({
   searchParams: Promise<{ exam?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

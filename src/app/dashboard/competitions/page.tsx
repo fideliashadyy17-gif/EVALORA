@@ -5,12 +5,12 @@ import { canOperateMany } from "@/lib/operationalAccess";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { COMPETITION_FORMATS } from "@/lib/brand";
-import { fmtDate } from "@/lib/utils";
 import { Trophy, Users, Wifi } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { createOrgCompetition, deleteDraftCompetition, setOrgCompetitionStatus } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Live competitions" };
 export const dynamic = "force-dynamic";
@@ -61,6 +61,9 @@ export default async function OrganizationCompetitionsPage({
   const pageSize = 20;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate } = await requestFormatter(org?.id ?? null);
   const { canCreate, isManager } = await canOperateMany(ctx, org.id, {
     canCreate: { permission: "competitions.create", module: "competitions" },
     isManager: { permission: "competitions.delete", module: "competitions" },

@@ -74,6 +74,26 @@ for (const route of PUBLIC_ROUTES) {
 const home = await (await fetch(BASE + "/")).text();
 const homeDoc = new JSDOM(home, { url: BASE + "/" }).window.document;
 
+/**
+ * What a visitor actually reads.
+ *
+ * The raw HTML of a server-rendered page also carries the flight data, which
+ * serialises the whole translation catalogue into the document. Scanning that for
+ * marketing claims matches strings nobody ever sees: `common.comingSoon` is an
+ * unused label in the catalogue, and on its own it failed the "no placeholder
+ * promises" pin while every visible sentence on the page was honest. The same
+ * trap waits for any future catalogue entry containing "AI". So the honesty pins
+ * read the rendered copy — the document with the non-rendered elements removed.
+ */
+const visibleText = (doc) => {
+  const clone = doc.documentElement.cloneNode(true);
+  for (const selector of ["script", "style", "noscript", "template"]) {
+    for (const node of clone.querySelectorAll(selector)) node.remove();
+  }
+  return (clone.textContent ?? "").replace(/\s+/g, " ");
+};
+const homeText = visibleText(homeDoc);
+
 ok(Boolean(homeDoc.querySelector('a[href="#main-content"]')), "landing has a skip link");
 ok(Boolean(homeDoc.querySelector("main#main-content")), "landing has one main landmark");
 ok(homeDoc.querySelectorAll('[role="tablist"]').length >= 2, "landing tab interfaces are exposed as tablists");
@@ -95,14 +115,14 @@ const mustSay = [
   [/never a[n]? (automatic )?verdict|human review|reviewed by a person|human-reviewed/i, "human review is stated"],
   [/manual payment|verified by our team/i, "manual payment verification is stated"],
 ];
-for (const [re, label] of mustSay) ok(re.test(home), label);
+for (const [re, label] of mustSay) ok(re.test(homeText), label);
 
 const mustNotSell = [
   [/AI[- ]powered|AI[- ]generated questions|GPT/i, "no AI generation claim"],
   [/session recording (is )?(enabled|included)/i, "no recording claim"],
   [/coming soon/i, "no placeholder promises"],
 ];
-for (const [re, label] of mustNotSell) ok(!re.test(home), label);
+for (const [re, label] of mustNotSell) ok(!re.test(homeText), label);
 
 console.log(`\n${failures.length === 0 ? "PASS" : "FAIL"} — ${failures.length} failing check(s)`);
 if (failures.length) process.exit(1);

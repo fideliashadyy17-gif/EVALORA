@@ -1,7 +1,6 @@
 import { Button, Card, Field, Input, Select } from "@/components/ui";
 import { ORG_ROLES } from "@/lib/brand";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import Link from "next/link";
 import {
   addOrgMember,
@@ -10,8 +9,14 @@ import {
   updateOrgMember,
 } from "../../../actions/orgs";
 import { Notice, StatusBadge, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export async function MembersTab({ orgId, sp }: { orgId: string; sp: { ok?: string; e?: string } }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { date: fmtDate } = await requestFormatter(null);
   const admin = createAdminClient();
   const [{ data: members }, { data: invitations }] = await Promise.all([
     admin

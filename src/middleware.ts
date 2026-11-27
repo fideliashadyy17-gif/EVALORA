@@ -138,6 +138,13 @@ export async function middleware(request: NextRequest) {
     supabaseUrl!,
     supabaseAnonKey!,
     {
+      // This file already bounds every upstream call it makes — a 2.5 s fetch and
+      // a 3.5 s auth budget — so letting postgrest-js stack its own 1s+2s+4s
+      // retry backoff on top would contradict that design: one unreachable
+      // database would cost ~7 s per read, on the edge, before a page even starts
+      // rendering. The maintenance gate's `profiles` read is the one here. See
+      // SERVER_DB_OPTIONS in src/lib/supabase/server.ts for the measurement.
+      db: { retry: false },
       global: {
         fetch: createBoundedFetch(MIDDLEWARE_FETCH_TIMEOUT_MS),
       },

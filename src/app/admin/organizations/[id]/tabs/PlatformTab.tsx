@@ -5,10 +5,10 @@ import {
   issueOrganizationAdminSetup,
   updateOrganizationPlatformDomain,
 } from "@/app/admin/actions/orgs";
-import { fmtDateTime } from "@/lib/utils";
 import { organizationPlatformAccess, organizationPlatformUrl, platformInfrastructure } from "@/lib/tenant";
 import { Notice, Section } from "../../../ui";
 import { cookies } from "next/headers";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export interface PlatformTabOrg {
   id: string;
@@ -35,6 +35,11 @@ export async function PlatformTab({
   org: PlatformTabOrg;
   sp: { ok?: string; e?: string };
 }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   // A freshly issued code is handed back exactly once, through a short-lived
   // HttpOnly cookie, so it never appears in a redirect URL or a server log.
   const setupCode = (await cookies()).get("evalora_admin_setup")?.value ?? null;

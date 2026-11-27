@@ -2,10 +2,11 @@ import { Badge, Card, PageTitle, StatCard } from "@/components/ui";
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { money, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { Activity, Building2, CreditCard, FileCheck2, GraduationCap, Library, Trophy, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { Section, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Platform statistics" };
 export const dynamic = "force-dynamic";
@@ -48,6 +49,9 @@ function Breakdown({ title, rows, total }: { title: string; rows: [string, numbe
 
 export default async function PlatformStatisticsPage() {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { money } = await requestFormatter(null);
   const admin = createAdminClient();
   const head = { count: "exact" as const, head: true };
   const count = async (table: string, apply?: (q: ReturnType<typeof admin.from>) => unknown) => {

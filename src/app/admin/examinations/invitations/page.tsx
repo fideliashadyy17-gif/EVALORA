@@ -10,6 +10,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { updateExamInvitation } from "../../actions/event-operations";
 import { Flash, Notice, Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Exam share links & codes" };
 export const dynamic = "force-dynamic";
@@ -30,6 +31,8 @@ export default async function ExamInvitationsPage({
   searchParams: Promise<{ ok?: string; e?: string; exam?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Platform-wide profile: the Super Admin console mixes tenants in one table.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
@@ -216,7 +219,7 @@ export default async function ExamInvitationsPage({
                   <td>
                     <Badge tone={examLinkLifecycle(e).status === "active" ? "green" : "gray"}>{examLinkLifecycle(e).label}</Badge>
                   </td>
-                  <td>{e.invite_expires_at ? new Date(e.invite_expires_at).toLocaleString() : "—"}</td>
+                  <td>{e.invite_expires_at ? fmtDateTime(e.invite_expires_at) : "—"}</td>
                 </tr>
               ))}
             </Table>

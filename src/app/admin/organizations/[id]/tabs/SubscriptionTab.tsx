@@ -9,10 +9,10 @@ import {
 import { resolveCapabilities, CAPABILITY_LABELS } from "@/lib/capability-rules";
 import { getFeatureFlags } from "@/lib/platform";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import { adminCancelSubscription } from "../../../actions";
 import { assignSubscription, subscriptionOp } from "../../../actions/payments";
 import { Notice, Section, StatusBadge, Table } from "../../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export async function SubscriptionTab({
   orgId,
@@ -23,6 +23,11 @@ export async function SubscriptionTab({
   sp: { ok?: string; e?: string };
   back: string;
 }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { date: fmtDate } = await requestFormatter(null);
   const admin = createAdminClient();
   const [ent, { data: subs }, { data: plans }, { data: payments }] = await Promise.all([
     getEntitlement(admin, orgId),

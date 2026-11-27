@@ -90,6 +90,7 @@ export default async function MypResultPage({
       <MypResultDetail
         result={result}
         history={history}
+        organizationId={access.org.id}
         snapshotSlot={
           <form action={recordMypSnapshot} className="mt-3 flex flex-wrap items-end gap-2 rounded-xl border border-evergreen-900/15 bg-cream p-3">
             <input type="hidden" name="attemptId" value={result.attemptId} />

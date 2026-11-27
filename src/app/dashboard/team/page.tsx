@@ -7,12 +7,12 @@ import { ORG_ROLES } from "@/lib/brand";
 import { getEntitlementFor } from "@/lib/entitlements";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
-import { fmtDate } from "@/lib/utils";
 import { MailPlus, ShieldCheck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { inviteMember, removeMember, revokeInvitation, updateMemberRole } from "./actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Team & Roles" };
 export const dynamic = "force-dynamic";
@@ -24,6 +24,9 @@ export default async function TeamPage({
 }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { date: fmtDate } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
   const { isManager, canViewRoles } = await canOperateMany(ctx, org.id, {

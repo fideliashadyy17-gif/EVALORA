@@ -11,9 +11,9 @@ import {
 import type { RbacRole, RbacUserRole } from "@/lib/rbac";
 import { Badge, Button, ButtonLink, Card, Field, Input, PageTitle, Select } from "@/components/ui";
 import { Section, Table, Notice } from "@/app/admin/ui";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "RBAC & User Role Assignments" };
 export const dynamic = "force-dynamic";
@@ -24,6 +24,9 @@ export default async function RoleAssignments({
   searchParams: Promise<{ ok?: string; e?: string; q?: string; org?: string; invite_email?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const searchQ = (sp.q ?? "").trim().toLowerCase();
   const orgFilter = (sp.org ?? "").trim();

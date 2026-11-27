@@ -1,7 +1,6 @@
 import { Badge, ButtonLink, Card, StatCard } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, money } from "@/lib/utils";
 import {
   Building2,
   CreditCard,
@@ -23,6 +22,7 @@ import {
 import type { Metadata } from "next";
 import Link from "next/link";
 import { enterOrgWorkspace } from "./actions/orgs";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Super Admin" };
 export const dynamic = "force-dynamic";
@@ -60,6 +60,9 @@ async function safeQuery<T extends { error?: unknown }>(
 
 export default async function AdminOverview() {
   const ctx = await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime, money } = await requestFormatter(null);
   const admin = createAdminClient();
   const head = { count: "exact" as const, head: true };
   let degradedQueries = 0;

@@ -1,11 +1,11 @@
 import { Badge, Button, Card, EmptyState, Input, PageTitle, Select } from "@/components/ui";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate, money } from "@/lib/utils";
 import { Search } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { StatusBadge } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Search" };
 export const dynamic = "force-dynamic";
@@ -16,6 +16,9 @@ export default async function AdminSearch({
   searchParams: Promise<{ q?: string; scope?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate, money } = await requestFormatter(null);
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const scope = (sp.scope ?? "").trim();

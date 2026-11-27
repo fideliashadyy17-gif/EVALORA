@@ -1,9 +1,9 @@
 import { StaticPage } from "@/components/site/StaticPage";
 import { Badge, ButtonLink, Card, DataTable } from "@/components/ui";
 import { createClient } from "@/lib/supabase/server";
-import { money } from "@/lib/utils";
 import { CheckCircle2 } from "lucide-react";
 import type { Metadata } from "next";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Pricing" };
 export const dynamic = "force-dynamic";
@@ -15,6 +15,9 @@ function lim(v: number | boolean | undefined, suffix = "") {
 }
 
 export default async function PricingPage() {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { money } = await requestFormatter(null);
   const supabase = await createClient();
   const { data: plans } = await supabase.from("plans").select("*").eq("is_active", true).order("sort");
 

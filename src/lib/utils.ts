@@ -15,32 +15,25 @@ export function slugify(s: string) {
     .slice(0, 48);
 }
 
-export function money(cents: number, currency = "USD") {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    maximumFractionDigits: cents % 100 === 0 ? 0 : 2,
-  }).format(cents / 100);
-}
-
-export function fmtDate(d: string | null | undefined) {
-  if (!d) return "—";
-  return new Date(d).toLocaleDateString("en-GB", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-export function fmtDateTime(d: string | null | undefined) {
-  if (!d) return "—";
-  return new Date(d).toLocaleString("en-GB", {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
+/* ══ Formatting moved out ══════════════════════════════════════════════════
+ * `fmtDate`, `fmtDateTime` and `money` used to live here with a hardcoded
+ * "en-GB" locale for dates and "en-US" for amounts, which is why the Platform
+ * Control Center's Presentation settings (formatting.date_format,
+ * formatting.time_format, formatting.number_format) and
+ * localization.default_timezone could not reach the screens that render them.
+ *
+ * They are deliberately gone rather than deprecated: a wrapper that ignores
+ * configuration is a way for a new screen to be silently deaf to it. Format
+ * with the resolved profile instead —
+ *
+ *   server component:  const fmt = await requestFormatter(org?.id ?? null);
+ *                      fmt.date(value) · fmt.dateTime(value) · fmt.money(cents, currency)
+ *   client component:  const fmt = useFormatting();
+ *
+ * src/lib/formatting.ts holds the pure formatters, src/lib/formattingRequest.ts
+ * resolves which profile a request uses, and
+ * scripts/test-formatting-rollout.mjs fails if a hardcoded formatter returns.
+ */
 
 export function mmss(totalSeconds: number) {
   const s = Math.max(0, Math.floor(totalSeconds));

@@ -3,7 +3,7 @@ import { ExportButton } from "@/components/ExportTools";
 import { StudentImportWizard } from "@/components/StudentImportWizard";
 import { identityKey } from "@/lib/studentImport";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import Link from "next/link";
 import {
   bulkStudentOp,
@@ -14,6 +14,7 @@ import {
 } from "../actions/academics";
 import { CsvImport } from "../CsvImport";
 import { ConfirmField, Flash, Notice, StatusBadge, Table } from "../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export interface StudentsSearchParams {
   sq?: string;
@@ -57,6 +58,11 @@ export async function StudentsPanel({
   sp: StudentsSearchParams;
   preserveParams?: Record<string, string>;
 }) {
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation). The Super Admin console renders with the platform-wide
+  // profile: its tables mix tenants, so one school's separators are never
+  // applied to another school's rows.
+  const { date: fmtDate } = await requestFormatter(null);
   const admin = createAdminClient();
 
   const { data: classes } = await admin

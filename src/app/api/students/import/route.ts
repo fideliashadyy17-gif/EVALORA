@@ -7,6 +7,7 @@ import {
 } from "@/lib/studentImport";
 import { createClient } from "@/lib/supabase/server";
 import { NextResponse } from "next/server";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -83,7 +84,7 @@ export async function POST(request: Request) {
     if (prior) {
       return NextResponse.json({
         ok: false, duplicateFile: true, batchId: prior.id,
-        error: `This exact file was already imported on ${new Date(prior.created_at).toLocaleString()} (${prior.imported_count} students). Nothing was imported again.`,
+        error: `This exact file was already imported on ${(await requestFormatter(orgId)).dateTime(prior.created_at)} (${prior.imported_count} students). Nothing was imported again.`,
       }, { status: 409 });
     }
   }

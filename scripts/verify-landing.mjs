@@ -59,6 +59,10 @@ process.on("uncaughtException", (error) => {
 });
 const launchOptions = {};
 if (process.env.CHROME_PATH) launchOptions.executablePath = process.env.CHROME_PATH;
+// A container without user namespaces cannot use Chromium's sandbox, and neither
+// can a job running as root. CHROME_ARGS="--no-sandbox" opts out there; unset,
+// the launch is exactly what it always was.
+if (process.env.CHROME_ARGS) launchOptions.args = process.env.CHROME_ARGS.split(/\s+/).filter(Boolean);
 let browser;
 try {
   browser = await chromium.launch(launchOptions);

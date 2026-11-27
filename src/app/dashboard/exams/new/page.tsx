@@ -4,6 +4,7 @@ import { getCapabilities } from "@/lib/capabilities";
 import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
+import { getFormattingConfig } from "@/lib/config/service";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -19,9 +20,12 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
   const supabase = await createClient();
   // Pre-filled from the Platform Control Center's examination and assessment
   // defaults for this organization, instead of literals baked into the form.
-  const [examDefaults, assessmentCfg] = await Promise.all([
+  const [examDefaults, assessmentCfg, formattingCfg] = await Promise.all([
     resolveExamDefaults(org.id),
     resolveAssessmentConfig(org.id),
+    // formatting.default_academic_year: the label offered for a new paper when
+    // the author does not type one. An existing examination is never relabelled.
+    getFormattingConfig(org.id).catch(() => null),
   ]);
   const [{ data: quizzes }, { data: templates }, { data: mySubjectRows }] = await Promise.all([
     supabase
@@ -126,7 +130,11 @@ export default async function NewExamPage({ searchParams }: { searchParams: Prom
                 <Input name="exam_period" placeholder="First Term Examination" />
               </Field>
               <Field label="Academic year">
-                <Input name="academic_year" placeholder="2026–2027" />
+                <Input
+                  name="academic_year"
+                  defaultValue={formattingCfg?.default_academic_year ?? ""}
+                  placeholder="2026–2027"
+                />
               </Field>
               <Field label="Grade / Class">
                 <Input name="grade_label" placeholder="MYP4" />

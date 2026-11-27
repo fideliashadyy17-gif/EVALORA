@@ -8,6 +8,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Notice, Section, Table } from "../../ui";
 import { createHintDraft, deleteHint, generateHintDrafts, setHintStatus, updateHintBody } from "../hint-actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination hints" };
 export const dynamic = "force-dynamic";
@@ -60,7 +61,6 @@ interface HintRow {
 const tone = (status: string): "green" | "red" | "amber" | "gray" =>
   status === "published" ? "green" : status === "approved" ? "amber" : status === "archived" ? "gray" : "gray";
 
-const fmt = (value: string | null) => (value ? new Date(value).toLocaleString() : "—");
 
 export default async function ExamHintsPage({
   searchParams,
@@ -68,6 +68,8 @@ export default async function ExamHintsPage({
   searchParams: Promise<{ exam?: string; status?: string; q?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Platform-wide profile: the Super Admin console mixes tenants in one table.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;
@@ -283,8 +285,8 @@ export default async function ExamHintsPage({
                   <span className="mt-1 block text-xs text-ink-soft">{hint.source === "ai" ? "AI draft" : "Manual"}</span>
                 </td>
                 <td className="text-xs text-ink-soft">
-                  {hint.approver ? `Approved by ${hint.approver.full_name ?? hint.approver.email} · ${fmt(hint.approved_at)}` : "Not reviewed"}
-                  {hint.published_at ? <span className="mt-1 block">Published {fmt(hint.published_at)}</span> : null}
+                  {hint.approver ? `Approved by ${hint.approver.full_name ?? hint.approver.email} · ${fmtDateTime(hint.approved_at)}` : "Not reviewed"}
+                  {hint.published_at ? <span className="mt-1 block">Published {fmtDateTime(hint.published_at)}</span> : null}
                 </td>
                 <td>
                   <div className="flex flex-wrap gap-1.5">

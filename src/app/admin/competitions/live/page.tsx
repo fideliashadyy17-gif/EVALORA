@@ -2,13 +2,13 @@ import { Badge, Button, ButtonLink, PageTitle, Select, StatCard } from "@/compon
 import { requireSuperAdmin } from "@/lib/auth";
 import { publicScreenPath } from "@/lib/liveDisplayToken";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Activity, CheckCircle2, Radio, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { adminEndSession } from "../../actions";
 import { setCompetitionStatus, startCompetitionSession } from "../../actions/competitions";
 import { ConfirmField, Section, StatusBadge, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Live competition monitoring" };
 export const dynamic = "force-dynamic";
@@ -52,6 +52,9 @@ export default async function LiveCompetitionMonitoringPage({
   searchParams: Promise<{ org?: string; view?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

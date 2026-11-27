@@ -3,10 +3,10 @@ import { Badge, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { FileCheck2, Radio } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Reports" };
 export const dynamic = "force-dynamic";
@@ -14,6 +14,9 @@ export const dynamic = "force-dynamic";
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<{ sessionsPage?: string; examsPage?: string }> }) {
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const sp = await searchParams;
   const supabase = await createClient();
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

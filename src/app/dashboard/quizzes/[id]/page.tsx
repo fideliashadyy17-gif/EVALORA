@@ -5,12 +5,12 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { moduleEnabled } from "@/lib/modules";
 import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { QuizBuilder } from "../QuizBuilder";
 import { updateQuizAssignment, updateQuizSolutionsPolicy } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Edit quiz" };
 export const dynamic = "force-dynamic";
@@ -45,6 +45,9 @@ export default async function EditQuizPage({
   const sp = await searchParams;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const supabase = await createClient();
 
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);

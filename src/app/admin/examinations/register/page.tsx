@@ -3,7 +3,7 @@ import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, StatCard } f
 import { ExportButton } from "@/components/ExportTools";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { CheckCircle2, Clock3, KeyRound, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -11,6 +11,7 @@ import { CsvImport } from "../../CsvImport";
 import { Flash, Notice, StatusBadge, Table } from "../../ui";
 import { registerClassForExam } from "../../actions/academics";
 import { addExamCandidateAsAdmin, importExamCandidatesAsAdmin } from "../actions";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Candidate registration" };
 export const dynamic = "force-dynamic";
@@ -36,6 +37,9 @@ export default async function CandidateRegistrationPage({
   searchParams: Promise<{ exam?: string; ok?: string; e?: string; page?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { dateTime: fmtDateTime } = await requestFormatter(null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

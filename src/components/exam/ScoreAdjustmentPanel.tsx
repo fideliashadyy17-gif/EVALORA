@@ -27,6 +27,7 @@ import {
   SlidersHorizontal,
   Users,
 } from "lucide-react";
+import { useFormatting } from "@/components/formatting/FormattingProvider";
 
 interface ScoreAdjustmentPanelProps {
   initialContext: ExamScoreAdjustmentContext;
@@ -36,14 +37,6 @@ interface ScoreAdjustmentPanelProps {
 
 function fmtScore(n: number): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(2).replace(/\.?0+$/, "");
-}
-
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleString();
-  } catch {
-    return iso;
-  }
 }
 
 function rowBadgeTone(status: ScoreAdjustmentPreviewRow["status"]): "green" | "gold" | "amber" | "gray" | "red" {
@@ -68,6 +61,8 @@ export function ScoreAdjustmentPanel({
   apiEndpoint,
   canApply,
 }: ScoreAdjustmentPanelProps) {
+  // Ledger timestamps follow the workspace profile (Platform Control Center → Presentation).
+  const { dateTime: fmtDate } = useFormatting();
   const [context, setContext] = useState<ExamScoreAdjustmentContext>(initialContext);
   const [selectedCategoryValue, setSelectedCategoryValue] = useState<string>(() => {
     const first = initialContext.categories[0];

@@ -3,6 +3,7 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
+import { getFormattingConfig } from "@/lib/config/service";
 import { BookOpen, Calendar, Layers, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -33,13 +34,16 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
   const { entitlement } = await getCapabilities(supabase, ctx, org.id);
   requireModule(entitlement, "academics", "/dashboard?e=module");
 
-  const [{ data: years }, { data: levels }, { data: departments }, { data: subjects }, { count: classCount }, { count: studentCount }] = await Promise.all([
+  const [{ data: years }, { data: levels }, { data: departments }, { data: subjects }, { count: classCount }, { count: studentCount }, formattingCfg] = await Promise.all([
     supabase.from("academic_years").select("*").eq("organization_id", org.id).order("starts_on", { ascending: false, nullsFirst: false }).order("created_at", { ascending: false }),
     supabase.from("education_levels").select("*").eq("organization_id", org.id).order("sort").order("name"),
     supabase.from("departments").select("*").eq("organization_id", org.id).order("sort").order("name"),
     supabase.from("subjects").select("*").eq("organization_id", org.id).order("sort").order("name"),
     supabase.from("classes").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "active"),
     supabase.from("students").select("id", { count: "exact", head: true }).eq("organization_id", org.id).eq("status", "active"),
+    // formatting.default_academic_year offered as the label for a NEW year
+    // record; an existing year keeps its own name.
+    getFormattingConfig(org.id).catch(() => null),
   ]);
   const editYear = sp.editYear ? (years ?? []).find((y) => y.id === sp.editYear) : null;
 
@@ -127,7 +131,7 @@ export default async function AcademicStructurePage({ searchParams }: { searchPa
         {isManager && (
           <form action={saveAcademicYear} className="mt-4 grid gap-3 border-t border-evergreen-900/10 pt-4 sm:grid-cols-4">
             <input type="hidden" name="id" value={editYear?.id ?? ""} />
-            <Field label={editYear ? "Edit academic year" : "New academic year"}><Input name="name" required defaultValue={editYear?.name ?? ""} placeholder="2025/2026" /></Field>
+            <Field label={editYear ? "Edit academic year" : "New academic year"}><Input name="name" required defaultValue={editYear?.name ?? formattingCfg?.default_academic_year ?? ""} placeholder="2025/2026" /></Field>
             <Field label="Starts"><Input type="date" name="starts_on" defaultValue={editYear?.starts_on ?? ""} /></Field>
             <Field label="Ends"><Input type="date" name="ends_on" defaultValue={editYear?.ends_on ?? ""} /></Field>
             <div className="flex items-end gap-3">

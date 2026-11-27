@@ -5,10 +5,10 @@ import { activeOrg, requireUser } from "@/lib/auth";
 import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { createClient } from "@/lib/supabase/server";
 import { organizationPlatformAccess, platformInfrastructure } from "@/lib/tenant";
-import { fmtDateTime } from "@/lib/utils";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "My institution's platform" };
 export const dynamic = "force-dynamic";
@@ -26,6 +26,9 @@ export const dynamic = "force-dynamic";
 export default async function InstitutionPlatformPage() {
   const ctx = await requireUser();
   const org = activeOrg(ctx);
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   if (!org) redirect(ctx.profile.platform_role === "super_admin" ? "/admin/organizations/access" : "/onboarding");
   if (org.role === "school_founder") redirect("/dashboard?e=forbidden");
 

@@ -1,12 +1,12 @@
 import { PageNavigation } from "@/components/PageNavigation";
 import { Badge, Button, ButtonLink, Card, EmptyState, PageTitle, StatCard } from "@/components/ui";
-import { requireUser } from "@/lib/auth";
+import { activeOrg, requireUser } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime } from "@/lib/utils";
 import { Bell, CheckCircle2, MailOpen } from "lucide-react";
 import type { Metadata } from "next";
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Notifications" };
 export const dynamic = "force-dynamic";
@@ -25,6 +25,9 @@ export default async function NotificationsPage({
   searchParams: Promise<{ view?: string; page?: string }>;
 }) {
   const ctx = await requireUser();
+  // Configured date and time profile for this workspace (Platform Control
+  // Center → Presentation), scoped to the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(activeOrg(ctx)?.id ?? null);
   const sp = await searchParams;
   const page = Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1);
   const pageSize = 25;

@@ -2,12 +2,12 @@ import { Badge, Button, ButtonLink, Input, PageTitle, Select, StatCard } from "@
 import { PlatformUrlActions } from "@/components/platform/PlatformUrlActions";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { fmtDate } from "@/lib/utils";
 import { organizationPlatformAccess, platformInfrastructure } from "@/lib/tenant";
 import { Link2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Notice, Table } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Organization platform access" };
 export const dynamic = "force-dynamic";
@@ -41,6 +41,9 @@ export default async function OrganizationPlatformAccessPage({
   searchParams: Promise<{ q?: string; state?: string; ok?: string; e?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { date: fmtDate } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
 

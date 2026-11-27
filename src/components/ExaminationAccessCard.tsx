@@ -8,6 +8,7 @@ import {
 } from "@/lib/exam-access";
 import { buildLockdownLaunchUrl, parseLockdownSettings } from "@/lib/lockdown";
 import { ShieldCheck } from "lucide-react";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export interface ExaminationAccessCardProps {
   examTitle: string;
@@ -20,9 +21,15 @@ export interface ExaminationAccessCardProps {
     ends_at: string | null;
   };
   settings: Record<string, unknown> | null;
+  /**
+   * Whose configured date and time profile the availability window renders
+   * with — the organization that owns the examination. Omitted in the Super
+   * Admin console, which renders with the platform-wide profile.
+   */
+  organizationId?: string | null;
 }
 
-export function ExaminationAccessCard({
+export async function ExaminationAccessCard({
   examTitle,
   organizationName,
   shareUrl,
@@ -30,7 +37,9 @@ export function ExaminationAccessCard({
   accessCode,
   exam,
   settings,
+  organizationId = null,
 }: ExaminationAccessCardProps) {
+  const { dateTime: fmtDateTime } = await requestFormatter(organizationId);
   const access = parseExamAccessSettings(settings);
   const lockdown = parseLockdownSettings(settings?.lockdown);
   const availability = examAccessAvailability(exam);
@@ -107,10 +116,10 @@ export function ExaminationAccessCard({
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-soft">Availability</p>
           <p className="mt-1 text-sm text-ink">{availability.ok ? "Open now" : availability.error}</p>
           <p className="mt-1 text-xs text-ink-soft">
-            Status: <strong>{exam.status}</strong> · Opens: {exam.starts_at ? new Date(exam.starts_at).toLocaleString() : "—"} · Closes: {exam.ends_at ? new Date(exam.ends_at).toLocaleString() : "—"}
+            Status: <strong>{exam.status}</strong> · Opens: {exam.starts_at ? fmtDateTime(exam.starts_at) : "—"} · Closes: {exam.ends_at ? fmtDateTime(exam.ends_at) : "—"}
           </p>
           <p className="mt-1 text-xs text-ink-soft">
-            Link: {exam.shared_link_enabled ? "enabled" : "disabled"} · Link expiry: {exam.invite_expires_at ? new Date(exam.invite_expires_at).toLocaleString() : "—"}
+            Link: {exam.shared_link_enabled ? "enabled" : "disabled"} · Link expiry: {exam.invite_expires_at ? fmtDateTime(exam.invite_expires_at) : "—"}
           </p>
         </div>
         <div>

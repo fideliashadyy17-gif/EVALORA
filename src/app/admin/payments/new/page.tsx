@@ -2,10 +2,10 @@ import { Button, ButtonLink, Card, Field, Input, PageTitle, Select, Textarea } f
 import { getPaymentConfig } from "@/lib/admin";
 import { requireSuperAdmin } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/server";
-import { money } from "@/lib/utils";
 import type { Metadata } from "next";
 import { createManualPayment } from "../../actions/payments";
 import { Notice } from "../../ui";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Add payment" };
 export const dynamic = "force-dynamic";
@@ -16,6 +16,9 @@ export default async function NewPaymentPage({
   searchParams: Promise<{ e?: string; org?: string }>;
 }) {
   await requireSuperAdmin();
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the platform-wide scope.
+  const { money } = await requestFormatter(null);
   const sp = await searchParams;
   const admin = createAdminClient();
   const [{ data: orgs }, { data: plans }, config] = await Promise.all([

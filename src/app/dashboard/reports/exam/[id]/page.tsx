@@ -4,7 +4,7 @@ import { ExportButton, PrintButton } from "@/components/ExportTools";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperateMany } from "@/lib/operationalAccess";
 import { createClient } from "@/lib/supabase/server";
-import { fmtDateTime, toCsv } from "@/lib/utils";
+import { toCsv } from "@/lib/utils";
 import { resolveAssessmentConfig } from "@/lib/assessmentConfig";
 import { passMarkFrom } from "@/lib/examFeedback";
 import type { Metadata } from "next";
@@ -12,6 +12,7 @@ import { notFound } from "next/navigation";
 import { MypExportButton } from "@/components/myp/MypExportButton";
 import { CandidatePaperDownloadButton } from "@/components/CandidatePaperDownloadButton";
 import { isAttemptEligibleForPaperPdf } from "@/lib/candidatePaper";
+import { requestFormatter } from "@/lib/formattingRequest";
 
 export const metadata: Metadata = { title: "Examination report" };
 export const dynamic = "force-dynamic";
@@ -20,6 +21,9 @@ export default async function ExamReportPage({ params }: { params: Promise<{ id:
   const { id } = await params;
   const ctx = await requireUser();
   const org = activeOrg(ctx)!;
+  // Configured date, time and number profile (Platform Control Center →
+  // Presentation), resolved once per request from the session's own organization.
+  const { dateTime: fmtDateTime } = await requestFormatter(org?.id ?? null);
   const supabase = await createClient();
   const { canExport, canViewCodes } = await canOperateMany(ctx, org.id, {
     canExport: { permission: "reports.export", module: "exam_reports" },

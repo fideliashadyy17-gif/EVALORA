@@ -7,6 +7,7 @@ import { Bell, CheckCheck, Inbox, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useFormatting } from "@/components/formatting/FormattingProvider";
 
 export interface NotificationItem {
   id: string;
@@ -60,6 +61,8 @@ export function NotificationBell({
   allHref?: string;
   allLabel?: string;
 }) {
+  // Configured date profile for this workspace, from the provider the layout mounted.
+  const { date: fmtDate } = useFormatting();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<NotificationItem[] | null>(null);
@@ -317,7 +320,7 @@ export function NotificationBell({
                           <p className="mt-0.5 line-clamp-2 text-xs leading-relaxed text-ink-soft">{item.body}</p>
                         )}
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-ink-soft">
-                          <time dateTime={item.created_at}>{formatRelativeTime(item.created_at, now)}</time>
+                          <time dateTime={item.created_at}>{formatRelativeTime(item.created_at, now, fmtDate)}</time>
                           {item.link && (
                             <Link
                               href={item.link}
