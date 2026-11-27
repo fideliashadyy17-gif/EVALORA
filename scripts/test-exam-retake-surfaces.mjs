@@ -209,8 +209,19 @@ check("decisions arrive live, with a fallback that cannot double-navigate", () =
 
 check("notifications link to the exact decision page", () => {
   const server = file("src/lib/examRetakeServer.ts");
-  assert.match(server, /link: `\/retake\/\$\{input\.request\.id\}`/);
+  const registry = file("src/lib/notificationTemplates.ts");
+  // The destination is declared once, in the notification event registry, and
+  // rendered with the id of the request the decision is about. The wording is
+  // editable; the destination is not, so a template can never turn a decision
+  // notification into a link to a list the candidate then has to search.
+  assert.match(registry, /link: "\/retake\/\{\{retake_request_id\}\}"/);
+  assert.match(server, /retake_request_id: input\.request\.id/);
+  assert.match(server, /event: approved \? "exam_retake_approved" : "exam_retake_rejected"/);
+  // The optional clauses stay composed in code, whole, so an edited template
+  // cannot leave a candidate reading "Retake code: ." when no code was issued.
   assert.match(server, /Retake code: \$\{input\.retakeCode\}/);
+  assert.match(server, /Reason: \$\{input\.note\}/);
+  assert.match(server, /organizationId: input\.organizationId/);
 });
 
 check("an approval issues a unique, spendable code", () => {

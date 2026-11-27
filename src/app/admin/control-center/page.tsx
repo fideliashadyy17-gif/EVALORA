@@ -104,6 +104,9 @@ export default async function ControlCenterPage({
             <ButtonLink href="/admin/control-center/history" variant="outline">
               History & rollback
             </ButtonLink>
+            <ButtonLink href="/admin/control-center/notifications" variant="outline">
+              Notification wording
+            </ButtonLink>
             <ButtonLink href="/admin/control-center/presets" variant="gold">
               Presets
             </ButtonLink>

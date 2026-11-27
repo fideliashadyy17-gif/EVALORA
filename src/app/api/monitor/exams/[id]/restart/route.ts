@@ -133,6 +133,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       decision: "approved",
       note: reason,
       accessExpiresAt: window.expiresAt,
+      organizationId: orgId,
       retakeCode,
     }),
   ]);

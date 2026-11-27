@@ -4,6 +4,7 @@ import { audit, fint, fstr, requireSuperAdmin, uniqueOrgSlug } from "@/lib/admin
 import { ADMIN_ORG_COOKIE } from "@/lib/auth";
 import { ORG_TYPES } from "@/lib/brand";
 import { generateSetupCode, hashSetupCode, setupExpiryFrom, SETUP_CODE_TTL_HOURS } from "@/lib/orgAdminSetup";
+import { sendNotification } from "@/lib/notificationDelivery";
 import { createAdminClient } from "@/lib/supabase/server";
 import { rootDomain, subdomainSuggestions, validateSubdomain } from "@/lib/tenant";
 import { revalidatePath } from "next/cache";
@@ -292,11 +293,11 @@ export async function addOrgMember(formData: FormData) {
       { organization_id: orgId, user_id: prof.id, role, status: "active" },
       { onConflict: "organization_id,user_id" },
     );
-    await admin.from("notifications").insert({
-      user_id: prof.id, type: "info",
-      title: "You were added to an organization",
-      body: `An EVALORA administrator added you as ${role}. Open your dashboard to get started.`,
-      link: "/dashboard",
+    await sendNotification(admin, {
+      event: "organization_member_added",
+      organizationId: orgId,
+      userIds: [prof.id],
+      values: { member_role: role },
     });
     await audit(ctx, "organization.member_added", "organization_members", prof.id, orgId, { role });
     redirect(`/admin/organizations/${orgId}?tab=members&ok=member_added`);

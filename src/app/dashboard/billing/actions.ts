@@ -1,6 +1,7 @@
 "use server";
 
 import { activeOrg, requireUser } from "@/lib/auth";
+import { sendNotification } from "@/lib/notificationDelivery";
 import { canOperate } from "@/lib/operationalAccess";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { revalidatePath } from "next/cache";
@@ -58,17 +59,14 @@ export async function submitPayment(formData: FormData) {
   // Notify all super admins.
   const admin = createAdminClient();
   const { data: admins } = await admin.from("profiles").select("id").eq("platform_role", "super_admin");
-  if (admins?.length) {
-    await admin.from("notifications").insert(
-      admins.map((a) => ({
-        user_id: a.id,
-        type: "payment",
-        title: "New payment to review",
-        body: `${org.name} submitted a ${plan.name} (${period}) payment: ${ref}`,
-        link: "/admin/payments",
-      })),
-    );
-  }
+  // Delivery is gated on the platform's switch, not this organization's: a
+  // tenant cannot silence the queue that verifies its own payment.
+  await sendNotification(admin, {
+    event: "payment_submitted",
+    organizationId: org.id,
+    userIds: (admins ?? []).map((a) => a.id as string),
+    values: { plan_name: plan.name, billing_period: period, transaction_ref: ref },
+  });
   await admin.from("audit_logs").insert({
     actor_id: ctx.user.id,
     organization_id: org.id,

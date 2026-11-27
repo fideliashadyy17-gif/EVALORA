@@ -1,5 +1,5 @@
 // Platform-wide route, table-accessibility, navigation, and bug-regression suite
-// covering all 185 Next.js App Router page.tsx routes across Super Admin (/admin),
+// covering all 191 Next.js App Router page.tsx routes across Super Admin (/admin),
 // Organization Workspace (/dashboard), Student & Candidate Assessment flows,
 // Multi-tenant Portals, Live Screens, and Public/Auth surfaces.
 
@@ -30,7 +30,7 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 189 page.tsx routes (95 admin, 57 dashboard, 37 public/auth/student/portal)", () => {
+check("route inventory accounts for all 191 page.tsx routes (96 admin, 58 dashboard, 37 public/auth/student/portal)", () => {
   // 95 = 89 + the five Platform Control Center surfaces added for the centralized
   //      configuration architecture: /admin/control-center (global defaults),
   //      /admin/control-center/organizations (per-organization overrides list),
@@ -38,8 +38,11 @@ check("route inventory accounts for all 189 page.tsx routes (95 admin, 57 dashbo
   //      /admin/control-center/history (versioned revisions + rollback) and
   //      /admin/control-center/presets (reusable configuration presets)
   //      + /admin/questions/templates (the Question Studio template library that
-  //        Super Admin curates for every tenant).
-  assert.equal(adminPages.length, 95, `expected 95 admin pages, found ${adminPages.length}`);
+  //        Super Admin curates for every tenant)
+  //      + /admin/control-center/notifications (the notification wording console:
+  //        every event EVALORA generates, the copy in force for the platform or
+  //        for one organization, a live preview and a test delivery).
+  assert.equal(adminPages.length, 96, `expected 96 admin pages, found ${adminPages.length}`);
   // 57 = 46 + /dashboard/monitoring + /dashboard/exams/links + /dashboard/exams/[id]/hints
   //      + /dashboard/exams/[id]/adjustments (controlled score adjustments)
   //      + /dashboard/score-adjustments (the single workspace Score Adjustment studio;
@@ -53,12 +56,15 @@ check("route inventory accounts for all 189 page.tsx routes (95 admin, 57 dashbo
   //        assessment records), /dashboard/assessments/[id] (the gradebook for one
   //        assessment), /dashboard/exams/[id]/grade-adjustments (the unlimited
   //        individual adjustment ledger) and /dashboard/exams/[id]/consolidation
-  //        (the configurable consolidation engine with preview and publication).
-  assert.equal(dashboardPages.length, 57, `expected 57 dashboard pages, found ${dashboardPages.length}`);
+  //        (the configurable consolidation engine with preview and publication)
+  //      + /dashboard/settings/notifications (the organization's own notification
+  //        wording, with the same resolver and the same store as the platform
+  //        console, scoped from the session rather than from a posted field).
+  assert.equal(dashboardPages.length, 58, `expected 58 dashboard pages, found ${dashboardPages.length}`);
   // 37 = 36 + /maintenance, the public holding page the middleware rewrites to
   //      while platform_behavior.maintenance_mode is on.
   assert.equal(otherPages.length, 37, `expected 37 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 189);
+  assert.equal(allPages.length, 191);
 });
 
 for (const pagePath of adminPages) {
@@ -148,4 +154,4 @@ check("Student & candidate entry surfaces expose <main> landmarks and cross-link
   assert.ok(!pricingSrc.includes("<table"), "pricing/page.tsx should use <DataTable>");
 });
 
-console.log(`✓ platform redesign & 189-route audit — ${passed} checks passed`);
+console.log(`✓ platform redesign & 191-route audit — ${passed} checks passed`);
