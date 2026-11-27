@@ -339,7 +339,7 @@ export const MODULE_CATALOG: readonly ModuleDef[] = [
     adminReferenceHref: "/admin/examinations/monitoring",
     surface: { kind: "nav", hrefs: ["/dashboard/monitoring"] },
   },
-  { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication and individual candidate result links.", recommendedPlan: "free", availability: "implemented", workspacePath: "Dashboard → Results Management & Candidate Links", adminReferenceHref: "/admin/examinations/results", surface: { kind: "nav", hrefs: ["/dashboard/results", "/dashboard/score-adjustments"] } },
+  { key: "exam_results", group: "exams", label: "Results Management & Candidate Links", description: "Marking, grading, provisional review, score validation, publication, individual candidate result links, assessment contributions and grade consolidation.", recommendedPlan: "free", availability: "implemented", workspacePath: "Dashboard → Results Management & Candidate Links", adminReferenceHref: "/admin/examinations/results", surface: { kind: "nav", hrefs: ["/dashboard/results", "/dashboard/score-adjustments", "/dashboard/assessments"] } },
 
   {
     key: "exam_validation",

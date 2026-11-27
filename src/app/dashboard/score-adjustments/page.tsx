@@ -203,6 +203,40 @@ export default async function WorkspaceScoreAdjustmentsPage({
           Select an examination above to review or apply score adjustments.
         </Card>
       )}
+
+      {/* Cross-links to the unlimited individual layer. This studio keeps its own
+          ceiling of one batch adjustment per student per category; the ledger
+          below it has none, and Assessment Contributions records the classroom
+          work that justifies an adjustment. */}
+      <Card className="p-5">
+        <h2 className="text-sm font-bold text-evergreen-950">Related grading layers</h2>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <Link
+            href="/dashboard/assessments"
+            className="rounded-xl border border-evergreen-900/15 bg-white p-4 transition hover:border-evergreen-700/50 hover:bg-cream"
+          >
+            <p className="text-sm font-semibold text-evergreen-900">
+              Assessment Contributions &amp; Grade Consolidation
+            </p>
+            <p className="mt-1 text-xs text-ink-soft">
+              Record homework, class tests, projects and other classroom assessments, then consolidate them
+              into examination results with a configurable, audited method.
+            </p>
+          </Link>
+          {activeExamId && (
+            <Link
+              href={`/dashboard/exams/${activeExamId}/grade-adjustments`}
+              className="rounded-xl border border-evergreen-900/15 bg-white p-4 transition hover:border-evergreen-700/50 hover:bg-cream"
+            >
+              <p className="text-sm font-semibold text-evergreen-900">Individual grade adjustments</p>
+              <p className="mt-1 text-xs text-ink-soft">
+                Unlimited repeated adjustments per student and per criterion, positive or negative, each with
+                its reason, actor and full before/after history.
+              </p>
+            </Link>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }
