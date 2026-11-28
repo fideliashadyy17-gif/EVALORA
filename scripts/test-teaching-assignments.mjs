@@ -125,4 +125,54 @@ test("choosing subjects at teacher creation populates the assignment table", () 
   assert.match(block, /role: "subject_teacher"/);
 });
 
+/* ── The database policies themselves ─────────────────────────────────── */
+
+const POLICIES = readFileSync("supabase/migrations/20261128170000_subject_scoped_content_policies.sql", "utf8");
+
+test("every write policy on questions and exams is subject-scoped", () => {
+  // The defect was unauthorised MODIFICATION, and it lived in the policies:
+  // can_create_content(organization_id) takes an organization and nothing else,
+  // so it cannot distinguish a Physics teacher from the Literature teacher.
+  for (const policy of ["q_insert", "q_update", "q_delete", "exam_insert", "exam_update", "exam_delete"]) {
+    const at = POLICIES.indexOf(`policy ${policy} on`);
+    assert.ok(at > 0, `${policy} must be redefined`);
+    const block = POLICIES.slice(at, POLICIES.indexOf(";", at));
+    assert.match(block, /can_author_subject\(organization_id, subject_id\)/, `${policy} must check the subject`);
+    assert.doesNotMatch(block, /can_create_content/, `${policy} must no longer use the org-only predicate`);
+  }
+});
+
+test("UPDATE checks the new row as well as the old one", () => {
+  // USING alone would let a teacher take a question they may edit and MOVE it into
+  // a subject they may not touch: the old row passes, the new row is never
+  // examined. WITH CHECK is the clause that stops that.
+  const at = POLICIES.indexOf("policy q_update on");
+  const block = POLICIES.slice(at, POLICIES.indexOf(";", at));
+  assert.match(block, /using \(/, "q_update needs a USING clause");
+  assert.match(block, /with check \(/, "q_update needs a WITH CHECK clause");
+  const examAt = POLICIES.indexOf("policy exam_update on");
+  const examBlock = POLICIES.slice(examAt, POLICIES.indexOf(";", examAt));
+  assert.match(examBlock, /using \(/);
+  assert.match(examBlock, /with check \(/);
+});
+
+test("homeroom status earns nothing on content", () => {
+  // can_author_subject must not consult class_teacher rows at all.
+  const at = SQL.indexOf("create or replace function public.can_author_subject");
+  const fn = SQL.slice(at, SQL.indexOf("comment on function public.can_author_subject"));
+  assert.doesNotMatch(fn, /is_class_teacher_of/, "homeroom must not widen content authorship");
+  assert.match(fn, /ta\.role = 'subject_teacher'/, "only subject responsibilities count");
+});
+
+test("the migration is additive and cannot destroy existing content authority", () => {
+  // 558 of 2,492 questions have a NULL subject and there were zero teaching
+  // assignments in production. A policy that treated either as "denied" would
+  // lock every teacher out of every existing question on deploy.
+  assert.match(POLICIES, /add column if not exists subject_id/, "the new column must be additive");
+  assert.match(POLICIES, /can_author_subject treats NULL as unrestricted/);
+  assert.doesNotMatch(POLICIES, /delete from public\.questions/i);
+  assert.doesNotMatch(POLICIES, /update public\.questions/i);
+  assert.doesNotMatch(POLICIES, /drop table/i);
+});
+
 console.log(`\nTeaching assignments: ${n} checks passed.`);
