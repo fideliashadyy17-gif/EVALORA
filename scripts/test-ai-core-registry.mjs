@@ -115,9 +115,13 @@ await test('no tool silently writes without a permission covering a write verb',
   // A creating/editing tool must name .create / .edit / .manage — never .view.
   for (const tool of TOOLS) {
     if (!tool.risk.writes) continue;
+    // `manage_members` is included deliberately: teaching assignments are
+    // written under the same permission that already gates the teacher
+    // directory and the assignment admin surface, and it is a manage verb. The
+    // rule this enforces is "never .view", not a fixed list of suffixes.
     assert.match(
       tool.risk.permission,
-      /\.(create|edit|delete|publish|validate|manage_agents)$/,
+      /\.(create|edit|delete|publish|validate|manage_agents|manage_members)$/,
       `${tool.name} writes but its permission is "${tool.risk.permission}"`,
     );
   }

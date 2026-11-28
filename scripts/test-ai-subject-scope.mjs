@@ -166,11 +166,21 @@ await test("the gate is wired to a call-shaped resolver, not args.subject_id", (
   assert.doesNotMatch(ENGINE, /typeof request\.args\?\.subject_id === "string"/);
 });
 
-await test("no write tool accepts subject_id, which is why the old gate never fired", () => {
-  // Documenting the shape that caused the bug: if a future tool gains
-  // subject_id, this assertion reminds the author to keep the resolver in step.
-  const subjectIdArgs = [...TOOLS.matchAll(/subject_id: uuid\(/g)];
-  assert.equal(subjectIdArgs.length, 0, "no AI tool takes subject_id; resolution must go through the resolver");
+await test("no content tool accepts subject_id, which is why the old gate never fired", () => {
+  // The shape that caused the bug. School-management tools added later do take
+  // a subject_id — for an assignment, and as a filter — but they are not content
+  // tools and are not in SUBJECT_SCOPED_TOOLS. This asserts the distinction so
+  // the gate is never justified by an argument that does not exist.
+  const contentTools = ["create_examination", "update_examination", "create_question", "generate_question", "create_quiz", "update_quiz"];
+  for (const name of contentTools) {
+    const start = TOOLS.indexOf(`name: "${name}"`);
+    assert.ok(start > 0, `${name} must exist`);
+    const block = TOOLS.slice(start, TOOLS.indexOf('modelHint', start));
+    assert.ok(
+      !/subject_id: uuid\(/.test(block),
+      `${name} does not take subject_id, so the gate must resolve the call — not read an argument`,
+    );
+  }
 });
 
 /* ── Resolution of every real call shape ──────────────────────────────── */
