@@ -193,11 +193,29 @@ export async function ownerIsActive(admin: SupabaseClient, userId: string): Prom
 /**
  * Builds the permission resolver for a request.
  *
- * It answers exactly the question `executeTool` asks: does the AGENT'S OWNER
- * hold this permission in this organization? The lookup calls the platform's
- * database resolver directly (`access_has_permission`) rather than impersonating
- * a browser session, so an API call resolves permissions exactly as the same
- * person's dashboard would.
+ * It answers exactly the question `executeTool` asks: does the ACTING HUMAN hold
+ * this permission in this organization?
+ *
+ * It calls `_access_eval_permission`, the pure evaluator, and NOT
+ * `access_has_permission`. The latter opens with
+ *
+ *     if auth.uid() is distinct from p_user_id and not is_super_admin()
+ *     then return false; end if;
+ *
+ * which is an identity guard for callers holding a session cookie. This code
+ * runs on the service-role client, where `auth.uid()` is NULL, so that guard is
+ * always true and the function returned FALSE FOR EVERY PERMISSION AND EVERY
+ * USER. The consequence was total rather than partial: `tools/list` offered an
+ * agent zero tools, so discovery came back empty and every call was refused with
+ * "You do not have … which … requires" — an external agent could not do anything
+ * at all, while the same person's browser worked normally.
+ *
+ * Dropping the guard is safe HERE because the identity is not inferred from the
+ * request: `authenticateAgent` resolved it from the agent's own row and its
+ * owner, and the permission question names that resolved id explicitly. The
+ * evaluator still answers no for an unknown user, a permission that does not
+ * exist, or a user who has no role in the organization — all verified against
+ * the live database before this change was made.
  *
  * The module half of the check is applied by the service each tool invokes
  * (`createExaminationFromForm`, `savePaperForActor`, …) — the AI never has a
@@ -230,7 +248,7 @@ export function permissionResolver(
     try {
       const role = await membershipRole(auth.organizationId);
       if (role) {
-        const { data, error } = await auth.admin.rpc("access_has_permission", {
+        const { data, error } = await auth.admin.rpc("_access_eval_permission", {
           p_user_id: auth.actor.userId,
           p_organization_id: auth.organizationId,
           p_permission_key: permission,
