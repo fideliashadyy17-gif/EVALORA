@@ -16,8 +16,6 @@
  * - When Lockdown is disabled, standard web access remains completely unobstructed.
  */
 
-import { randomBytes } from "node:crypto";
-
 export const LOCKDOWN_APP_NAME = "EVALORA Secure Exam Browser";
 export const LOCKDOWN_CURRENT_VERSION = "1.1.0";
 export const LOCKDOWN_PROTOCOL = "evalora-lockdown";
@@ -145,7 +143,19 @@ export function buildLockdownLaunchUrl(
 
 /**
  * Generates an ephemeral challenge nonce for client handshake.
+ *
+ * Uses the Web Crypto CSPRNG, which exists in every browser and in Node 19+, so
+ * this module can be imported by a client component without dragging
+ * `node:crypto` into the browser bundle. It previously did, and `next build`
+ * failed with `UnhandledSchemeError: Reading from "node:crypto" is not handled`
+ * for every page that reached it through the candidate exam client.
+ *
+ * The nonce is still generated from a cryptographically secure source — this is
+ * a randomisation helper, never a key derivation, and nothing about the
+ * handshake's strength is reduced by the swap.
  */
 export function generateLockdownChallenge(): string {
-  return randomBytes(16).toString("hex");
+  const bytes = new Uint8Array(16);
+  globalThis.crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
