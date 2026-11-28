@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticateAgent, permissionResolver } from "@/lib/ai/authz";
+import { aiModuleRefusal, authenticateAgent, permissionResolver } from "@/lib/ai/authz";
 import { executeTool } from "@/lib/ai/engine";
 import { TOOLS } from "@/lib/ai/tools";
 import { ToolError } from "@/lib/ai/types";
@@ -71,6 +71,11 @@ export async function POST(request: Request) {
   // One resolver for the whole request: its answers are memoized, so discovery
   // and invocation cannot disagree about the same permission, and the model
   // never sees two different views within one conversation turn.
+  // Same plan gate as the REST surface and the dashboard: a plan without the
+  // `ai_assistant` module refuses the AI surface everywhere.
+  const moduleRefusal = await aiModuleRefusal(auth);
+  if (moduleRefusal) return moduleRefusal;
+
   const hasPermission = permissionResolver(auth);
 
   const responses: unknown[] = [];
@@ -116,6 +121,8 @@ export async function POST(request: Request) {
               supabase: auth.supabase,
               // The authoring services ask their own module-aware question.
               authorize: (permission, module) => hasPermission(permission, module),
+              hasPermissionFor: (permission) => hasPermission(permission),
+              publicBaseUrl: new URL(request.url).origin,
             },
           );
           if (!outcome.ok) {

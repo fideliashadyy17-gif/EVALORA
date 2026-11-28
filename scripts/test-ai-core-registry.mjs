@@ -34,7 +34,7 @@ const load = async (relative) => import(pathToFileURL(path.join(outDir, relative
 
 const { TOOLS, getTool, toolsForPermissions } = await load('lib/ai/tools.js');
 const { riskOf, approvalRequired, SENSITIVE_TOOLS, READ_ONLY_TOOLS } = await load('lib/ai/risk.js');
-const { buildExamPlan, TOPIC_CATALOG, resolveTopics, gradeOrderFromLabel } = await load('lib/ai/generator.js');
+const { buildExamPlan, TOPIC_CATALOG, resolveTopics, gradeOrderFromLabel, firstTopicIn } = await load('lib/ai/generator.js');
 const { validateProposedExam, VALIDATION_HONESTY_NOTE, unclosedMathDelimiters } = await load('lib/ai/validation.js');
 // The planner reads the registry and provider only; it is compiled separately
 // because it is `server-only` in the app but pure logic in itself.
@@ -317,7 +317,7 @@ await test('every declared key in a generated paper is accepted by the real scor
 await test('rule planning routes each documented intent', async () => {
   const cases = [
     ['Create a Grade 9 MYP Mathematics examination on algebra, 90 minutes, 20 questions', 'create_examination'],
-    ['Generate a hard question on trigonometry', 'generate_question'],
+    ['Generate a hard question on percentages', 'generate_question'],
     ['Validate the examination 11111111-1111-4111-8111-111111111111', 'validate_examination'],
     ['How did the class do? 22222222-2222-4222-8222-222222222222', 'get_class_statistics'],
     ['Show me the workspace context', 'get_org_context'],
@@ -325,9 +325,20 @@ await test('rule planning routes each documented intent', async () => {
     ['Add 5 marks to 11111111-1111-4111-8111-111111111111', 'apply_grade_adjustment'],
   ];
   for (const [instruction, expected] of cases) {
-    const plan = planFromRules(instruction);
+    const plan = planFromRules(instruction, firstTopicIn);
     assert.equal(plan.steps[0]?.tool, expected, `"${instruction}" planned ${plan.steps[0]?.tool}`);
   }
+});
+
+// The topic fixture was "trigonometry". That word has no catalogue entry, and
+// the router used to invent a topic key for it — which generated a paper with
+// zero questions and was reported as a successful generation. The router now
+// resolves through the catalogue and declines instead, which
+// `test-ai-assistant-quality.mjs` asserts directly.
+await test('an unsupported topic is declined rather than invented', async () => {
+  const plan = planFromRules('Generate a hard question on trigonometry', firstTopicIn);
+  assert.equal(plan.steps.length, 0, 'a topic with no catalogue entry must not produce a step');
+  assert.match(plan.refusal ?? '', /could not turn that into an action/i);
 });
 
 await test('a publish instruction without an id refuses instead of guessing', async () => {

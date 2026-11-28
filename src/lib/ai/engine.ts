@@ -134,6 +134,10 @@ export interface EngineDeps {
   modelTransport?: ToolRuntime["modelTransport"];
   /** See `ToolRuntime.authorize`: present only for external-agent requests. */
   authorize?: ToolRuntime["authorize"];
+  /** See `ToolRuntime.hasPermissionFor`. */
+  hasPermissionFor?: ToolRuntime["hasPermissionFor"];
+  /** See `ToolRuntime.publicBaseUrl`. */
+  publicBaseUrl?: ToolRuntime["publicBaseUrl"];
 }
 
 /** Rate limit + daily quota for an agent identity. */
@@ -491,6 +495,8 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
     now: () => (deps.now ?? (() => new Date()))(),
     modelTransport: deps.modelTransport,
     authorize: deps.authorize,
+    hasPermissionFor: deps.hasPermissionFor ?? deps.hasPermission,
+    publicBaseUrl: deps.publicBaseUrl,
   };
 
   try {

@@ -17,6 +17,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { CoreModelError } from "./provider";
 import type { MarkingTransport } from "../ai-marking";
+import { AGENT_CLIENTS, createAgent, isKnownPermission } from "./agents";
 import type { AiOrgSettings } from "./engine";
 import { ToolError, type ActorIdentity, type CallScope, type ToolResult, type PreviewBlock } from "./types";
 import {
@@ -25,6 +26,7 @@ import {
   type ProposedSection,
   type ValidationReport,
   validateProposedExam,
+  promptFingerprint,
   VALIDATION_HONESTY_NOTE,
 } from "./validation";
 import {
@@ -63,7 +65,33 @@ export interface ToolRuntime {
    * where the browser session answers for itself.
    */
   authorize?: (permission: string, module?: string) => Promise<boolean>;
+  /**
+   * Permission check for the ACTING HUMAN, independent of any request client.
+   * Used when a tool must decide what to grant rather than whether to proceed
+   * (agent registration intersects requested permissions with what the owner
+   * really holds).
+   */
+  hasPermissionFor?: (permission: string) => Promise<boolean>;
+  /** Deployment base URL, so a registration can hand back real endpoints. */
+  publicBaseUrl?: string;
 }
+
+/**
+ * What an agent gets when the caller names no permissions: enough to look around
+ * and draft, and nothing that publishes, marks, adjusts a score or touches a
+ * credential. Deliberately narrower than "every tool the owner can run".
+ */
+const DEFAULT_AGENT_PERMISSIONS = [
+  "dashboard.view",
+  "exams.view",
+  "questions.view",
+  "quizzes.view",
+  "grading.view",
+  "reports.view",
+  "exams.create",
+  "questions.create",
+  "quizzes.create",
+];
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -367,6 +395,25 @@ export function specFromRequest(args: Record<string, unknown>, context: AiOrgani
   };
 }
 
+/**
+ * Builds a plan, turning a constraint conflict into an actionable refusal.
+ *
+ * "A 20-mark paper of 60 questions" is a request no generator can satisfy while
+ * keeping every question worth at least half a mark. Surfacing that as an
+ * internal error would look like a crash; the caller is told what to change.
+ */
+function buildPlan(spec: Parameters<typeof buildExamPlan>[0]) {
+  try {
+    return buildExamPlan(spec);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (/cannot hold .* questions at the minimum/i.test(message)) {
+      throw new ToolError("invalid_arguments", message, "Nothing was created.");
+    }
+    throw error;
+  }
+}
+
 function normaliseMix(raw: Record<string, unknown>): { easy: number; medium: number; hard: number } {
   const easy = Math.max(0, Number(raw.easy) || 0);
   const medium = Math.max(0, Number(raw.medium) || 0);
@@ -477,13 +524,24 @@ export function planPreview(plan: ProposedExam, report: ValidationReport, source
         })),
       },
       {
-        heading: "Validation",
-        bullets: [
-          report.ok ? "Structural checks passed." : `${report.errors.length} blocking error(s).`,
-          ...report.errors.slice(0, 8).map((e) => `Error: ${e.message}`),
-          ...report.warnings.slice(0, 8).map((w) => `Warning: ${w.message}`),
-          VALIDATION_HONESTY_NOTE,
-        ],
+        heading: "Checks",
+        // A preview is shown for a paper that PASSED (or one that was refused,
+        // where the errors are the point). Listing warnings as a wall of red
+        // text under a successful creation is what made a good result look
+        // broken, so a clean paper says so in one line.
+        bullets: report.ok
+          ? [
+              report.warnings.length
+                ? `Structural checks passed with ${report.warnings.length} note(s):`
+                : "Structural checks passed: title, duration, sections, marks, answer keys and part totals all agree.",
+              ...report.warnings.slice(0, 5).map((w) => w.message),
+              VALIDATION_HONESTY_NOTE,
+            ]
+          : [
+              `${report.errors.length} blocking error(s) — nothing is saved until these are fixed:`,
+              ...report.errors.slice(0, 8).map((e) => e.message),
+              VALIDATION_HONESTY_NOTE,
+            ],
       },
     ],
   };
@@ -522,7 +580,7 @@ async function createExamination(runtime: ToolRuntime, args: Record<string, unkn
         throw new ToolError("unconfigured", `The model could not author this examination: ${reason}`, "Switch source to \"template\" to use EVALORA's deterministic generator instead.");
       }
       // `auto`: fall back honestly and say which engine produced the paper.
-      const built = buildExamPlan(spec);
+      const built = buildPlan(spec);
       plan = built.plan;
       sources = built.sources;
       modelNote =
@@ -531,9 +589,30 @@ async function createExamination(runtime: ToolRuntime, args: Record<string, unkn
           : `The model was unavailable (${error instanceof Error ? error.message : "unknown reason"}), so EVALORA's deterministic generator authored this paper.`;
     }
   } else {
-    const built = buildExamPlan(spec);
+    const built = buildPlan(spec);
     plan = built.plan;
     sources = built.sources;
+  }
+
+  // A generator that produced nothing must never be reported as success. If a
+  // requested topic yielded no questions the paper falls back to grade-appropriate
+  // material rather than a silent empty examination.
+  if (!plan.questions.length) {
+    const rebuilt = buildPlan({ ...spec, topics: undefined, seed: `${spec.seed}|fallback` });
+    if (rebuilt.plan.questions.length) {
+      plan = rebuilt.plan;
+      sources = rebuilt.sources;
+      modelNote = [modelNote, "The requested topic produced no items, so grade-appropriate topics were used instead."]
+        .filter(Boolean)
+        .join(" ");
+    }
+  }
+  if (!plan.questions.length) {
+    throw new ToolError(
+      "internal",
+      "The generator produced no questions for this request, so nothing was saved.",
+      "Try naming a supported topic, or ask for a grade-appropriate paper instead.",
+    );
   }
 
   const report = validateProposedExam(plan);
@@ -1033,56 +1112,154 @@ async function generateQuestion(runtime: ToolRuntime, args: Record<string, unkno
     throw new ToolError("invalid_arguments", "\"difficulty\" must be easy, medium or hard.");
   }
   const gradeLabel = optionalString(args.grade_label, 80) ?? "Grade 9";
-  const seed = optionalString(args.seed, 120) ?? `${topic}|${difficulty}|${Date.now()}`;
+  const count = optionalNumber(args.count, "count", 1, 20) ?? 1;
+  const seed = optionalString(args.seed, 120) ?? `${topic}|${difficulty}|${count}|${Date.now()}`;
+
+  // Author one question per index from the same deterministic families the
+  // examination generator uses, so a saved question is byte-for-byte the kind
+  // of item a real paper contains — computed answers, not model guesses.
   const built = buildExamPlan({
-    title: "Practice question",
+    title: "Practice questions",
     durationMinutes: 30,
-    questionCount: 2,
+    questionCount: count,
     topics: [topic as TopicKey],
-    difficultyMix: difficulty === "easy" ? { easy: 1, medium: 0, hard: 0 } : difficulty === "medium" ? { easy: 0, medium: 1, hard: 0 } : { easy: 0, medium: 0, hard: 1 },
+    difficultyMix:
+      difficulty === "easy"
+        ? { easy: 1, medium: 0, hard: 0 }
+        : difficulty === "medium"
+          ? { easy: 0, medium: 1, hard: 0 }
+          : { easy: 0, medium: 0, hard: 1 },
     seed,
     gradeLabel,
+    sections: [{ id: "qa", title: "Practice", share: 1 }],
   });
-  const question = built.plan.questions[0];
-  if (!question) throw new ToolError("internal", "No question could be generated for that topic; try another topic.");
 
-  if (args.save === true) {
-    const saved = await createQuestion(runtime, {
-      type: question.type,
-      prompt: question.prompt,
-      points: question.points,
-      difficulty: question.difficulty,
-      topic: question.topic,
-      explanation: question.explanation,
-      options: question.options,
-      numeric_answer: question.config?.numeric_answer,
-      tolerance: question.config?.tolerance,
-      parts: question.parts,
-      marking_criteria: question.markingCriteria,
-    });
-    return {
-      ...saved,
-      summary: `${saved.summary} Generated deterministically from topic "${topic}" (seed ${seed}).`,
-      data: { ...(saved.data ?? {}), question, seeded: true },
-    };
+  // Every generated item passes the SAME structural review a whole paper does.
+  // A malformed or unmarkable item is dropped here rather than saved, and if
+  // nothing survives the caller is told why instead of receiving an empty list.
+  const report = validateProposedExam(built.plan);
+  const problemFor = new Map(report.errors.filter((e) => e.where).map((e) => [e.where as string, e]));
+  const usable = built.plan.questions.filter((q) => !problemFor.has(q.ref));
+  if (!usable.length) {
+    const first = report.errors[0];
+    throw new ToolError(
+      "internal",
+      first
+        ? `The generator could not produce a valid question on "${topic}" for ${gradeLabel}: ${first.message}`
+        : `No question could be generated for "${topic}" at ${gradeLabel}; try another topic.`,
+    );
   }
 
+  // Duplicate wordings are removed before saving: the bank must not fill with
+  // the same item twice because a seed happened to repeat.
+  const seen = new Set<string>();
+  const unique = usable.filter((q) => {
+    const fingerprint = promptFingerprint(q.prompt);
+    if (seen.has(fingerprint)) return false;
+    seen.add(fingerprint);
+    return true;
+  });
+
+  if (args.save === true) {
+    const saved: { id: string; prompt: string; points: number; type: string }[] = [];
+    const failures: string[] = [];
+    for (const question of unique) {
+      try {
+        const result = await createQuestion(runtime, {
+          type: question.type,
+          prompt: question.prompt,
+          points: question.points,
+          difficulty: question.difficulty,
+          topic: question.topic,
+          explanation: question.explanation,
+          options: question.options,
+          numeric_answer: question.config?.numeric_answer,
+          tolerance: question.config?.tolerance,
+          parts: question.parts,
+          marking_criteria: question.markingCriteria,
+        });
+        const id = String((result.data as Record<string, unknown> | undefined)?.question_id ?? "");
+        saved.push({ id, prompt: question.prompt, points: question.points, type: question.type });
+      } catch (error) {
+        // One refused item must not discard items the bank already accepted.
+        failures.push(
+          error instanceof ToolError
+            ? error.message
+            : `Question "${truncate(question.prompt, 60)}" could not be saved.`,
+        );
+      }
+    }
+    if (!saved.length) {
+      throw new ToolError(
+        "conflict",
+        failures[0] ?? "None of the generated questions could be saved to the bank.",
+      );
+    }
+    const bankHref = "/dashboard/questions";
+    return {
+      ok: true,
+      data: {
+        saved: true,
+        questions: unique,
+        question_ids: saved.map((s) => s.id),
+        saved_count: saved.length,
+        rejected_count: unique.length - saved.length,
+        seed,
+      },
+      summary:
+        `Saved ${saved.length} ${difficulty} ${topic.replace(/_/g, " ")} question(s) to the Question Bank` +
+        (failures.length ? ` (${failures.length} could not be saved).` : ".") +
+        " They are available in the bank now.",
+      preview: {
+        kind: "questions",
+        title: `${saved.length} question(s) saved to the bank`,
+        sections: unique.slice(0, 6).map((question, index) => ({
+          heading: `${index + 1}. ${truncate(question.prompt.replace(/\s+/g, " "), 160)}`,
+          rows: [
+            { label: "Type", value: `${question.type} · ${question.points} mark(s) · ${question.difficulty}` },
+            {
+              label: "Answer",
+              value: String(
+                question.options?.find((o) => o.is_correct)?.label ??
+                  question.config?.numeric_answer ??
+                  "see marking criteria",
+              ),
+            },
+          ],
+          paragraphs: question.explanation ? [`Worked solution: ${question.explanation}`] : undefined,
+        })),
+      },
+      links: [{ label: "Open the Question Bank", href: bankHref }],
+      ...(failures.length ? { warnings: failures.slice(0, 5) } : {}),
+    } as ToolResult & { warnings?: string[] };
+  }
+
+  const question = unique[0];
   return {
     ok: true,
     data: {
-      question,
-      explanation: question.explanation,
+      questions: unique,
+      count: unique.length,
+      explanation: question?.explanation,
       seeded: true,
-      note: "This question is computed, not model-generated. It was NOT saved: set save=true to add it to the bank.",
+      note:
+        `These ${unique.length} question(s) are computed, not model-generated. ` +
+        "They were NOT saved: ask for them to be saved (or set save=true) to add them to the bank.",
     },
-    summary: `Generated one ${difficulty} ${topic.replace(/_/g, " ")} question (not saved).`,
+    summary: `Generated ${unique.length} ${difficulty} ${topic.replace(/_/g, " ")} question(s) for review; nothing was saved.`,
     preview: {
       kind: "questions",
-      title: "Generated question",
-      sections: [
-        { heading: question.prompt, rows: [{ label: "Answer", value: String(question.options?.find((o) => o.is_correct)?.label ?? question.config?.numeric_answer ?? "see marking criteria") }] },
-        { heading: "Worked solution", paragraphs: [question.explanation ?? ""] },
-      ],
+      title: "Generated question(s)",
+      sections: unique.slice(0, 6).map((q, index) => ({
+        heading: `${index + 1}. ${truncate(q.prompt.replace(/\s+/g, " "), 160)}`,
+        rows: [
+          {
+            label: "Answer",
+            value: String(q.options?.find((o) => o.is_correct)?.label ?? q.config?.numeric_answer ?? "see marking criteria"),
+          },
+        ],
+        paragraphs: q.explanation ? [`Worked solution: ${q.explanation}`] : undefined,
+      })),
     },
   };
 }
@@ -2024,6 +2201,134 @@ async function listAiAgents(runtime: ToolRuntime): Promise<ToolResult> {
   };
 }
 
+/**
+ * Registers an external agent credential through the SAME infrastructure Agent
+ * Management uses (`createAgent`), so the AI cannot invent a parallel, weaker
+ * registration path.
+ *
+ * Least privilege is enforced here rather than trusted from the request:
+ *   - the requested permissions are intersected with what the OWNER actually
+ *     holds, so an agent can never be granted more than the person it acts for;
+ *   - when nothing is requested the agent gets read-only discovery plus the
+ *     ability to draft, which is the smallest set that is still useful;
+ *   - approval is immediate only when the caller owns the credential, exactly
+ *     as the dashboard requires.
+ *
+ * The token is returned once, in this response only. It is never written to the
+ * activity journal, the preview block or any log.
+ */
+async function registerAiAgent(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const name = boundedString(args.name, "name", 120, 2);
+  const client = String(args.client ?? "custom");
+  if (!AGENT_CLIENTS.includes(client as (typeof AGENT_CLIENTS)[number])) {
+    throw new ToolError("invalid_arguments", `"client" must be one of ${AGENT_CLIENTS.join(", ")}.`);
+  }
+
+  // The owner defaults to the caller. Naming someone else is allowed (a manager
+  // onboarding a colleague) but that credential must wait for approval — the
+  // same rule the dashboard applies.
+  let ownerId = runtime.actor.userId;
+  const ownerEmail = optionalString(args.owner_email, 320)?.toLowerCase();
+  if (ownerEmail && ownerEmail !== (runtime.actor.userEmail ?? "").toLowerCase()) {
+    const { data: membershipRows } = await runtime.admin
+      .from("organization_members")
+      .select("user_id, profile:profiles(email)")
+      .eq("organization_id", runtime.scope.organizationId)
+      .eq("status", "active");
+    const match = ((membershipRows ?? []) as unknown as { user_id: string; profile: { email: string | null } | null }[]).find(
+      (row) => (row.profile?.email ?? "").toLowerCase() === ownerEmail,
+    );
+    if (!match) {
+      throw new ToolError(
+        "invalid_arguments",
+        `"${ownerEmail}" is not an active member of this organization, so a credential for them could never be used.`,
+      );
+    }
+    ownerId = match.user_id;
+  }
+
+  // Ask the platform what the owner may do, then keep only requested keys the
+  // owner really holds. A permission the owner lacks is dropped, not granted.
+  // The engine always resolves this (falling back to the same hasPermission the
+  // caller already proved), so a missing resolver is a wiring bug, not input.
+  const checkPermission = runtime.hasPermissionFor ?? ((permission: string) => runtime.authorize!(permission));
+  const requested = String(args.allowed_permissions ?? "")
+    .split(/[\s,]+/)
+    .map((key) => key.trim())
+    .filter((key) => key && isKnownPermission(key));
+
+  const held: string[] = [];
+  for (const permission of requested.length ? requested : DEFAULT_AGENT_PERMISSIONS) {
+    const allowed = await checkPermission(permission);
+    if (allowed) held.push(permission);
+  }
+  const refused = requested.filter((permission) => !held.includes(permission));
+  if (!held.length) {
+    throw new ToolError(
+      "permission_denied",
+      "None of the requested permissions are held by the agent's owner, so the credential would be powerless. Ask an administrator to grant them first.",
+    );
+  }
+
+  const autoApprove = ownerId === runtime.actor.userId;
+  const created = await createAgent(runtime.admin, {
+    organizationId: runtime.scope.organizationId,
+    name,
+    description: optionalString(args.description, 2000),
+    client: client as (typeof AGENT_CLIENTS)[number],
+    ownerId,
+    allowedPermissions: held,
+    // Everything else is denied explicitly, so a later role change cannot widen
+    // an existing credential without someone editing it.
+    deniedPermissions: refused,
+    rateLimitPerMinute: optionalNumber(args.rate_limit_per_minute, "rate_limit_per_minute", 1, 600) ?? 60,
+    dailyCallLimit: optionalNumber(args.daily_call_limit, "daily_call_limit", 1, 1_000_000) ?? 2000,
+    autoApprove,
+    createdBy: runtime.actor.userId,
+  });
+
+  const status = created.agent.status;
+  return {
+    ok: true,
+    data: {
+      agent_id: created.agent.id,
+      name: created.agent.name,
+      client: created.agent.client,
+      status,
+      allowed_permissions: held,
+      denied_permissions: refused,
+      owner_id: ownerId,
+      token: created.token,
+      token_shown_once: true,
+      endpoints: {
+        rest: `${runtime.publicBaseUrl ?? ""}/api/ai/v1`,
+        mcp: `${runtime.publicBaseUrl ?? ""}/api/mcp`,
+      },
+    },
+    summary:
+      `Registered agent "${created.agent.name}" (${created.agent.client}) with ${held.length} permission(s); status: ${status}. ` +
+      "Copy the token now — it is shown once and cannot be retrieved again.",
+    preview: {
+      kind: "agent",
+      title: `Agent "${created.agent.name}"`,
+      sections: [
+        {
+          heading: "Credential",
+          rows: [
+            { label: "Status", value: status },
+            { label: "Client", value: created.agent.client },
+            { label: "Token prefix", value: created.token.slice(0, 18) },
+            { label: "Owner", value: ownerId === runtime.actor.userId ? "you" : ownerEmail ?? ownerId },
+          ],
+        },
+        { heading: "Permitted permissions", bullets: held },
+        ...(refused.length ? [{ heading: "Not granted (owner lacks them)", bullets: refused }] : []),
+      ],
+    },
+    links: [{ label: "Open Agent Management", href: "/dashboard/ai/agents" }],
+  } as ToolResult;
+}
+
 async function revokeAiAgent(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
   const agentId = requireUuid(args.agent_id, "agent_id");
   const reason = boundedString(args.reason, "reason", 500, 3);
@@ -2068,6 +2373,7 @@ const HANDLERS: Record<string, (runtime: ToolRuntime, args: Record<string, unkno
   get_class_statistics: getClassStatistics,
   analyze_exam_performance: analyzeExamPerformance,
   list_ai_agents: (r) => listAiAgents(r),
+  register_ai_agent: registerAiAgent,
   revoke_ai_agent: revokeAiAgent,
 };
 

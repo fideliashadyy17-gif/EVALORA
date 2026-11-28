@@ -23,6 +23,7 @@ import { TOOLS } from "./tools";
 import { executeTool, type AiOrgSettings, type EngineDeps, type ExecutionOutcome } from "./engine";
 import { renderContextForModel } from "./context";
 import { planFromRules, validateModelPlan, type PlanStep } from "./intent";
+import { firstTopicIn } from "./generator";
 import { ToolError, type ActorIdentity, type CallScope, type ToolResult } from "./types";
 
 export { planFromRules, validateModelPlan };
@@ -95,7 +96,7 @@ export async function planInstruction(instruction: string, deps: PlannerDeps): P
     model: deps.settings.preferredModel,
   });
   if (!provider) {
-    const plan = planFromRules(instruction);
+    const plan = planFromRules(instruction, firstTopicIn);
     // A rule plan may still pick a tool the caller cannot use: refuse instead.
     const blocked = plan.steps.filter((s) => !allowedNames.has(s.tool));
     if (blocked.length) {
@@ -132,7 +133,7 @@ export async function planInstruction(instruction: string, deps: PlannerDeps): P
     }
     const { steps, dropped } = validateModelPlan(parsed, allowedNames);
     if (!steps.length) {
-      const fallback = planFromRules(instruction);
+      const fallback = planFromRules(instruction, firstTopicIn);
       return {
         ...fallback,
         strategy: "rules",
@@ -146,7 +147,7 @@ export async function planInstruction(instruction: string, deps: PlannerDeps): P
     }
     return { steps, strategy: "model", note: `Planned by ${reply.provider}/${reply.model}.` };
   } catch (error) {
-    const fallback = planFromRules(instruction);
+    const fallback = planFromRules(instruction, firstTopicIn);
     const blocked = fallback.steps.filter((s) => !allowedNames.has(s.tool));
     if (blocked.length) return { steps: [], strategy: "rules", refusal: `That would require "${blocked[0].tool}", which your permissions do not allow.` };
     return {

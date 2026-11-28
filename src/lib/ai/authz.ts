@@ -252,6 +252,38 @@ export function permissionResolver(
   };
 }
 
+/**
+ * The plan gate for the whole AI surface.
+ *
+ * `ai_assistant` is an Institution-tier module: the dashboard refuses to render
+ * `/dashboard/ai` without it (`requireModule`), and the API and MCP server must
+ * refuse the same organizations rather than offering a second, weaker door.
+ * Without this, an organization on a plan that excludes the module could still
+ * discover and call tools through `/api/ai/v1` or `/api/mcp`.
+ *
+ * Returns `null` when the module is included, or the refusal to send.
+ */
+export async function aiModuleRefusal(auth: AiRequestAuth): Promise<NextResponse | null> {
+  let enabled = false;
+  try {
+    const entitlement = await getEntitlementFor(auth.admin, sessionFor(auth), auth.organizationId);
+    enabled = moduleEnabled(entitlement.modules, "ai_assistant");
+  } catch {
+    enabled = false;
+  }
+  if (enabled) return null;
+  return NextResponse.json(
+    {
+      error: {
+        code: "module_unavailable",
+        message:
+          "The EVALORA AI Assistant is not included in this organization's plan. An administrator can enable the ai_assistant module for this institution.",
+      },
+    },
+    { status: 403, headers: NO_STORE },
+  );
+}
+
 /** 404-style refusal that does not confirm whether a tool exists. */
 export function unknownTool(name: string) {
   return NextResponse.json(

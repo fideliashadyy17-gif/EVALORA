@@ -210,6 +210,21 @@ export function AssistantClient({
                         </div>
                       )}
 
+                      {step.issuedToken && (
+                        <div className="mt-2 rounded-lg border border-gold-500/60 bg-gold-50 px-3 py-2">
+                          <p className="text-xs font-medium text-evergreen-950">
+                            Copy this credential now — it is shown once and cannot be retrieved again.
+                          </p>
+                          <code className="mt-1 block break-all rounded bg-paper px-2 py-1 font-mono text-[11px] text-ink">
+                            {step.issuedToken}
+                          </code>
+                          <p className="mt-1 text-[11px] text-ink-soft">
+                            Send it as <code className="font-mono">Authorization: Bearer …</code>. Agent
+                            Management will only ever show its prefix.
+                          </p>
+                        </div>
+                      )}
+
                       {step.links?.map((link) => (
                         <Link
                           key={link.href}
