@@ -1,0 +1,26 @@
+name: LV Log Probe
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_writes:
+        required: true
+        default: "no"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dump environment facts
+        env:
+          HAS_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' }}
+          HAS_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
+          BASE_URL: https://evalora-edu.online
+        run: |
+          echo "url_present=$HAS_URL"
+          echo "key_present=$HAS_KEY"
+          echo "--- connectivity ---"
+          for target in "$BASE_URL/api/mcp" "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/"; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$target" || echo "ERR")
+            echo "$target -> $code"
+          done
