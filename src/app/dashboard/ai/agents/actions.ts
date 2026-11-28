@@ -24,6 +24,7 @@ import {
   type AgentClient,
 } from "@/lib/ai/agents";
 import { isKnownPermission } from "@/lib/ai/agents";
+import { ToolError } from "@/lib/ai/types";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -135,45 +136,83 @@ export async function rejectAgentAction(formData: FormData): Promise<void> {
   revalidatePath("/dashboard/ai/agents");
 }
 
-export async function revokeAgentAction(formData: FormData): Promise<void> {
+/**
+ * Revokes one credential.
+ *
+ * This used to `return` with no value and catch every exception into a comment,
+ * so the UI could not tell a success from a failure — which is why the reported
+ * bug read as "the button does nothing". It now returns a state carrying a
+ * sentence the administrator can act on, and it never claims success it has not
+ * confirmed: the status written by the database function is what is reported.
+ */
+export async function revokeAgentAction(
+  _prev: AgentActionState | null,
+  formData: FormData,
+): Promise<AgentActionState> {
   const auth = await authorize();
+  if (!auth) return { ok: false, message: "You do not have permission to manage AI agents." };
   const agentId = String(formData.get("agent_id") ?? "");
-  const reason = String(formData.get("reason") ?? "").slice(0, 500);
-  if (!auth || !UUID.test(agentId)) return;
+  // A revocation with no stated cause is not an audit record. The client refuses
+  // the empty case too; this is the authoritative check.
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 500);
+  if (!UUID.test(agentId)) return { ok: false, message: "That agent could not be identified." };
+  if (reason.length < 4) return { ok: false, message: "Give a reason for the revocation." };
+
   const admin = createAdminClient();
   try {
-    await revokeAgent(admin, agentId, auth.org.id, reason || "Revoked by an administrator.");
+    await revokeAgent(admin, agentId, auth.org.id, reason, auth.ctx.user.id);
     await audit(auth.ctx, "ai.agent.revoke", "ai_agent", agentId, auth.org.id, { reason });
-  } catch {
-    /* idem */
+  } catch (error) {
+    // Reported, not swallowed. The message is already a safe user-facing
+    // sentence; nothing here includes a token, a digest or a stack.
+    return {
+      ok: false,
+      message:
+        error instanceof ToolError
+          ? error.message
+          : "The agent could not be revoked. Nothing was changed.",
+    };
   }
   revalidatePath("/dashboard/ai/agents");
+  return {
+    ok: true,
+    message: "Revoked. That credential can no longer authenticate, and the reason was written to the audit trail.",
+  };
 }
 
-export async function rotateTokenAction(formData: FormData): Promise<void> {
+export async function rotateTokenAction(
+  _prev: AgentActionState | null,
+  formData: FormData,
+): Promise<AgentActionState> {
   const auth = await authorize();
+  if (!auth) return { ok: false, message: "You do not have permission to manage AI agents." };
   const agentId = String(formData.get("agent_id") ?? "");
   const client = String(formData.get("client") ?? "custom") as AgentClient;
-  if (!auth || !UUID.test(agentId) || !AGENT_CLIENTS.includes(client)) return;
+  if (!UUID.test(agentId)) return { ok: false, message: "That agent could not be identified." };
+  if (!AGENT_CLIENTS.includes(client)) return { ok: false, message: "Choose a supported client." };
+
   const admin = createAdminClient();
   try {
-    const rotated = await rotateAgentToken(admin, agentId, auth.org.id, client);
+    const rotated = await rotateAgentToken(admin, agentId, auth.org.id, client, auth.ctx.user.id);
     await audit(auth.ctx, "ai.agent.rotate", "ai_agent", agentId, auth.org.id, {});
-    // The new token is written to a one-time cookie rather than the URL so it
-    // does not land in a browser history entry or an access log.
-    const { cookies } = await import("next/headers");
-    const store = await cookies();
-    store.set("evalora_ai_token_once", rotated.token, {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/dashboard/ai/agents",
-      maxAge: 120,
-    });
-  } catch {
-    /* idem */
+    revalidatePath("/dashboard/ai/agents");
+    // The token is returned in the action's result, which exists only in this
+    // response. It is not put in a cookie, a URL or storage: those outlive the
+    // one rendering that is supposed to show it once.
+    return {
+      ok: true,
+      message: "Rotated. The previous token no longer works.",
+      token: rotated.token,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      message:
+        error instanceof ToolError
+          ? error.message
+          : "The credential could not be rotated. The previous token is still active.",
+    };
   }
-  revalidatePath("/dashboard/ai/agents");
 }
 
 export async function narrowAgentAction(formData: FormData): Promise<void> {

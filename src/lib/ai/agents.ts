@@ -221,6 +221,7 @@ export async function revokeAgent(
   agentId: string,
   organizationId: string,
   reason: string,
+  actorId: string,
 ): Promise<void> {
   const { data: owned } = await admin
     .from("ai_agents")
@@ -229,8 +230,27 @@ export async function revokeAgent(
     .eq("organization_id", organizationId)
     .maybeSingle();
   if (!owned) throw new ToolError("not_found", "That agent does not belong to this organization.");
-  const { error } = await admin.rpc("ai_revoke_agent", { p_agent_id: agentId, p_reason: reason.slice(0, 500) });
-  if (error) throw new ToolError("internal", "The agent could not be revoked.");
+
+  // The actor is passed explicitly. `ai_revoke_agent` used to identify the caller
+  // with `auth.uid()` via `can_manage_org`, and this runs on the service-role
+  // client where `auth.uid()` is NULL — so it raised AI_PERMISSION_DENIED for
+  // every user and the button could never have worked. The function now takes the
+  // human as an argument and checks them with `_access_eval_permission`, which
+  // answers the same question independently of the session.
+  const { data, error } = await admin.rpc("ai_revoke_agent", {
+    p_agent_id: agentId,
+    p_reason: reason.slice(0, 500),
+    p_actor_id: actorId,
+  });
+  if (error) {
+    if (/AI_PERMISSION_DENIED/.test(error.message)) {
+      throw new ToolError("permission_denied", "You do not have permission to revoke this agent.");
+    }
+    throw new ToolError("internal", "The agent could not be revoked.");
+  }
+  // Returning false means the row vanished between the ownership check and the
+  // update. Reporting success there would be the original bug in a new place.
+  if (data !== true) throw new ToolError("conflict", "That agent no longer exists.");
 }
 
 /** Rotates a credential: a new token is issued and the old one stops working. */
@@ -239,17 +259,29 @@ export async function rotateAgentToken(
   agentId: string,
   organizationId: string,
   client: AgentClient,
+  actorId: string,
 ): Promise<{ token: string; prefix: string }> {
   const { token, digest, prefix } = generateAgentToken(client);
-  const { data, error } = await admin
-    .from("ai_agents")
-    .update({ token_digest: digest, token_prefix: prefix, token_last_rotated_at: new Date().toISOString(), updated_at: new Date().toISOString() })
-    .eq("id", agentId)
-    .eq("organization_id", organizationId)
-    .eq("status", "approved")
-    .select("id")
-    .maybeSingle();
-  if (error || !data) throw new ToolError("conflict", "Only an approved agent's credential can be rotated.");
+  // Through the database function for the same reason as revocation: it records
+  // the human, and it RAISES when the agent is not approved instead of quietly
+  // updating zero rows and letting the UI show a credential that was never
+  // stored. A silent no-op here would hand the user a token that cannot work.
+  const { data, error } = await admin.rpc("ai_rotate_agent_token", {
+    p_agent_id: agentId,
+    p_digest: digest,
+    p_prefix: prefix,
+    p_actor_id: actorId,
+  });
+  if (error) {
+    if (/AI_PERMISSION_DENIED/.test(error.message)) {
+      throw new ToolError("permission_denied", "You do not have permission to rotate this agent's credential.");
+    }
+    if (/AI_AGENT_NOT_APPROVED/.test(error.message)) {
+      throw new ToolError("conflict", "Only an approved agent's credential can be rotated.");
+    }
+    throw new ToolError("internal", "The credential could not be rotated.");
+  }
+  if (data !== true) throw new ToolError("not_found", "That agent does not belong to this organization.");
   return { token, prefix };
 }
 
