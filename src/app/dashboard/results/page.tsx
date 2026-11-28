@@ -37,6 +37,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { publishResults, unvalidateResults, validateResults } from "../exams/actions";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Results Management & Candidate Links" };
 export const dynamic = "force-dynamic";
@@ -710,6 +711,7 @@ export default async function ResultsManagementPage({
         Only published results are visible to candidates — server-side checks on /exam/result and the student workspace enforce this independently of this page.
         <EyeOff className="h-4 w-4" aria-hidden />
       </p>
+      <AssistantPanel title="Results assistant" />
     </div>
   );
 }

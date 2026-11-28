@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { createCategory, deleteQuestion, setQuestionStatus } from "./actions";
 import { ImportCsv } from "./ImportCsv";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Question Bank" };
 export const dynamic = "force-dynamic";
@@ -206,6 +207,7 @@ export default async function QuestionsPage({
           </Card>
         </div>
       </div>
+      <AssistantPanel title="Question-bank assistant" />
       <PageNavigation page={page} pageSize={pageSize} total={questionTotal ?? 0} pathname="/dashboard/questions" query={{ q: sp.q, status: sp.status, class: sp.class, curr: sp.curr }} label="questions" />
     </>
   );

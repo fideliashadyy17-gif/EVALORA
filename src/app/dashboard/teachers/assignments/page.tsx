@@ -7,6 +7,7 @@ import { getCapabilities, requireModule } from "@/lib/capabilities";
 import { AssignmentEditor, type EditorAssignment, type EditorClass, type EditorSubject } from "./AssignmentEditor";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Teaching assignments" };
 export const dynamic = "force-dynamic";
@@ -214,6 +215,8 @@ export default async function AssignmentsPage({
           })}
         </div>
       )}
+
+      <AssistantPanel title="Teaching-assignment assistant" />
     </div>
   );
 }

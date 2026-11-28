@@ -38,6 +38,7 @@ import {
   pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateExamProctoring, updateWorkspaceExamAccess, validateResults, unvalidateResults,
 } from "../actions";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Examination" };
 export const dynamic = "force-dynamic";
@@ -1313,6 +1314,8 @@ export default async function ExamDetailPage({
           )}
         </div>
       </div>
+
+      <AssistantPanel title="Examination assistant" />
     </>
   );
 }
