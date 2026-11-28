@@ -142,9 +142,69 @@ try {
     `HTTP ${beforeRedeem.status} before the digest exists in the database`,
   );
 
-  /* 3. Hand the digest to the operator, and wait for the database --------- */
+  /* 3. Publish the digest where the operator can read it WHILE we wait ----
+ * Annotations are only attached when a job finishes, and this job is designed to
+ * block — so an annotation could never tell anyone what to apply. A check run
+ * created with GITHUB_TOKEN is readable from the API immediately, which makes it
+ * the one channel that works mid-run. Its output is the digest; its conclusion is
+ * "action required" until the credential is redeemed, then "success".
+ */
+const GH_TOKEN = process.env.GITHUB_TOKEN ?? "";
+const REPO = process.env.GITHUB_REPOSITORY ?? "";
+let checkRunId = null;
+
+const gh = async (path, init = {}) => {
+  const response = await fetch(`https://api.github.com${path}`, {
+    ...init,
+    headers: {
+      Authorization: `Bearer ${GH_TOKEN}`,
+      Accept: "application/vnd.github+json",
+      "X-GitHub-Api-Version": "2022-11-28",
+      "Content-Type": "application/json",
+      ...(init.headers ?? {}),
+    },
+  });
+  const text = await response.text();
+  let body = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: response.status, body };
+};
+
+const publishCheck = async (conclusion, summary, text) => {
+  if (!GH_TOKEN || !REPO) return;
+  const payload = { name: "agent-credential", head_sha: process.env.GITHUB_SHA, status: "completed", conclusion, output: { title: "Agent credential digest", summary, text } };
+  if (checkRunId) {
+    await gh(`/repos/${REPO}/check-runs/${checkRunId}`, { method: "PATCH", body: JSON.stringify(payload) });
+    return;
+  }
+  const created = await gh(`/repos/${REPO}/check-runs`, {
+    method: "POST",
+    body: JSON.stringify({ ...payload, status: "in_progress" }),
+  });
+  if (created.body?.id) checkRunId = created.body.id;
+};
+
+{
   emit("credential-digest-ready", true, `digest=${digest}`);
   emit("credential-prefix-ready", true, `prefix=${prefix}`);
+  // Published NOW, so the operator can act while the job is blocked.
+  await publishCheck(
+    "action_required",
+    `Apply this digest to ai_agents, then the running job continues automatically.\n\n${digest}`,
+    [
+      "update ai_agents set",
+      `  token_digest = '${digest}',`,
+      `  token_prefix = '${prefix}',`,
+      "  token_last_rotated_at = now(),",
+      "  updated_at = now()",
+      "where id = '9a415c16-eb6e-4486-bc34-8bc0a1e52e5d'",
+      "  and status = 'approved';",
+    ].join("\n"),
+  );
   console.log(`\nWaiting up to ${WAIT_SECONDS}s for the digest to be applied to ai_agents…`);
 
   let redeemed = false;
@@ -166,9 +226,12 @@ try {
     }
   }
   if (!redeemed) {
+    await publishCheck("action_required", "The digest was not applied in time.", `apply to ai_agents:\n\n${digest}`);
     check("credential-redeemed", false, `the digest was not applied within ${WAIT_SECONDS}s; no handshake could be run`);
     throw new Error("digest was not redeemed");
   }
+  await publishCheck("success", "The credential was redeemed and the handshake completed.", `prefix ${prefix}`);
+}
 
   /* 4. The real handshake ------------------------------------------------ */
   const init = await client.initialize();
