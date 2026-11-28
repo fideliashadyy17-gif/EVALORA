@@ -398,6 +398,29 @@ export async function createStaffAccount(formData: FormData) {
           assigned_by: ctx.user.id,
         }));
       if (rows.length) await admin.from("teacher_subjects").insert(rows);
+
+      // `teacher_subjects` is the historical "this person teaches this subject"
+      // list. It has no class dimension, so it cannot say WHICH class a subject is
+      // taught in — which is what subject-level authorization needs. Mirror the
+      // choice into teaching_assignments as a subject-only assignment so the new
+      // table is populated from the moment a teacher is created, instead of
+      // starting empty and leaving every teacher unrestricted.
+      //
+      // A class-less subject assignment is deliberate: the administrator has not
+      // said which classes yet, and inventing one would be worse than leaving it
+      // open. `assignment_coverage` reports the result.
+      if (rows.length) {
+        await admin.from("teaching_assignments").insert(
+          rows.map((row) => ({
+            organization_id: row.organization_id,
+            teacher_id: row.profile_id,
+            class_id: null,
+            subject_id: row.subject_id,
+            role: "subject_teacher",
+            assigned_by: row.assigned_by,
+          })),
+        );
+      }
     }
   }
 
