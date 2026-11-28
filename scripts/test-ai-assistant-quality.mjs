@@ -744,5 +744,34 @@ test('the revocation migration takes the actor and checks it properly', () => {
   assert.match(sql, /drop function if exists public\.ai_revoke_agent\(uuid, text\)/, 'the obsolete overload must be dropped');
 });
 
+test('rotation names its target and keeps the agent\'s own client', () => {
+  const ui = readFileSync('src/app/dashboard/ai/agents/RevokeAgentForm.tsx', 'utf8');
+  // Two defects found by auditing the production interface:
+  //
+  //   1. The rotate control said only "Rotate token". The page lists EVERY agent
+  //      in the organization, so a person cannot tell which credential a button
+  //      will replace. Rotating the wrong one silently breaks a working
+  //      integration, which is exactly the confusion this work started from.
+  //   2. The client was hardcoded to "custom". Rotating an `api` agent rewrote
+  //      its prefix to evalora_custom_…, so the dashboard described a different
+  //      client than the one registered.
+  assert.match(ui, /Rotate \{agentName\}/, 'the rotate control must name the agent it replaces');
+  assert.doesNotMatch(ui, /name="client" value="custom"/, 'the client must not be hardcoded');
+  assert.match(ui, /name="client" value=\{client\}/, 'the client must come from the agent row');
+  assert.match(ui, /agentName: string;\s*\n\s*client: string;/, 'the component must receive both');
+  // And the page must pass them through from the agent it renders.
+  const page = readFileSync('src/app/dashboard/ai/agents/page.tsx', 'utf8');
+  assert.match(page, /<RotateTokenForm agentId=\{agent\.id\} agentName=\{agent\.name\} client=\{agent\.client\}/,
+    'the rendered control must be bound to that specific agent');
+});
+
+test('the agents page states which organization it is managing', () => {
+  // The page listed credentials without ever naming the workspace. A person with
+  // one membership cannot be in the wrong organization here, so the omission was
+  // invisible — and stays invisible right up until a rotation "does not take".
+  const page = readFileSync('src/app/dashboard/ai/agents/page.tsx', 'utf8');
+  assert.match(page, /\{org\.name\}/, 'the organization must be named on the page');
+});
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nAI assistant quality: ${n} checks passed.`);

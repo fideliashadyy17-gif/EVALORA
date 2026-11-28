@@ -146,7 +146,15 @@ export function RevokeAgentForm({
  * token stops working, the agent keeps running), but it still asks for
  * confirmation because a client still holding the old token will break.
  */
-export function RotateTokenForm({ agentId }: { agentId: string }) {
+export function RotateTokenForm({
+  agentId,
+  agentName,
+  client,
+}: {
+  agentId: string;
+  agentName: string;
+  client: string;
+}) {
   const [state, formAction, pending] = useActionState<AgentActionState | null, FormData>(
     rotateTokenAction,
     null,
@@ -172,8 +180,12 @@ export function RotateTokenForm({ agentId }: { agentId: string }) {
   if (!confirming) {
     return (
       <div className="mt-2">
+        {/* The button names the agent. Rotating the wrong credential silently
+            breaks a working integration, and this page shows every agent in the
+            organization in one list — so "Rotate token" alone was ambiguous
+            about which row it belonged to. */}
         <Button type="button" variant="outline" disabled={pending} onClick={() => setConfirming(true)}>
-          Rotate token
+          Rotate {agentName}&rsquo;s token
         </Button>
         {state && !state.ok && (
           <p className="mt-2 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800" role="alert">
@@ -187,10 +199,15 @@ export function RotateTokenForm({ agentId }: { agentId: string }) {
   return (
     <form action={formAction} className="mt-2 rounded-lg border border-evergreen-900/25 bg-cream p-3">
       <input type="hidden" name="agent_id" value={agentId} />
-      <input type="hidden" name="client" value="custom" />
+      {/* The client comes from the agent's own row, not a constant. It was
+          hardcoded to "custom", so rotating an `api` agent rewrote its prefix to
+          `evalora_custom_…` and the dashboard then described a different client
+          than the one registered. Cosmetic in the credential, misleading in the
+          audit trail. */}
+      <input type="hidden" name="client" value={client} />
       <p className="text-xs text-evergreen-900">
-        Replace the credential? The current token stops working as soon as the new
-        one is stored.
+        Replace the credential for <strong>{agentName}</strong>? The current token stops
+        working as soon as the new one is stored. No other agent is affected.
       </p>
       <div className="mt-2 flex flex-wrap items-center gap-2">
         <Button type="submit" disabled={pending}>
