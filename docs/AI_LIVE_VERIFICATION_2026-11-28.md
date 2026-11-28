@@ -249,6 +249,25 @@ full matrix: question, examination, quiz, modification, idempotency, journal,
 Oak isolation. It has never been able to execute, because it has never been given
 a database credential.
 
+### B4 — there is a UI path that needs none of the above
+
+The agent credential is managed in the product, at `/dashboard/ai/agents`:
+`rotateTokenAction` calls `rotateAgentToken`, which stores only the digest and
+shows the plaintext **once**, in the response that created it. That is the same
+discipline `scripts/issue-agent-credential.mjs` follows, and it means a person
+can complete the MCP half of this verification without a secret ever being
+written down or sent through this conversation:
+
+1. Sign in as the demo owner and open **Dashboard → AI → Agents**.
+2. Rotate the credential for `EVALORA Assistant (API)` and copy the token that
+   appears once.
+3. Use it as the `Authorization: Bearer` value against
+   `https://evalora-edu.online/api/mcp`.
+
+Step 2 invalidates every digest recorded in §3, including the one left by the
+last run — which is the correct end state: the only live credential should be one
+a person is holding.
+
 ---
 
 ## 7. What did not happen, stated plainly
