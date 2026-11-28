@@ -114,4 +114,15 @@ test("malformed assignments are refused before the database sees them", () => {
   assert.match(MODULE, /A subject assignment must name a subject\./);
 });
 
+test("choosing subjects at teacher creation populates the assignment table", () => {
+  // Otherwise the new table starts empty for every new teacher and the coverage
+  // view reports them unrestricted forever, which is how the original defect
+  // would quietly come back.
+  const accounts = readFileSync("src/app/dashboard/accounts/actions.ts", "utf8");
+  assert.match(accounts, /from\("teaching_assignments"\)\.insert/, "a created teacher must get an assignment row");
+  const block = accounts.slice(accounts.indexOf('from("teaching_assignments").insert'), accounts.indexOf("export async function", accounts.indexOf('from("teaching_assignments").insert')));
+  assert.match(block, /class_id: null/, "the class is not implied at creation time");
+  assert.match(block, /role: "subject_teacher"/);
+});
+
 console.log(`\nTeaching assignments: ${n} checks passed.`);
