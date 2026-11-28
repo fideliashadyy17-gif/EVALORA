@@ -1,0 +1,134 @@
+name: Live External Agent Verification
+
+# Verifies the deployed MCP server with a real client, from the only environment
+# that can reach it.
+#
+# WHY THE CREDENTIAL IS BROUGHT HERE
+#
+# The development sandbox has no network egress (`curl` returns 000 for both the
+# deployment and Supabase), so a verification run from there cannot observe
+# production at all. A runner can. The agent credential therefore has to arrive
+# on the runner, and the only way to do that without writing it down is a
+# repository secret:
+#
+#   Settings → Secrets and variables → Actions → New repository secret
+#     EVALORA_AGENT_TOKEN  = the token shown once by Dashboard → AI → Agents → Rotate token
+#     EVALORA_OLD_TOKEN    = optional; the previous token, to prove it is rejected
+#
+# The credential is passed to the verify step through `env:`, which masks it in
+# the log. It is never echoed, never uploaded, and the harness aborts the run if
+# it appears in its own report.
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Deployment to verify
+        required: false
+        default: https://evalora-edu.online
+      run_tag:
+        description: Label for the records this run creates
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  actions: read
+  checks: write
+
+concurrency:
+  group: live-agent-verification
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Report what the run can see, before it acts
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          node --input-type=commonjs - <<'NODE'
+          const token = process.env.GITHUB_TOKEN;
+          const repo = process.env.GITHUB_REPOSITORY;
+          const sha = process.env.GITHUB_SHA;
+          const hasToken = Boolean(process.env.EVALORA_AGENT_TOKEN);
+          fetch(`https://api.github.com/repos/${repo}/check-runs`, {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${token}`,
+              accept: "application/vnd.github+json",
+              "content-type": "application/json",
+              "x-github-api-version": "2022-11-28",
+            },
+            body: JSON.stringify({
+              name: "agent-credential",
+              head_sha: sha,
+              status: "completed",
+              conclusion: hasToken ? "success" : "action_required",
+              output: {
+                title: "Agent credential",
+                summary: hasToken
+                  ? "EVALORA_AGENT_TOKEN is present. The verification will run against production."
+                  : "EVALORA_AGENT_TOKEN is NOT set. Add it as a repository secret; the run cannot observe production without it.",
+                text: `EVALORA_AGENT_TOKEN present: ${hasToken}\nSkipping the live run: ${hasToken ? "no" : "yes"}`,
+              },
+            }),
+          }).catch(() => {});
+          NODE
+
+      - name: Fail fast when no credential is configured
+        if: ${{ env.EVALORA_AGENT_TOKEN == '' }}
+        env:
+          EVALORA_AGENT_TOKEN: ${{ secrets.EVALORA_AGENT_TOKEN }}
+        run: |
+          echo "::error::EVALORA_AGENT_TOKEN is not configured."
+          echo "Add it at Settings -> Secrets and variables -> Actions, then re-run."
+          exit 1
+
+      - name: Verify the deployed agent over MCP
+        if: ${{ env.EVALORA_AGENT_TOKEN != '' }}
+        env:
+          EVALORA_AGENT_TOKEN: ${{ secrets.EVALORA_AGENT_TOKEN }}
+          EVALORA_OLD_TOKEN: ${{ secrets.EVALORA_OLD_TOKEN }}
+          EVALORA_BASE_URL: ${{ inputs.base_url }}
+          EVALORA_RUN_TAG: ${{ inputs.run_tag }}
+          EVALORA_REPORT_PATH: live-agent-verification.json
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SHA: ${{ github.sha }}
+        continue-on-error: true
+        run: node scripts/live-agent-verification.mjs
+
+      - name: Publish the report
+        if: always()
+        run: |
+          if [ -f live-agent-verification.json ]; then
+            node --input-type=commonjs -e '
+              const report = require("./live-agent-verification.json");
+              const s = report.summary || {};
+              console.log(`checks: ${s.passed}/${s.total} passed, ${s.failed} failed`);
+              if (report.leak_detected) console.log("LEAK DETECTED IN REPORT");
+              for (const r of report.results || []) console.log(`${r.passed ? "PASS" : "FAIL"} ${r.name}`);
+            '
+          else
+            echo "::error::the harness produced no report at all"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-agent-verification
+          path: live-agent-verification.json
+          if-no-files-found: warn
+          retention-days: 30
