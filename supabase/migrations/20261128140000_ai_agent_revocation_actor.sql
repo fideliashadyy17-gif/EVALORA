@@ -162,6 +162,11 @@ $$;
 comment on function public.ai_rotate_agent_token(uuid, text, text, uuid) is
   'Replaces an approved agent credential, recording the human who did it. Raises rather than silently no-ops when the agent is not approved.';
 
+-- Adding an argument creates an OVERLOAD; it does not replace the old function.
+-- The two-argument version would otherwise stay callable forever, and PostgREST
+-- would report the name as ambiguous. The broken signature is removed explicitly.
+drop function if exists public.ai_revoke_agent(uuid, text);
+
 revoke all on function public.ai_agent_can_manage(uuid, uuid) from public;
 revoke all on function public.ai_revoke_agent(uuid, text, uuid) from public;
 revoke all on function public.ai_rotate_agent_token(uuid, text, text, uuid) from public;
