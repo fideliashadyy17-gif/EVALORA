@@ -29,10 +29,18 @@ const AGENT_ID = process.env.AGENT_ID ?? "9a415c16-eb6e-4486-bc34-8bc0a1e52e5d";
 const OAK_ORG_ID = "0a400000-0000-4000-8000-000000000001";
 const REPORT_PATH = process.env.REPORT_PATH ?? "ai-live-verification.json";
 
-if (!SERVICE_URL || !SERVICE_KEY) {
-  console.error("NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required.");
-  process.exit(1);
-}
+// Everything below this line reports before it acts, so a job that fails still
+// leaves a report explaining WHICH precondition was missing. An early
+// `process.exit` would have thrown that evidence away and left only "step failed".
+const PREFLIGHT = {
+  has_supabase_url: Boolean(SERVICE_URL),
+  has_service_role_key: Boolean(SERVICE_KEY),
+  // Never the value — only whether it is present and how long it is, which is
+  // enough to tell "unset" from "truncated" in a CI secret.
+  service_key_length: SERVICE_KEY.length,
+  supabase_host: SERVICE_URL.replace(/^https?:\/\//, ""),
+  base_url: BASE_URL,
+};
 
 /* ── tiny admin client (PostgREST) ─────────────────────────────────────── */
 
@@ -188,6 +196,34 @@ const started = new Date().toISOString();
 const out = { started_at: started, base_url: BASE_URL, organization_id: ORG_ID, agent_id: AGENT_ID, checks, evidence: {} };
 
 try {
+  out.evidence.preflight = PREFLIGHT;
+  console.log(`Preflight: ${JSON.stringify(PREFLIGHT)}`);
+
+  /* 0a. Can this runner actually reach production? Recorded as evidence either
+        way: a verification that could not connect must say so, not quietly
+        report a pass. */
+  const probe = async (url) => {
+    try {
+      const started = Date.now();
+      const response = await fetch(url, { method: "GET", redirect: "manual" });
+      return { url, reachable: true, status: response.status, ms: Date.now() - started };
+    } catch (error) {
+      return { url, reachable: false, error: String(error?.cause?.code ?? error?.message ?? error).slice(0, 160) };
+    }
+  };
+  const appProbe = await probe(`${BASE_URL}/api/mcp`);
+  const apiProbe = await probe(`${SERVICE_URL}/rest/v1/`);
+  out.evidence.connectivity = { app: appProbe, supabase: apiProbe };
+  record("connectivity", "the runner can reach the deployed application", appProbe.reachable, `${appProbe.status ?? appProbe.error} (${appProbe.ms ?? "-"}ms)`);
+  record("connectivity", "the runner can reach the production database API", apiProbe.reachable, `${apiProbe.status ?? apiProbe.error}`);
+
+  if (!SERVICE_URL || !SERVICE_KEY) {
+    record("preflight", "the Supabase credentials are present in the job", false,
+      `url=${PREFLIGHT.has_supabase_url} key=${PREFLIGHT.has_service_role_key} len=${PREFLIGHT.service_key_length}`);
+    throw new Error("Supabase credentials are not available to the runner, so no database assertion can be made.");
+  }
+  record("preflight", "the Supabase credentials are present in the job", true, `key length ${PREFLIGHT.service_key_length}`);
+
   /* 0. Baseline census, so every count later is a delta against a measurement
         rather than against a number copied into a document. */
   const before = await census();
