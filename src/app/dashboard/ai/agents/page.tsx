@@ -62,7 +62,14 @@ export default async function AgentsPage() {
       <PageTitle
         eyebrow={<Badge tone={provider.configured ? "gold" : "gray"}>{provider.configured ? `Model: ${provider.provider}` : "No model credential"}</Badge>}
         title="AI agents"
-        subtitle="Let an external assistant (ChatGPT, Claude, Gemini or any MCP client) work inside this workspace — as a named person, with that person's permissions, and with a complete audit trail."
+        subtitle={
+          <>
+            Credentials for <strong className="font-semibold text-evergreen-950">{org.name}</strong> only. Let an
+            external assistant (ChatGPT, Claude, Gemini or any MCP client) work inside this
+            workspace — as a named person, with that person&rsquo;s permissions, and with a
+            complete audit trail.
+          </>
+        }
         action={
           <Link href="/dashboard/ai" className="rounded-xl border border-evergreen-900/25 px-3 py-2 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50">
             Open the assistant
@@ -112,7 +119,7 @@ export default async function AgentsPage() {
                       )}
                     </p>
                     {agent.status === "approved" && (
-                      <RotateTokenForm agentId={agent.id} />
+                      <RotateTokenForm agentId={agent.id} agentName={agent.name} client={agent.client} />
                     )}
                     {agent.status !== "revoked" && (
                       <RevokeAgentForm agentId={agent.id} agentName={agent.name} />
