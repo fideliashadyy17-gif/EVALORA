@@ -382,16 +382,24 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
   // Scope is (organization, tool, request id, human actor) so one tenant can
   // never observe or consume another's request id. Only completed writes are
   // replayed: a failed or dry-run attempt is allowed to run again.
-  const replayable = request.execute !== false && request.actor.kind === "human" && !request.approvalId;
+  // Agents are included on purpose. An external client retrying a POST is the
+  // MOST likely source of a duplicate paper — it has no UI to disable the button
+  // — and excluding it would have made idempotency a property of the browser
+  // rather than of the platform. The scope adds the agent so two agents replaying
+  // the same id cannot answer for each other.
+  const replayable = request.execute !== false && !request.approvalId;
   if (replayable) {
-    const { data: prior } = await deps.admin
+    let query = deps.admin
       .from("ai_executions")
       .select("id, status, arguments_digest, result_summary, error_code, error_message")
       .eq("organization_id", request.scope.organizationId)
       .eq("tool_name", request.tool)
       .eq("request_id", request.scope.requestId)
+      .eq("actor_kind", request.actor.kind)
       .eq("actor_user_id", request.actor.userId ?? "00000000-0000-0000-0000-000000000000")
-      .eq("status", "succeeded")
+      .eq("status", "succeeded");
+    query = request.actor.agentId ? query.eq("agent_id", request.actor.agentId) : query.is("agent_id", null);
+    const { data: prior } = await query
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();

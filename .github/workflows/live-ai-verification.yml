@@ -76,7 +76,7 @@ jobs:
           BASE_URL: ${{ github.event.inputs.base_url }}
         run: |
           if [ -f ai-live-verification.json ]; then
-            node - <<'NODE'
+            node --input-type=commonjs - <<'NODE'
             const report = require("./ai-live-verification.json");
             const lines = [];
             lines.push("### Live AI verification");
@@ -98,6 +98,11 @@ jobs:
               lines.push(`| [${check.area}] ${check.name} | ${check.passed ? "PASS" : "**FAIL**"} |`);
             }
             require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            // Echo the report to the step log as a last resort: the artifact and
+            // the summary are both served from Azure Blob, which some readers
+            // cannot reach, and evidence that only exists in an unreachable blob
+            // is not evidence.
+            console.log(JSON.stringify(report));
             NODE
           else
             echo "No report was produced." >> "$GITHUB_STEP_SUMMARY"
