@@ -203,6 +203,80 @@ the owning human, the organization, the surface and the tool:
 
 The `execution_id` reported to the MCP client in §4.2 is the same id as the row.
 
+## 4.5 Revocation was broken by the same mistake (D13)
+
+Reported from the product: **Dashboard → AI → Agents → Revoke Immediately did
+nothing.** No confirmation, no message, no status change. The credential stayed
+live.
+
+The cause was not the button. `ai_revoke_agent` decided who was calling it with
+
+```sql
+if not (public.is_super_admin() or public.can_manage_org(v_org))
+then raise exception 'AI_PERMISSION_DENIED'; end if;
+```
+
+Both helpers read `auth.uid()`. The dashboard calls the function on the
+**service-role client**, where `auth.uid()` is `NULL`. Measured on production:
+
+| probe | value |
+| --- | --- |
+| `auth.uid()` under service_role | `NULL` |
+| `is_super_admin()` | `false` |
+| `can_manage_org(demo org)` | `false` |
+| `select ai_revoke_agent(<agent>)` | `ERROR P0001: AI_PERMISSION_DENIED` |
+
+It raised for every user on every invocation and never reached the `UPDATE`.
+This is D12 in a second place, and the reason both survived is the same: the
+check could not be observed to fail without attempting the real operation.
+
+It was **reproduced first** on an isolated test agent, then fixed.
+
+### The second failure, which hid the first
+
+```ts
+} catch {
+  /* idem */
+}
+```
+
+The action returned `void` with no success or failure state, and the form had no
+confirmation, no pending state and no message area. A total backend failure was
+indistinguishable from success on a stale page.
+
+### Fixed, and verified on production
+
+The actor is an explicit argument, checked with `_access_eval_permission` — the
+same evaluator the AI resolver uses. `canOperate` remains the dashboard gate and
+the server action still refuses an unauthorized caller; the database no longer
+re-asks a question it cannot answer.
+
+| case | result |
+| --- | --- |
+| revoke test agent as demo owner | `revoked: true` |
+| status / digest cleared | `revoked` / `true` |
+| `revoked_by` / `revoke_reason` | recorded / recorded |
+| old token via `ai_resolve_agent` | **0 rows** |
+| other agents after revocation | untouched |
+| demo owner → test agent | `true` |
+| Oak admin → test agent (cross-tenant) | `false` |
+| unknown user / null actor | `false` |
+| Oak admin revoking a demo credential | `AI_PERMISSION_DENIED` |
+| rotate approved agent | `rotated: true`; old token 0 rows, new 1 row |
+| rotate a revoked agent | `AI_AGENT_NOT_APPROVED` |
+
+Rotation had the same class of silent failure: it used
+`UPDATE … WHERE status='approved'` and returned the new token even when zero rows
+matched, handing the user a credential that had never been stored. It now raises.
+
+`Adding an argument creates an overload, not a replacement` — after the first fix
+the catalog held **both** signatures, so the broken two-argument version was still
+callable. Detected by checking `pg_proc` rather than assuming the migration had
+taken effect, then dropped explicitly and re-verified.
+
+**Neither production credential was touched** during any of this. Test agents were
+removed afterwards.
+
 ## 5. What is verified, and how
 
 | Area | State | Basis |
@@ -215,6 +289,8 @@ The `execution_id` reported to the MCP client in §4.2 is the same id as the row
 | MCP verified end to end | **verified** | §4.2 — 20/20 checks against the deployed build |
 | Permission enforcement | **verified** | §4.2 — 18 tools discovered (neither 0 nor 27), and `publish_examination` refused at call time with `permission_denied` |
 | Journal written by the application | **verified** | §4.4 — `arguments_digest` matches `sha256("{}")`, and the forged row's empty digest separates it |
+| Credential revocation | **verified** | §4.5 — the workflow was broken and is now exercised end to end on production |
+| Credential rotation | **verified** | §4.5 — rotate, old-token death, and refusal on a revoked agent |
 | Live database writes through the assistant | **not verified** | no key reaches a runner; see §6 |
 | Native Assistant (real UI turn) | **not verified** | needs the demo password or a session; see §6 |
 | Dashboard visibility of a created object | **not verified** | follows from the two rows above |
