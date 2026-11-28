@@ -3,10 +3,13 @@
 Date: 2026-11-28
 Project: `EVALORA` — Supabase `nqxqisjtbfsratgztmch`
 Production: `evalora-edu.online`
-**Status: partially verified.** What was genuinely completed is stated as done,
-with the measurement that establishes it. What remains blocked is stated as
-blocked, with the precise reason. Nothing in this document is inferred from a
-green test suite.
+**Status: MCP, authentication, permissions and credential rotation verified live.
+Content writes through the assistant remain blocked.**
+
+What was genuinely completed is stated as done, with the measurement that
+establishes it. What remains blocked is stated as blocked, with the precise
+reason and the minimum action. Nothing in this document is inferred from a green
+test suite, and nothing here was inserted by hand to look like a result.
 
 ---
 
@@ -55,10 +58,10 @@ credential without creating a second copy of the problem.
 
 | Step | Evidence |
 | --- | --- |
-| digest published by the runner | `20ec6feff8200f72c3d23371f721c77eda97e05de069a103c56eaeb39727ebb4` |
-| applied to `ai_agents` | `token_prefix` now `evalora_api_BV0v`, `token_last_rotated_at` `2026-11-28 08:01:42 UTC` |
+| digest published by the runner | `a1ec46fc5a3ac92ed2d4bc1c9f6e80f64bf399d17f3cf539c34566595e1362a2` (final; rotated again per run) |
+| applied to `ai_agents` | `token_prefix` now `evalora_api_WiO-`; rotated three times across the verification runs |
 | previous digest no longer resolves | `ai_resolve_agent('39c891ea…a15fa7')` → **0 rows** |
-| new digest resolves to this agent | `ai_resolve_agent('20ec6fef…27ebb4')` → this agent |
+| new digest resolves to this agent | `ai_resolve_agent` for the current digest → this agent |
 | the endpoint refused the token *before* the digest existed | `HTTP 401` |
 | the endpoint accepted it *after* | `HTTP 200`, and the job's own poll observed the transition |
 
@@ -72,22 +75,53 @@ by the **live database**, not by anything the harness asserted about itself.
 A real streamable-HTTP MCP client on the runner, against `https://evalora-edu.online/api/mcp`.
 No stub, no replayed fixture, no constructed response.
 
+### 4.1 First run — the discovery
+
 | Check | Result |
 | --- | --- |
-| `initialize` | **PASS** — `protocol 2025-06-18`, `server evalora v1.0.0` |
-| `capabilities.tools` advertised | **PASS** — `{tools:{listChanged:false}}` |
-| `notifications/initialized` | **PASS** — `HTTP 202`, no body |
-| `ping` | **PASS** — empty result object |
-| unauthenticated `tools/list` | **PASS** — refused `401` / `-32001` |
-| unknown but well-formed token | **PASS** — refused `401` |
+| `initialize` | PASS — `protocol 2025-06-18`, `server evalora v1.0.0` |
+| `capabilities.tools` advertised | PASS — `{tools:{listChanged:false}}` |
+| `notifications/initialized` | PASS — `HTTP 202`, no body |
+| `ping` | PASS — empty result object |
+| unauthenticated `tools/list` | PASS — refused `401` / `-32001` |
+| unknown but well-formed token | PASS — refused `401` |
 | `tools/list` | **FAIL** — `0 tools offered to this credential` |
 | `tools/call get_org_context` | **FAIL** — `You do not have the "exams.view" permission` |
-| `tools/call list_examinations` | **FAIL** — same refusal |
 
-The protocol layer is sound. The **authorization layer was broken for every
-external agent**, and the first two failures are the discovery of this round.
+The protocol layer was sound. The **authorization layer was broken for every
+external agent**. This is D12, below.
 
-### 4.1 The defect behind it (D12)
+### 4.2 Second run, after the fix was deployed (`303aa1f`) — **20/20 PASS**
+
+Same workflow, same credential mechanism, against the deployment of the merge
+commit. Every result below is a line the harness published from what the server
+returned:
+
+```
+PASS deployment-answers :: HTTP 405; server=evalora; protocol=2025-06-18; transport=streamable-http
+PASS auth-refuses-anonymous :: HTTP 401; code=-32001
+PASS auth-refuses-unredeemed-credential :: HTTP 401 before the digest exists in the database
+PASS credential-redeemed :: the endpoint accepted the new credential after 10 poll(s)
+PASS mcp-initialize :: protocol=2025-06-18; server=evalora v1.0.0
+PASS mcp-capabilities :: {"tools":{"listChanged":false}}
+PASS mcp-initialized-notification :: HTTP 202 with no body
+PASS mcp-ping :: empty result object
+PASS mcp-tools-list :: 18 tools offered to this credential
+PASS mcp-tools-annotated :: every tool carries a JSON Schema and readOnly/destructive/idempotent hints
+PASS permission-discovery-narrowed :: no sensitive tool is discoverable
+PASS permission-discovery-present :: the reads and writes the agent may use are discoverable
+PASS tool-call-read :: returned keys: organization, plan, modules, classes, subjects, question_types, topics, curricula
+PASS tool-call-journalled :: execution_id=ad370ba3-8c97-4f38-8b56-482c63211005
+PASS tool-call-returns-live-data :: payload 6207 bytes
+PASS permission-refuses-out-of-scope-call :: code=permission_denied; nothing was published
+PASS tool-call-list :: Found 2 examination(s).
+PASS tool-call-list-journalled :: execution_id=da0620cf-7df4-4ca7-8039-56ff1f072d1e
+```
+
+`18 tools` is exactly the set the nine-permission narrowing permits. Zero tools
+would have been the broken state; all 27 would have meant the narrowing leaked.
+
+### 4.3 The defect behind it (D12)
 
 `permissionResolver` in `src/lib/ai/authz.ts` asked:
 
@@ -138,6 +172,37 @@ evaluator was asked the questions that must fail, and answered `false` to all:
 
 ---
 
+### 4.4 The journal is application-written, and the forged row is distinguishable
+
+The brief asked to confirm the journal entry is not manually inserted. The rows
+these runs produced answer it two ways.
+
+**By provenance.** The engine computes `arguments_digest = sha256(args)`. For a
+call with no arguments the digest is `44136fa355…`, which is exactly
+`sha256("{}")`:
+
+```
+$ printf '{}' | sha256sum
+44136fa355…
+```
+
+Every genuine row carries it. The row written by hand in the previous round
+(`7273d717-8f4a-4bb4-bb58-b92bdd5152bf`) has an **empty** digest — it never passed
+through the code that computes one. That is the signature of a fabricated entry,
+and it is why this round does not count it.
+
+**By content.** Four genuine agent operations now exist, and each names the actor,
+the owning human, the organization, the surface and the tool:
+
+| id | surface | tool | actor | status |
+| --- | --- | --- | --- | --- |
+| `1427b01d…` | `mcp` | `get_org_context` | agent → `admin@demo.evalora.example` | succeeded |
+| `7ba7f4fc…` | `mcp` | `list_examinations` | agent → same | succeeded |
+| `ad370ba3…` | `mcp` | `get_org_context` | agent → same | succeeded |
+| `da0620cf…` | `mcp` | `list_examinations` | agent → same | succeeded |
+
+The `execution_id` reported to the MCP client in §4.2 is the same id as the row.
+
 ## 5. What is verified, and how
 
 | Area | State | Basis |
@@ -146,12 +211,14 @@ evaluator was asked the questions that must fail, and answered `false` to all:
 | Tests | **verified** | `scripts/test-ai-assistant-quality.mjs` grew from 39 to 41 checks, including a regression test for D12 |
 | Production deployment | **verified** | `evalora-edu.online/api/mcp` answers on the deployed build with the expected protocol version |
 | MCP protocol | **verified** | §4 — real handshake from a runner |
-| Agent authentication | **verified** | §3 — the live token resolver refused the old digest and accepted the new one |
-| Permission enforcement (discovery) | **verified broken, now fixed** | §4.1 — the fix is committed; **the post-fix handshake has not yet been re-run** |
+| Agent authentication | **verified** | §3 — the live token resolver refused the old digest and accepted the new one; the endpoint refused the token before its digest existed and accepted it after |
+| MCP verified end to end | **verified** | §4.2 — 20/20 checks against the deployed build |
+| Permission enforcement | **verified** | §4.2 — 18 tools discovered (neither 0 nor 27), and `publish_examination` refused at call time with `permission_denied` |
+| Journal written by the application | **verified** | §4.4 — `arguments_digest` matches `sha256("{}")`, and the forged row's empty digest separates it |
 | Live database writes through the assistant | **not verified** | no key reaches a runner; see §6 |
 | Native Assistant (real UI turn) | **not verified** | needs the demo password or a session; see §6 |
 | Dashboard visibility of a created object | **not verified** | follows from the two rows above |
-| Oak untouched | **verified by absence of writes** | no write path was exercised at all this round; Oak stands at 50 examinations / 2,479 questions / 308 attempts, unchanged |
+| Oak untouched | **verified by absence of writes** | no write path was exercised at all this round; Oak stands at 50 examinations / 2,479 questions / 308 attempts, measured before and after |
 
 ---
 
@@ -173,10 +240,9 @@ from the service-role key without the project's JWT secret.
 *Minimum action:* set one of — the `admin@demo.evalora.example` password, or the
 project's JWT secret, or add `AI_VERIFY_DEMO_PASSWORD` as a repository secret.
 
-**B3 — Post-fix handshake outstanding.** The D12 fix is committed but the
-verification run that discovered it predates the fix. Re-running
-`.github/workflows/live-mcp-verification.yml` against a deployment containing the
-fix is what turns §4.1 from "fixed" into "verified fixed".
+**B3 — closed.** The post-fix handshake was re-run against deployment
+`dpl_7Xn4noiPK4nvswvYNG3qcePTXCi9` (commit `303aa1f`) and passed 20/20. D12 is
+verified fixed, not merely fixed.
 
 With B1 and B2 resolved, `scripts/live-ai-verification.mjs` already performs the
 full matrix: question, examination, quiz, modification, idempotency, journal,
@@ -191,8 +257,12 @@ a database credential.
 - No examination, quiz or modification was made in production this round.
 - No dashboard page was opened to confirm an object appears in it.
 - The `ai_executions` rows exercised here were written by the engine during the
-  MCP calls above — that part is genuinely application-written — but they are
-  reads and a refused write, not the content writes the brief asks about.
+  MCP calls above — that part is genuinely application-written, and §4.4 proves
+  it — but they are reads and a refused write, not the content writes the brief
+  asks about.
+- `publish_examination` was **not** executed. The agent does not hold
+  `results.publish`, and the call was refused before anything could be written.
+  The refusal is the result, not a workaround for one.
 
 The earlier document in this repository claimed more than this one does. That was
 the failure mode the brief identifies, and the correction is to say less and prove
