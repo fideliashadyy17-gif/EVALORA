@@ -1172,6 +1172,23 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     };
   }
 
+  // A question saved without a subject sits outside the subject policies, which
+  // is exactly the gap a teacher restricted to one subject could exploit — or
+  // fall foul of. The name is resolved within the caller's organization and
+  // stored with the row; a name the school has not registered leaves it null,
+  // which is the same unrestricted case as a question authored before the field
+  // existed. Resolution failures are reported, never swallowed.
+  const subjectName = optionalString(args.subject, 120);
+  let subjectId: string | null = null;
+  if (subjectName) {
+    const { resolveSubjectIdByName } = await import("@/lib/subjects");
+    try {
+      subjectId = await resolveSubjectIdByName(runtime.admin, runtime.scope.organizationId, subjectName);
+    } catch (error) {
+      throw new ToolError("internal", error instanceof Error ? error.message : "The subject could not be resolved.");
+    }
+  }
+
   const { saveQuestion } = await import("@/app/dashboard/questions/actions");
   const saved = await saveQuestion({
     type: type as never,
@@ -1180,6 +1197,7 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     points,
     difficulty: proposed.difficulty,
     topic: proposed.topic,
+    subject_id: subjectId,
     status: "draft",
     // A question the assistant wrote is labelled as such, so it can be reviewed
     // and filtered separately from a teacher's own work.
@@ -1270,6 +1288,10 @@ async function generateQuestion(runtime: ToolRuntime, args: Record<string, unkno
           points: question.points,
           difficulty: question.difficulty,
           topic: question.topic,
+          // Carries the subject through, so a question authored for a teacher is
+          // filed under the subject they teach instead of landing subjectless and
+          // outside the scope rules.
+          subject: args.subject,
           explanation: question.explanation,
           options: question.options,
           numeric_answer: question.config?.numeric_answer,
@@ -2499,6 +2521,417 @@ async function revokeAiAgent(runtime: ToolRuntime, args: Record<string, unknown>
   };
 }
 
+/* ─────────────────────── school management ─────────────────────── */
+
+/**
+ * The school's live structure.
+ *
+ * Read through `runtime.admin` deliberately. The caller is already
+ * authenticated, the organization is resolved server-side from the agent or
+ * session, and every query is scoped by it — reading through a policy-bound
+ * client here would only hide rows the caller is entitled to see, and would
+ * present a partial school as the whole one.
+ */
+async function getSchoolStructure(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const { loadSchoolStructure } = await import("../services/schoolStructure");
+  const structure = await loadSchoolStructure(runtime.admin, runtime.scope.organizationId);
+  const includeCounts = args.include_counts !== false;
+
+  const summary = [
+    `${structure.organization.name}: ${structure.classes.length} class(es), ${structure.subjects.length} subject(s), ${structure.teachers.length} teacher(s)`,
+    includeCounts ? `${structure.counts.students} student(s)` : null,
+    structure.notes.length ? "Some lists could not be read (see notes)." : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
+
+  return {
+    ok: true,
+    data: {
+      organization: structure.organization,
+      years: structure.years,
+      grades: structure.grades,
+      classes: structure.classes,
+      subjects: structure.subjects,
+      teachers: structure.teachers,
+      ...(includeCounts ? { counts: structure.counts } : {}),
+      notes: structure.notes,
+    },
+    summary,
+  };
+}
+
+async function listStudents(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const limit = optionalNumber(args.limit, "limit", 1, 200) ?? 50;
+  const query = optionalString(args.query, 120);
+  const status = typeof args.status === "string" ? args.status : null;
+  const classId = typeof args.class_id === "string" ? args.class_id : null;
+
+  // Filtering by class goes through the enrollment table rather than the student
+  // row, because a student's placement is the enrollment, not a column.
+  let studentIdsForClass: string[] | null = null;
+  if (classId) {
+    const { data, error } = await runtime.admin
+      .from("student_enrollments")
+      .select("student_id")
+      .eq("organization_id", runtime.scope.organizationId)
+      .eq("class_id", classId)
+      .eq("status", "active");
+    if (error) throw new ToolError("internal", `Students in that class could not be read: ${error.message}`);
+    studentIdsForClass = (data ?? []).map((row) => (row as { student_id: string }).student_id);
+    if (!studentIdsForClass.length) {
+      return { ok: true, data: { students: [], count: 0 }, summary: "No students are enrolled in that class." };
+    }
+  }
+
+  let builder = runtime.admin
+    .from("students")
+    .select("id, full_name, email, student_ref, status")
+    .eq("organization_id", runtime.scope.organizationId)
+    .order("full_name")
+    .limit(limit);
+  if (status) builder = builder.eq("status", status);
+  if (studentIdsForClass) builder = builder.in("id", studentIdsForClass);
+  if (query) builder = builder.or(`full_name.ilike.%${query}%,email.ilike.%${query}%,student_ref.ilike.%${query}%`);
+
+  const { data, error } = await builder;
+  if (error) throw new ToolError("internal", `Students could not be read: ${error.message}`);
+
+  const students = (data ?? []) as Record<string, unknown>[];
+  return {
+    ok: true,
+    data: { students, count: students.length },
+    summary: students.length
+      ? `${students.length} student(s) found${query ? ` matching "${query}"` : ""}.`
+      : "No students matched.",
+  };
+}
+
+async function getStudent(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const studentId = typeof args.student_id === "string" ? args.student_id : null;
+  const reference = optionalString(args.reference, 60);
+  if (!studentId && !reference) {
+    throw new ToolError("invalid_arguments", "Give either student_id or reference.");
+  }
+
+  let builder = runtime.admin
+    .from("students")
+    .select("id, full_name, email, student_ref, gender, date_of_birth, phone, guardian_name, guardian_contact, status")
+    .eq("organization_id", runtime.scope.organizationId);
+  builder = studentId ? builder.eq("id", requireUuid(studentId, "student_id")) : builder.ilike("student_ref", reference as string);
+
+  const { data, error } = await builder.maybeSingle();
+  if (error) throw new ToolError("internal", `That student could not be read: ${error.message}`);
+  if (!data) throw new ToolError("not_found", "No student with that id or reference exists in this school.");
+
+  const { data: enrollment } = await runtime.admin
+    .from("student_enrollments")
+    .select("class_id, academic_year_id, status, classes(name)")
+    .eq("organization_id", runtime.scope.organizationId)
+    .eq("student_id", data.id as string)
+    .eq("status", "active")
+    .maybeSingle();
+  const row = enrollment as { class_id: string | null; classes?: { name?: string } | null } | null;
+
+  return {
+    ok: true,
+    data: {
+      ...data,
+      class_id: row?.class_id ?? null,
+      class_name: row?.classes?.name ?? null,
+    },
+    summary: `${data.full_name as string}${row?.classes?.name ? ` — ${row.classes.name}` : ""} (${data.status as string}).`,
+    links: [{ label: "Open the student", href: `/dashboard/students/${data.id as string}` }],
+  };
+}
+
+/**
+ * Registers a student through the SAME service the dashboard form uses.
+ *
+ * The service enforces `students.create`, checks the class belongs to this
+ * school, protects duplicate references and emails, and rolls the insert back if
+ * enrollment fails. Nothing about a student record is re-implemented here; this
+ * handler only binds the agent's identity to that service.
+ */
+async function createStudent(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const fullName = boundedString(args.full_name, "full_name", 160);
+  const { registerStudentForActor } = await import("../services/studentRegistration");
+  const { sessionContextForUser } = await import("../auth");
+
+  const session = await sessionContextForUser(runtime.admin, runtime.actor.userId, runtime.scope.organizationId);
+  if (!session) throw new ToolError("permission_denied", "The acting user is not an active member of this organization.");
+
+  const result = await registerStudentForActor(
+    {
+      full_name: fullName,
+      email: optionalString(args.email, 200) ?? undefined,
+      student_ref: optionalString(args.student_ref, 60) ?? undefined,
+      gender: optionalString(args.gender, 40) ?? undefined,
+      date_of_birth: optionalString(args.date_of_birth, 40) ?? undefined,
+      phone: optionalString(args.phone, 40) ?? undefined,
+      guardian_name: optionalString(args.guardian_name, 160) ?? undefined,
+      guardian_contact: optionalString(args.guardian_contact, 120) ?? undefined,
+      class_id: typeof args.class_id === "string" ? requireUuid(args.class_id, "class_id") : undefined,
+    },
+    {
+      ctx: session,
+      organizationId: runtime.scope.organizationId,
+      supabase: runtime.admin,
+      // No browser session exists on the agent path, so the permission question
+      // is asked through the resolver the request already authenticated with.
+      authorize: runtime.authorize,
+    },
+  );
+
+  if (!result.ok || !result.student) {
+    return {
+      ok: false,
+      error: { code: "invalid_arguments", message: result.error ?? "The student could not be registered." },
+      data: {},
+      summary: result.error ?? "The student could not be registered.",
+    };
+  }
+
+  return {
+    ok: true,
+    data: { student_id: result.student.id, class_id: result.student.class_id ?? null },
+    summary: `Registered ${result.student.full_name}${result.student.class_id ? " and enrolled them in the chosen class" : " (no class selected)"}.`,
+    links: [{ label: "Open the student", href: `/dashboard/students/${result.student.id}` }],
+  };
+}
+
+async function listTeachers(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const { loadSchoolStructure } = await import("../services/schoolStructure");
+  const structure = await loadSchoolStructure(runtime.admin, runtime.scope.organizationId);
+  const query = optionalString(args.query, 120)?.toLowerCase();
+  const subjectId = typeof args.subject_id === "string" ? args.subject_id : null;
+
+  let teachers = structure.teachers;
+  if (query) {
+    teachers = teachers.filter(
+      (t) => t.fullName.toLowerCase().includes(query) || (t.email ?? "").toLowerCase().includes(query),
+    );
+  }
+  if (subjectId) teachers = teachers.filter((t) => t.subjectIds.includes(subjectId));
+
+  return {
+    ok: true,
+    data: { teachers, count: teachers.length, notes: structure.notes },
+    summary: teachers.length
+      ? `${teachers.length} teacher(s).${structure.notes.length ? " Some lists could not be read." : ""}`
+      : "No teachers matched.",
+  };
+}
+
+async function getTeacherResponsibilities(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const teacherId = requireUuid(args.teacher_id, "teacher_id");
+  const { loadTeacherResponsibilities } = await import("../services/schoolStructure");
+  const responsibilities = await loadTeacherResponsibilities(runtime.admin, runtime.scope.organizationId, teacherId);
+  if (!responsibilities) {
+    throw new ToolError("not_found", "No teacher with that id is an active member of this school.");
+  }
+
+  // The grandfathering branch is stated, not implied. Reporting "no subjects"
+  // for a teacher with no assignments would claim a restriction that the
+  // policies do not apply.
+  const summary = responsibilities.configured
+    ? `${responsibilities.fullName}: ${responsibilities.homeroom.length} homeroom class(es), ${responsibilities.subjects.length} subject responsibility(ies).`
+    : `${responsibilities.fullName} has no teaching assignment recorded, so the current policy does not restrict them by subject. Record their responsibilities to change that.`;
+
+  return {
+    ok: true,
+    data: { ...responsibilities },
+    summary,
+    links: [{ label: "Open teaching assignments", href: "/dashboard/teachers/assignments" }],
+  };
+}
+
+/**
+ * Adds or revokes ONE teaching responsibility.
+ *
+ * Deliberately one row at a time: "make this teacher a homeroom teacher of JSS
+ * 1A" is a statement an administrator or an assistant can state and a reader can
+ * check. A tool that replaced a teacher's whole set would let a single mistaken
+ * call revoke every responsibility they hold, including ones it never mentioned.
+ * The bulk form exists in the UI, where the whole set is on screen.
+ */
+async function manageTeachingAssignment(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  const action = String(args.action ?? "");
+  if (!["add", "revoke"].includes(action)) {
+    throw new ToolError("invalid_arguments", "\"action\" must be \"add\" or \"revoke\".");
+  }
+  if (args.confirm !== true) {
+    throw new ToolError("invalid_arguments", "\"confirm\" must be true; state the change to a human first.");
+  }
+  const teacherId = requireUuid(args.teacher_id, "teacher_id");
+  const role = String(args.role ?? "");
+  if (!["class_teacher", "subject_teacher"].includes(role)) {
+    throw new ToolError("invalid_arguments", "\"role\" must be \"class_teacher\" or \"subject_teacher\".");
+  }
+  const classId = typeof args.class_id === "string" ? requireUuid(args.class_id, "class_id") : null;
+  const subjectId = typeof args.subject_id === "string" ? requireUuid(args.subject_id, "subject_id") : null;
+
+  if (role === "class_teacher" && (!classId || subjectId)) {
+    throw new ToolError("invalid_arguments", "A homeroom responsibility names a class and no subject.");
+  }
+  if (role === "subject_teacher" && !subjectId) {
+    throw new ToolError("invalid_arguments", "A subject responsibility must name a subject.");
+  }
+
+  // The teacher must be an active member of THIS organization. A profile id from
+  // another school is not enough, and the assignments table has no way to say so
+  // on its own.
+  const { data: membership } = await runtime.admin
+    .from("organization_members")
+    .select("user_id, role, status, profiles(full_name)")
+    .eq("organization_id", runtime.scope.organizationId)
+    .eq("user_id", teacherId)
+    .eq("status", "active")
+    .maybeSingle();
+  if (!membership) throw new ToolError("not_found", "That person is not an active member of this school.");
+  if (!["teacher", "admin", "owner", "organizer"].includes(membership.role as string)) {
+    throw new ToolError("permission_denied", "That member's role cannot hold a teaching responsibility.");
+  }
+  const teacherName =
+    ((membership.profiles as unknown as { full_name?: string } | null)?.full_name as string) ?? "the teacher";
+
+  const { loadTeachingContext, setTeachingAssignments } = await import("../teachingAssignments");
+  const { assignments } = await loadTeachingContext(runtime.admin, runtime.scope.organizationId, teacherId);
+  const matches = (row: { classId: string | null; subjectId: string | null; role: string }) =>
+    row.role === role && (row.classId ?? null) === classId && (row.subjectId ?? null) === subjectId;
+  const existing = assignments.some(matches);
+
+  if (action === "add" && existing) {
+    return {
+      ok: true,
+      data: { changed: false, teacher_id: teacherId, role, class_id: classId, subject_id: subjectId },
+      summary: `${teacherName} already holds that responsibility; nothing was changed.`,
+    };
+  }
+  if (action === "revoke" && !existing) {
+    return {
+      ok: false,
+      error: { code: "not_found", message: "That responsibility is not recorded for this teacher." },
+      data: {},
+      summary: "That responsibility is not recorded for this teacher, so there was nothing to revoke.",
+    };
+  }
+
+  // The desired set is the existing set plus or minus this one row. Passing it
+  // through `setTeachingAssignments` means the tenant checks, the one-homeroom
+  // rule and the audit trail all apply exactly as they do in the admin UI.
+  const desired = assignments
+    .filter((row) => !(action === "revoke" && matches(row)))
+    .map((row) => ({ classId: row.classId, subjectId: row.subjectId, role: row.role }));
+  if (action === "add") desired.push({ classId, subjectId, role: role as "class_teacher" | "subject_teacher" });
+
+  let outcome: { added: number; removed: number };
+  try {
+    outcome = await setTeachingAssignments(runtime.admin, {
+      organizationId: runtime.scope.organizationId,
+      teacherId,
+      assignedBy: runtime.actor.userId,
+      desired,
+    });
+  } catch (error) {
+    // A conflicting homeroom teacher raises here. Passing the database's reason
+    // through is the difference between "it failed" and "JSS 1A already has a
+    // homeroom teacher".
+    throw new ToolError("conflict", error instanceof Error ? error.message : "The assignment could not be saved.");
+  }
+
+  const { audit } = await import("../admin");
+  const session = await (await import("../auth")).sessionContextForUser(
+    runtime.admin,
+    runtime.actor.userId,
+    runtime.scope.organizationId,
+  );
+  if (session) {
+    await audit(session, "teacher.assignments_saved", "teaching_assignments", teacherId, runtime.scope.organizationId, {
+      via: "ai_core",
+      action,
+      role,
+      class_id: classId,
+      subject_id: subjectId,
+      added: outcome.added,
+      removed: outcome.removed,
+    });
+  }
+
+  return {
+    ok: true,
+    data: { changed: true, teacher_id: teacherId, role, class_id: classId, subject_id: subjectId, ...outcome },
+    summary:
+      action === "add"
+        ? `Recorded ${role === "class_teacher" ? "a homeroom responsibility" : "a subject responsibility"} for ${teacherName}.`
+        : `Revoked that responsibility from ${teacherName}.`,
+    links: [{ label: "Open teaching assignments", href: "/dashboard/teachers/assignments" }],
+  };
+}
+
+/**
+ * What the acting user may actually do, and why.
+ *
+ * Two different questions are answered together because a refusal is only
+ * useful when both are known: the permission (`questions.create`) and the
+ * subject scope (which subjects that permission actually covers). A teacher who
+ * holds `questions.create` but is assigned Mathematics cannot author Literature,
+ * and an assistant that says only "you lack questions.create" would be lying.
+ */
+async function getEffectivePermissions(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
+  void args;
+  const { loadTeachingContext } = await import("../teachingAssignments");
+
+  const { data: membership } = await runtime.admin
+    .from("organization_members")
+    .select("role, status")
+    .eq("organization_id", runtime.scope.organizationId)
+    .eq("user_id", runtime.actor.userId)
+    .maybeSingle();
+
+  // Read from the registry rather than a copied list: a tool added later is
+  // covered without anyone remembering to add its permission here.
+  const { TOOLS } = await import("./tools");
+  const permissions: string[] = [];
+  for (const permission of [...new Set(TOOLS.map((tool) => tool.risk.permission))].sort()) {
+    const allowed = runtime.hasPermissionFor
+      ? await runtime.hasPermissionFor(permission)
+      : runtime.authorize
+        ? await runtime.authorize(permission)
+        : false;
+    if (allowed) permissions.push(permission);
+  }
+
+  const { configured, assignments } = await loadTeachingContext(
+    runtime.admin,
+    runtime.scope.organizationId,
+    runtime.actor.userId,
+  );
+  const subjectIds = [...new Set(assignments.filter((a) => a.role === "subject_teacher" && a.subjectId).map((a) => a.subjectId as string))];
+
+  return {
+    ok: true,
+    data: {
+      organization_id: runtime.scope.organizationId,
+      member_role: (membership?.role as string) ?? null,
+      member_status: (membership?.status as string) ?? null,
+      actor_kind: runtime.actor.kind,
+      permissions,
+      teaching: {
+        configured,
+        subject_ids: subjectIds,
+        homeroom_class_ids: assignments.filter((a) => a.role === "class_teacher").map((a) => a.classId),
+        note: configured
+          ? "Content authorship is limited to the subjects above."
+          : "No teaching assignment is recorded, so subject scope does not currently restrict this account.",
+      },
+    },
+    summary: configured
+      ? `${permissions.length} permission(s); content authorship limited to ${subjectIds.length} subject(s).`
+      : `${permissions.length} permission(s); no teaching assignment recorded.`,
+  };
+}
+
 /* ─────────────────────────── dispatch ─────────────────────────── */
 
 const HANDLERS: Record<string, (runtime: ToolRuntime, args: Record<string, unknown>) => Promise<ToolResult>> = {
@@ -2530,6 +2963,14 @@ const HANDLERS: Record<string, (runtime: ToolRuntime, args: Record<string, unkno
   list_ai_agents: (r) => listAiAgents(r),
   register_ai_agent: registerAiAgent,
   revoke_ai_agent: revokeAiAgent,
+  get_school_structure: getSchoolStructure,
+  list_students: listStudents,
+  get_student: getStudent,
+  create_student: createStudent,
+  list_teachers: listTeachers,
+  get_teacher_responsibilities: getTeacherResponsibilities,
+  manage_teaching_assignment: manageTeachingAssignment,
+  get_effective_permissions: getEffectivePermissions,
 };
 
 export async function runTool(name: string, args: Record<string, unknown>, runtime: ToolRuntime): Promise<ToolResult> {

@@ -1,5 +1,5 @@
 // Platform-wide route, table-accessibility, navigation, and bug-regression suite
-// covering all 191 Next.js App Router page.tsx routes across Super Admin (/admin),
+// covering all 196 Next.js App Router page.tsx routes across Super Admin (/admin),
 // Organization Workspace (/dashboard), Student & Candidate Assessment flows,
 // Multi-tenant Portals, Live Screens, and Public/Auth surfaces.
 
@@ -30,7 +30,7 @@ const otherPages = allPages.filter(
   (p) => !p.startsWith("src/app/admin/") && !p.startsWith("src/app/dashboard/"),
 );
 
-check("route inventory accounts for all 195 page.tsx routes (96 admin, 62 dashboard, 37 public/auth/student/portal)", () => {
+check("route inventory accounts for all 196 page.tsx routes (96 admin, 63 dashboard, 37 public/auth/student/portal)", () => {
   // 95 = 89 + the five Platform Control Center surfaces added for the centralized
   //      configuration architecture: /admin/control-center (global defaults),
   //      /admin/control-center/organizations (per-organization overrides list),
@@ -64,11 +64,14 @@ check("route inventory accounts for all 195 page.tsx routes (96 admin, 62 dashbo
   //      /dashboard/ai (the native assistant), /dashboard/ai/agents (external
   //      agent credentials and narrowing), /dashboard/ai/approvals (the human
   //      approval queue) and /dashboard/ai/activity (the AI operation journal).
-  assert.equal(dashboardPages.length, 62, `expected 62 dashboard pages, found ${dashboardPages.length}`);
+  // 63 = 62 + /dashboard/teachers/assignments (the teaching-assignment admin
+  //      surface: teacher → year → classes → subjects, homeroom and subject
+  //      responsibilities held independently on one account).
+  assert.equal(dashboardPages.length, 63, `expected 63 dashboard pages, found ${dashboardPages.length}`);
   // 37 = 36 + /maintenance, the public holding page the middleware rewrites to
   //      while platform_behavior.maintenance_mode is on.
   assert.equal(otherPages.length, 37, `expected 37 public/student/portal pages, found ${otherPages.length}`);
-  assert.equal(allPages.length, 195);
+  assert.equal(allPages.length, 196);
 });
 
 check("the landing page advertises the census this suite just walked", () => {

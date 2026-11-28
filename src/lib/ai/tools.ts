@@ -211,6 +211,9 @@ export const TOOLS: ToolDefinition[] = [
         enum: ["single_choice", "multiple_select", "true_false", "short_answer", "numeric", "open_ended", "assess_parts"],
       }),
       prompt: str("The question text. Supports $…$ LaTeX."),
+      subject: str(
+        "The subject this question belongs to, e.g. \"Mathematics\". Required when the school records teaching assignments: the question is saved under that subject and the caller must teach it.",
+      ),
       points: num("Marks.", { minimum: 0 }),
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard", "competition"] }),
       topic: str("Topic label."),
@@ -233,6 +236,9 @@ export const TOOLS: ToolDefinition[] = [
     risk: ordinaryWrite("questions.create", "question_bank"),
     input: emptySchema({
       topic: str("Topic key, e.g. \"linear_equations\"."),
+      subject: str(
+        "The subject the questions belong to, e.g. \"Mathematics\". Required when the school records teaching assignments.",
+      ),
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard"] }),
       grade_label: str("Class/level label."),
       count: int("How many questions to author (1–20). Default 1."),
@@ -468,6 +474,122 @@ export const TOOLS: ToolDefinition[] = [
       confirm: bool("Must be true."),
     }, ["agent_id", "reason", "confirm"]),
     modelHint: "Use only when the teacher asks to disconnect an agent.",
+  },
+
+  /* ─── School structure ──────────────────────────────────────────────── */
+  {
+    name: "get_school_structure",
+    title: "Read the school's years, grades, classes, subjects and teachers",
+    description:
+      "Return the live structure of the caller's school: academic years, grades (education levels), classes with their year and grade, subjects with the classes they are taught in, and teachers with their homeroom classes and subjects. Also returns counts and an explicit note for any list that could not be read. This is the tool to call before proposing any school-management change, so a proposal names real classes and subjects.",
+    risk: ordinary("dashboard.view", "students"),
+    input: emptySchema({
+      include_counts: bool("Include totals for students, classes, subjects, teachers and assignments. Default true."),
+    }),
+    modelHint:
+      "Call before creating or moving a student, assigning a teacher or discussing classes, so you work with the school's real names rather than invented ones.",
+  },
+  {
+    name: "list_students",
+    title: "List or search students",
+    description:
+      "List the students enrolled in the caller's school, optionally filtered by a text query, a class or a status. Returns name, reference, class and enrollment status. Read-only.",
+    risk: ordinary("students.view", "students"),
+    input: emptySchema({
+      query: str("Match against full name, email or student reference.", { maxLength: 120 }),
+      class_id: uuid("Only students enrolled in this class."),
+      status: str("Enrollment status filter.", { enum: ["active", "suspended", "graduated", "withdrawn"] }),
+      limit: int("How many to return (1–200, default 50).", { minimum: 1, maximum: 200 }),
+    }),
+    modelHint: "Use to answer \"who is in this class\" or to find a student before acting on them.",
+  },
+  {
+    name: "get_student",
+    title: "Get one student",
+    description:
+      "Return one student's record in the caller's school: name, reference, contact details, status and current class enrollment. Read-only and tenant-scoped.",
+    risk: ordinary("students.view", "students"),
+    input: emptySchema(
+      {
+        student_id: uuid("The student id."),
+        reference: str("The student reference, if the id is not known.", { maxLength: 60 }),
+      },
+    ),
+    modelHint: "Use before proposing a change so the answer is about the right person.",
+  },
+  {
+    name: "create_student",
+    title: "Register a student",
+    description:
+      "Register one student in the caller's school through the same service the dashboard form uses: duplicate reference and email protection, class must belong to this school and be active, and the class enrollment is rolled back if it fails. Sensitive: requires students.create and a recorded human approval, because a student record and its class placement are not something to create silently.",
+    risk: sensitive("students.create", "students"),
+    input: emptySchema(
+      {
+        full_name: str("The student's full name.", { maxLength: 160 }),
+        email: str("Contact email. Optional but must be valid.", { maxLength: 200 }),
+        student_ref: str("School reference or admission number.", { maxLength: 60 }),
+        gender: str("Gender as the school records it.", { maxLength: 40 }),
+        date_of_birth: str("Date of birth, YYYY-MM-DD."),
+        phone: str("Contact phone.", { maxLength: 40 }),
+        guardian_name: str("Parent or guardian name.", { maxLength: 160 }),
+        guardian_contact: str("Parent or guardian contact.", { maxLength: 120 }),
+        class_id: uuid("Class to enroll into. Must belong to this school and be active."),
+      },
+      ["full_name"],
+    ),
+    modelHint:
+      "Only when the teacher explicitly asks to register a named student. Never invent a name or a class; confirm both first.",
+  },
+  {
+    name: "list_teachers",
+    title: "List teachers and their responsibilities",
+    description:
+      "List the teachers in the caller's school with their homeroom classes and subject responsibilities, read from teaching assignments. Teachers with no assignment at all are marked `configured: false`, which under the current policy means they are not yet restricted — say so rather than implying they have no access.",
+    risk: ordinary("dashboard.view", "teachers"),
+    input: emptySchema({
+      query: str("Match against name or email.", { maxLength: 120 }),
+      subject_id: uuid("Only teachers with a responsibility for this subject."),
+    }),
+    modelHint: "Use to answer \"who teaches Mathematics\" or to check coverage before assigning.",
+  },
+  {
+    name: "get_teacher_responsibilities",
+    title: "One teacher's classes and subjects",
+    description:
+      "Return one teacher's homeroom classes, subject responsibilities (with the class where the responsibility is class-specific) and whether they have any assignment at all. This is the authoritative statement of what the teacher may author, so it is also the honest answer to \"what can this teacher edit\".",
+    risk: ordinary("dashboard.view", "teachers"),
+    input: emptySchema({ teacher_id: uuid("The teacher's user id.") }, ["teacher_id"]),
+    modelHint: "Use to answer \"what does this teacher teach\" or \"why can they not edit that\".",
+  },
+  {
+    name: "manage_teaching_assignment",
+    title: "Add or revoke a teaching responsibility",
+    description:
+      "Add or revoke one responsibility: a teacher in a class as homeroom (class_teacher), or a teacher for a subject (subject_teacher), optionally limited to one class. Homeroom and subject responsibilities are independent — one account may hold both. A class may have only one homeroom teacher; a conflicting assignment is refused, not overwritten. Sensitive: changes who may author and grade, so it requires a recorded human approval.",
+    risk: sensitive("organizations.manage_members", "teachers"),
+    input: emptySchema(
+      {
+        action: str("What to do.", { enum: ["add", "revoke"] }),
+        teacher_id: uuid("The teacher's user id."),
+        role: str("Which responsibility.", { enum: ["class_teacher", "subject_teacher"] }),
+        class_id: uuid("The class. Required for class_teacher."),
+        subject_id: uuid("The subject. Required for subject_teacher."),
+        academic_year_id: uuid("Optional academic year for the responsibility."),
+        confirm: bool("Must be true. The caller has read the teacher's current responsibilities."),
+      },
+      ["action", "teacher_id", "role", "confirm"],
+    ),
+    modelHint:
+      "Never call this to make a permission problem go away. State what changes and for whom before proposing it.",
+  },
+  {
+    name: "get_effective_permissions",
+    title: "What the caller may actually do",
+    description:
+      "Return what the acting user can do in this organization: the permissions they hold, their role, and — for a teacher — the subjects and classes their teaching assignments restrict content authorship to. Use it instead of guessing, and quote it when explaining a refusal.",
+    risk: ordinary("dashboard.view"),
+    input: emptySchema({}),
+    modelHint: "Use when asked \"can I …\" or after a permission refusal, so the answer is the real rule.",
   },
 ];
 
