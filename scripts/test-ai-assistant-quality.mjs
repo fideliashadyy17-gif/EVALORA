@@ -614,10 +614,21 @@ test('a retried submission reuses its request id instead of minting a new one', 
 
 test('a dry run and a failed attempt are never treated as already done', () => {
   const engine = readFileSync('src/lib/ai/engine.ts', 'utf8');
-  const guard = engine.slice(engine.indexOf('const replayable'), engine.indexOf('const startedAt'));
+  // Bound the slice at the INSERT, not at `startedAt`: the comment block that
+  // documents the guard mentions that identifier, so slicing on it truncated the
+  // code under test and the assertion failed on prose placeholders.
+  const guard = engine.slice(engine.indexOf('const replayable'), engine.indexOf('const insertExecution'));
   assert.match(guard, /request\.execute !== false/, 'preview mode must stay re-runnable');
-  assert.match(guard, /request\.actor\.kind === "human"/, 'agents keep their own execution path');
   assert.match(guard, /!request\.approvalId/, 'an approved operation keeps the approval guarantee');
+  assert.match(guard, /"succeeded"/, 'only a completed write may replay');
+
+  // An external client retrying a POST is the likeliest duplicate of all: it has
+  // no UI to disable the button. Excluding agents made idempotency a property of
+  // the browser instead of the platform, so the guard must cover them — and be
+  // scoped to the specific agent so two agents cannot answer for each other.
+  assert.doesNotMatch(guard, /actor\.kind === "human"/, 'agents must not be excluded from replay');
+  assert.match(guard, /actor_kind/, 'the guard must be scoped to the actor kind');
+  assert.match(guard, /actor\.agentId/, 'the guard must be scoped to the specific agent');
 });
 
 test('a confirmation never claims more than the database holds', () => {

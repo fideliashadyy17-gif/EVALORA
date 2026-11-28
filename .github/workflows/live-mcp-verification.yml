@@ -1,0 +1,83 @@
+name: Live MCP Verification
+
+# Genuine end-to-end MCP verification against the DEPLOYED application.
+#
+# Three constraints shape this workflow, and none of them is worked around:
+#
+#   1. The development sandbox has no egress to evalora-edu.online (curl returns
+#      000), so only a runner can observe the deployed protocol.
+#   2. The repository has NO secrets configured (verified: url_present=false,
+#      key_present=false), so the runner cannot write to Postgres itself.
+#   3. A token must not be written down. That is how the previous credential was
+#      destroyed, and reproducing it inside a "verification" would be absurd.
+#
+# So the runner MINTS the credential and publishes only its SHA-256, which cannot
+# be reversed. The operator applies that digest through the audited SQL channel.
+# The job polls the live endpoint and proceeds the moment it returns 200 instead
+# of 401 — the database itself is the signal, so nothing is simulated and no
+# separate coordination channel is needed.
+#
+# The token exists only in this job's memory. It is never printed, never written
+# to a file, never uploaded, and a guard asserts it is absent from the report.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed application to verify"
+        required: true
+        default: "https://evalora-edu.online"
+      wait_seconds:
+        description: "How long to wait for the digest to be applied"
+        required: true
+        default: "600"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Verify the live MCP integration
+        # Continue on failure so the report step always runs: a verification that
+        # fails must say why, not leave a bare red cross.
+        continue-on-error: true
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+          DIGEST_WAIT_SECONDS: ${{ github.event.inputs.wait_seconds }}
+        run: node scripts/live-mcp-verification.mjs
+
+      - name: Summarise
+        if: always()
+        run: |
+          node --input-type=commonjs - <<'NODE'
+          const fs = require("node:fs");
+          if (!fs.existsSync("live-mcp-verification.json")) {
+            console.log("::error title=no-report::the harness wrote no report");
+            process.exit(0);
+          }
+          const report = JSON.parse(fs.readFileSync("live-mcp-verification.json", "utf8"));
+          const s = report.summary ?? {};
+          console.log(`${s.passed ?? 0}/${s.total ?? 0} checks passed, ${s.failed ?? 0} failed.`);
+          for (const c of report.checks ?? []) {
+            console.log(`::${c.passed ? "notice" : "error"} title=${c.name}::${String(c.detail).replace(/[\r\n]+/g, " ").slice(0, 800)}`);
+          }
+          NODE
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: live-mcp-verification
+          path: live-mcp-verification.json
+          retention-days: 30
+          if-no-files-found: warn
