@@ -18,7 +18,7 @@
  * ordinary authoring services.
  */
 
-import type { ProposedExam, ProposedQuestion, ProposedSection } from "./validation";
+import { promptFingerprint, type ProposedExam, type ProposedQuestion, type ProposedSection } from "./validation";
 
 export type TopicKey =
   | "algebraic_expressions"
@@ -155,6 +155,46 @@ export const TOPIC_CATALOG: TopicDefinition[] = [
 ];
 
 export const DEFAULT_TOPICS: TopicKey[] = ["algebraic_expressions", "linear_equations", "sequences", "functions"];
+
+/**
+ * A grade-appropriate topic set, used only when the instruction named no topic
+ * the catalogue recognises (e.g. "a 100 mark Grade 9 maths exam").
+ *
+ * The band is deliberately wide — `minGrade - 3` to `maxGrade + 2`, the same
+ * tolerance `resolveTopics` applies — so a Grade 8 paper is not silently filled
+ * with Grade 11 material. Order follows the catalogue so the easiest material
+ * appears first and difficulty rises through the paper.
+ */
+/**
+ * Resolves the FIRST topic a phrase names, using the catalogue's own aliases.
+ *
+ * The intent router used to carry a hand-written topic list, and the two drifted:
+ * it emitted "fractions", "trigonometry" and "quadratic_equations", none of which
+ * are catalogue keys, so those requests generated zero questions. Resolving
+ * through `TOPIC_CATALOG` means a recognised word can never name a topic that
+ * does not exist.
+ */
+export function firstTopicIn(text: string): TopicKey | null {
+  const lower = text.toLowerCase();
+  let best: { key: TopicKey; at: number; len: number } | null = null;
+  for (const topic of TOPIC_CATALOG) {
+    for (const alias of topic.aliases) {
+      const at = lower.indexOf(alias);
+      if (at < 0) continue;
+      if (!best || at < best.at || (at === best.at && alias.length > best.len)) {
+        best = { key: topic.key, at, len: alias.length };
+      }
+    }
+  }
+  return best ? best.key : null;
+}
+
+export function topicsForGrade(gradeOrder: number | undefined): TopicKey[] {
+  const grade = Number.isFinite(gradeOrder as number) ? (gradeOrder as number) : 9;
+  return TOPIC_CATALOG
+    .filter((topic) => grade >= topic.minGrade - 3 && grade <= topic.maxGrade + 2)
+    .map((topic) => topic.key);
+}
 
 /** Resolves free-text topic mentions to catalogue keys (longest alias first). */
 export function resolveTopics(text: string, gradeOrder = 9): TopicKey[] {
@@ -870,7 +910,12 @@ export interface PlanSpec {
   gradeOrder?: number;
   subject?: string;
   curriculum?: string;
-  topics: TopicKey[];
+  /**
+   * Topics the teacher named. When nothing recognisable was named this is
+   * absent (or empty) and the generator chooses a grade-appropriate set — it
+   * must never be treated as guaranteed by callers.
+   */
+  topics?: TopicKey[];
   /** Total question count across all sections. */
   questionCount: number;
   /** Desired paper total; per-question marks are then adjusted. */
@@ -943,6 +988,33 @@ export function distinctOptions<T extends { label: string; is_correct: boolean }
 }
 
 /**
+ * Keeps a part-structured question markable when its total is redistributed.
+ *
+ * A declared paper total (e.g. "100 marks") rescales every question's `points`.
+ * A `parts` question also carries per-part marks, and those must still add up to
+ * the question's new total — otherwise the paper is generated in a state its own
+ * validator rejects ("Part marks (4) must add up to the question's marks (10)").
+ * Parts keep their relative weighting and the last part absorbs the rounding.
+ */
+function rescaleParts(question: ProposedQuestion, points: number): Partial<ProposedQuestion> {
+  const parts = question.parts;
+  if (!Array.isArray(parts) || !parts.length) return {};
+  const oldTotal = parts.reduce((sum, part) => sum + (Number(part.points) || 0), 0);
+  if (!(oldTotal > 0)) return {};
+  const target = Math.max(0.5, points);
+  let assigned = 0;
+  const scaled = parts.map((part, index) => {
+    if (index === parts.length - 1) {
+      return { ...part, points: Math.max(0.5, Math.round((target - assigned) * 2) / 2) };
+    }
+    const share = Math.max(0.5, Math.round(((Number(part.points) || 0) / oldTotal) * target * 2) / 2);
+    assigned += share;
+    return { ...part, points: share };
+  });
+  return { parts: scaled };
+}
+
+/**
  * Builds a complete, validated-by-construction examination plan from a
  * specification. Every question is original and every answer is computed.
  */
@@ -950,7 +1022,13 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
   const sections = spec.sections?.length ? spec.sections : DEFAULT_SECTIONS;
   const count = Math.max(sections.length, Math.min(60, Math.floor(spec.questionCount) || 10));
   const mix = spec.difficultyMix ?? { easy: 0.35, medium: 0.4, hard: 0.25 };
-  const topics = spec.topics.length ? spec.topics : DEFAULT_TOPICS;
+  // `topics` is genuinely optional: an instruction like "Create an exam with 30
+  // questions on algebra" resolves no catalogue topic, and `specFromRequest`
+  // says so rather than inventing one. Reading `.length` unconditionally here
+  // was a crash that surfaced to the teacher as a failed creation.
+  const requested = Array.isArray(spec.topics) ? spec.topics.filter(Boolean) : [];
+  const fallbackTopics = topicsForGrade(spec.gradeOrder);
+  const topics = requested.length ? requested : fallbackTopics.length ? fallbackTopics : DEFAULT_TOPICS;
   const perSection = distribute(count, sections);
 
   const questions: ProposedQuestion[] = [];
@@ -984,7 +1062,11 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
         if (options.filter((o) => o.is_correct).length !== 1 && made_.type !== "short_answer") continue;
       }
       const built = { ...made_, options: options.length ? options : made_.options };
-      const fingerprint = built.prompt.toLowerCase().replace(/\s+/g, " ").trim();
+      // The SAME fingerprint the validator applies. Deduplicating on raw text
+      // let two prompts that differ only in punctuation or formula delimiters
+      // through here and then be rejected as `duplicate_prompt` during
+      // validation — a paper generated in a state its own validator refuses.
+      const fingerprint = promptFingerprint(built.prompt);
       if (usedPrompts.has(fingerprint)) continue;
       usedPrompts.add(fingerprint);
       const ref = `q${questions.length + 1}`;
@@ -1004,15 +1086,57 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
     const weights = questions.map((q) => q.points || 1);
     const weightSum = weights.reduce((s, w) => s + w, 0);
     const scale = declaredTotal / weightSum;
-    let allocated = 0;
-    questionsWithMarks = questions.map((q, index) => {
-      if (index === questions.length - 1) {
-        return { ...q, points: Math.round((declaredTotal - allocated) * 2) / 2 };
+    // Every question keeps at least half a mark, so a small declared total over
+    // many questions must first be proven distributable. 60 questions cannot
+    // honour a 20-mark paper in half-mark steps; saying so is better than
+    // emitting questions worth 0.5 marks, or 1.5, whose own part marks cannot
+    // add up.
+    const minimum = questions.reduce(
+      (total, q) => total + Math.max(0.5, (q.parts?.length ?? 0)),
+      0,
+    );
+    const usable = declaredTotal >= minimum;
+    if (usable) {
+      // Work in half-mark units so the arithmetic is exact. Each question takes
+      // its proportional share, floored at 1 unit (half a mark), and the
+      // question with the largest allocated weight absorbs the remainder. Taking
+      // the remainder on the LAST question could push it below the floor (or
+      // overshoot), which is how a 20-mark paper became 21 marks.
+      const totalUnits = Math.round(declaredTotal * 2);
+      // A question made of parts needs at least one mark per part: half a mark
+      // cannot be split into two markable parts. The floor therefore follows the
+      // structure, not just the number of questions.
+      const floorUnits = (q: ProposedQuestion) => Math.max(1, (q.parts?.length ?? 0) * 2);
+      const unitShares = questions.map((q) => Math.max(floorUnits(q), Math.round(q.points * scale * 2)));
+      const allocatedUnits = unitShares.reduce((total, units) => total + units, 0);
+      const remainder = totalUnits - allocatedUnits;
+      if (remainder !== 0) {
+        // The remainder goes where there is room: the largest allocation for a
+        // surplus, and any question that can lose a unit without falling below
+        // the half-mark floor for a deficit. Choosing blindly could drive a
+        // question to zero or negative marks.
+        if (remainder > 0) {
+          const heaviest = unitShares.indexOf(Math.max(...unitShares));
+          unitShares[heaviest] += remainder;
+        } else {
+          const donors = unitShares
+            .map((units, index) => ({ units, index, floor: floorUnits(questions[index]) }))
+            .filter((entry) => entry.units > entry.floor)
+            .sort((a, b) => b.units - b.floor - (a.units - a.floor));
+          let owed = -remainder;
+          for (const donor of donors) {
+            if (owed <= 0) break;
+            const give = Math.min(owed, donor.units - donor.floor);
+            unitShares[donor.index] -= give;
+            owed -= give;
+          }
+        }
       }
-      const points = Math.max(0.5, Math.round(q.points * scale * 2) / 2);
-      allocated += points;
-      return { ...q, points };
-    });
+      questionsWithMarks = questions.map((q, index) => {
+        const points = unitShares[index] / 2;
+        return { ...q, points, ...rescaleParts(q, points) };
+      });
+    }
   }
 
   // Section assignment follows the authored order.
@@ -1033,6 +1157,18 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
   const leftovers = questionsWithMarks.map((q) => q.ref).filter((ref) => !assigned.has(ref));
   if (leftovers.length && planSections.length) {
     planSections[planSections.length - 1].refs.push(...leftovers);
+  }
+
+  if (declaredTotal && declaredTotal > 0 && questions.length) {
+    const minimum = questions.reduce((total, q) => total + Math.max(0.5, (q.parts?.length ?? 0)), 0);
+    if (declaredTotal < minimum) {
+      // Not silently "fixed": the caller is told the two constraints conflict.
+      throw new Error(
+        `A ${declaredTotal}-mark paper cannot hold these ${questions.length} questions: part-structured questions ` +
+          `need one mark per part, so the minimum is ${minimum} marks. Ask for fewer questions, fewer parts, or a ` +
+          `higher total.`,
+      );
+    }
   }
 
   return {

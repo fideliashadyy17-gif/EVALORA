@@ -121,6 +121,8 @@ export async function POST(request: Request) {
               supabase: auth.supabase,
               // The authoring services ask their own module-aware question.
               authorize: (permission, module) => hasPermission(permission, module),
+              hasPermissionFor: (permission) => hasPermission(permission),
+              publicBaseUrl: new URL(request.url).origin,
             },
           );
           if (!outcome.ok) {

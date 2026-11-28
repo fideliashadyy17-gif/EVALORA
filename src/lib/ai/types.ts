@@ -64,7 +64,7 @@ export class ToolError extends Error {
 
 /** A bounded, reviewable preview of a write before it happens. */
 export interface PreviewBlock {
-  kind: "exam" | "quiz" | "questions" | "marking" | "analysis" | "diff";
+  kind: "exam" | "quiz" | "questions" | "marking" | "analysis" | "diff" | "agent";
   title: string;
   sections: {
     heading: string;

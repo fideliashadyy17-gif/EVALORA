@@ -18,7 +18,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { ToolError, type ActorIdentity } from "./types";
 import { TOOLS } from "./tools";
 
-export const AGENT_CLIENTS = ["chatgpt", "claude", "gemini", "mcp", "custom"] as const;
+export const AGENT_CLIENTS = ["chatgpt", "claude", "gemini", "mcp", "api", "custom"] as const;
 export type AgentClient = (typeof AGENT_CLIENTS)[number];
 
 export interface AgentRecord {

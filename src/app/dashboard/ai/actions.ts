@@ -42,6 +42,12 @@ export interface AssistantTurn {
     links?: { label: string; href: string }[];
     preview?: ExecutionOutcome["preview"];
     warnings?: string[];
+    /**
+     * A credential issued by this call, shown once. Never persisted to the
+     * transcript, the journal or any log — only returned to the caller that
+     * caused it.
+     */
+    issuedToken?: string;
   }[];
   /** Live facts the assistant actually used, so the UI can show its grounding. */
   grounding: {
@@ -53,6 +59,18 @@ export interface AssistantTurn {
     notes: string[];
   };
   error?: string;
+}
+
+/**
+ * Extracts a freshly issued credential from a tool result.
+ *
+ * Only `register_ai_agent` returns one, and only in `data.token`. It is lifted
+ * into the turn so the UI can show it once; nothing else reads it.
+ */
+function readIssuedToken(outcome: ExecutionOutcome): string | undefined {
+  if (outcome.tool !== "register_ai_agent" || !outcome.ok) return undefined;
+  const token = (outcome.data as Record<string, unknown> | undefined)?.token;
+  return typeof token === "string" && token.startsWith("evalora_") ? token : undefined;
 }
 
 /** Turns an engine outcome into a sentence the teacher can act on. */
@@ -168,6 +186,7 @@ export async function runAssistant(input: {
           links: outcome.links,
           preview: outcome.preview,
           warnings: outcome.warnings,
+          issuedToken: readIssuedToken(outcome),
         }));
         const readOnly = planned.every((step) => !TOOLS.find((t) => t.name === step.tool)?.risk.writes);
         const lines: string[] = [];
@@ -205,6 +224,7 @@ export async function runAssistant(input: {
         links: outcome.links,
         preview: outcome.preview,
         warnings: outcome.warnings,
+        issuedToken: readIssuedToken(outcome),
       }));
       reply = refusal
         ? refusal
@@ -272,9 +292,11 @@ export async function runAssistantTool(input: {
     },
     {
       hasPermission: (permission) => canOperate(ctx, org.id, permission),
+      hasPermissionFor: (permission) => canOperate(ctx, org.id, permission),
       admin,
       supabase,
       modelTransport: undefined,
+      publicBaseUrl: process.env.NEXT_PUBLIC_APP_URL ?? undefined,
     },
   );
   return {

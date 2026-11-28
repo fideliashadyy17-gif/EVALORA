@@ -58,7 +58,7 @@ export function buildExamPrompt(spec: PlanSpec, context: AiOrganizationContext):
     "Do not include any commentary outside the JSON object.",
   ].join("\n");
 
-  const topics = spec.topics.map((t) => `${t} (${topicLabel(t)})`).join(", ");
+  const topics = (spec.topics ?? []).map((t) => `${t} (${topicLabel(t)})`).join(", ");
   const user = [
     `Organization: ${context.organization.name}`,
     `Level / class: ${spec.gradeLabel ?? "not specified"}`,

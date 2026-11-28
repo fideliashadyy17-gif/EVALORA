@@ -232,8 +232,9 @@ export const TOOLS: ToolDefinition[] = [
       topic: str("Topic key, e.g. \"linear_equations\"."),
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard"] }),
       grade_label: str("Class/level label."),
+      count: int("How many questions to author (1–20). Default 1."),
       seed: str("Optional seed for reproducibility."),
-      save: bool("Persist the question in the bank. Default false: the question is returned for review only."),
+      save: bool("Persist the questions in the bank. Default false: they are returned for review only."),
     }, ["topic"]),
     modelHint: "Use when asked for one practice item on a given topic.",
   },
@@ -420,6 +421,25 @@ export const TOOLS: ToolDefinition[] = [
     risk: ordinary("ai.manage_agents"),
     input: emptySchema({}),
     modelHint: "Use when asked which agents can reach this workspace.",
+  },
+  {
+    name: "register_ai_agent",
+    title: "Register an AI agent",
+    description:
+      "Register an external agent credential for this organization through the same secure path Agent Management uses. Issues a token shown exactly once in this response; the credential is least-privilege by default and is pending until approved unless the caller owns it. Does not expose the token in logs or later responses.",
+    risk: ordinaryWrite("ai.manage_agents"),
+    input: emptySchema({
+      name: str("Agent name shown in Agent Management.", { maxLength: 120 }),
+      client: str("Which client will use the credential.", { enum: ["mcp", "api", "chatgpt", "claude", "custom"] }),
+      description: str("What this agent is for.", { maxLength: 2000 }),
+      owner_email: str("Email of the member the agent acts for. Defaults to the caller."),
+      allowed_permissions: str(
+        "Comma-separated permission keys the agent may use. Defaults to a minimal read-only set; permissions the owner lacks are refused.",
+      ),
+      daily_call_limit: int("Daily call limit (default 2000)."),
+      rate_limit_per_minute: int("Requests per minute (default 60)."),
+    }, ["name", "client"]),
+    modelHint: "Use when asked to create, register or set up an AI agent credential for a client.",
   },
   {
     name: "revoke_ai_agent",

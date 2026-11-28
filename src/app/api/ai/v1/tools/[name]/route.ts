@@ -71,6 +71,8 @@ export async function POST(request: Request, context: { params: Promise<{ name: 
         // The authoring services ask their own module-aware question; give them
         // the same answer this request already resolved.
         authorize: (permission, module) => hasPermission(permission, module),
+        hasPermissionFor: (permission) => hasPermission(permission),
+        publicBaseUrl: new URL(request.url).origin,
       },
     );
     const status = result.ok ? 200 : result.code === "approval_required" ? 202 : 400;

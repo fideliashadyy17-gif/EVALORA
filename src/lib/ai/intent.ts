@@ -21,15 +21,32 @@ export interface RulePlan {
 /** Validates a model-authored plan against the registry and its schemas. */
 import { getTool } from "./tools";
 
+/**
+ * Mirrors `isKnownPermission` in agents.ts. The intent router is deliberately
+ * pure (no registry import), so it recognises the shape and the handler — which
+ * does import the registry — is the authority on what is really granted.
+ */
+const PERMISSION_SHAPE = /^[a-z][a-z_]*\.[a-z][a-z_]*$/;
+export const isKnownPermissionKey = (key: string): boolean => PERMISSION_SHAPE.test(key);
+
 export const UUID_RE = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 /* ── Rule-based intent routing ──────────────────────────────────────── */
 
 
+/**
+ * Resolves a phrase to a REAL catalogue topic key, or null.
+ *
+ * Injected rather than imported so this module stays pure (no registry, no
+ * server-only boundary). Without it the router cannot safely guess a topic: a
+ * key that does not exist yields a paper with zero questions.
+ */
+export type TopicResolver = (text: string) => string | null;
+
 export interface IntentRule {
   name: string;
   test: (text: string) => boolean;
-  build: (text: string) => PlanStep | null;
+  build: (text: string, resolveTopic?: TopicResolver) => PlanStep | null;
 }
 
 export const text = (instruction: string): string => instruction.trim();
@@ -39,6 +56,39 @@ export const text = (instruction: string): string => instruction.trim();
  * the destructive intents (revoke, publish) come before the generic ones.
  */
 export const INTENT_RULES: IntentRule[] = [
+  {
+    name: "register_agent",
+    // Registration is a distinct verb from revocation; "set up"/"configure" are
+    // how people actually phrase it.
+    test: (t) =>
+      /\b(register|create|add|configure|set up|setup|connect|provision|onboard)\b/i.test(t) &&
+      /\b(agent|credential|integration)\b/i.test(t) &&
+      !/\b(revoke|disconnect|remove|delete)\b/i.test(t),
+    build: (t) => {
+      const client =
+        /\bchatgpt\b/i.test(t) ? "chatgpt"
+        : /\bclaude\b/i.test(t) ? "claude"
+        : /\b(gemini|bard)\b/i.test(t) ? "gemini"
+        : /\b(mcp|model context protocol)\b/i.test(t) ? "mcp"
+        : /\b(rest|api)\b/i.test(t) ? "api"
+        : "mcp";
+      // The named permissions, if the teacher listed any.
+      const named = (t.match(/\b[a-z_]+\.[a-z_]+\b/g) ?? []).filter((key) => isKnownPermissionKey(key));
+      const name =
+        /(?:called|named)\s+["“']?([^"”'.,;]{2,60})/i.exec(t)?.[1]?.trim() ??
+        `EVALORA ${client} agent`;
+      return {
+        tool: "register_ai_agent",
+        args: {
+          name: name.slice(0, 120),
+          client,
+          description: text(t).slice(0, 500),
+          ...(named.length ? { allowed_permissions: named.join(",") } : {}),
+        },
+        why: "The instruction asks for an agent credential to be set up.",
+      };
+    },
+  },
   {
     name: "revoke_agent",
     test: (t) => /\b(revoke|disconnect)\b.*\b(agent|chatgpt|claude|gemini|mcp)\b/i.test(t) && UUID_RE.test(t),
@@ -114,31 +164,30 @@ export const INTENT_RULES: IntentRule[] = [
   },
   {
     name: "generate_question",
-    test: (t) => /\b(generate|author|create|make|give me)\b/i.test(t) && /\bquestion\b/i.test(t) && !/\bexam|paper|quiz\b/i.test(t),
-    build: (t) => {
-      const topic = /(linear[_ ]equations?|quadratic|fractions?|percentages?|probability|pythagoras|trigonometry|area|volume|statistics|sequences?|algebra|ratio|geometry|integers|functions?|vectors?|matrices|logarithms?|calculus|derivatives?)/i.exec(t)?.[0];
+    // "Create 10 questions on fractions" is a request for questions, not a
+    // request EVALORA cannot understand. The count becomes `count`, and the
+    // questions are saved when the teacher asked for them to exist.
+    test: (t) => /\b(generate|author|create|make|give me|add|write|produce)\b/i.test(t) && /\bquestions?\b/i.test(t) && !/\bexam|paper|quiz\b/i.test(t),
+    build: (t, resolveTopic) => {
+      // The topic MUST come from the catalogue. The previous hand-written list
+      // named topics that do not exist ("fractions", "trigonometry"), so those
+      // instructions generated zero questions.
+      const topic = resolveTopic?.(t) ?? null;
       if (!topic) return null;
-      const key = topic.toLowerCase().replace(/[\s-]+/g, "_").replace(/s$/, "");
-      const normalise: Record<string, string> = {
-        linear_equation: "linear_equations",
-        quadratic: "quadratic_equations",
-        fraction: "fractions",
-        percentage: "percentages",
-        sequence: "sequences",
-        function: "functions",
-        vector: "vectors",
-        matrice: "matrices",
-        logarithm: "logarithms",
-        derivative: "derivatives",
-      };
+      const count = Number(/(\d{1,2})\s*questions?/i.exec(t)?.[1] ?? "");
+      const gradeLabel = /(myp\s*[1-5]|grade\s*\d{1,2})/i.exec(t)?.[0];
       return {
         tool: "generate_question",
         args: {
-          topic: normalise[key] ?? key,
+          topic,
           difficulty: /\b(hard|challenging)\b/i.test(t) ? "hard" : /\beasy\b/i.test(t) ? "easy" : "medium",
-          save: /\bsave|add to\b/i.test(t),
+          count: Number.isFinite(count) && count > 0 ? Math.min(20, count) : 1,
+          ...(gradeLabel ? { grade_label: gradeLabel.replace(/\b([a-z])/, (m) => m.toUpperCase()) } : {}),
+          // A verb that means "put these in the bank" saves them. Asking to
+          // "generate"/"draft"/"show" does not, and the reply says so.
+          save: /\b(save|add|create|write|produce|put)\b/i.test(t),
         },
-        why: "The instruction asks for a practice question on a named topic.",
+        why: "The instruction asks for practice questions on a named topic.",
       };
     },
   },
@@ -197,16 +246,52 @@ export const INTENT_RULES: IntentRule[] = [
   },
 ];
 
+/**
+ * Splits a compound instruction into its clauses so more than one intent can be
+ * carried out. "Create 10 questions on fractions and then make a quiz from them"
+ * is two jobs, and doing only the second one silently loses the first.
+ */
+function clauses(instruction: string): string[] {
+  const parts = instruction
+    .split(/\s*(?:\band then\b|\bthen\b|\bafter that\b|;|\balso\b|\.\s+)/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= 3);
+  return parts.length ? parts : [instruction.trim()];
+}
+
 /** Routes an instruction with no model available. */
-export function planFromRules(instruction: string): RulePlan {
+export function planFromRules(instruction: string, resolveTopic?: TopicResolver): RulePlan {
   const t = text(instruction);
   if (t.length < 3) return { steps: [], refusal: "Write an instruction describing what you want EVALORA to do." };
-  for (const rule of INTENT_RULES) {
-    if (!rule.test(t)) continue;
-    const step = rule.build(t);
-    if (step) return { steps: [step], note: step.why };
-    // The intent was recognised but a required identifier or quantity is absent:
-    // say what is missing rather than guessing a record.
+
+  // A compound request runs its clauses in the order they were written, bounded
+  // to the same three steps the model planner is allowed. A clause with no
+  // matching tool is not silently dropped: it is reported so the reply can say
+  // what was and was not done.
+  const parts = clauses(t);
+  const steps: PlanStep[] = [];
+  const uncovered: string[] = [];
+  const seen = new Set<string>();
+  for (const part of parts) {
+    if (steps.length >= 3) break;
+    let matched = false;
+    for (const rule of INTENT_RULES) {
+      if (!rule.test(part)) continue;
+      const step = rule.build(part, resolveTopic);
+      if (!step) continue;
+      const signature = `${step.tool}:${JSON.stringify(step.args)}`;
+      if (seen.has(signature)) { matched = true; break; }
+      seen.add(signature);
+      steps.push(step);
+      matched = true;
+      break;
+    }
+    if (!matched && parts.length > 1) uncovered.push(part);
+  }
+
+  if (steps.length) {
+    const note = steps.map((s) => s.why).filter(Boolean).join(" ");
+    return { steps, note: uncovered.length ? `${note} Not actioned: ${uncovered.join(" / ")}.` : note };
   }
   return {
     steps: [],
