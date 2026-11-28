@@ -1,8 +1,8 @@
 # AI Assistant — final end-to-end audit report
 
 Date: 2026-11-28
-Merged: PR #124 → `main` `6e7f950` (previously #123 → `052bdac`)
-Production: `dpl_93pLuX3EzC5DDEKV4yKp4hp3LNTM`, sha `6e7f950`, state **READY / PROMOTED**, alias `evalora-edu.online`
+Merged: PR #124 → `main` `6e7f950` (fixes), PR #125 → `main` `6ce652e` (this report)
+Production: `dpl_DDiE8qdyTurtzQDKTcwXotw89e42`, sha `6ce652e`, state **READY / PROMOTED**, alias `evalora-edu.online`
 
 ---
 
@@ -182,10 +182,11 @@ Carried forward from `docs/AI_AGENT_VERIFICATION_2026-11-28.md`, re-checked here
 
 | Item | Value |
 |------|-------|
-| Commit | `6e7f950edfbf5fb7b1015f5cfa13b0a643dcc098` |
-| Deployment | `dpl_93pLuX3EzC5DDEKV4yKp4hp3LNTM` |
+| Commit | `6ce652e1eb6eb04c05c8c54a048a278d0df80a0a` (fixes at `6e7f950`) |
+| Deployment | `dpl_DDiE8qdyTurtzQDKTcwXotw89e42` |
 | State | **READY**, `readySubstate: PROMOTED` |
 | Alias | `evalora-edu.online` |
+| Fixes deployment | `dpl_93pLuX3EzC5DDEKV4yKp4hp3LNTM` @ `6e7f950` — READY / PROMOTED |
 | Previous | `dpl_4en38jVmpkfg6JBTWycUWYbdxpyi` @ `052bdac` — confirmed **READY / PROMOTED** this session (it had been left INITIALIZING) |
 
 ## 10. Oak protection
