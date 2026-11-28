@@ -1096,6 +1096,9 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     difficulty: proposed.difficulty,
     topic: proposed.topic,
     status: "draft",
+    // A question the assistant wrote is labelled as such, so it can be reviewed
+    // and filtered separately from a teacher's own work.
+    creation_method: "ai_generated",
     config,
     options,
   });
@@ -1381,6 +1384,7 @@ async function createQuiz(runtime: ToolRuntime, args: Record<string, unknown>): 
         difficulty: question.difficulty,
         topic: question.topic,
         status: "draft",
+        creation_method: "ai_generated",
         config: { ...(question.config ?? {}), ...(question.parts ? { parts: question.parts } : {}) },
         options: (question.options ?? []).map((o) => ({ label: o.label, is_correct: o.is_correct })),
       });

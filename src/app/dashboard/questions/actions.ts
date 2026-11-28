@@ -43,6 +43,8 @@ const QuestionSchema = z.object({
   subtopic: z.string().nullable().optional(),
   source_reference: z.string().nullable().optional(),
   source_url: z.string().url().max(2000).refine((url) => /^https?:\/\//i.test(url)).nullable().optional(),
+  // Matches `questions_creation_method_check`. Absent means the column default.
+  creation_method: z.enum(["manual", "imported", "ai_generated"]).optional(),
   config: z.record(z.string(), z.unknown()).optional(),
   options: z.array(OptionSchema).default([]),
   // Question Studio template this NEW question was started from. Never stored on
