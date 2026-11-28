@@ -175,4 +175,70 @@ test("the migration is additive and cannot destroy existing content authority", 
   assert.doesNotMatch(POLICIES, /drop table/i);
 });
 
+
+/* ── Marks are scoped too, not just content ───────────────────────────── */
+
+const MARKS = readFileSync("supabase/migrations/20261128200000_subject_scoped_marks_policies.sql", "utf8");
+
+test("the marking tables no longer accept any teacher in the school", () => {
+  // The defect measured in production: eans_update and ea_update were pure
+  // org_role(), so a Mathematics teacher could rewrite a Literature exam's marks.
+  for (const [table, policy] of [
+    ["exam_answers", "eans_update"],
+    ["exam_attempts", "ea_update"],
+    ["answer_rubric_scores", "ars_all"],
+  ]) {
+    const at = MARKS.indexOf(`create policy ${policy} on public.${table}`);
+    assert.ok(at > 0, `${policy} must be recreated`);
+    const block = MARKS.slice(at, MARKS.indexOf(";\n", at));
+    assert.match(block, /can_author_exam_result/, `${policy} must ask the subject predicate`);
+    assert.doesNotMatch(block, /org_role\(/, `${policy} must not fall back to the org-wide role`);
+  }
+});
+
+test("a marking policy keeps USING and WITH CHECK paired", () => {
+  // USING alone lets a caller take marks they may edit and move them to another
+  // examination's attempt: the old row passes, the new one is never examined.
+  for (const policy of ["eans_update", "ea_update", "ars_all"]) {
+    const at = MARKS.indexOf(`create policy ${policy}`);
+    const block = MARKS.slice(at, MARKS.indexOf(";\n", at));
+    assert.match(block, /using \(/, `${policy} needs USING`);
+    assert.match(block, /with check \(/, `${policy} needs WITH CHECK`);
+  }
+});
+
+test("an examination from another organization is refused, not grandfathered", () => {
+  // Found by probing production: the first version answered TRUE for a real
+  // Demo Academy examination asked about under Oak's organization id, because
+  // the "no subject" arm matched the absence of a row rather than a row with no
+  // subject. A predicate that answers "allowed" about another tenant is a
+  // landmine even when the policy never asks that way.
+  const at = MARKS.indexOf("when not exists (\n      select 1\n        from public.exams e\n       where e.id = p_exam");
+  assert.ok(at > 0, "the tenant branch must exist");
+  assert.match(MARKS.slice(at, at + 400), /then false/, "a foreign examination must be denied");
+});
+
+test("grandfathering survives, or every current teacher would lose their marking", () => {
+  assert.match(MARKS, /not exists \(\s*\n\s*select 1\s*\n\s*from public.teaching_assignments/);
+  // The SQL arm, not the comment beside it.
+  assert.match(MARKS, /join public\.subjects s on s\.id = e\.subject_id[\s\S]{0,200}then true/);
+});
+
+test("leadership and correctors keep their existing reach", () => {
+  assert.match(MARKS, /role in \('owner', 'admin', 'organizer', 'corrector'\)/);
+});
+
+test("the predicate is definer and search_path-pinned", () => {
+  assert.match(MARKS, /security definer/);
+  assert.match(MARKS, /set search_path to 'public', 'pg_temp'/);
+});
+
+test("the migration is additive where it cannot be, and says so", () => {
+  // assessment_contribution_scores has only a SELECT policy; inventing a write
+  // policy would GRANT an ability that does not exist in the name of tightening.
+  assert.match(MARKS, /acs_staff_select/);
+  assert.match(MARKS, /deliberately unchanged/);
+  assert.doesNotMatch(MARKS, /delete from public\.exam_answers/i);
+});
+
 console.log(`\nTeaching assignments: ${n} checks passed.`);
