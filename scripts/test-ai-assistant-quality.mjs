@@ -643,5 +643,35 @@ test('a confirmation never claims more than the database holds', () => {
   );
 });
 
+/* ── The permission resolver must actually resolve ──────────────────── */
+test('the AI permission resolver uses the evaluator, not the identity guard', () => {
+  // Found by running the real MCP handshake against production: an approved
+  // agent was offered ZERO tools and every call was refused with "You do not
+  // have ... which ... requires". The resolver called `access_has_permission`,
+  // whose first line returns false whenever `auth.uid()` is distinct from the
+  // user id — and on the service-role client `auth.uid()` is NULL, so it
+  // returned false for every permission and every user.
+  const authz = readFileSync('src/lib/ai/authz.ts', 'utf8');
+  const resolver = authz.slice(authz.indexOf("export function permissionResolver"), authz.indexOf("export async function aiModuleRefusal"));
+  assert.match(resolver, /rpc\("_access_eval_permission"/, 'the pure evaluator must be the one asked');
+  assert.doesNotMatch(resolver, /rpc\("access_has_permission"/, 'the session-guarded wrapper must not be used on a service-role client');
+  // The module half of the check must survive: a plan without the module denies.
+  assert.match(resolver, /moduleEnabled/, 'the plan gate must still apply');
+});
+
+test('dropping the identity guard does not drop tenant isolation', () => {
+  // The evaluator is only safe without the guard because identity is resolved
+  // from the agent's own row, not inferred from the request. Prove that link.
+  const authz = readFileSync('src/lib/ai/authz.ts', 'utf8');
+  assert.match(authz, /resolveAgentActor/, 'the actor must come from the token resolver');
+  assert.match(authz, /p_user_id: auth\.actor\.userId/, 'the permission question must name the resolved human');
+  assert.match(authz, /p_organization_id: auth\.organizationId/, 'the permission question must name the resolved organization');
+
+  // And the evaluator itself still refuses the cases that matter. This is the
+  // live answer recorded when the change was made.
+  const evidence = readFileSync('docs/AI_LIVE_VERIFICATION_2026-11-28.md', 'utf8');
+  assert.match(evidence, /_access_eval_permission/, 'the verification record must explain the evaluator');
+});
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nAI assistant quality: ${n} checks passed.`);
