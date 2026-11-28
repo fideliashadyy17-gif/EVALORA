@@ -24,6 +24,7 @@ import { runInstruction } from "@/lib/ai/planner";
 import { TOOLS, toolsForPermissions } from "@/lib/ai/tools";
 import type { ExecutionOutcome } from "@/lib/ai/engine";
 import { ToolError } from "@/lib/ai/types";
+import { subjectScopeGate } from "@/lib/ai/subjectScope";
 
 export interface AssistantTurn {
   instruction: string;
@@ -302,6 +303,10 @@ export async function runAssistantTool(input: {
     {
       hasPermission: (permission) => canOperate(ctx, org.id, permission),
       hasPermissionFor: (permission) => canOperate(ctx, org.id, permission),
+      // The native assistant runs on the service-role client too, so the database
+      // policies do not apply to it either. Same resolver the agent routes use —
+      // one rule for the dashboard, the API and MCP.
+      subjectScope: subjectScopeGate(admin, org.id, ctx.user.id),
       admin,
       supabase,
       modelTransport: undefined,

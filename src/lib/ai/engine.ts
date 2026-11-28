@@ -136,9 +136,51 @@ export interface EngineDeps {
   authorize?: ToolRuntime["authorize"];
   /** See `ToolRuntime.hasPermissionFor`. */
   hasPermissionFor?: ToolRuntime["hasPermissionFor"];
+  /**
+   * Subject-level scope for content authorship, bound to the acting user.
+   *
+   * RBAC answers "may this person author content at all"; it cannot answer "in
+   * which subject". This asks the second question, through the same predicate the
+   * database policies use — but it must be told WHICH call to examine, because no
+   * write tool accepts a `subject_id`: they name a subject, an examination, a
+   * paper or a question. Handing the gate only an id made every one of those
+   * calls look subjectless and the check silently never ran.
+   *
+   * Absent means the caller has no subject scope to enforce and the check is
+   * skipped, which is why every content surface must pass one.
+   */
+  subjectScope?: (tool: string, args: Record<string, unknown>) => Promise<{ allowed: boolean; label: string }>;
   /** See `ToolRuntime.publicBaseUrl`. */
   publicBaseUrl?: ToolRuntime["publicBaseUrl"];
 }
+
+/**
+ * The tools whose writes land inside a subject.
+ *
+ * Scoped deliberately, not by accident: reading another subject is legitimate
+ * and stays organization-wide (a teacher moderates a colleague's paper, or
+ * reuses a Literature item in a general paper), so `get_examination` and
+ * `get_question_bank` are absent. Every tool that CREATES or CHANGES subject
+ * content, MARKING or publication is present — that is the boundary the brief
+ * draws, and the same one the database policies draw for browser sessions.
+ *
+ * `register_ai_agent` / `revoke_ai_agent` are absent because they name no
+ * subject; agent administration is governed by its own permission and tenant
+ * checks.
+ */
+const SUBJECT_SCOPED_TOOLS = new Set([
+  "create_examination",
+  "update_examination",
+  "duplicate_examination",
+  "publish_examination",
+  "create_question",
+  "generate_question",
+  "create_quiz",
+  "update_quiz",
+  "mark_responses",
+  "apply_grade_adjustment",
+  "publish_results",
+]);
 
 /** Rate limit + daily quota for an agent identity. */
 async function enforceAgentLimits(admin: SupabaseClient, actor: ActorIdentity, now: Date): Promise<void> {
@@ -369,6 +411,30 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
       "permission_denied",
       `You do not have the "${tool.risk.permission}" permission, which "${tool.title}" requires. An administrator can grant it in Role & Access Management.`,
     );
+  }
+
+  // ── Subject scope ───────────────────────────────────────────────────
+  // The gate above proves the actor holds `questions.create` or `exams.edit`.
+  // It does NOT prove they hold it for THIS subject. Every content tool used to
+  // rely on the database policies for that, and those policies are bypassed
+  // whenever this path runs on the service-role client — which is exactly how
+  // the AI Core, an MCP agent and the native assistant write. Without this block
+  // a teacher assigned to Mathematics could ask the assistant to edit a
+  // Literature question and the organization-wide permission would carry it.
+  //
+  // The resolver reads the call the way the tool reads it — a subject name, an
+  // examination id, a paper id or a question id — and answers which subject it
+  // touches. `allowed: false` covers both "it touches a subject you do not
+  // teach" and "it names a resource that is not yours", so a call cannot slip
+  // through by naming an id the resolver cannot see.
+  if (deps.subjectScope && SUBJECT_SCOPED_TOOLS.has(tool.name)) {
+    const scope = await deps.subjectScope(tool.name, request.args ?? {});
+    if (!scope.allowed) {
+      throw new ToolError(
+        "permission_denied",
+        `You do not have a teaching assignment for ${scope.label}, so "${tool.title}" is not available for it.`,
+      );
+    }
   }
 
   const argumentsDigest = sha(request.args);

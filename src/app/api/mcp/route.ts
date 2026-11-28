@@ -3,6 +3,7 @@ import { aiModuleRefusal, authenticateAgent, permissionResolver } from "@/lib/ai
 import { executeTool } from "@/lib/ai/engine";
 import { TOOLS } from "@/lib/ai/tools";
 import { ToolError } from "@/lib/ai/types";
+import { subjectScopeGate } from "@/lib/ai/subjectScope";
 import { McpToolError } from "@/lib/ai/mcp";
 import { SERVER_NAME, SERVER_VERSION, SUPPORTED_PROTOCOL, handleRpc } from "@/lib/ai/mcp";
 
@@ -122,6 +123,20 @@ export async function POST(request: Request) {
               // The authoring services ask their own module-aware question.
               authorize: (permission, module) => hasPermission(permission, module),
               hasPermissionFor: (permission) => hasPermission(permission),
+              // Subject scope, from the same predicate the database policies use.
+              // Without it this path — which runs on the service-role client and
+              // therefore bypasses every RLS check — would let an agent whose
+              // owner holds a school-wide permission author in any subject.
+              // Resolves WHICH subject the call touches, then asks the same
+              // predicate the database policies use, with the actor named
+              // explicitly: `can_author_subject(org, subject)` reads auth.uid(),
+              // which is NULL on this service-role client, so it answers false
+              // for every teacher including the subjects they teach.
+              subjectScope: subjectScopeGate(
+                auth.admin,
+                auth.scope.organizationId,
+                auth.actor.userId,
+              ),
               publicBaseUrl: new URL(request.url).origin,
             },
           );

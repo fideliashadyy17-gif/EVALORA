@@ -25,6 +25,7 @@ import { normalizeExamLanguage } from "../examLanguage";
 import { resolveAssessmentConfig, resolveExamDefaults } from "../assessmentConfig";
 import type { Entitlement } from "../entitlements";
 import type { SessionContext } from "../auth";
+import { resolveSubjectIdByName } from "@/lib/subjects";
 
 export type ExamCreateFailureCode =
   | "module"
@@ -152,6 +153,15 @@ export async function createExaminationFromForm(
 
   const lockdownWanted = formData.get("lockdown_enabled") === "on";
 
+  // The subject was only ever stored as a name inside `settings`, so every
+  // examination landed with a NULL `subject_id` and the subject policies had
+  // nothing to bind to — including the ones this file's callers rely on when they
+  // write as a browser session rather than the service role. Setting the id here
+  // as well as in the database trigger keeps the two paths honest: the trigger
+  // covers callers written later, this covers the row being inserted now.
+  const subjectName = String(formData.get("subject") ?? "").trim().slice(0, 120) || null;
+  const subjectId = await resolveSubjectIdByName(supabase, organizationId, subjectName);
+
   // One insert only: a lost response can mean the insert succeeded. Retrying
   // blindly could create duplicate examinations.
   const { data: exam, error } = await supabase
@@ -163,6 +173,7 @@ export async function createExaminationFromForm(
       description: String(formData.get("description") ?? "").slice(0, 1000) || null,
       instructions: String(formData.get("instructions") ?? "").slice(0, 4000) || null,
       duration_minutes: duration,
+      subject_id: subjectId,
       starts_at: start?.toISOString() ?? null,
       ends_at: end?.toISOString() ?? null,
       status: "draft",
@@ -178,7 +189,7 @@ export async function createExaminationFromForm(
         exam_period: String(formData.get("exam_period") ?? "").trim().slice(0, 120) || null,
         academic_year: String(formData.get("academic_year") ?? "").trim().slice(0, 40) || null,
         grade_label: String(formData.get("grade_label") ?? "").trim().slice(0, 80) || null,
-        subject: String(formData.get("subject") ?? "").trim().slice(0, 120) || null,
+        subject: subjectName,
         exam_paper_template_id: String(formData.get("exam_paper_template_id") ?? "").trim() || null,
         lockdown: {
           enabled: lockdownWanted,

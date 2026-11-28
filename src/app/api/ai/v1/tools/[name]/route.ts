@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { aiModuleRefusal, authenticateAgent, permissionResolver, requiredPermission, toolErrorResponse, unknownTool } from "@/lib/ai/authz";
 import { executeTool } from "@/lib/ai/engine";
 import { ToolError } from "@/lib/ai/types";
+import { subjectScopeGate } from "@/lib/ai/subjectScope";
 
 /**
  * `POST /api/ai/v1/tools/<tool_name>` — run one tool as an external agent.
@@ -72,6 +73,15 @@ export async function POST(request: Request, context: { params: Promise<{ name: 
         // the same answer this request already resolved.
         authorize: (permission, module) => hasPermission(permission, module),
         hasPermissionFor: (permission) => hasPermission(permission),
+        // See the MCP route: RBAC alone cannot say WHICH subject, and this path
+        // runs on the service-role client where the database policies do not
+        // apply.
+        // Same gate as MCP and the assistant — one resolver, not three.
+        subjectScope: subjectScopeGate(
+          auth.admin,
+          auth.scope.organizationId,
+          auth.actor.userId,
+        ),
         publicBaseUrl: new URL(request.url).origin,
       },
     );

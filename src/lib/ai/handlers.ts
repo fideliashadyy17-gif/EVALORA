@@ -1172,6 +1172,23 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     };
   }
 
+  // A question saved without a subject sits outside the subject policies, which
+  // is exactly the gap a teacher restricted to one subject could exploit — or
+  // fall foul of. The name is resolved within the caller's organization and
+  // stored with the row; a name the school has not registered leaves it null,
+  // which is the same unrestricted case as a question authored before the field
+  // existed. Resolution failures are reported, never swallowed.
+  const subjectName = optionalString(args.subject, 120);
+  let subjectId: string | null = null;
+  if (subjectName) {
+    const { resolveSubjectIdByName } = await import("@/lib/subjects");
+    try {
+      subjectId = await resolveSubjectIdByName(runtime.admin, runtime.scope.organizationId, subjectName);
+    } catch (error) {
+      throw new ToolError("internal", error instanceof Error ? error.message : "The subject could not be resolved.");
+    }
+  }
+
   const { saveQuestion } = await import("@/app/dashboard/questions/actions");
   const saved = await saveQuestion({
     type: type as never,
@@ -1180,6 +1197,7 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     points,
     difficulty: proposed.difficulty,
     topic: proposed.topic,
+    subject_id: subjectId,
     status: "draft",
     // A question the assistant wrote is labelled as such, so it can be reviewed
     // and filtered separately from a teacher's own work.
@@ -1270,6 +1288,10 @@ async function generateQuestion(runtime: ToolRuntime, args: Record<string, unkno
           points: question.points,
           difficulty: question.difficulty,
           topic: question.topic,
+          // Carries the subject through, so a question authored for a teacher is
+          // filed under the subject they teach instead of landing subjectless and
+          // outside the scope rules.
+          subject: args.subject,
           explanation: question.explanation,
           options: question.options,
           numeric_answer: question.config?.numeric_answer,

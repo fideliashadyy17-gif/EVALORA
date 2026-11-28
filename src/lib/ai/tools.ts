@@ -211,6 +211,9 @@ export const TOOLS: ToolDefinition[] = [
         enum: ["single_choice", "multiple_select", "true_false", "short_answer", "numeric", "open_ended", "assess_parts"],
       }),
       prompt: str("The question text. Supports $…$ LaTeX."),
+      subject: str(
+        "The subject this question belongs to, e.g. \"Mathematics\". Required when the school records teaching assignments: the question is saved under that subject and the caller must teach it.",
+      ),
       points: num("Marks.", { minimum: 0 }),
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard", "competition"] }),
       topic: str("Topic label."),
@@ -233,6 +236,9 @@ export const TOOLS: ToolDefinition[] = [
     risk: ordinaryWrite("questions.create", "question_bank"),
     input: emptySchema({
       topic: str("Topic key, e.g. \"linear_equations\"."),
+      subject: str(
+        "The subject the questions belong to, e.g. \"Mathematics\". Required when the school records teaching assignments.",
+      ),
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard"] }),
       grade_label: str("Class/level label."),
       count: int("How many questions to author (1–20). Default 1."),
