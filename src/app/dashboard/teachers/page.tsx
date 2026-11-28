@@ -172,6 +172,12 @@ export default async function TeachersPage({
               <h2 className="font-display text-lg font-semibold text-evergreen-950">Teaching staff</h2>
               <p className="mt-1 text-sm text-ink-soft">{teacherTotal ?? 0} teacher accounts · page {page}</p>
             </div>
+            <Link
+              href="/dashboard/teachers/assignments"
+              className="inline-flex min-h-11 items-center rounded-xl border border-evergreen-900/25 px-3 text-sm font-medium text-evergreen-900 hover:bg-evergreen-50"
+            >
+              Teaching assignments
+            </Link>
             <form method="get" className="flex flex-wrap items-end gap-2">
               <label className="text-sm font-medium text-evergreen-900">Account status
                 <Select name="status" defaultValue={sp.status ?? ""} className="mt-1 block min-w-36" aria-label="Filter teacher accounts by status">
