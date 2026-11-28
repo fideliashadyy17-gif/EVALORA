@@ -27,6 +27,7 @@ const { buildExamPlan, topicsForGrade, firstTopicIn } = await load('lib/ai/gener
 const { validateProposedExam } = await load('lib/ai/validation.js');
 const { planFromRules } = await load('lib/ai/intent.js');
 const { TOOLS, getTool } = await load('lib/ai/tools.js');
+const { failureOf, journalStatusFor } = await load('lib/ai/types.js');
 
 let n = 0;
 const test = (name, fn) => {
@@ -219,6 +220,98 @@ test('a supported topic always yields the questions that were asked for', () => 
     });
     assert.equal(built.plan.questions.length, 10, `topic ${topic} produced ${built.plan.questions.length} of 10 questions`);
   }
+});
+
+test('a fraction question never offers the correct answer twice', () => {
+  // The probability family's "unsimplified" distractor is identical to the key
+  // whenever the fraction is already in simplest form (3/8). A multiple-choice
+  // question whose wrong option equals the right one cannot be marked.
+  for (const seed of ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8']) {
+    const built = buildExamPlan({
+      title: 'Fractions', durationMinutes: 30, questionCount: 8, topics: ['probability'],
+      gradeLabel: 'Grade 9', gradeOrder: 9, seed,
+      sections: [{ id: 'A', title: 'Q', share: 1 }],
+    });
+    for (const q of built.plan.questions) {
+      const labels = (q.options ?? []).map((o) => o.label);
+      assert.equal(
+        new Set(labels).size,
+        labels.length,
+        `seed ${seed}: question "${q.prompt.slice(0, 40)}" repeats an option: ${labels.join(' | ')}`,
+      );
+      assert.equal(
+        (q.options ?? []).filter((o) => o.is_correct).length,
+        1,
+        `seed ${seed}: exactly one option must be correct`,
+      );
+    }
+    const report = validateProposedExam(built.plan);
+    assert.ok(report.ok, `seed ${seed}: probability paper must validate: ${report.errors.map((e) => e.code).join(',')}`);
+  }
+});
+
+test('fractions are rendered as mathematics, not ASCII', () => {
+  const built = buildExamPlan({
+    title: 'Fraction notation', durationMinutes: 30, questionCount: 4, topics: ['probability'],
+    gradeLabel: 'Grade 9', gradeOrder: 9, seed: 'tex', sections: [{ id: 'A', title: 'Q', share: 1 }],
+  });
+  const withFraction = built.plan.questions.filter((q) => (q.options ?? []).some((o) => o.label.includes('\\dfrac')));
+  assert.ok(withFraction.length > 0, 'at least one option must use LaTeX');
+  for (const q of withFraction) {
+    for (const option of q.options ?? []) {
+      // Balanced delimiters: the validator rejects unclosed maths, and an
+      // unbalanced label would render as raw source in the UI.
+      const dollars = (option.label.match(/\$/g) ?? []).length;
+      assert.equal(dollars % 2, 0, `unbalanced maths delimiters in "${option.label}"`);
+    }
+  }
+});
+
+/* ── A refusal must never be journaled as a success ─────────────────── */
+
+test('a refused tool is journaled as failed, and reported as a failure', () => {
+  // The production defect. `create_examination` returned `ok:false` carrying six
+  // validation errors; the engine recorded status "succeeded" and handed the
+  // caller `ok:true`, so the teacher was told a paper existed while the database
+  // held nothing. These are the real functions the engine now calls.
+  const validationRefusal = failureOf({
+    error: {
+      code: 'invalid_arguments',
+      message: 'The paper did not pass validation, so nothing was saved: total_marks.',
+    },
+    summary: 'The generated paper did not pass structural validation, so nothing was saved.',
+  });
+  assert.equal(validationRefusal.code, 'invalid_arguments');
+  assert.match(validationRefusal.message, /nothing was saved/);
+  assert.equal(journalStatusFor(validationRefusal.code), 'failed', 'a refusal is a failure');
+
+  // A refusal that carries no typed error must still not be a success.
+  const bare = failureOf({ summary: 'The question was not saved.' });
+  assert.equal(journalStatusFor(bare.code), 'failed');
+  assert.equal(bare.message, 'The question was not saved.');
+
+  // An authorization refusal is a denial, not a failure — the distinction the
+  // journal keeps.
+  assert.equal(journalStatusFor('permission_denied'), 'denied');
+  assert.equal(journalStatusFor('rate_limited'), 'failed');
+
+  // And the engine must actually route through them. Reading the shipped source
+  // is the only way to assert the call site without booting the whole app graph.
+  const engine = readFileSync('src/lib/ai/engine.ts', 'utf8');
+  assert.match(engine, /if \(result\.ok === false\)/, 'the engine must branch on a tool refusal');
+  assert.match(engine, /const \{ code, message \} = failureOf\(result\)/, 'the branch must use failureOf');
+  assert.match(engine, /status: journalStatusFor\(code\)/, 'the journal status must come from journalStatusFor');
+  // The success path must not be reachable for a refusal: the branch that
+  // returns `ok: false` must come before the success journal write.
+  const refusalBranch = engine.indexOf('if (result.ok === false)');
+  const successWrite = engine.indexOf('await finish({\n      status: "succeeded"');
+  assert.ok(refusalBranch !== -1, 'the engine branches on a tool refusal');
+  assert.ok(successWrite > refusalBranch, 'the success journal write follows the refusal branch');
+  assert.ok(
+    engine.indexOf('ok: false,\n        tool: request.tool', refusalBranch) < successWrite,
+    'the refusal path returns before the success write',
+  );
+  assert.match(engine, /return \{\s*ok: false,\s*tool: request\.tool,/, 'the refusal path returns ok:false');
 });
 
 /* ── 5. The registration tool exists and is least-privilege ─────────── */

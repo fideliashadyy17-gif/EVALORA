@@ -877,17 +877,57 @@ const FAMILIES: Family[] = [
         difficulty,
         topic: "Probability",
         subtopic: "Single-event probability",
-        options: [
-          { label: `${favourable / d}/${total / d}`, is_correct: true },
-          { label: `${favourable}/${total}${favourable === favourable / d ? "" : ""}`, is_correct: false },
-          { label: `${total - favourable}/${total}`, is_correct: false },
-        ],
-        explanation: `P(red) = favourable outcomes ÷ total outcomes = ${favourable}/${total} = ${favourable / d}/${total / d}.`,
-        working: `${favourable}/${total} = ${favourable / d}/${total / d}`,
+        // Distractors must be genuinely wrong AND distinct from the key. When the
+        // fraction is already in simplest form (3/8), an "unsimplified" distractor
+        // would be identical to the correct answer, so a different misconception
+        // is used instead: the complement, and the odds-style inversion.
+        options: (() => {
+          const correct = `${favourable / d}/${total / d}`;
+          const candidates = [
+            favourable === favourable / d ? `${favourable}/${total + favourable}` : `${favourable}/${total}`,
+            `${total - favourable}/${total}`,
+            `${total}/${favourable}`,
+          ];
+          const seen = new Set([correct]);
+          const wrong: { label: string; is_correct: boolean }[] = [
+            { label: frac(favourable / d, total / d), is_correct: true },
+          ];
+          for (const candidate of candidates) {
+            if (seen.has(candidate)) continue;
+            seen.add(candidate);
+            const [n, den] = candidate.split("/");
+            wrong.push({ label: frac(n, den), is_correct: false });
+            if (wrong.length === 3) break;
+          }
+          return wrong;
+        })(),
+        // Only show the simplification step when there is one to show.
+        explanation:
+          d === 1
+            ? `P(red) = favourable outcomes ÷ total outcomes = ${frac(favourable, total)}.`
+            : `P(red) = favourable outcomes ÷ total outcomes = ${frac(favourable, total)} = ` +
+              `${frac(favourable / d, total / d)}.`,
+        working:
+          d === 1
+            ? frac(favourable, total)
+            : `${frac(favourable, total)} = ${frac(favourable / d, total / d)}`,
       };
     },
   },
 ];
+
+/**
+ * Renders a fraction as inline LaTeX.
+ *
+ * The platform already renders `$…$` through KaTeX (`MathText`), so a real
+ * fraction is drawn as a fraction rather than the ASCII "3/4". Only the shape
+ * the content actually needs is emitted — a numerator, a denominator and an
+ * equals chain — so nothing user-visible depends on arbitrary LaTeX escape
+ * rules.
+ */
+function frac(numerator: number | string, denominator: number | string): string {
+  return `$\\dfrac{${numerator}}{${denominator}}$`;
+}
 
 /** The families available for a topic at a difficulty, in a stable order. */
 function familiesFor(topic: TopicKey): Family[] {

@@ -75,13 +75,40 @@ export interface PreviewBlock {
 }
 
 /** The verified result of a composite or single-step operation. */
-export interface ToolResult<T = Record<string, unknown>> {
+/**
+ * A tool's own account of what happened.
+ *
+ * A tool that could not do the thing — because validation refused the paper, or
+ * the database rejected the write — must say so. Declaring `ok: true` as the
+ * only possibility forced every handler to launder its refusal through an
+ * `as unknown as ToolResult` cast, which is precisely how the engine came to
+ * journal a rejected paper as "succeeded".
+ */
+export type ToolResult<T = Record<string, unknown>> = ToolSuccess<T> | ToolFailure<T>;
+
+export interface ToolSuccess<T = Record<string, unknown>> {
   ok: true;
   data: T;
   /** One-line description of what was really written, with ids. */
   summary: string;
   preview?: PreviewBlock;
   /** Confirmations are only produced after the database reported success. */
+  links?: { label: string; href: string }[];
+}
+
+/**
+ * The operation did not complete, and nothing was changed. The engine journals
+ * this as a failure and reports `ok: false` to the caller — a refusal is never
+ * dressed up as a success.
+ */
+export interface ToolFailure<T = Record<string, unknown>> {
+  ok: false;
+  /** Partial data the caller may inspect (validation errors, totals …). */
+  data: T;
+  /** One truthful sentence: what did not happen, and why. */
+  summary: string;
+  error?: { code: ToolError["code"]; message: string };
+  preview?: PreviewBlock;
   links?: { label: string; href: string }[];
 }
 
@@ -151,3 +178,27 @@ export const uuid = (description: string): JsonSchema => ({
   description,
   pattern: "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
 });
+
+/**
+ * How a refused tool is described to the journal and to the caller.
+ *
+ * Kept as a pure function so the rule can be asserted directly: an agent that
+ * could not do the thing must never be recorded as having done it.
+ */
+export function failureOf(result: {
+  error?: { code?: ToolError["code"]; message?: string };
+  summary?: string;
+}): { code: ToolError["code"]; message: string } {
+  return {
+    code: result.error?.code ?? "internal",
+    message:
+      result.error?.message ??
+      result.summary ??
+      "The operation did not complete, so nothing was changed.",
+  };
+}
+
+/** Journal status for a refusal: an authorization refusal is `denied`, not `failed`. */
+export function journalStatusFor(code: ToolError["code"]): "failed" | "denied" {
+  return code === "permission_denied" ? "denied" : "failed";
+}
