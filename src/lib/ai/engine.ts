@@ -24,7 +24,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { createHash } from "node:crypto";
 import { approvalRequired, riskOf } from "./risk";
 import { getTool } from "./tools";
-import { ToolError, type ActorIdentity, type CallScope, type ToolResult } from "./types";
+import { failureOf, journalStatusFor, ToolError, type ActorIdentity, type CallScope, type ToolResult } from "./types";
 import { runTool, type ToolRuntime } from "./handlers";
 
 export interface AiOrgSettings {
@@ -501,6 +501,34 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
 
   try {
     const result = await runTool(request.tool, request.args, runtime);
+
+    // A tool that reports `ok: false` did NOT do the thing. Recording that as
+    // "succeeded" — and handing the caller `ok: true` — is how a rejected paper
+    // with six validation errors ended up in the audit log as a success while
+    // nothing was saved. The journal and the caller must both see the failure.
+    if (result.ok === false) {
+      const { code, message } = failureOf(result);
+      await finish({
+        status: journalStatusFor(code),
+        errorCode: code,
+        errorMessage: message,
+        resultSummary: summariseArguments(result.data ?? {}),
+        resultDigest: sha(result.data ?? {}),
+      });
+      return {
+        ok: false,
+        tool: request.tool,
+        risk,
+        executionId,
+        data: result.data,
+        preview: result.preview,
+        links: result.links,
+        code,
+        detail: message,
+        approvalId: approvedId ?? undefined,
+      };
+    }
+
     await finish({
       status: "succeeded",
       resultSummary: summariseArguments(result.data ?? {}),

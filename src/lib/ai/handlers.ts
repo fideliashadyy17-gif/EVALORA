@@ -619,10 +619,16 @@ async function createExamination(runtime: ToolRuntime, args: Record<string, unkn
   if (!report.ok) {
     return {
       ok: false,
+      error: {
+        code: "invalid_arguments",
+        message: `The paper did not pass validation, so nothing was saved: ${report.errors
+          .map((e) => e.message)
+          .join(" ")}`,
+      },
       data: { errors: report.errors, warnings: report.warnings, totals: report.totals },
       summary: "The generated paper did not pass structural validation, so nothing was saved.",
       preview: planPreview(plan, report, sources),
-    } as unknown as ToolResult;
+    };
   }
 
   // The acting human's session is rebuilt from their verified membership:
@@ -1072,11 +1078,13 @@ async function createQuestion(runtime: ToolRuntime, args: Record<string, unknown
     questions: [proposed],
   });
   if (report.errors.some((e) => e.code !== "marks_per_minute")) {
+    const message = `The question was not saved: ${report.errors.map((e) => e.message).join(" ")}`;
     return {
       ok: false,
+      error: { code: "invalid_arguments", message },
       data: { errors: report.errors },
-      summary: `The question was not saved: ${report.errors.map((e) => e.message).join(" ")}`,
-    } as unknown as ToolResult;
+      summary: message,
+    };
   }
 
   const { saveQuestion } = await import("@/app/dashboard/questions/actions");

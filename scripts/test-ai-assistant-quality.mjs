@@ -27,6 +27,7 @@ const { buildExamPlan, topicsForGrade, firstTopicIn } = await load('lib/ai/gener
 const { validateProposedExam } = await load('lib/ai/validation.js');
 const { planFromRules } = await load('lib/ai/intent.js');
 const { TOOLS, getTool } = await load('lib/ai/tools.js');
+const { failureOf, journalStatusFor } = await load('lib/ai/types.js');
 
 let n = 0;
 const test = (name, fn) => {
@@ -264,6 +265,53 @@ test('fractions are rendered as mathematics, not ASCII', () => {
       assert.equal(dollars % 2, 0, `unbalanced maths delimiters in "${option.label}"`);
     }
   }
+});
+
+/* ── A refusal must never be journaled as a success ─────────────────── */
+
+test('a refused tool is journaled as failed, and reported as a failure', () => {
+  // The production defect. `create_examination` returned `ok:false` carrying six
+  // validation errors; the engine recorded status "succeeded" and handed the
+  // caller `ok:true`, so the teacher was told a paper existed while the database
+  // held nothing. These are the real functions the engine now calls.
+  const validationRefusal = failureOf({
+    error: {
+      code: 'invalid_arguments',
+      message: 'The paper did not pass validation, so nothing was saved: total_marks.',
+    },
+    summary: 'The generated paper did not pass structural validation, so nothing was saved.',
+  });
+  assert.equal(validationRefusal.code, 'invalid_arguments');
+  assert.match(validationRefusal.message, /nothing was saved/);
+  assert.equal(journalStatusFor(validationRefusal.code), 'failed', 'a refusal is a failure');
+
+  // A refusal that carries no typed error must still not be a success.
+  const bare = failureOf({ summary: 'The question was not saved.' });
+  assert.equal(journalStatusFor(bare.code), 'failed');
+  assert.equal(bare.message, 'The question was not saved.');
+
+  // An authorization refusal is a denial, not a failure — the distinction the
+  // journal keeps.
+  assert.equal(journalStatusFor('permission_denied'), 'denied');
+  assert.equal(journalStatusFor('rate_limited'), 'failed');
+
+  // And the engine must actually route through them. Reading the shipped source
+  // is the only way to assert the call site without booting the whole app graph.
+  const engine = readFileSync('src/lib/ai/engine.ts', 'utf8');
+  assert.match(engine, /if \(result\.ok === false\)/, 'the engine must branch on a tool refusal');
+  assert.match(engine, /const \{ code, message \} = failureOf\(result\)/, 'the branch must use failureOf');
+  assert.match(engine, /status: journalStatusFor\(code\)/, 'the journal status must come from journalStatusFor');
+  // The success path must not be reachable for a refusal: the branch that
+  // returns `ok: false` must come before the success journal write.
+  const refusalBranch = engine.indexOf('if (result.ok === false)');
+  const successWrite = engine.indexOf('await finish({\n      status: "succeeded"');
+  assert.ok(refusalBranch !== -1, 'the engine branches on a tool refusal');
+  assert.ok(successWrite > refusalBranch, 'the success journal write follows the refusal branch');
+  assert.ok(
+    engine.indexOf('ok: false,\n        tool: request.tool', refusalBranch) < successWrite,
+    'the refusal path returns before the success write',
+  );
+  assert.match(engine, /return \{\s*ok: false,\s*tool: request\.tool,/, 'the refusal path returns ok:false');
 });
 
 /* ── 5. The registration tool exists and is least-privilege ─────────── */
