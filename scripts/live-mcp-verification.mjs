@@ -322,6 +322,15 @@ const publishCheck = async (conclusion, summary, text) => {
     passed: results.filter((r) => r.passed).length,
     failed: results.filter((r) => !r.passed).length,
   };
+
+  // Annotations are capped at ten per step, so the tool-level checks — the ones
+  // that matter most — were being dropped. The check run's `output.text` holds
+  // the whole list and is readable from the API, so it carries the evidence.
+  await publishCheck(
+    report.summary.failed ? "failure" : "success",
+    `${report.summary.passed}/${report.summary.total} checks passed (${report.summary.failed} failed).`,
+    results.map((r) => `${r.passed ? "PASS" : "FAIL"} ${r.name} :: ${String(r.detail).replace(/[\r\n]+/g, " ").slice(0, 300)}`).join("\n"),
+  );
 } catch (error) {
   report.fatal = String(error?.stack ?? error).slice(0, 1500);
   console.log(`::error title=harness-stopped::${String(error?.message ?? error).replace(/[\r\n]+/g, " ").slice(0, 900)}`);
