@@ -673,5 +673,72 @@ test('dropping the identity guard does not drop tenant isolation', () => {
   assert.match(evidence, /_access_eval_permission/, 'the verification record must explain the evaluator');
 });
 
+/* ── Revocation must reach the database, and say so ──────────────────── */
+test('revocation passes an explicit actor instead of relying on auth.uid()', () => {
+  // Reported from production: "Revoke Immediately" did nothing. The database
+  // function identified the caller with `is_super_admin() or can_manage_org(...)`,
+  // both of which read auth.uid(). The dashboard calls it on the SERVICE-ROLE
+  // client, where auth.uid() is NULL, so it raised AI_PERMISSION_DENIED on every
+  // invocation for every user and never updated a row.
+  const agents = readFileSync('src/lib/ai/agents.ts', 'utf8');
+  const revoke = agents.slice(agents.indexOf('export async function revokeAgent'), agents.indexOf('/** Rotates a credential'));
+  assert.match(revoke, /p_actor_id:\s*actorId/, 'the human must be passed to the database function');
+  assert.match(revoke, /actorId: string/, 'revokeAgent must take an actor id');
+  // A false return means the row vanished between the ownership check and the
+  // update. Reporting success there would be the original bug in a new place.
+  assert.match(revoke, /data !== true/, 'a false result must not be reported as success');
+  assert.match(revoke, /permission_denied/, 'a permission refusal must map to a real error code');
+});
+
+test('rotation records the actor and raises instead of silently no-opping', () => {
+  const agents = readFileSync('src/lib/ai/agents.ts', 'utf8');
+  const rotate = agents.slice(agents.indexOf('export async function rotateAgentToken'), agents.indexOf('export async function setAgentNarrowing'));
+  // Rotating with a plain UPDATE ... WHERE status='approved' updated zero rows for
+  // a revoked agent and returned the new token anyway: a credential that could
+  // never work, handed to the user as a success.
+  assert.match(rotate, /p_actor_id:\s*actorId/);
+  assert.match(rotate, /AI_AGENT_NOT_APPROVED/, 'an unapproved agent must raise, not no-op');
+});
+
+test('the revocation action never swallows an error', () => {
+  const actions = readFileSync('src/app/dashboard/ai/agents/actions.ts', 'utf8');
+  const revoke = actions.slice(actions.indexOf('export async function revokeAgentAction'), actions.indexOf('export async function rotateTokenAction'));
+  // The old handler was `catch { /* idem */ }` and returned void, which is why a
+  // total backend failure presented as a button that did nothing.
+  assert.doesNotMatch(revoke, /catch\s*\{\s*\/\*\s*idem\s*\*\//, 'the revoke action must not swallow errors');
+  assert.match(revoke, /return \{\s*ok:\s*false/, 'a failure must return a failure state');
+  assert.match(revoke, /ok:\s*true/, 'a success must return a success state');
+  assert.match(revoke, /reason\.length < 4/, 'an empty or trivial reason must be refused server-side');
+  assert.match(revoke, /auth\.ctx\.user\.id/, 'the verified session user must be the recorded actor');
+});
+
+test('the revocation UI shows confirmation, progress and the outcome', () => {
+  const ui = readFileSync('src/app/dashboard/ai/agents/RevokeAgentForm.tsx', 'utf8');
+  assert.match(ui, /useActionState/, 'the form must consume the action state');
+  assert.match(ui, /pending/, 'an in-flight request must be visible');
+  assert.match(ui, /Yes, revoke it/, 'a destructive action needs a confirmation step');
+  assert.match(ui, /role="alert"/, 'a failure must be announced, not silent');
+  assert.match(ui, /role="status"/, 'success and progress must be announced');
+  assert.match(ui, /state\.token/, 'the rotated token must be rendered from the action result');
+  const page = readFileSync('src/app/dashboard/ai/agents/page.tsx', 'utf8');
+  assert.doesNotMatch(page, /evalora_ai_token_once/, 'the one-time cookie path must be gone');
+});
+
+test('the revocation migration takes the actor and checks it properly', () => {
+  const sql = readFileSync('supabase/migrations/20261128140000_ai_agent_revocation_actor.sql', 'utf8')
+    // Strip `--` comment lines first: the header explains the OLD bug and names
+    // the helpers it removed, so asserting against raw text would read its own
+    // explanation as a violation.
+    .split("\n").filter((line) => !line.trimStart().startsWith("--")).join("\n");
+  assert.match(sql, /p_actor_id uuid default null/, 'the function must accept an explicit actor');
+  assert.match(sql, /_access_eval_permission\(v_actor, v_org, 'ai\.manage_agents'\)/, 'authorization must use the pure evaluator');
+  assert.doesNotMatch(sql, /can_manage_org/, 'the auth.uid()-dependent helper must be gone from the revoke path');
+  assert.match(sql, /token_digest = null/, 'revocation must clear the digest so the old token stops resolving');
+  assert.match(sql, /revoked_by = v_actor/, 'the actor must be recorded');
+  assert.match(sql, /revoke_reason = left\(coalesce\(p_reason/, 'the reason must be persisted');
+  // Revoking a credential is not deleting a registration.
+  assert.doesNotMatch(sql, /delete from public\.ai_agents/i, 'revocation must not delete the agent row');
+});
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nAI assistant quality: ${n} checks passed.`);

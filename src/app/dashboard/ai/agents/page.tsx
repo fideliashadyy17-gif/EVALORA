@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Badge, Card, Input, PageTitle } from "@/components/ui";
+import { Badge, Card, PageTitle } from "@/components/ui";
 import { activeOrg, requireUser } from "@/lib/auth";
 import { canOperate } from "@/lib/operationalAccess";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
@@ -8,9 +8,8 @@ import { requestFormatter } from "@/lib/formattingRequest";
 import { describeCoreProvider } from "@/lib/ai/provider";
 import { knownPermissions, listAgents } from "@/lib/ai/agents";
 import { CreateAgentForm } from "./AgentForms";
-import { revokeAgentAction } from "./actions";
+import { RevokeAgentForm, RotateTokenForm } from "./RevokeAgentForm";
 import Link from "next/link";
-import { cookies } from "next/headers";
 
 export const metadata: Metadata = { title: "AI agents" };
 export const dynamic = "force-dynamic";
@@ -50,8 +49,6 @@ export default async function AgentsPage() {
   const admin = createAdminClient();
   const agents = await listAgents(admin, org.id);
   const provider = describeCoreProvider();
-  const store = await cookies();
-  const onceToken = store.get("evalora_ai_token_once")?.value;
 
   const { data: recent } = await admin
     .from("ai_executions")
@@ -72,16 +69,6 @@ export default async function AgentsPage() {
           </Link>
         }
       />
-
-      {onceToken && (
-        <Card className="border-amber-400 bg-amber-50 p-4">
-          <h2 className="font-display text-sm font-semibold text-amber-900">Copy this token now</h2>
-          <p className="mt-1 text-xs text-amber-900">
-            It is shown once. Only a SHA-256 digest is stored, so it cannot be recovered — rotate the credential if it is lost.
-          </p>
-          <code className="mt-2 block break-all rounded-lg bg-stone-900 px-3 py-2 font-mono text-xs text-stone-100">{onceToken}</code>
-        </Card>
-      )}
 
       <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="space-y-4">
@@ -124,14 +111,11 @@ export default async function AgentsPage() {
                         </>
                       )}
                     </p>
+                    {agent.status === "approved" && (
+                      <RotateTokenForm agentId={agent.id} />
+                    )}
                     {agent.status !== "revoked" && (
-                      <form action={revokeAgentAction} className="mt-2 flex flex-wrap items-center gap-2">
-                        <input type="hidden" name="agent_id" value={agent.id} />
-                        <Input name="reason" placeholder="Reason for revocation" className="max-w-xs" />
-                        <button type="submit" className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50">
-                          Revoke immediately
-                        </button>
-                      </form>
+                      <RevokeAgentForm agentId={agent.id} agentName={agent.name} />
                     )}
                     {agent.revokeReason && <p className="mt-1 text-xs text-ink-soft">Revoked: {agent.revokeReason}</p>}
                   </li>
