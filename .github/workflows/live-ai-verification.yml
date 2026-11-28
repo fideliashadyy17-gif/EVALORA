@@ -1,0 +1,115 @@
+name: Live AI Verification
+
+# Runs the live AI verification against the DEPLOYED application.
+#
+# This exists because the development sandbox has no egress to `evalora-edu.online`
+# or to Supabase, so it cannot produce evidence about production — only claims.
+# A GitHub runner has real connectivity and already holds the Supabase service
+# role key, so the credential can be minted, used and retired inside one
+# ephemeral job without ever being written down.
+#
+# Deliberately workflow_dispatch only: this performs a REAL credential rotation
+# and writes REAL test objects, so it must never fire on a push.
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "Deployed application to verify"
+        required: true
+        default: "https://evalora-edu.online"
+      confirm_writes:
+        description: "Type WRITE to allow test objects to be created in the DEMO organization"
+        required: true
+        default: "no"
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Guard — this job writes to production
+        env:
+          CONFIRM: ${{ github.event.inputs.confirm_writes }}
+        run: |
+          if [ "$CONFIRM" != "WRITE" ]; then
+            echo "Refusing to run: confirm_writes must be WRITE. Nothing was touched."
+            exit 1
+          fi
+
+      - name: Record which commit is deployed
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+        run: |
+          {
+            echo "## Deployed build"
+            echo ""
+            echo "- checked out: \`${{ github.sha }}\`"
+            echo "- target: $BASE_URL"
+            echo "- runner started: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Run live AI verification
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          BASE_URL: ${{ github.event.inputs.base_url }}
+        run: node scripts/live-ai-verification.mjs
+
+      - name: Publish the report
+        if: always()
+        env:
+          BASE_URL: ${{ github.event.inputs.base_url }}
+        run: |
+          if [ -f ai-live-verification.json ]; then
+            node - <<'NODE'
+            const report = require("./ai-live-verification.json");
+            const lines = [];
+            lines.push("### Live AI verification");
+            lines.push("");
+            const s = report.summary ?? {};
+            lines.push(`**${s.passed ?? 0}/${s.total ?? 0} checks passed**, ${s.failed ?? 0} failed.`);
+            lines.push("");
+            if (report.fatal) lines.push(`> Fatal: ${String(report.fatal).split("\n")[0]}`);
+            lines.push("");
+            lines.push("| Area | Passed | Failed |");
+            lines.push("|---|---|---|");
+            for (const [area, counts] of Object.entries(s.by_area ?? {})) {
+              lines.push(`| ${area} | ${counts.passed} | ${counts.failed} |`);
+            }
+            lines.push("");
+            lines.push("| Check | Result |");
+            lines.push("|---|---|");
+            for (const check of report.checks ?? []) {
+              lines.push(`| [${check.area}] ${check.name} | ${check.passed ? "PASS" : "**FAIL**"} |`);
+            }
+            require("node:fs").appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n") + "\n");
+            NODE
+          else
+            echo "No report was produced." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload the report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-live-verification
+          path: ai-live-verification.json
+          retention-days: 90
+          if-no-files-found: warn
+
+      - name: Remove any trace of the run
+        if: always()
+        run: |
+          rm -f ai-live-verification.json
+          echo "The report is in the artifact. The token only ever existed in the job's memory."
