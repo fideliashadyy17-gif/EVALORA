@@ -35,6 +35,7 @@ import {
   inferDifficultyMix,
   resolveTopics,
   TOPIC_CATALOG,
+  topicsForGrade,
   topicLabel,
   type PlanSpec,
   type TopicKey,
@@ -132,6 +133,80 @@ const truncate = (value: string, max = 400): string => (value.length > max ? `${
  * RLS already protects the RLS client; the service client does not, so an
  * explicit comparison is mandatory whenever `runtime.admin` is used.
  */
+/**
+ * Resolves an examination the teacher described in words rather than by id.
+ *
+ * "the last one", "my Grade 9 draft", "the linear equations exam". Two rules
+ * make this safe:
+ *   • it only ever considers examinations in the caller's own organization, so a
+ *     phrase can never reach another tenant's record;
+ *   • it refuses when the phrase matches more than one, instead of picking one
+ *     and changing a paper the teacher did not mean.
+ *
+ * Ordered by `created_at` descending, so "the last one" is the newest — which is
+ * what the phrase means to a person.
+ */
+async function resolveExaminationReference(runtime: ToolRuntime, reference: string): Promise<string> {
+  const text = reference.toLowerCase();
+  const search = /["“']([^"”']{3,120})["”']/.exec(reference)?.[1];
+
+  let query = runtime.admin
+    .from("exams")
+    .select("id, title, status, created_at")
+    .eq("organization_id", runtime.scope.organizationId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  // A quoted title is an explicit name, not a guess.
+  if (search) query = query.ilike("title", `%${search}%`);
+
+  const { data, error } = await query;
+  if (error) throw new ToolError("internal", "The examination list could not be read.");
+
+  const rows = (data ?? []) as { id: string; title: string; status: string }[];
+  if (!rows.length) {
+    throw new ToolError(
+      "not_found",
+      "I could not find an examination matching that description in this workspace.",
+      "Name it exactly, or ask me to list the examinations first.",
+    );
+  }
+
+  // A status word in the sentence narrows the set.
+  const wantsDraft = /\bdraft\b/i.test(text);
+  const wantsPublished = /\b(published|live|open)\b/i.test(text);
+  let candidates = rows;
+  if (wantsDraft) candidates = rows.filter((r) => r.status === "draft");
+  else if (wantsPublished) candidates = rows.filter((r) => ["published", "open"].includes(r.status));
+
+  // A grade/topic phrase narrows it too, when it is distinctive.
+  const gradeMention = /\b(?:myp\s*[1-5]|grade\s*\d{1,2})\b/i.exec(reference)?.[0];
+  if (gradeMention) {
+    const narrowed = candidates.filter((r) => r.title.toLowerCase().includes(gradeMention.toLowerCase()));
+    if (narrowed.length) candidates = narrowed;
+  }
+
+  if (candidates.length === 1) return candidates[0].id;
+  if (!candidates.length) {
+    throw new ToolError(
+      "not_found",
+      "No examination in this workspace matches that description.",
+      `Found ${rows.length} examination(s) in total; none matched.`,
+    );
+  }
+
+  // "the last one" / "latest" / "most recent" is unambiguous by definition.
+  if (/\b(last|latest|newest|most recent)\b/i.test(text)) return candidates[0].id;
+
+  const named = candidates.slice(0, 5).map((r) => `"${r.title}" (${r.status})`);
+  throw new ToolError(
+    "conflict",
+    `${candidates.length} examinations match that description, so nothing was changed.`,
+    `Which one? ${named.join("; ")}${candidates.length > 5 ? "; …" : ""}. Give me the id or the exact title.`,
+  );
+}
+
 async function requireOwned<T extends Record<string, unknown>>(
   runtime: ToolRuntime,
   table: string,
@@ -695,7 +770,12 @@ async function createExamination(runtime: ToolRuntime, args: Record<string, unkn
 }
 
 async function validateExamination(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
-  const examId = requireUuid(args.examination_id, "examination_id");
+  const reference = optionalString(args.reference, 400);
+  const examId = args.examination_id !== undefined
+    ? requireUuid(args.examination_id, "examination_id")
+    : reference
+      ? await resolveExaminationReference(runtime, reference)
+      : (() => { throw new ToolError("invalid_arguments", "Which examination? Give an id or describe it."); })();
   const { exam, questions } = await loadExamPaper(runtime, examId);
   const proposed = await proposedFromStored(runtime, questions);
   const report = validateProposedExam({
@@ -788,7 +868,12 @@ function sectionsFromStored(exam: Record<string, unknown>, questions: PaperQuest
 }
 
 async function updateExamination(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
-  const examId = requireUuid(args.examination_id, "examination_id");
+  const reference = optionalString(args.reference, 400);
+  const examId = args.examination_id !== undefined
+    ? requireUuid(args.examination_id, "examination_id")
+    : reference
+      ? await resolveExaminationReference(runtime, reference)
+      : (() => { throw new ToolError("invalid_arguments", "Which examination? Give an id or describe it."); })();
   const exam = await requireOwned<Record<string, unknown>>(runtime, "exams", examId, "id, title, status, settings, quiz_id");
   const patch: Record<string, unknown> = {};
   const changes: string[] = [];
@@ -1134,12 +1219,15 @@ async function generateQuestion(runtime: ToolRuntime, args: Record<string, unkno
     durationMinutes: 30,
     questionCount: count,
     topics: [topic as TopicKey],
+    // An explicit spread wins; otherwise the named difficulty fills the batch.
     difficultyMix:
-      difficulty === "easy"
-        ? { easy: 1, medium: 0, hard: 0 }
-        : difficulty === "medium"
-          ? { easy: 0, medium: 1, hard: 0 }
-          : { easy: 0, medium: 0, hard: 1 },
+      args.difficulty_mix && typeof args.difficulty_mix === "object"
+        ? normaliseMix(args.difficulty_mix as Record<string, unknown>)
+        : difficulty === "easy"
+          ? { easy: 1, medium: 0, hard: 0 }
+          : difficulty === "medium"
+            ? { easy: 0, medium: 1, hard: 0 }
+            : { easy: 0, medium: 0, hard: 1 },
     seed,
     gradeLabel,
     sections: [{ id: "qa", title: "Practice", share: 1 }],
@@ -1360,19 +1448,58 @@ async function createQuiz(runtime: ToolRuntime, args: Record<string, unknown>): 
     questionIds.push(...existing);
   }
 
+  // The duration the teacher asked for, not a fixed 30. Quizzes store their
+  // timing in `settings.time_per_question_seconds`, so a 20-minute/10-question
+  // quiz must be 120 s per question rather than the previous hardcoded 60 (which
+  // produced a 10-minute quiz that claimed to be 20).
+  const durationMinutes = optionalNumber(args.duration_minutes, "duration_minutes", 1, 1440);
+  const optionsPerQuestion = optionalNumber(args.options_per_question, "options_per_question", 2, 8);
+
   if (generate) {
     const count = optionalNumber(generate.question_count, "generate.question_count", 1, 60) ?? 10;
     const topics = Array.isArray(generate.topics) ? (generate.topics as string[]).filter((t): t is TopicKey => TOPIC_CATALOG.some((c) => c.key === t)) : [];
+    // An unresolvable topic must never be dropped silently: the paper would then
+    // be filled with grade-appropriate material and be about the wrong subject.
+    const requestedTopics = Array.isArray(generate.topics) ? (generate.topics as unknown[]).filter((t): t is string => typeof t === "string") : [];
+    const unknownTopics = requestedTopics.filter((t) => !TOPIC_CATALOG.some((c) => c.key === t));
+    if (unknownTopics.length && !topics.length) {
+      throw new ToolError(
+        "invalid_arguments",
+        `"${unknownTopics.join('", "')}" ${unknownTopics.length === 1 ? "is not a topic" : "are not topics"} EVALORA can generate from, so nothing was created.`,
+        `Supported topics: ${TOPIC_CATALOG.map((c) => c.key).join(", ")}.`,
+      );
+    }
     const built = buildExamPlan({
       title,
-      durationMinutes: 30,
+      durationMinutes: durationMinutes ?? 30,
       questionCount: count,
-      topics: topics.length ? topics : undefined as unknown as TopicKey[],
+      topics: topics.length ? topics : topicsForGrade(gradeOrderFromLabel(optionalString(args.grade_label, 80))),
+      // Carried into the generator so the option count is honoured while the
+      // questions are authored, not checked after the fact.
+      preferredOptions: optionsPerQuestion,
       difficultyMix: generate.difficulty_mix && typeof generate.difficulty_mix === "object" ? normaliseMix(generate.difficulty_mix as Record<string, unknown>) : undefined,
       seed: `${title}|${count}|quiz`,
       gradeLabel: optionalString(args.grade_label, 80),
     });
     drafts.push(...built.plan.questions);
+
+    // "four options per question" is a requirement, not decoration. Most
+    // generator families are numeric or short-answer, so a four-option demand
+    // cannot be met for every topic — and silently returning two-option items
+    // would be the assistant claiming something it did not do. Say so instead,
+    // before anything is written.
+    if (optionsPerQuestion) {
+      const wrongShape = drafts.filter((q) => (q.options?.length ?? 0) !== optionsPerQuestion);
+      if (wrongShape.length) {
+        throw new ToolError(
+          "invalid_arguments",
+          `${wrongShape.length} of ${drafts.length} generated item(s) on this topic cannot have exactly ${optionsPerQuestion} options, so nothing was created.`,
+          wrongShape.length === drafts.length
+            ? "This topic generates short-answer or numeric questions rather than multiple choice. Ask for a multiple-choice topic (quadratics, probability, sequences or inequalities), or drop the option requirement."
+            : `Choose a topic whose items are multiple choice, or ask for ${drafts[0].options?.length ?? 0} options.`,
+        );
+      }
+    }
 
     const { saveQuestion } = await import("@/app/dashboard/questions/actions");
     for (const question of drafts) {
@@ -1414,7 +1541,9 @@ async function createQuiz(runtime: ToolRuntime, args: Record<string, unknown>): 
     status: "draft",
     randomize_questions: args.randomize_questions === true,
     randomize_options: args.randomize_options === true,
-    time_per_question_seconds: 60,
+    time_per_question_seconds: durationMinutes
+      ? Math.max(5, Math.min(3600, Math.round((durationMinutes * 60) / Math.max(1, questionIds.length))))
+      : 60,
     question_ids: questionIds,
     sections,
     grade_label: optionalString(args.grade_label, 80) ?? "",
@@ -1426,8 +1555,17 @@ async function createQuiz(runtime: ToolRuntime, args: Record<string, unknown>): 
   }
   return {
     ok: true,
-    data: { quiz_id: saved.id, question_ids: questionIds, status: "draft", authored_questions: drafts.length },
-    summary: `Created draft paper "${title}" with ${questionIds.length} question(s)${drafts.length ? ` (${drafts.length} newly authored)` : ""}.`,
+    data: {
+      quiz_id: saved.id,
+      question_ids: questionIds,
+      status: "draft",
+      authored_questions: drafts.length,
+      duration_minutes: durationMinutes ?? null,
+    },
+    summary:
+      `Created draft paper "${title}" with ${questionIds.length} question(s)` +
+      `${drafts.length ? ` (${drafts.length} newly authored)` : ""}` +
+      `${durationMinutes ? `, ${durationMinutes} minutes` : ""}.`,
     links: [{ label: "Open the paper", href: `/dashboard/paper-builder/${saved.id}` }],
   };
 }
@@ -2105,7 +2243,12 @@ async function getClassStatistics(runtime: ToolRuntime, args: Record<string, unk
 }
 
 async function analyzeExamPerformance(runtime: ToolRuntime, args: Record<string, unknown>): Promise<ToolResult> {
-  const examId = requireUuid(args.examination_id, "examination_id");
+  const reference = optionalString(args.reference, 400);
+  const examId = args.examination_id !== undefined
+    ? requireUuid(args.examination_id, "examination_id")
+    : reference
+      ? await resolveExaminationReference(runtime, reference)
+      : (() => { throw new ToolError("invalid_arguments", "Which examination? Give an id or describe it."); })();
   const { exam, questions } = await loadExamPaper(runtime, examId);
   const { data: attempts } = await runtime.admin
     .from("exam_attempts")

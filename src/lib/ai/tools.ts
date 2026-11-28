@@ -123,7 +123,9 @@ export const TOOLS: ToolDefinition[] = [
     description:
       "Run the structural review of an examination's paper: section and mark totals, key completeness, duplicate detection, formula delimiters and marking consistency. Returns errors and warnings; it does not change anything.",
     risk: ordinary("exams.view", "examinations"),
-    input: emptySchema({ examination_id: uuid("The examination id.") }, ["examination_id"]),
+    input: emptySchema({ examination_id: uuid("The examination id."),
+      reference: str("Describe the examination instead of giving an id: \"the last one\", \"the Grade 9 draft\", a quoted title. Refused when ambiguous."),
+    }),
     modelHint: "Use after creating or changing an examination, and before proposing publication.",
   },
   {
@@ -141,7 +143,8 @@ export const TOOLS: ToolDefinition[] = [
       pass_mark_percent: num("New pass mark percentage.", { minimum: 0, maximum: 100 }),
       starts_at: str("ISO timestamp for the start of the window."),
       ends_at: str("ISO timestamp for the end of the window."),
-    }, ["examination_id"]),
+      reference: str("Describe the examination instead of giving an id: \"the last one\", \"the Grade 9 draft\", a quoted title. Refused when ambiguous."),
+    }),
     modelHint: "Use for metadata changes only; question content is protected.",
   },
   {
@@ -233,6 +236,13 @@ export const TOOLS: ToolDefinition[] = [
       difficulty: str("Difficulty.", { enum: ["easy", "medium", "hard"] }),
       grade_label: str("Class/level label."),
       count: int("How many questions to author (1–20). Default 1."),
+      // A batch a teacher asked to be varied must actually be varied; without
+      // this the whole set came out at one difficulty.
+      difficulty_mix: obj("Optional spread across difficulties; the three values must sum to 1.", {
+        easy: num("Share that are easy."),
+        medium: num("Share that are medium."),
+        hard: num("Share that are hard."),
+      }),
       seed: str("Optional seed for reproducibility."),
       save: bool("Persist the questions in the bank. Default false: they are returned for review only."),
     }, ["topic"]),
@@ -283,8 +293,11 @@ export const TOOLS: ToolDefinition[] = [
         }),
       }),
       question_ids: arr("Existing question ids to include, in order.", uuid("A question id.")),
+      duration_minutes: int("Intended duration in minutes (1–1440). Sets the per-question time.", { minimum: 1, maximum: 1440 }),
+      options_per_question: int("How many options each generated multiple-choice item must have (2–8).", { minimum: 2, maximum: 8 }),
       randomize_questions: bool("Randomize question order per session."),
       randomize_options: bool("Randomize option order per session."),
+      publish: bool("Publish the paper. Default false: it is saved as a draft a teacher can edit."),
     }, ["title"]),
     modelHint: "Use when the teacher asks for a quiz rather than a full timed examination.",
   },
@@ -409,7 +422,10 @@ export const TOOLS: ToolDefinition[] = [
     description:
       "Analyse a marked examination from stored answers: per-question success rates, the questions candidates found hardest, and criterion breakdowns where the paper carries them. Recommendations are built only from measured data.",
     risk: ordinary("reports.view", "examinations"),
-    input: emptySchema({ examination_id: uuid("The examination id.") }, ["examination_id"]),
+    input: emptySchema({
+      examination_id: uuid("The examination id."),
+      reference: str("Describe the examination instead: \"the last one\", \"the Grade 9 draft\", a quoted title."),
+    }),
     modelHint: "Use for \"how did the class do\" questions. Say when there is not enough data.",
   },
 

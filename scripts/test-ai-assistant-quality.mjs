@@ -408,5 +408,188 @@ test('revocation stays sensitive while registration does not', () => {
   assert.equal(getTool('register_ai_agent').risk.risk, 'ordinary');
 });
 
+/* ── The instruction that reached a teacher as ONE question ──────────── */
+test('a count survives the words between it and the noun', () => {
+  // Test A, verbatim. The count regex required the digits to touch "questions",
+  // so "10 Grade 9 MYP mathematics questions" matched nothing and the default of
+  // one question was used. The teacher asked for ten and was shown a batch.
+  const a = planFromRules(
+    'Create 10 Grade 9 MYP mathematics questions on linear equations, with different difficulty levels, correct answers and worked solutions.',
+    firstTopicIn,
+  );
+  assert.equal(a.steps.length, 1, 'Test A must be one operation');
+  assert.equal(a.steps[0].tool, 'generate_question');
+  assert.equal(a.steps[0].args.count, 10, 'ten questions were asked for');
+
+  for (const [text, expected] of [
+    ['Create 10 questions on algebra', 10],
+    ['Create ten questions on fractions', 10],
+    ['Generate 5 questions about probability', 5],
+    ['Make 12 questions on angles', 12],
+    ['Build 8 questions on quadratics', 8],
+  ]) {
+    const plan = planFromRules(text, firstTopicIn);
+    const args = plan.steps[0]?.args ?? {};
+    const found = args.count ?? args.generate?.question_count;
+    assert.equal(found, expected, `${JSON.stringify(text)} must ask for ${expected}`);
+  }
+});
+
+test('the word a teacher actually uses resolves to a topic', () => {
+  // "algebra" was absent from the alias list, so "10 questions on algebra"
+  // resolved to nothing and was refused.
+  for (const [text, topic] of [
+    ['on algebra', 'algebraic_expressions'],
+    ['on linear equations', 'linear_equations'],
+    ['on fractions', 'fractions_percentages'],
+    ['on angles', 'geometry_angles'],
+    ['on probability', 'probability'],
+  ]) {
+    const plan = planFromRules(`Create 5 questions ${text}`, firstTopicIn);
+    assert.equal(plan.steps[0]?.args?.topic, topic, `${JSON.stringify(text)} must resolve to ${topic}`);
+  }
+});
+
+test('a request for a spread of difficulties is planned, not dropped', () => {
+  // "with different difficulty levels" was discarded and every item came out
+  // medium, which is not what the sentence says.
+  const a = planFromRules('Create 10 questions on linear equations with different difficulty levels', firstTopicIn);
+  assert.ok(a.steps[0].args.difficulty_mix, 'the mix must reach the handler');
+  assert.deepEqual(Object.keys(a.steps[0].args.difficulty_mix).sort(), ['easy', 'hard', 'medium']);
+
+  // A named difficulty must still not be turned into a spread.
+  const hard = planFromRules('Create 5 hard questions on quadratics', firstTopicIn);
+  assert.equal(hard.steps[0].args.difficulty, 'hard');
+  assert.equal(hard.steps[0].args.difficulty_mix, undefined);
+
+  // And the generator must actually produce the spread.
+  const built = buildExamPlan({
+    title: 'Mix', durationMinutes: 30, questionCount: 10, topics: ['linear_equations'],
+    gradeLabel: 'Grade 9', gradeOrder: 9, seed: 'mix-check',
+    difficultyMix: a.steps[0].args.difficulty_mix, sections: [{ id: 'A', title: 'Q', share: 1 }],
+  });
+  const seen = new Set(built.plan.questions.map((q) => q.difficulty));
+  assert.ok(seen.size >= 2, `a spread must contain more than one difficulty, got ${[...seen].join(',')}`);
+});
+
+test('a count survives into a paper instruction too', () => {
+  // The count is read the same way whatever the object, so "20 questions" can
+  // never quietly become a ten-question paper downstream.
+  const paper = planFromRules('Create a 20 question paper on algebra', firstTopicIn);
+  assert.equal(paper.steps[0].tool, 'create_examination');
+  assert.match(paper.steps[0].args.instruction, /20 question/, 'the count must reach the planner');
+});
+
+test('a quiz is filled with the topic that was named', () => {
+  // Test C. The topic was dropped, so buildExamPlan fell back to the grade's
+  // default topics and produced an ALGEBRA quiz for a fractions request — worse
+  // than a refusal, because it looked successful.
+  const c = planFromRules(
+    'Create a 10-question Grade 8 mathematics quiz on fractions, with four options per question, one correct answer, scoring and a 20-minute duration.',
+    firstTopicIn,
+  );
+  assert.equal(c.steps[0].tool, 'create_quiz');
+  assert.deepEqual(c.steps[0].args.generate.topics, ['fractions_percentages'], 'the named topic must be forwarded');
+  assert.equal(c.steps[0].args.generate.question_count, 10);
+  assert.equal(c.steps[0].args.duration_minutes, 20, 'twenty minutes, not the old fixed thirty');
+  assert.equal(c.steps[0].args.options_per_question, 4, 'four options were asked for');
+});
+
+test('a duration is read from every form a teacher writes', () => {
+  for (const [text, minutes] of [
+    ['Create a quiz on fractions with a 20-minute duration', 20],
+    ['Create a quiz on fractions, 20 minutes', 20],
+    ['Create a quiz on fractions for 20 mins', 20],
+    ['Create a quiz on fractions lasting 2 hours', 120],
+    ['Create a quiz on fractions lasting 90 minutes', 90],
+  ]) {
+    const plan = planFromRules(text, firstTopicIn);
+    assert.equal(plan.steps[0]?.args?.duration_minutes, minutes, `${JSON.stringify(text)} → ${minutes}`);
+  }
+});
+
+test('a four-option fraction quiz is actually four-option and markable', () => {
+  // Before this, the fractions family produced only numeric questions, so a
+  // "four options per question" request could not be satisfied at all.
+  const built = buildExamPlan({
+    title: 'Fractions', durationMinutes: 20, questionCount: 10, topics: ['fractions_percentages'],
+    gradeLabel: 'Grade 8', gradeOrder: 8, seed: 'four-option', preferredOptions: 4,
+    sections: [{ id: 'A', title: 'Q', share: 1 }],
+  });
+  assert.equal(built.plan.questions.length, 10, 'ten questions must be produced, not none');
+  const gcd = (a, b) => (b === 0 ? a : gcd(b, a % b));
+  for (const q of built.plan.questions) {
+    assert.equal(q.type, 'single_choice');
+    assert.equal((q.options ?? []).length, 4, `"${q.prompt}" must have four options`);
+    const correct = (q.options ?? []).filter((o) => o.is_correct);
+    assert.equal(correct.length, 1, `"${q.prompt}" must have exactly one key`);
+    const labels = (q.options ?? []).map((o) => o.label);
+    assert.equal(new Set(labels).size, labels.length, `"${q.prompt}" repeats an option`);
+    // Independent recomputation of the answer key from the prompt itself.
+    const m = /\\dfrac\{(\d+)\}\{(\d+)\}/.exec(q.prompt);
+    assert.ok(m, `"${q.prompt}" must show the fraction in LaTeX`);
+    const [num, den] = [Number(m[1]), Number(m[2])];
+    const g = gcd(num, den);
+    assert.ok(g > 1, `"${q.prompt}" is already in simplest form, so the task is vacuous`);
+    assert.equal(correct[0].label, `$\\dfrac{${num / g}}{${den / g}}$`, `wrong key for "${q.prompt}"`);
+  }
+  assert.ok(validateProposedExam(built.plan).ok, 'the paper must pass its own validator');
+});
+
+test('an unusable option count is refused before anything is written', () => {
+  // Twelve options cannot be built from a fraction bank of five distractors, and
+  // a paper that silently contains two-option items is a false success.
+  assert.equal(getTool('create_quiz').input.properties.options_per_question.maximum, 8);
+  assert.ok(getTool('create_quiz').input.properties.duration_minutes, 'duration must be part of the contract');
+});
+
+/* ── Modifying an existing examination without a UUID ───────────────── */
+test('a described examination can be edited without its id', () => {
+  // Test D. No rule produced update_examination, so "change the duration" was
+  // answered with "I could not turn that into an action".
+  const d = planFromRules(
+    'Replace two questions in the Grade 9 linear equations examination and change its duration to 90 minutes.',
+    firstTopicIn,
+  );
+  assert.equal(d.steps[0]?.tool, 'update_examination');
+  assert.equal(d.steps[0].args.duration_minutes, 90);
+  assert.equal(d.steps[0].args.examination_id, undefined, 'a described exam carries no id');
+  assert.ok(d.steps[0].args.reference, 'the description must reach the resolver');
+});
+
+test('analysis and validation resolve a described examination', () => {
+  // Both used to require a UUID, so "the last examination" was refused.
+  const analyse = planFromRules('Analyse the results of the last Grade 9 examination', firstTopicIn);
+  assert.equal(analyse.steps[0]?.tool, 'analyze_exam_performance');
+  assert.ok(analyse.steps[0].args.reference);
+
+  const check = planFromRules('Check my exam for mistakes', firstTopicIn);
+  assert.equal(check.steps[0]?.tool, 'validate_examination');
+  assert.ok(check.steps[0].args.reference);
+});
+
+test('the update and analysis tools accept a description as well as an id', () => {
+  for (const name of ['update_examination', 'validate_examination', 'analyze_exam_performance']) {
+    const tool = getTool(name);
+    assert.ok(tool, `${name} must exist`);
+    assert.ok(tool.input.properties.reference, `${name} must accept a description`);
+    const required = tool.input.required ?? [];
+    assert.ok(!required.includes('examination_id'), `${name} must not demand an id when a description works`);
+  }
+});
+
+test('a destructive instruction is still refused', () => {
+  // D9: the fix for "the assistant refuses everything" must not become
+  // "the assistant will delete anything".
+  for (const text of [
+    "Delete all of Oak's examinations",
+    'Remove every question from the Grade 9 exam',
+    'Wipe the question bank',
+  ]) {
+    const plan = planFromRules(text, firstTopicIn);
+    assert.equal(plan.steps.length, 0, `${JSON.stringify(text)} must not plan an action`);
+  }
+});
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nAI assistant quality: ${n} checks passed.`);
