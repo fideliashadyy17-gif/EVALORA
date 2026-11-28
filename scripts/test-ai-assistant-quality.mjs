@@ -591,5 +591,46 @@ test('a destructive instruction is still refused', () => {
   }
 });
 
+/* ── Retries must not duplicate ─────────────────────────────────────── */
+test('a retried submission reuses its request id instead of minting a new one', () => {
+  // Every write handler creates a new object, so a second execution of the same
+  // instruction is a duplicate paper, not a refresh. The composer holds one id
+  // per instruction and the engine replays the first result for it.
+  const client = readFileSync('src/app/dashboard/ai/AssistantClient.tsx', 'utf8');
+  assert.match(client, /crypto\.randomUUID\(\)/, 'the composer must mint a request id');
+  assert.match(client, /requestId: id/, 'the same id must be sent on retry');
+  assert.doesNotMatch(
+    client,
+    /requestId: crypto\.randomUUID\(\)/,
+    'the id must be minted once per instruction, not per attempt',
+  );
+
+  const engine = readFileSync('src/lib/ai/engine.ts', 'utf8');
+  assert.match(engine, /status", "succeeded"/, 'the guard must only replay completed writes');
+  assert.match(engine, /arguments_digest/, 'a reused id with different arguments must not replay');
+  assert.match(engine, /code: "replayed"/, 'a replay must be reported as such, not as a new object');
+  assert.match(engine, /actor_user_id/, 'the guard must be scoped to the acting human');
+});
+
+test('a dry run and a failed attempt are never treated as already done', () => {
+  const engine = readFileSync('src/lib/ai/engine.ts', 'utf8');
+  const guard = engine.slice(engine.indexOf('const replayable'), engine.indexOf('const startedAt'));
+  assert.match(guard, /request\.execute !== false/, 'preview mode must stay re-runnable');
+  assert.match(guard, /request\.actor\.kind === "human"/, 'agents keep their own execution path');
+  assert.match(guard, /!request\.approvalId/, 'an approved operation keeps the approval guarantee');
+});
+
+test('a confirmation never claims more than the database holds', () => {
+  // The UI summary is built from the persisted row, so a paper is only described
+  // once saveQuiz returned its id.
+  const handlers = readFileSync('src/lib/ai/handlers.ts', 'utf8');
+  const createQuiz = handlers.slice(handlers.indexOf('async function createQuiz'), handlers.indexOf('async function updateQuiz'));
+  assert.match(createQuiz, /const saved = await saveQuiz/, 'the paper must be saved through the real service');
+  assert.ok(
+    createQuiz.indexOf('saveQuiz') < createQuiz.indexOf('quiz_id: saved.id'),
+    'the confirmation must quote the saved id, not a predicted one',
+  );
+});
+
 rmSync(outDir, { recursive: true, force: true });
 console.log(`\nAI assistant quality: ${n} checks passed.`);
