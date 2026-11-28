@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { Badge, Button, Card } from "@/components/ui";
 import { runAssistant, type AssistantTurn } from "./actions";
@@ -46,13 +46,30 @@ export function AssistantClient({
   const [turns, setTurns] = useState<AssistantTurn[]>([]);
   const [pending, startTransition] = useTransition();
 
+  // One id per submitted instruction, held until that instruction succeeds.
+  // A retry after a dropped response therefore carries the SAME id, and the
+  // engine returns the first result instead of creating a second examination or
+  // question batch. Changing the text starts a new request.
+  const requestId = useRef<string | null>(null);
+  const lastText = useRef<string>("");
+
   const submit = (mode: "preview" | "execute") => {
     const text = instruction.trim();
     if (text.length < 3 || pending) return;
+    if (lastText.current !== text || !requestId.current) {
+      requestId.current = crypto.randomUUID();
+      lastText.current = text;
+    }
+    const id = requestId.current;
     startTransition(async () => {
-      const turn = await runAssistant({ instruction: text, mode });
+      const turn = await runAssistant({ instruction: text, mode, requestId: id });
       setTurns((current) => [turn, ...current]);
-      if (turn.executed.some((e) => e.ok)) setInstruction("");
+      if (turn.executed.some((e) => e.ok)) {
+        // The instruction is done; a new one must not reuse this id.
+        setInstruction("");
+        requestId.current = null;
+        lastText.current = "";
+      }
     });
   };
 

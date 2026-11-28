@@ -372,6 +372,45 @@ export async function executeTool(request: ExecutionRequest, deps: EngineDeps): 
   }
 
   const argumentsDigest = sha(request.args);
+  // ── Replay guard ─────────────────────────────────────────────────────
+  // A request id identifies one attempt at one tool. A retried submission (the
+  // teacher clicks twice, the browser retries, a client repeats a POST) presents
+  // the same id; without this it would author a second paper, because every
+  // write handler creates a new object. Releasing the result of the first
+  // attempt is the only answer that cannot duplicate a record.
+  //
+  // Scope is (organization, tool, request id, human actor) so one tenant can
+  // never observe or consume another's request id. Only completed writes are
+  // replayed: a failed or dry-run attempt is allowed to run again.
+  const replayable = request.execute !== false && request.actor.kind === "human" && !request.approvalId;
+  if (replayable) {
+    const { data: prior } = await deps.admin
+      .from("ai_executions")
+      .select("id, status, arguments_digest, result_summary, error_code, error_message")
+      .eq("organization_id", request.scope.organizationId)
+      .eq("tool_name", request.tool)
+      .eq("request_id", request.scope.requestId)
+      .eq("actor_user_id", request.actor.userId ?? "00000000-0000-0000-0000-000000000000")
+      .eq("status", "succeeded")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    // The digest is recomputed before the comparison below, so a request id
+    // reused for DIFFERENT arguments is not answered with the wrong result.
+    if (prior && prior.arguments_digest === argumentsDigest) {
+      const summary = prior.result_summary as { summary?: string; data?: Record<string, unknown> } | null;
+      return {
+        ok: true,
+        tool: request.tool,
+        risk,
+        code: "replayed",
+        summary: `${summary?.summary ?? "This request was already carried out."} (Nothing was created a second time.)`,
+        data: summary?.data,
+        executionId: prior.id as string,
+      } as ExecutionOutcome;
+    }
+  }
+
   const startedAt = Date.now();
 
   const insertExecution = async (status: "started" | "awaiting_approval"): Promise<string | null> => {

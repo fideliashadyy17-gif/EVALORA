@@ -95,6 +95,12 @@ export async function runAssistant(input: {
   instruction: string;
   mode: "preview" | "execute";
   approvalId?: string;
+  /**
+   * Stable id for one submission. The composer mints it once per instruction and
+   * reuses it on retry, so a double submit or a browser retry returns the first
+   * result instead of authoring a second paper.
+   */
+  requestId?: string;
 }): Promise<AssistantTurn> {
   const instruction = String(input?.instruction ?? "").trim().slice(0, 4000);
   const empty: AssistantTurn = {
@@ -146,7 +152,10 @@ export async function runAssistant(input: {
     userId: ctx.user.id,
     userEmail: ctx.user.email,
   };
-  const scope = { surface: "native" as const, organizationId: org.id, requestId: crypto.randomUUID() };
+  const requestId = typeof input?.requestId === "string" && /^[0-9a-f-]{36}$/i.test(input.requestId)
+    ? input.requestId
+    : crypto.randomUUID();
+  const scope = { surface: "native" as const, organizationId: org.id, requestId };
 
   // ── Execute the instruction ─────────────────────────────────────────
   let executed: AssistantTurn["executed"] = [];

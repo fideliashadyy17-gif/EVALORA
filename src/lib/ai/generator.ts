@@ -51,7 +51,9 @@ export const TOPIC_CATALOG: TopicDefinition[] = [
   {
     key: "algebraic_expressions",
     label: "Algebraic expressions",
-    aliases: ["algebraic expression", "expressions", "expand", "factorise", "factorize", "simplify", "like terms"],
+    // "algebra" itself was missing, so "create 10 questions on algebra" resolved to
+    // no topic at all and the assistant refused a request it could serve.
+    aliases: ["algebraic expression", "expressions", "expand", "factorise", "factorize", "simplify", "like terms", "algebra"],
     minGrade: 6,
     maxGrade: 11,
     summary: "Expanding, factorising and simplifying linear and quadratic expressions.",
@@ -250,6 +252,25 @@ const ri = (r: Rng, min: number, max: number) => min + Math.floor(r() * (max - m
 const pick = <T,>(r: Rng, list: readonly T[]): T => list[Math.floor(r() * list.length)];
 const num = (n: number) => String(Math.round(n * 100) / 100);
 
+/**
+ * A fraction that genuinely reduces, so "write in simplest form" is a real task.
+ *
+ * The base fraction is chosen coprime (`n` and `d` share no factor), so the
+ * highest common factor of the displayed `nk/dk` is exactly `k`. That makes the
+ * worked solution correct rather than approximate, and rules out the vacuous
+ * case where the fraction was already in lowest terms.
+ */
+function reducibleFraction(r: Rng): { n: number; d: number; k: number } {
+  const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const d = pick(r, [2, 3, 4, 5, 7, 8]);
+    const n = ri(r, 1, d - 1);
+    const k = pick(r, [2, 3, 4, 5, 6]);
+    if (gcd(n, d) === 1 && k !== d) return { n, d, k };
+  }
+  return { n: 2, d: 3, k: 2 };
+}
+
 /** Signed term rendering: `+ 3` / `− 3`. */
 const signed = (n: number) => (n < 0 ? `− ${Math.abs(n)}` : `+ ${n}`);
 
@@ -274,8 +295,14 @@ const difficultyRank = (d: Difficulty) => (d === "easy" ? 0 : d === "medium" ? 1
 
 type Family = {
   topic: TopicKey;
-  make: (r: Rng, difficulty: Difficulty, index: number) => BuiltQuestion | null;
+  /** `hint` carries a shape the caller needs (e.g. exactly four options). */
+  make: (r: Rng, difficulty: Difficulty, index: number, hint?: FamilyHint) => BuiltQuestion | null;
 };
+
+export interface FamilyHint {
+  /** When set, the family must return a question with exactly this many options. */
+  preferredOptions?: number;
+}
 
 /**
  * Each family returns ONE question. The caller supplies a per-question seed, so
@@ -704,7 +731,62 @@ const FAMILIES: Family[] = [
   /* ── Fractions & percentages ── */
   {
     topic: "fractions_percentages",
-    make: (r, difficulty, index) => {
+    make: (r, difficulty, index, hint) => {
+      // One family in three is a four-option multiple-choice fraction item. The
+      // topic previously produced only numeric percentage questions, so a teacher
+      // asking for "a fractions quiz with four options per question" could not be
+      // served at all and the request had to be refused.
+      // Normally one item in three is multiple choice. When the caller needs a
+      // fixed option count the numeric branch is unavailable, so EVERY attempt
+      // must take this branch — gating it on `index` would make two attempts in
+      // three return null forever and the paper would come out empty.
+      if (hint?.preferredOptions || index % 3 === 0) {
+        const { n, d, k } = reducibleFraction(r);
+        const correct = `${n}/${d}`;
+        // Distractors model real errors: inverting, cancelling the common factor
+        // in the numerator only, doubling the denominator, and adding one to both
+        // parts. (Subtracting the same amount from both parts was tried and
+        // produced "0/6" when the numerator was 1 — a distractor no student would
+        // ever choose.)
+        const candidates = [
+          `${d}/${n}`,
+          `${n}/${d * k}`,
+          `${n}/${d + 1}`,
+          `${n}/${d * 2}`,
+          `${n + 1}/${d}`,
+        ];
+        const seen = new Set([correct]);
+        const options: { label: string; is_correct: boolean }[] = [{ label: frac(n, d), is_correct: true }];
+        const want = hint?.preferredOptions ?? 4;
+        if (want < 2) return null;
+        for (const candidate of candidates) {
+          if (seen.has(candidate) || options.length === want) continue;
+          seen.add(candidate);
+          const [cn, cd] = candidate.split("/");
+          options.push({ label: frac(cn, cd), is_correct: false });
+        }
+        // Fewer distractors than asked for is not a shorter question, it is a
+        // different one; refuse rather than under-deliver.
+        if (options.length !== want) return null;
+        // Deterministic but non-trivial order, so the key is not always first.
+        const offset = ri(r, 0, options.length - 1);
+        const shuffled = [...options.slice(offset), ...options.slice(0, offset)];
+        return {
+          ref: `q${index}`,
+          type: "single_choice",
+          prompt: `Write ${frac(n * k, d * k)} in its simplest form.`,
+          points: 1,
+          difficulty,
+          topic: "Number",
+          subtopic: "Simplifying fractions",
+          options: shuffled,
+          explanation: `The highest common factor of ${n * k} and ${d * k} is ${k}, so ${n * k}/${d * k} = ${n}/${d}.`,
+          working: `${frac(n * k, d * k)} = ${frac(n, d)}`,
+        };
+      }
+      // A numeric item has no options, so it cannot stand in when the caller
+      // asked for a fixed number of them.
+      if (hint?.preferredOptions) return null;
       const whole = ri(r, 4, 12) * 10;
       const pct = pick(r, [10, 20, 25, 50, 5, 75]);
       if (difficultyRank(difficulty) === 0) {
@@ -967,6 +1049,12 @@ export interface PlanSpec {
   seed: string;
   /** Preferred question type per section, when the caller knows. */
   sectionTypes?: Record<string, "mixed" | "objective" | "structured">;
+  /**
+   * Exactly this many options per question, when the teacher asked for it.
+   * A family that cannot meet it returns null, so the item is skipped rather
+   * than the paper silently mixing three-option and short-answer items.
+   */
+  preferredOptions?: number;
 }
 
 export interface PlanResult {
@@ -1074,6 +1162,7 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
   const questions: ProposedQuestion[] = [];
   const sources: PlanResult["sources"] = [];
   const usedPrompts = new Set<string>();
+  const hint: FamilyHint = { preferredOptions: spec.preferredOptions };
   let globalIndex = 0;
 
   sections.forEach((section, sectionIndex) => {
@@ -1089,8 +1178,11 @@ export function buildExamPlan(spec: PlanSpec): PlanResult {
       const families = familiesFor(topic);
       if (!families.length) continue;
       const family = families[attempt % families.length];
-      const made_ = family.make(r, difficulty, globalIndex + 1);
+      const made_ = family.make(r, difficulty, globalIndex + 1, hint);
       if (!made_) continue;
+      // The caller asked for a fixed number of options; an item of another shape
+      // is not a substitute for it.
+      if (hint.preferredOptions && made_.type === "single_choice" && (made_.options?.length ?? 0) !== hint.preferredOptions) continue;
       const options = distinctOptions(made_.options);
       // Counted-response questions need at least a key; multiple-choice need at
       // least two distinct options to be a real choice.
