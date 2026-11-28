@@ -221,6 +221,51 @@ test('a supported topic always yields the questions that were asked for', () => 
   }
 });
 
+test('a fraction question never offers the correct answer twice', () => {
+  // The probability family's "unsimplified" distractor is identical to the key
+  // whenever the fraction is already in simplest form (3/8). A multiple-choice
+  // question whose wrong option equals the right one cannot be marked.
+  for (const seed of ['f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8']) {
+    const built = buildExamPlan({
+      title: 'Fractions', durationMinutes: 30, questionCount: 8, topics: ['probability'],
+      gradeLabel: 'Grade 9', gradeOrder: 9, seed,
+      sections: [{ id: 'A', title: 'Q', share: 1 }],
+    });
+    for (const q of built.plan.questions) {
+      const labels = (q.options ?? []).map((o) => o.label);
+      assert.equal(
+        new Set(labels).size,
+        labels.length,
+        `seed ${seed}: question "${q.prompt.slice(0, 40)}" repeats an option: ${labels.join(' | ')}`,
+      );
+      assert.equal(
+        (q.options ?? []).filter((o) => o.is_correct).length,
+        1,
+        `seed ${seed}: exactly one option must be correct`,
+      );
+    }
+    const report = validateProposedExam(built.plan);
+    assert.ok(report.ok, `seed ${seed}: probability paper must validate: ${report.errors.map((e) => e.code).join(',')}`);
+  }
+});
+
+test('fractions are rendered as mathematics, not ASCII', () => {
+  const built = buildExamPlan({
+    title: 'Fraction notation', durationMinutes: 30, questionCount: 4, topics: ['probability'],
+    gradeLabel: 'Grade 9', gradeOrder: 9, seed: 'tex', sections: [{ id: 'A', title: 'Q', share: 1 }],
+  });
+  const withFraction = built.plan.questions.filter((q) => (q.options ?? []).some((o) => o.label.includes('\\dfrac')));
+  assert.ok(withFraction.length > 0, 'at least one option must use LaTeX');
+  for (const q of withFraction) {
+    for (const option of q.options ?? []) {
+      // Balanced delimiters: the validator rejects unclosed maths, and an
+      // unbalanced label would render as raw source in the UI.
+      const dollars = (option.label.match(/\$/g) ?? []).length;
+      assert.equal(dollars % 2, 0, `unbalanced maths delimiters in "${option.label}"`);
+    }
+  }
+});
+
 /* ── 5. The registration tool exists and is least-privilege ─────────── */
 
 test('register_ai_agent is registered with a schema and the right risk', () => {
