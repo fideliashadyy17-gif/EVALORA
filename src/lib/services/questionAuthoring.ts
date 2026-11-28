@@ -51,6 +51,12 @@ export interface QuestionPayload {
   subtopic?: string | null;
   source_reference?: string | null;
   source_url?: string | null;
+  /**
+   * How the question came to exist. The column defaults to 'manual'; the AI
+   * assistant states 'ai_generated' so the bank can tell its work apart from a
+   * teacher's. Never inferred — the caller says what it did.
+   */
+  creation_method?: "manual" | "imported" | "ai_generated";
   config?: Record<string, unknown>;
   options: { id?: string; label: string; is_correct: boolean; content_doc?: unknown | null }[];
   template_id?: string | null;
@@ -151,6 +157,7 @@ export async function saveQuestionForActor(
     subtopic: q.subtopic?.trim() || null,
     source_reference: q.source_reference?.trim() || null,
     source_url: q.source_url?.trim() || null,
+    ...(q.creation_method ? { creation_method: q.creation_method } : {}),
     type: q.type,
     prompt: q.prompt,
     prompt_doc: q.prompt_doc ?? null,

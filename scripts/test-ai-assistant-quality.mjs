@@ -306,6 +306,25 @@ test('the client list in code matches the database constraint', () => {
     `migration allows ${inSql.join(',')} but AGENT_CLIENTS is ${AGENT_CLIENTS.join(',')}`);
 });
 
+test('AI-authored questions are labelled with a value the schema accepts', () => {
+  // `questions_creation_method_check` allows manual | imported | ai_generated,
+  // and the column defaults to 'manual'. Nothing in the product ever set it, so
+  // every AI-written question was indistinguishable from a teacher's own work.
+  // The assistant now states the label; this pins it to the real constraint.
+  const schema = readFileSync('src/app/dashboard/questions/actions.ts', 'utf8');
+  const allowed = schema.match(/creation_method: z\.enum\(\[([^\]]*)\]\)/);
+  assert.ok(allowed, 'the question schema must accept creation_method');
+  const keys = allowed[1].split(',').map((v) => v.trim().replace(/^"|"$/g, ''));
+  assert.deepEqual(keys.sort(), ['ai_generated', 'imported', 'manual'],
+    'the zod vocabulary must match questions_creation_method_check');
+
+  const handlers = readFileSync('src/lib/ai/handlers.ts', 'utf8');
+  const saves = handlers.match(/saveQuestion\(\{/g) ?? [];
+  const labelled = handlers.match(/creation_method: "ai_generated"/g) ?? [];
+  assert.equal(labelled.length, saves.length,
+    `every assistant save must be labelled: ${saves.length} saveQuestion calls, ${labelled.length} labels`);
+});
+
 /* ── A refusal must never be journaled as a success ─────────────────── */
 
 test('a refused tool is journaled as failed, and reported as a failure', () => {
