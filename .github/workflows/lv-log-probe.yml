@@ -11,16 +11,14 @@ jobs:
   probe:
     runs-on: ubuntu-latest
     steps:
-      - name: Dump environment facts
+      - name: Emit findings as annotations (annotations survive where logs do not)
         env:
           HAS_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL != '' }}
           HAS_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY != '' }}
-          BASE_URL: https://evalora-edu.online
         run: |
-          echo "url_present=$HAS_URL"
-          echo "key_present=$HAS_KEY"
-          echo "--- connectivity ---"
-          for target in "$BASE_URL/api/mcp" "${NEXT_PUBLIC_SUPABASE_URL}/rest/v1/"; do
-            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 15 "$target" || echo "ERR")
-            echo "$target -> $code"
-          done
+          echo "secrets url=$HAS_URL key=$HAS_KEY"
+          echo "::error title=PROBE URL_SECRET::url_present=$HAS_URL"
+          echo "::error title=PROBE KEY_SECRET::key_present=$HAS_KEY"
+          app=$(curl -s -o /tmp/app.json -w "%{http_code}" --max-time 20 "https://evalora-edu.online/api/mcp" || echo ERR)
+          server=$(node -e "try{console.log(JSON.parse(require('fs').readFileSync('/tmp/app.json','utf8')).server)}catch(e){console.log('unparseable')}")
+          echo "::error title=PROBE APP::status=$app server=$server"
