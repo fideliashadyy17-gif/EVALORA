@@ -241,4 +241,24 @@ test("the migration is additive where it cannot be, and says so", () => {
   assert.doesNotMatch(MARKS, /delete from public\.exam_answers/i);
 });
 
+
+test("the marking action enforces class+subject in the application, not only the policy", () => {
+  // A policy cannot express "assigned to this subject IN THIS CLASS" without a
+  // join, and a screen that only fails at the UPDATE gives the marker a form to
+  // fill and a silent no-op. The action must refuse with a reason.
+  const ACTIONS = readFileSync("src/app/dashboard/exams/actions.ts", "utf8");
+  assert.match(ACTIONS, /canAuthorInClassSubject\(supabase, org\.id, ctx\.user\.id, classId, subjectId\)/);
+  assert.match(ACTIONS, /fail\("subject_scope"\)/);
+  const PAGE = readFileSync("src/app/dashboard/exams/[id]/page.tsx", "utf8");
+  assert.match(PAGE, /subject_scope:/, "the refusal must reach the person who tried");
+  assert.match(PAGE, /not yours to change/);
+});
+
+test("the application predicate is the one the module documents, not a second copy", () => {
+  const MODULE = readFileSync("src/lib/teachingAssignments.ts", "utf8");
+  const ACTIONS = readFileSync("src/app/dashboard/exams/actions.ts", "utf8");
+  assert.match(MODULE, /export async function canAuthorInClassSubject/);
+  assert.match(ACTIONS, /import \{ canAuthorInClassSubject \}/);
+});
+
 console.log(`\nTeaching assignments: ${n} checks passed.`);
