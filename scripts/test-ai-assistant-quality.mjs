@@ -16,7 +16,7 @@ const outDir = mkdtempSync(path.join(tmpdir(), 'evalora-quality-'));
 execFileSync('npx', [
   'tsc',
   'src/lib/ai/types.ts', 'src/lib/ai/risk.ts', 'src/lib/ai/tools.ts', 'src/lib/ai/generator.ts',
-  'src/lib/ai/validation.ts', 'src/lib/ai/intent.ts', 'src/lib/ai/agents.ts',
+  'src/lib/ai/validation.ts', 'src/lib/ai/intent.ts', 'src/lib/ai/agents.ts', 'src/lib/ai/agentToken.ts',
   '--outDir', outDir, '--rootDir', 'src', '--module', 'commonjs', '--target', 'es2022',
   '--esModuleInterop', '--skipLibCheck', '--moduleResolution', 'node', '--lib', 'es2022,dom',
   '--resolveJsonModule', '--jsx', 'preserve', '--downlevelIteration',
@@ -28,6 +28,7 @@ const { validateProposedExam } = await load('lib/ai/validation.js');
 const { planFromRules } = await load('lib/ai/intent.js');
 const { TOOLS, getTool } = await load('lib/ai/tools.js');
 const { failureOf, journalStatusFor } = await load('lib/ai/types.js');
+const { generateAgentToken, TOKEN_PREFIX_LENGTH, AGENT_CLIENTS } = await load('lib/ai/agentToken.js');
 
 let n = 0;
 const test = (name, fn) => {
@@ -265,6 +266,44 @@ test('fractions are rendered as mathematics, not ASCII', () => {
       assert.equal(dollars % 2, 0, `unbalanced maths delimiters in "${option.label}"`);
     }
   }
+});
+
+/* ── A token must fit the column that stores its prefix ─────────────── */
+
+test('every client yields a token prefix the schema will accept', () => {
+  // `ai_agents_token_prefix_check` allows 6–16 characters. The prefix used to be
+  // sliced to 18, which no client name can satisfy — `evalora_api_` is already
+  // 12 — so every insert was rejected and agent registration could never
+  // succeed. ai_agents has been empty since it was created.
+  const check = readFileSync('supabase/migrations/20261127180000_ai_core.sql', 'utf8').match(
+    /token_prefix text check \(token_prefix is null or char_length\(token_prefix\) between (\d+) and (\d+)\)/,
+  );
+  assert.ok(check, 'the prefix length constraint must be found in the migration');
+  const [, min, max] = check.map(Number);
+  assert.equal(max, TOKEN_PREFIX_LENGTH, 'the code constant must match the column constraint');
+
+  for (const client of AGENT_CLIENTS) {
+    const { token, digest, prefix } = generateAgentToken(client);
+    assert.ok(prefix.length >= min && prefix.length <= max,
+      `${client}: prefix "${prefix}" is ${prefix.length} chars, constraint is ${min}–${max}`);
+    assert.equal(digest.length, 64, 'the digest must fit the 64-char column');
+    assert.match(token, new RegExp(`^evalora_${client}_[A-Za-z0-9_-]{43}$`),
+      `${client}: token shape must stay evalora_<client>_<43 base64url chars>`);
+    // The stored prefix must never be the whole secret.
+    assert.ok(token.length > prefix.length * 2, 'the prefix must not reveal the token');
+  }
+});
+
+test('the client list in code matches the database constraint', () => {
+  // The live constraint allowed five clients and omitted "api", which the code
+  // offers — registering an api agent raised a 23514 the UI could only render as
+  // a generic failure. The migration must name exactly the code's clients.
+  const sql = readFileSync('supabase/migrations/20261128120000_ai_agent_credential_constraints.sql', 'utf8');
+  const match = sql.match(/check \(client in \(([^)]*)\)\)/);
+  assert.ok(match, 'the client constraint must be present in the reconciliation migration');
+  const inSql = match[1].split(',').map((v) => v.trim().replace(/^'|'$/g, '')).sort();
+  assert.deepEqual(inSql, [...AGENT_CLIENTS].sort(),
+    `migration allows ${inSql.join(',')} but AGENT_CLIENTS is ${AGENT_CLIENTS.join(',')}`);
 });
 
 /* ── A refusal must never be journaled as a success ─────────────────── */

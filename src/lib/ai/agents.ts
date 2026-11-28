@@ -14,12 +14,12 @@ import "server-only";
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { createHash, randomBytes } from "node:crypto";
+
 import { ToolError, type ActorIdentity } from "./types";
+import { AGENT_CLIENTS, digestAgentToken, generateAgentToken, TOKEN_PREFIX_LENGTH, type AgentClient } from "./agentToken";
 import { TOOLS } from "./tools";
 
-export const AGENT_CLIENTS = ["chatgpt", "claude", "gemini", "mcp", "api", "custom"] as const;
-export type AgentClient = (typeof AGENT_CLIENTS)[number];
+export { AGENT_CLIENTS, digestAgentToken, generateAgentToken, TOKEN_PREFIX_LENGTH, type AgentClient };
 
 export interface AgentRecord {
   id: string;
@@ -43,23 +43,6 @@ export interface AgentRecord {
   approvedAt: string | null;
   revokedAt: string | null;
   revokeReason: string | null;
-}
-
-/** A token has 32 bytes of entropy, is prefixed for identification, and is
- *  hashed before storage. The prefix is what an admin sees afterwards. */
-export function generateAgentToken(client: AgentClient): { token: string; digest: string; prefix: string } {
-  const secret = randomBytes(32).toString("base64url");
-  const token = `evalora_${client}_${secret}`;
-  return {
-    token,
-    digest: createHash("sha256").update(token).digest("hex"),
-    prefix: token.slice(0, Math.min(18, token.length)),
-  };
-}
-
-/** Same hashing the resolver expects; exported so routes do not re-implement it. */
-export function digestAgentToken(token: string): string {
-  return createHash("sha256").update(token).digest("hex");
 }
 
 function rowToAgent(row: Record<string, unknown>): AgentRecord {
