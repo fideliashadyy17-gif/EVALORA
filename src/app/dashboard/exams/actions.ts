@@ -12,6 +12,7 @@ import { audit } from "@/lib/admin";
 import { resolveAssessmentConfig, resolveExamDefaults } from "@/lib/assessmentConfig";
 import { AiMarkingError, describeAiMarking, suggestCriterionMarks, type MarkingCriterion } from "@/lib/ai-marking";
 import { computeAttemptScoreWithAdjustments } from "@/lib/scoreAdjustmentsServer";
+import { canAuthorInClassSubject } from "@/lib/teachingAssignments";
 import { createAdminClient, createClient } from "@/lib/supabase/server";
 import { genCode } from "@/lib/utils";
 import { createHash } from "node:crypto";
@@ -447,8 +448,39 @@ export async function markAnswer(formData: FormData) {
   if (!Number.isFinite(points) || points < 0) return fail("points");
 
   const supabase = await createClient();
-  const { data: exam, error: examError } = await supabase.from("exams").select("id, quiz_id").eq("id", examId).eq("organization_id", org.id).maybeSingle();
+  const { data: exam, error: examError } = await supabase
+    .from("exams")
+    .select("id, quiz_id, subject_id, settings")
+    .eq("id", examId)
+    .eq("organization_id", org.id)
+    .maybeSingle();
   if (examError || !exam?.quiz_id) return fail("invalid");
+
+  // Subject and class scope, checked in the APPLICATION as well as the policy.
+  //
+  // The database policy now refuses an awarded mark on a subject this teacher is
+  // not assigned to, but a policy cannot express "the teacher is assigned to
+  // this subject IN THIS CLASS" without a join the policy engine cannot make
+  // cheaply — and a marking screen that only fails at the UPDATE gives the
+  // marker a form they can fill in and a silent no-op at the end. Asking here
+  // produces the refusal the teacher can act on, with the reason.
+  //
+  // `canAuthorInClassSubject` returns true for a teacher with no assignments at
+  // all and for content with no subject — the same grandfathering the policy
+  // applies. Refusing there would lock out every existing school on deploy.
+  const subjectId = (exam.subject_id as string | null) ?? null;
+  if (subjectId) {
+    const attemptClass = await supabase
+      .from("exam_attempts")
+      .select("class_id")
+      .eq("id", attemptId)
+      .eq("exam_id", exam.id)
+      .maybeSingle();
+    const classId = (attemptClass.data?.class_id as string | null) ?? null;
+    if (!(await canAuthorInClassSubject(supabase, org.id, ctx.user.id, classId, subjectId))) {
+      return fail("subject_scope");
+    }
+  }
   const { data: attempt, error: attemptError } = await supabase.from("exam_attempts").select("id, exam_id, status").eq("id", attemptId).eq("exam_id", exam.id).maybeSingle();
   if (attemptError || !attempt) return fail("invalid");
   if (!["submitted", "auto_submitted", "marked"].includes(attempt.status)) return fail("in_progress");

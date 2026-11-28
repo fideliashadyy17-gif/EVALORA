@@ -13,6 +13,7 @@ import { transferStudent } from "../academics/actions";
 import { createStudentLogin, setStudentStatus } from "./actions";
 import { StudentRegistrationForm } from "./StudentRegistrationForm";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Students" };
 export const dynamic = "force-dynamic";
@@ -258,6 +259,7 @@ export default async function DashboardStudentsPage({ searchParams }: { searchPa
           </div>
         )}
       </Card>
+      <AssistantPanel title="Registration & roster assistant" />
       <PageNavigation page={page} pageSize={pageSize} total={studentTotal ?? 0} pathname="/dashboard/students" query={{ q: sp.q, class: sp.class, status: sp.status }} label="students" />
     </>
   );

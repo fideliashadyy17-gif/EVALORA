@@ -6,6 +6,7 @@ import { PageTitle, Card } from "@/components/ui";
 import { GradingSystemsClient } from "@/components/grading/GradingSystemsClient";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Grading Systems" };
 export const dynamic = "force-dynamic";
@@ -71,6 +72,7 @@ export default async function GradingSystemsPage({
           canEdit={isManager}
         />
       </Card>
+      <AssistantPanel title="Marking & grading assistant" />
     </div>
   );
 }

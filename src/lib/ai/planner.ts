@@ -47,6 +47,8 @@ export interface PlannerDeps {
   hasPermission: (permission: string) => Promise<boolean>;
   env?: NodeJS.ProcessEnv;
   modelTransport?: EngineDeps["modelTransport"];
+  /** Subject scope for the steps this plan runs. See EngineDeps.subjectScope. */
+  subjectScope?: EngineDeps["subjectScope"];
   /** Context text used for the model prompt. */
   context?: string;
 }
@@ -177,6 +179,11 @@ export async function runInstruction(instruction: string, deps: PlannerDeps): Pr
       { tool: step.tool, args: step.args, actor: deps.actor, scope: deps.scope },
       {
         hasPermission: deps.hasPermission,
+        // Without this, every step the planner proposed would skip the subject
+        // gate: the plan is executed through this engine, not directly, and an
+        // absent resolver means "no subject scope to enforce". The planner path
+        // must be as constrained as a direct tool call.
+        subjectScope: deps.subjectScope,
         admin: deps.admin,
         supabase: deps.supabase,
         env: deps.env,

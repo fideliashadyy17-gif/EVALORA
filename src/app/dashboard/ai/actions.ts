@@ -21,6 +21,7 @@ import { audit } from "@/lib/admin";
 import { loadOrganizationContext, renderContextForModel } from "@/lib/ai/context";
 import { executeTool, loadAiSettings } from "@/lib/ai/engine";
 import { runInstruction } from "@/lib/ai/planner";
+import { loadAssistantPageContext, renderPageContextForModel, type AssistantPageContext } from "./pageContext";
 import { TOOLS, toolsForPermissions } from "@/lib/ai/tools";
 import type { ExecutionOutcome } from "@/lib/ai/engine";
 import { ToolError } from "@/lib/ai/types";
@@ -60,6 +61,15 @@ export interface AssistantTurn {
     notes: string[];
   };
   error?: string;
+  /** Where the assistant understood the teacher to be, when it could resolve it. */
+  pageContext?: {
+    surface: string;
+    summary: string;
+    class: { id: string; name: string } | null;
+    subject: { id: string; name: string } | null;
+    academicYear: { id: string; name: string } | null;
+    notes: string[];
+  } | null;
 }
 
 /**
@@ -102,6 +112,12 @@ export async function runAssistant(input: {
    * result instead of authoring a second paper.
    */
   requestId?: string;
+  /**
+   * The workspace path the teacher asked from, so the assistant knows which
+   * class, subject or record "this" refers to. A hint about intent only — it
+   * grants nothing, and every tool call is still authorized on its own.
+   */
+  pagePath?: string;
 }): Promise<AssistantTurn> {
   const instruction = String(input?.instruction ?? "").trim().slice(0, 4000);
   const empty: AssistantTurn = {
@@ -138,6 +154,33 @@ export async function runAssistant(input: {
 
   // ── Grounding: read the live structures, never a static description ──
   const context = await loadOrganizationContext(supabase, ctx, org.id);
+
+  // ── Where the teacher is standing ───────────────────────────────────
+  // "Make this harder" and "import these" have no meaning without it. Only the
+  // path is taken from the client; every entity is resolved server-side inside
+  // this organization, so a hand-edited path cannot point the assistant at
+  // another school's class.
+  const pagePath =
+    typeof input.pagePath === "string" && input.pagePath.startsWith("/dashboard/")
+      ? input.pagePath.slice(0, 300)
+      : "/dashboard/ai";
+  let pageContext: AssistantPageContext | null = null;
+  let pageContextText = "";
+  try {
+    pageContext = await loadAssistantPageContext(admin, org.id, {
+      path: pagePath,
+      permissions: {
+        canUseAssistant: true,
+        mayWrite: await canOperate(ctx, org.id, "questions.create"),
+      },
+    });
+    pageContextText = renderPageContextForModel(pageContext);
+  } catch {
+    // A context that cannot be resolved is stated, not silently dropped: the
+    // assistant then asks which class rather than assuming "this page".
+    pageContextText =
+      "The page context could not be read, so ask the teacher which class, subject or record they mean before acting on one.";
+  }
   const grounding = {
     classes: context.classes.length,
     subjects: context.subjects.length,
@@ -176,7 +219,8 @@ export async function runAssistant(input: {
         scope,
         settings,
         hasPermission,
-        context: renderContextForModel(context, 3000),
+        subjectScope: subjectScopeGate(admin, org.id, ctx.user.id),
+        context: [renderContextForModel(context, 3000), pageContextText].join("\n\n"),
       });
       strategy = plan.plan.strategy;
       note = plan.plan.note;
@@ -218,7 +262,8 @@ export async function runAssistant(input: {
         scope,
         settings,
         hasPermission,
-        context: renderContextForModel(context, 3000),
+        subjectScope: subjectScopeGate(admin, org.id, ctx.user.id),
+        context: [renderContextForModel(context, 3000), pageContextText].join("\n\n"),
       });
       strategy = plan.plan.strategy;
       note = plan.plan.note;
@@ -275,6 +320,16 @@ export async function runAssistant(input: {
     refusal,
     executed,
     grounding,
+    pageContext: pageContext
+      ? {
+          surface: pageContext.surface,
+          summary: pageContext.summary,
+          class: pageContext.class ? { id: pageContext.class.id, name: pageContext.class.name } : null,
+          subject: pageContext.subject,
+          academicYear: pageContext.academicYear,
+          notes: pageContext.notes,
+        }
+      : null,
   };
 }
 

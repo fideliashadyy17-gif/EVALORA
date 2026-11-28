@@ -38,6 +38,7 @@ import {
   pauseExam, proposeAiMarks, publishResults, removeCandidate, reviewIncident, setExamStatus, updateExamCalculator, updateExamLockdown, updateExamProctoring, updateWorkspaceExamAccess, validateResults, unvalidateResults,
 } from "../actions";
 import { requestFormatter } from "@/lib/formattingRequest";
+import { AssistantPanel } from "@/components/dashboard/AssistantPanel";
 
 export const metadata: Metadata = { title: "Examination" };
 export const dynamic = "force-dynamic";
@@ -293,6 +294,8 @@ export default async function ExamDetailPage({
     rubric_total: "The criterion marks add up to more than this question is worth. Adjust the criteria and retry.",
     failed: "The mark could not be saved. Please retry.",
     partial: "The answer mark may have been saved, but the attempt total could not be confirmed. Contact an administrator to check the mark and total.",
+    subject_scope:
+      "This examination is in a subject you are not assigned to teach, so its official marks are not yours to change. No mark was saved. An administrator can record the assignment in Teaching assignments.",
   };
   const moderationErrors: Record<string, string> = {
     invalid: "The answer or examination could not be verified. No decision was recorded.",
@@ -1313,6 +1316,8 @@ export default async function ExamDetailPage({
           )}
         </div>
       </div>
+
+      <AssistantPanel title="Examination assistant" />
     </>
   );
 }

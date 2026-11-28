@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { Badge, Button, Card } from "@/components/ui";
 import { runAssistant, type AssistantTurn } from "./actions";
@@ -37,10 +38,17 @@ export function AssistantClient({
   canApproveSensitive,
   modelConfigured,
   providerLabel,
+  embedded = false,
 }: {
   canApproveSensitive: boolean;
   modelConfigured: boolean;
   providerLabel: string;
+  /**
+   * Compact layout for a panel on another workspace page. Same component, same
+   * server action, same rules — a context panel that called a different code
+   * path would be a second assistant that happens to agree today.
+   */
+  embedded?: boolean;
 }) {
   const [instruction, setInstruction] = useState("");
   const [turns, setTurns] = useState<AssistantTurn[]>([]);
@@ -52,6 +60,9 @@ export function AssistantClient({
   // question batch. Changing the text starts a new request.
   const requestId = useRef<string | null>(null);
   const lastText = useRef<string>("");
+  // The page the teacher is on. Sent so "make this harder" has a referent; the
+  // server resolves the ids itself and the value grants no access on its own.
+  const pathname = usePathname();
 
   const submit = (mode: "preview" | "execute") => {
     const text = instruction.trim();
@@ -62,7 +73,7 @@ export function AssistantClient({
     }
     const id = requestId.current;
     startTransition(async () => {
-      const turn = await runAssistant({ instruction: text, mode, requestId: id });
+      const turn = await runAssistant({ instruction: text, mode, requestId: id, pagePath: pathname });
       setTurns((current) => [turn, ...current]);
       if (turn.executed.some((e) => e.ok)) {
         // The instruction is done; a new one must not reuse this id.
@@ -72,6 +83,50 @@ export function AssistantClient({
       }
     });
   };
+
+  if (embedded) {
+    return (
+      <div className="space-y-4">
+        <div>
+          <label htmlFor="ai-instruction-embedded" className="block text-sm font-medium text-evergreen-900">
+            Ask the assistant about this page
+          </label>
+          <textarea
+            id="ai-instruction-embedded"
+            value={instruction}
+            onChange={(event) => setInstruction(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.metaKey || event.ctrlKey) && event.key === "Enter") submit("preview");
+            }}
+            rows={3}
+            maxLength={4000}
+            placeholder="e.g. Which students in this class are missing an enrollment? Draft a note to the guardians."
+            className="mt-2 w-full resize-y rounded-xl border border-evergreen-900/25 bg-paper px-3 py-2 text-sm text-ink outline-none focus:border-evergreen-700"
+            disabled={pending}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <Button type="button" onClick={() => submit("preview")} disabled={pending || instruction.trim().length < 3}>
+              {pending ? "Working…" : "Preview"}
+            </Button>
+            <Button
+              type="button"
+              onClick={() => submit("execute")}
+              disabled={pending || instruction.trim().length < 3}
+              className="bg-gold-600 text-evergreen-950 hover:bg-gold-500"
+            >
+              Run for real
+            </Button>
+            <span className="text-[11px] text-ink-soft">
+              Nothing is created or changed by “Preview”.
+            </span>
+          </div>
+        </div>
+        {turns.map((turn, index) => (
+          <EmbeddedTurn key={`${turn.instruction}-${index}`} turn={turn} canApproveSensitive={canApproveSensitive} />
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -294,6 +349,57 @@ export function AssistantClient({
           </Link>
         </Card>
       </aside>
+    </div>
+  );
+}
+
+/**
+ * One assistant turn, compact.
+ *
+ * Shows the page the assistant understood, the reply, and each tool step with
+ * its real outcome. It does not show a preview tree: in a panel beside a form,
+ * the teacher wants the answer and the state, not a second copy of the form.
+ * A failed or refused step says so — the same rule as the full view.
+ */
+function EmbeddedTurn({ turn, canApproveSensitive }: { turn: AssistantTurn; canApproveSensitive: boolean }) {
+  return (
+    <div className="rounded-xl border border-evergreen-900/15 bg-stone-50/70 p-3 text-sm">
+      <p className="text-xs text-ink-soft">“{turn.instruction}”</p>
+      {turn.pageContext && (
+        <p className="mt-1 text-[11px] text-ink-soft">
+          Context: {turn.pageContext.class?.name ?? turn.pageContext.subject?.name ?? turn.pageContext.surface}
+        </p>
+      )}
+      {turn.error ? (
+        <p className="mt-2 rounded-lg border border-red-200 bg-red-50 px-2 py-1 text-xs text-red-800">{turn.error}</p>
+      ) : (
+        <p className="mt-2 whitespace-pre-line text-ink">{turn.reply}</p>
+      )}
+      {turn.executed.map((step, index) => (
+        <div key={`${step.tool}-${index}`} className="mt-2 border-t border-evergreen-900/10 pt-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-[11px] text-evergreen-800">{step.tool}</span>
+            <Badge tone={outcomeTone(step.code)}>{step.ok ? "succeeded" : step.code ?? "failed"}</Badge>
+          </div>
+          {step.code === "approval_required" && (
+            <p className="mt-1 text-[11px] text-amber-900">
+              Needs a human approval before it can run.{" "}
+              {canApproveSensitive ? (
+                <Link className="underline" href="/dashboard/ai/approvals">
+                  Review it
+                </Link>
+              ) : (
+                "Ask an administrator to review it in Agents & approvals."
+              )}
+            </p>
+          )}
+          {step.links?.map((link) => (
+            <Link key={link.href} href={link.href} className="mt-1 block text-[11px] text-evergreen-800 underline">
+              {link.label}
+            </Link>
+          ))}
+        </div>
+      ))}
     </div>
   );
 }
