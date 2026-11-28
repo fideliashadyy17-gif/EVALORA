@@ -738,6 +738,10 @@ test('the revocation migration takes the actor and checks it properly', () => {
   assert.match(sql, /revoke_reason = left\(coalesce\(p_reason/, 'the reason must be persisted');
   // Revoking a credential is not deleting a registration.
   assert.doesNotMatch(sql, /delete from public\.ai_agents/i, 'revocation must not delete the agent row');
+  // Adding an argument creates an overload rather than replacing the function, so
+  // the broken two-argument signature would stay callable and make the name
+  // ambiguous to PostgREST. It has to be dropped explicitly.
+  assert.match(sql, /drop function if exists public\.ai_revoke_agent\(uuid, text\)/, 'the obsolete overload must be dropped');
 });
 
 rmSync(outDir, { recursive: true, force: true });
