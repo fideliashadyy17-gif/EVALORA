@@ -60,6 +60,10 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Run live AI verification
+        # `continue-on-error` so a failing check still reaches the report steps
+        # below. A run that fails silently is worse than one that fails loudly
+        # with the reason attached.
+        continue-on-error: true
         env:
           NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
